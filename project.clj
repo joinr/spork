@@ -1,4 +1,4 @@
-(defproject spork "0.1.0-SNAPSHOT"
+(defproject spork/stand-alone "0.1.0-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and are suppoorted as stand-alone dependencies.
@@ -19,4 +19,5 @@
                  [spork/spork-sim   "0.1.0-SNAPSHOT"]
                  [spork/spork-opt   "0.1.0-SNAPSHOT"]
                  [spork/spork-graph "0.1.0-SNAPSHOT"]
-                 [spork/spork-gui   "0.1.0-SNAPSHOT"]])
+                 [spork/spork-gui   "0.1.0-SNAPSHOT"]
+                 [spork/spork-incanter "0.1.0-SNAPSHOT"]])
