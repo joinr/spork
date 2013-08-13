@@ -1,7 +1,7 @@
 ;A namespace for defining systems that operate on entitystores to compute
 ;results, usually dynamic processes (i.e. simulations or games).
 (ns spork.entitysystem.systems
-  (:use [entitysystem.store]
+  (:use [spork.entitysystem.store]
         [DEVS.events]))
 
 ;-----Why Systems?
