@@ -1,5 +1,5 @@
 ;Tom Spoon!
-(ns spork.intelligence.fastmultipole)
+(ns spork.opt.fastmultipole)
 ;Implementation of Dr. John Harrop's F# fast multipole method for tree
 ;based force computation, in clojure.
 

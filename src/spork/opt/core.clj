@@ -16,7 +16,7 @@
 ;;optimization engine means that we can extend the solution
 ;;environment to include parameters specific to a strategy, and to
 ;;decouple the solution representation. 
-(ns spork.collective.core)
+(ns spork.opt.core)
 
 ;;Generic Problem Solving
 ;;=======================

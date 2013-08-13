@@ -1,4 +1,4 @@
-(ns spork.collective.displaced)
+(ns spork.opt.displaced)
 
 ;;A protocol for mapping to and from primitive arrays of doubles.
 (defprotocol IdoublesEncoder 

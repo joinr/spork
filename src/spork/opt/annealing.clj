@@ -1,7 +1,7 @@
 ;;A namespace for defining simulated annealing stochastic optimization
 ;;strategies, using the optimization libraries in collective.core.
-(ns spork.intelligence.annealing
-  (:require [spork.collective [core :as core]]))
+(ns spork.opt.annealing
+  (:require [spork.opt [core :as core]]))
 
 ;;__Simulated Annealing__ comes in various forms, but the one most
 ;;commonly taught or described is of the Boltzmann form, or Boltzmann

@@ -4,7 +4,8 @@
 ;;Primitive operations are wrapped for maximum effeciency.
 (ns spork.collective.representation
   (:require [spork.util.vectors :refer :all]
-			[spork.util [combinatoric :as c] :refer [combinatoric-map]])) 
+            [spork.util [combinatoric :as c] 
+                        :refer [combinatoric-map]])) 
 
 ;;Solution Representations
 ;;========================

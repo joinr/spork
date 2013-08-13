@@ -4,9 +4,9 @@
 ;line-generation, in that currently a line of [0,0] [0,0] is valid.  I need to 
 ;fix this.  The system eventually optimizes by pushing "most" everything 
 ;into a corner :/ 
-(ns spork.intelligence.optimization
+(ns spork.opt.optimization
   (:use     [clojure.contrib.combinatorics])
-  (:require [spork.intelligence [annealing :as ann]]))
+  (:require [spork.opt [annealing :as ann]]))
 
 (defn between [l u]
   (fn [n] (and (>= n l) (<= n u))))
