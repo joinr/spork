@@ -1,4 +1,4 @@
-(defproject spork/stand-alone "0.1.0-SNAPSHOT"
+(defproject spork "0.1.0-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and are suppoorted as stand-alone dependencies.
@@ -14,10 +14,9 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.5.1"]
-                 [spork/spork-core  "0.1.0-SNAPSHOT"]
-                 [spork/spork-util  "0.1.0-SNAPSHOT"]
-                 [spork/spork-sim   "0.1.0-SNAPSHOT"]
-                 [spork/spork-opt   "0.1.0-SNAPSHOT"]
-                 [spork/spork-graph "0.1.0-SNAPSHOT"]
-                 [spork/spork-gui   "0.1.0-SNAPSHOT"]
-                 [spork/spork-incanter "0.1.0-SNAPSHOT"]])
+				 [org.clojure.contrib/standalone "1.3.0-alpha4"]
+				 [net.sf.jung/jung-api "2.0.1"]
+                 [net.sf.jung/jung-graph-impl "2.0.1"]
+                 [net.sf.jung/jung-algorithms "2.0.1"]
+                 [net.sf.jung/jung-visualization "2.0.1"]
+                 [net.sf.jung/jung-io "2.0.1"]])
