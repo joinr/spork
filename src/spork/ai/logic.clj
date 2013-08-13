@@ -1,5 +1,6 @@
 (ns spork.ai.logic)
 
+(comment 
 ;example ripped from a clojure post....
 
 (defn solve-logic-puzzle []
@@ -202,6 +203,8 @@ reservation at 7:30pm subscribed to Fortune."
           (permuteo cheeses [:asiago :blue-cheese :mascarpone :mozzarella :muenster])
           (permuteo reservations [5 6 7 7.5 8.5])))))
 
+
+)
 ;;; Time to (run 1 [q]): ~1s.
 ;;; Time to (run* [q]): ~16s.
 ;;;

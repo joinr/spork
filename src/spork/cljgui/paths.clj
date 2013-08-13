@@ -1,2 +1,0 @@
-(ns spork.cljgui.paths)
-

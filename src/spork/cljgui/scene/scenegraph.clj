@@ -4,17 +4,17 @@
 ;functions used to interact with Java2D, wrapped with Clojure.
 
 (ns spork.cljgui.scene.scenegraph
-  (:use  [cljgui.graphics2d.canvas :only 
+  (:use  [spork.cljgui.graphics2d.canvas :only 
           [IShape get-color set-color get-alpha set-alpha draw-shape 
            shape-bounds translate-2d scale-2d rotate-2d with-color 
            with-translation with-rotation with-transform with-alpha 
            with-scale bitmap-graphics]]         
-         [cljgui.spatial :only [bbox scale-bounds translate-bounds 
+         [spork.cljgui.spatial :only [bbox scale-bounds translate-bounds 
                                 rotate-bounds group-bounds get-bounding-box
                                 bound-intersects?]])
   (:require [clojure [zip :as zip]]
-            [cljgui.components [swing :as swing]]
-            [cljgui.graphics2d [swing :as jgraphics] [image :as image]]))
+            [spork.cljgui.components [swing :as swing]]
+            [spork.cljgui.graphics2d [swing :as jgraphics] [image :as image]]))
 
 ;note -> I may be able to just ignore this guy.....wondering if the whole 
 ;scene protocol is unnecessary. 

@@ -4,9 +4,10 @@
 (ns spork.util.table
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]
-            [spork.util [clipboard :as board] [gui :as gui]])
+            [spork.util [clipboard :as board] 
+                        [gui :as gui]])
   (:use [spork.util.vector]
-		[spork.util.record  :only [serial-field-comparer key-function]]
+        [spork.util.record  :only [serial-field-comparer key-function]]
         [spork.util.general :only [align-by]]
         [clojure.pprint :only [pprint]])) 
 

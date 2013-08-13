@@ -26,9 +26,9 @@
 ;  D. Make GUI development much less painful, but just as robust.
 
 
-(ns spork.cljgui.events.native
-  (:use [cljgui.events.base]
-        [cljgui.events.observe])
+(ns spork.events.native
+  (:use [spork.events.base]
+        [spork.events.observe])
   (require [clojure [reflect :as r]
                     [string :as s]])
   (:import  

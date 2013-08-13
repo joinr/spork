@@ -1,10 +1,11 @@
  (ns spork.cljgui.components.swing
-  (:use     [cljgui.mvc])
-  (:require [cljgui.graphics2d [canvas :as j2d]
-                               [swing :as jgraphics]]
-            [cljgui.events [base :as events]
-                           [observe :as obs]
-                           [native :as native]])
+  (:use     [spork.cljgui.mvc])
+  (:require [spork.cljgui.graphics2d 
+                     [canvas :as j2d]
+                     [swing :as jgraphics]]
+            [spork.events [base :as events]
+                          [observe :as obs]
+                          [native :as native]])
   (:import [java.util Vector]
            [javax.swing JFrame JPanel Box BoxLayout JTextField JSplitPane
             JLabel JButton JOptionPane JScrollPane Timer SwingUtilities

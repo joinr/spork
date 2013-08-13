@@ -1,6 +1,6 @@
 (ns spork.cljgui.tst
-  (:use  [cljgui.gui]
-         [cljgui.events base observe native]))
+  (:use  [spork.cljgui.gui]
+         [spork.cljgui.events base observe native]))
 
 (def init-timer {:time 0 :running false})
 (def dumb-timer (agent {:time 0 :running false}))

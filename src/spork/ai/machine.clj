@@ -1,5 +1,5 @@
 ;a generic finite state machine.
-(ns spork.FSM.machine)
+(ns spork.ai.machine)
 
 ;'Provides a set of data useful to any FiniteStateMachine.
 ;Option Explicit

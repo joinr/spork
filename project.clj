@@ -9,7 +9,8 @@
    majority of spork is written in Clojure, with an intentional nod toward 
    independence from external libraries, particularly Java libs.  Consequently, 
    spork should provide a lightweight, clojure-based platform for the topics 
-   covered by the libraries."
+   covered by the libraries.  I am currently working to eliminate legacy 
+   java dependencies where possible."
   :url "None Currently"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
@@ -19,4 +20,5 @@
                  [net.sf.jung/jung-graph-impl "2.0.1"]
                  [net.sf.jung/jung-algorithms "2.0.1"]
                  [net.sf.jung/jung-visualization "2.0.1"]
-                 [net.sf.jung/jung-io "2.0.1"]])
+                 [net.sf.jung/jung-io "2.0.1"]
+                 [dk.ative/docjure "1.6.0-SNAPSHOT"]])

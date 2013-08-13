@@ -1,5 +1,5 @@
 (ns spork.cljgui.scene.manager
-  (:use [cljgui.scene.scenegraph]))
+  (:use [spork.cljgui.scene.scenegraph]))
 
 
 ;Note -> this file is still largely experimental.  I'm trying to work this

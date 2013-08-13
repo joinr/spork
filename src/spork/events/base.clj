@@ -1,5 +1,5 @@
 ;Tom Spoon Feb 13 2012.
-(ns spork.cljgui.events.base)
+(ns spork.events.base)
 
 (defprotocol IEvent 
   (event-source [e] "Derive the event source of event e.")

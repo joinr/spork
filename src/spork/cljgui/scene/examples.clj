@@ -1,9 +1,9 @@
 (ns spork.cljgui.scene.examples
-  (:use  [cljgui.mvc]
-         [cljgui.components swing]
-         [cljgui.scene scenegraph]
-         [cljgui.geometry shapes]
-         [cljgui.events observe native]))
+  (:use  [spork.cljgui.mvc]
+         [spork.cljgui.components swing]
+         [spork.cljgui.scene scenegraph]
+         [spork.cljgui.geometry shapes]
+         [spork.events observe native]))
 
 ;a simple scene for drawing mathematical plots...
 

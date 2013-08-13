@@ -1,9 +1,9 @@
 (ns spork.cljgui.animation.example
-  (:use [cljgui.graphics2d.canvas]
-        [cljgui.geometry.shapes]
-        [cljgui.behavior]
-        [cljgui.scene.scenegraph]
-        [cljgui.components.swing])
+  (:use [spork.cljgui.graphics2d.canvas]
+        [spork.cljgui.geometry.shapes]
+        [spork.cljgui.behavior]
+        [spork.cljgui.scene.scenegraph]
+        [spork.cljgui.components.swing])
   (:import [java.awt Graphics2D]
            [java.awt.event ActionListener]
            [javax.swing Timer JPanel]))

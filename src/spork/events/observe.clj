@@ -40,7 +40,7 @@
 ;the observable, that propogates the notion that no more observations are 
 ;coming down the pipe, which would allow observers to disconnect.
 
-(ns spork.cljgui.events.observe)
+(ns spork.events.observe)
 
 (defprotocol observer 
   (update! [obs arg] "Inform the observer obs that arg has happened.  
