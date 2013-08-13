@@ -1,4 +1,4 @@
-(defproject spork-ai "0.1.0-SNAPSHOT"
+(defproject spork/spork-ai "0.1.0-SNAPSHOT"
   :description "A collection of functions and data structures for implementing
    artificial intelligence, primarily for scripting entity behaviors.  Part of 
    SPORK."

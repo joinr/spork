@@ -1,4 +1,4 @@
-(defproject spork-opt "0.1.0-SNAPSHOT"
+(defproject spork/spork-opt "0.1.0-SNAPSHOT"
   :description
   "A collection of generic optimization algorithms, along with stochastic
    optimization and some heuristics.  Inspired by Toby Segaran's excellent

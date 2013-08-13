@@ -1,4 +1,4 @@
-(defproject spork-incanter "0.1.0-SNAPSHOT"
+(defproject spork/spork-incanter "0.1.0-SNAPSHOT"
   :description "Useful Incanter Extensions Used by SPORK."
   :url "None"
   :license {:name "Eclipse Public License"

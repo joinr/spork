@@ -1,8 +1,22 @@
-lein install ..\checkouts\spork-core
-lein install ..\checkouts\spork-util
-lein install ..\checkouts\spork-graph
-lein install ..\checkouts\spork-gui
-lein install ..\checkouts\spork-entity 
-lein install ..\checkouts\spork-sim
-lein install ..\checkouts\spork-opt
-lein install ..\checkouts\spork-ai
+cd ..\checkouts\spork-util
+call lein install
+
+cd ..\spork-graph
+call lein install
+
+cd ..\spork-gui
+call lein install
+
+cd ..\spork-entity 
+call lein install 
+
+cd ..\spork-sim
+call lein install
+
+cd ..\spork-opt
+call lein install 
+
+cd ..\spork-ai
+call lein install
+
+cd ..\..\scripts

@@ -1,4 +1,4 @@
-(defproject spork-sim "0.1.0-SNAPSHOT"
+(defproject spork/spork-sim "0.1.0-SNAPSHOT"
   :description
   "A declarative discrete event simulation framework for Clojure.  Integrated
    with the the SPORK libraries.  Provides functions and data structures for

@@ -1,4 +1,4 @@
-(defproject spork-core "0.1.0-SNAPSHOT"
+(defproject spork/spork-core "0.1.0-SNAPSHOT"
   :description "Core data structures and utilities for SPORK"
   :url "None"
   :license {:name "Eclipse Public License"

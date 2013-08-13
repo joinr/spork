@@ -1,4 +1,4 @@
-(defproject spork-util "0.1.0-SNAPSHOT"
+(defproject spork/spork-util "0.1.0-SNAPSHOT"
   :description "A collection of utility structures and functions for Clojure.
   Integrated with the SPORK libraries.  Provides things like generic tables,
   high-level IO wrappers, many useful data structures, and Excel interop."

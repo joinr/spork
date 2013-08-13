@@ -1,4 +1,4 @@
-(defproject spork-gui "0.1.0-SNAPSHOT"
+(defproject spork/spork-gui "0.1.0-SNAPSHOT"
   :description "A suite of declarative graphical user interface builders, along  with wrappers for Swing and othe backends.  Part of SPORK"
   :url "None"
   :license {:name "Eclipse Public License"

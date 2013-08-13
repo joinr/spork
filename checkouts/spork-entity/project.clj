@@ -1,4 +1,4 @@
-(defproject spork-entity "0.1.0-SNAPSHOT"
+(defproject spork/spork-entity "0.1.0-SNAPSHOT"
   :description "A component-entity system for SPORK"
   :url "None"
   :license {:name "Eclipse Public License"

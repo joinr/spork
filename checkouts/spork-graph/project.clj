@@ -1,4 +1,4 @@
-(defproject spork-graph "0.1.0-SNAPSHOT"
+(defproject spork/spork-graph "0.1.0-SNAPSHOT"
   :description
   "Data structures and algorithms useful for graph operations.
    Provided by SPORK."
