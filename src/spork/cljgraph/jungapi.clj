@@ -1,3 +1,5 @@
+;;##Currently pointing at old cljgraph stuff, also couls be using spork.cljgui.
+;;Rewrite this stuff.  
 (ns spork.cljgraph.jungapi
   "A simple API to wrap a few useful Java Universal Network Graph classes 
    inside of a functional graph interface."

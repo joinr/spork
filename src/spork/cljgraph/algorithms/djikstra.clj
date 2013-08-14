@@ -1,7 +1,9 @@
+;;Should be replaced by the fringe and priority-first search.
+;;Check that the implementation is working.
 (ns spork.cljgraph.algorithms.djikstra
   (:use [cljgraph.graph])
-  (:require [cljgraph.data.fringe :as fr]
-            [cljgraph.data.priorityq :as pq]))
+  (:require [spork.data.fringe :as fr]
+            [spork.data.priorityq :as pq]))
 
 ;Search algorithm implementation:
 ;I am intentionally verbose in the decomposition of functionality and in 

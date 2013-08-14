@@ -1,15 +1,15 @@
 (ns spork.data.fringe
   "Stock implementations of the IFringe protocol from spork.protocols.fringe, as 
    inspired by Bob Sedgewick's Graph Algorithms in C."
-   (:require [spork.data  [priorityq :as pq] [randq :as rq]]
-             [spork.protocols.fringe :refer :all]))
+   (:require [spork.data      [priorityq :as pq] [randq :as rq]]
+             [spork.protocols [core :as generic]]))
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
 (defn ^clojure.lang.MapEntry entry [k v] (clojure.lang.MapEntry. k v))
 
 ;;Implementations of basic stack (depth first) and queue (breadth first) 
 ;;fringes.
-(extend-protocol IFringe 
+(extend-protocol generic/IFringe 
   nil 
   (conj-fringe [fringe n w] (conj '() (entry n w)))
   (next-fringe [fringe]  nil)
@@ -42,7 +42,7 @@
   (re-label [fringe n w newlabel] fringe))
 
 ;;Extend the IFringe protocol to priority queues, so we get a priority fringe.
-(extend-protocol IFringe
+(extend-protocol generic/IFringe
   clojure.lang.PersistentTreeMap
     (conj-fringe [fringe n w] (pq/conj-node fringe n w))
     (next-fringe [fringe]     (pq/next-node fringe))
@@ -50,7 +50,7 @@
     (re-weigh    [fringe n wold wnew] (pq/alter-weight fringe n wold wnew))
     (re-label    [fringe n w newlabel] fringe))
 
-(extend-protocol IFringe
+(extend-protocol generic/IFringe
   spork.data.randq.randomq
     (conj-fringe [fringe n w] (rq/conj fringe (entry n w)))
     (next-fringe [fringe]     (rq/peek fringe))

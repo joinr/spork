@@ -1,3 +1,4 @@
+;;##Hollowed out and ported to spork.util.topograph
 (ns spork.cljgraph.graph
   "A protocol and a default implementation for a Graph data type
    first we need a graph data type... 
@@ -16,12 +17,6 @@
   (:require [clojure [set :as set-theory]]))
   
 (declare make-graph)
-
-(defn u-arcbound [nodecount] 
-  (/ (* nodecount (dec nodecount)) 2))
-
-(defn d-arcbound [nodecount]
-  (* nodecount (dec nodecount)))
   
 (defn- flip 
   "Auxillary function.  Returns function that accepts args in reverse order." 
@@ -166,107 +161,9 @@
   (get-sinks [g n] "Query the neighborhood to determine nodes as sinks for n.")
   (incident-arcs [g n] "Return all arcs that use n as a component."))
 
-
-(defn graph-component?
-  "Derive the component of the object, relative to graph terms."
-  [obj]
-  (cond (satisfies? IGraphNode obj) :node
-        (satisfies? IGraphArc obj) :arc
-        (satisfies? IGraph obj) :graph
-        :else nil))
-     
-(defn init-graph
-  "Initialize an IGraph (constructed somewhere else) with basic attributes.  
-   Assumes all graphs are directed by nature."
-  ([g] (add-attrs g [::digraph]))
-  ([g attrs] (add-attrs g attrs)))
-
 ;Protocol-derived functionality.  We define higher order graph operations on 
 ;top of protocol functions.  This allows us to change the implementation 
-;to get performance benefits.
-
-(defn add-nodes
-  "Record-specific implementation for adding multiple nodes to g."
-  [g nodes]
-  (reduce add-node g nodes))
-
-(defn add-arcs 
-  "Return new graph representing addition of arcs to g"
-  [g arcs] (reduce add-arc g arcs))
-
-(def missing-node? (comp not has-node?))
-
-(defn terminal-node?
-  "Is node n devoid of outbound arcs?"
-  [g n] (not (seq (get-sinks g n))))
-
-(defn source-node?
-  "Is node n devoid of inbound arcs?"
-  [g n] (not (seq (get-sources g n))))
-
-(defn island?
-  "Does node n have any neighbors?"
-  [g n] (and (terminal-node? g n) (source-node? g n)))
-
-(defn drop-nodes [g coll] (reduce drop-node g coll))
-        
-(defn- get-labels [coll] (map get-label coll))
-
-(defn get-arclabels 
-  "Return all arc labels in g" 
-  [g] (map arc-label (get-arcs g)))
-
-(defn get-nodelabels
-  "Return all arc labels in g"
-  [g] (map node-label (get-nodes g))) 
-
-(defn- union-find
-  [g nd fringef]
-  (loop [fringe (fringef g nd) ;<----makes a set!                   
-         found fringe]
-    (if (seq fringe)
-      (let [[knext frnext] 
-	            (reduce 
-	             (fn [[known xs] n]
-	               (let [ys (set-theory/difference (fringef g n) known)
-	                      k (set-theory/union known ys)]
-	                 [k (set-theory/union xs ys)])) [found #{}] fringe)]
-        (recur frnext knext))
-      found)))
-
-
-(defn- get-degree [g nd f]
-  (if-let [itms (f g nd)]
-    (if (contains? itms (node-label nd))
-      (inc (count itms))
-      (count itms))
-    0))
-
-(defn get-indegree
-  "What is the in-degree of the node?  For directed graphs, how many incident 
-   arcs does this node serve as the sink for?  Self-loops count twice."
-  [g nd]
-  (get-degree g nd get-sources))
-      
-(defn get-outdegree
-  "What is the in-degree of the node?  For directed graphs, how many incident 
-   arcs does this node serve as the sink for?  Self-loops count twice."
-  [g nd]
-  (get-degree g nd get-sinks))
-
-
-(defn get-predecessors  
-  "Find all nodes that are predecessors to nd.  Node A precedes B if there is 
-   any path connecting A to B."
-  [g nd]
-  (union-find g nd get-sources))
-
-(defn get-successors  
-  "Find all nodes that are predecessors to nd.  Node A precedes B if there is 
-   any path connecting A to B."
-  [g nd]
-  (union-find g nd get-sinks))
-       
+;to get performance benefits.   
        
 
 (load-relative ["cljgraph.data.mapgraph"
