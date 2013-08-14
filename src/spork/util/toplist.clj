@@ -20,7 +20,7 @@
 ;;imperative structures.
 ;;I need to rework the name of the library, as it is no longer a topographic
 ;;list.  
-(ns spork.util.toplist
+(ns spork.util.topographic
   (:require [clojure [zip :as zip]]))
 
 (defn assoc-exists [m k v]  (if (empty? v) (dissoc m k) (assoc  m k v )))
@@ -75,17 +75,17 @@
 ;;so by supporting the canonical walks we can extend the querying abilities to 
 ;;all of the types based on a graph topology.
 (defprotocol IFringe 
-  (-push-fringe [fr x])
-  (-next-fringe [fr])
-  (-pop-fringe  [fr]))
+  (conj-fringe [fr x])
+  (next-fringe [fr])
+  (pop-fringe  [fr]))
 
 ;;Delayed for now.  Need for djikstra and other search algorithms.
 (comment 
 (deftype priority-queue [basemap priority-func]
   IFringe 
-  (-push-fringe [fr x] (assoc basemap (entry (priority-func x) x) x))
-  (-next-fringe [fr]   (first basemap))
-  (-pop-fringe  [fr]   (dissoc basemap (key (first basemap)))))
+  (conj-fringe [fr x] (assoc basemap (entry (priority-func x) x) x))
+  (next-fringe [fr]   (first basemap))
+  (pop-fringe  [fr]   (dissoc basemap (key (first basemap)))))
 
 (defn ->min-priority-queue [f] 
   (->priority-queue (sorted-map-by key) f))
@@ -97,21 +97,21 @@
 ;;fringes.
 (extend-protocol IFringe 
   nil 
-  (-push-fringe [fr x] (conj '() x))
-  (-next-fringe [fr]   nil)
-  (-pop-fringe  [fr]   nil)  
+  (conj-fringe [fr x] (conj '() x))
+  (next-fringe [fr]   nil)
+  (pop-fringe  [fr]   nil)  
   clojure.lang.PersistentQueue
-  (-push-fringe [fr x] (conj fr x))
-  (-next-fringe [fr]   (first fr))
-  (-pop-fringe  [fr]   (pop fr))  
+  (conj-fringe [fr x] (conj fr x))
+  (next-fringe [fr]   (first fr))
+  (pop-fringe  [fr]   (pop fr))  
   clojure.lang.PersistentList
-  (-push-fringe [fr x] (conj fr x))
-  (-next-fringe [fr]   (first fr))
-  (-pop-fringe  [fr]   (next fr))
+  (conj-fringe [fr x] (conj fr x))
+  (next-fringe [fr]   (first fr))
+  (pop-fringe  [fr]   (next fr))
   clojure.lang.Cons 
-  (-push-fringe [fr x] (conj  fr x))
-  (-next-fringe [fr]   (first fr))
-  (-pop-fringe  [fr]   (next fr)))
+  (conj-fringe [fr x] (conj  fr x))
+  (next-fringe [fr]   (first fr))
+  (pop-fringe  [fr]   (next fr)))
 
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
@@ -417,16 +417,18 @@
   [tg k & {:keys [neighbor-func fringe]
                     :or   {neighbor-func (partial sinks tg)
                            fringe nil}}]
-  (loop [fr (-push-fringe fringe k)
+  (loop [fr        (conj-fringe fringe k 0)
          visited  #{}
          acc       []]
     (cond (empty? fr) acc
-          (visited (-next-fringe fr)) (recur (-pop-fringe fr) visited acc) 
+          (visited (first (next-fringe fr)) (recur (pop-fringe fr) visited acc) 
           :else    
-           (let [nd    (-next-fringe fr)
+           (let [e     (next-fringe fr)
+                 nd    (first e) 
+                 w     (second e)
                  vnext (conj visited nd)
                  xs    (filter  (complement vnext) (neighbor-func nd))]
-             (recur (reduce -push-fringe (-pop-fringe fr) xs)
+             (recur (reduce conj-fringe (pop-fringe fr) xs)
                     vnext
                     (conj acc nd))))))
 

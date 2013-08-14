@@ -1,4 +1,4 @@
-(ns spork.cljgraph.data.priorityq
+(ns spork.data.priorityq
   "The priorityq implementation is designed for use as an auxillary data
    structure.  It relies on the sorted-map from clojure.core, althogh I might 
    shift the implementation to use priority-map later.  The current 
@@ -7,9 +7,16 @@
    priority or weight.  Weight is assumed to be, although not enforced, a 
    numeric value, typically a floating point value.")
 
-(def emptyq (sorted-map))
-(def minq emptyq)
-(def maxq (sorted-map-by >))
+;;A simple type tagging mechanism.  Since priority queues use clojure's 
+;;ordered maps, we can use this info for a second layer of type tagging.
+(defn tag-as-pq [x]
+  (with-meta x (assoc (meta x) ::priority-queue true)))
+
+(def emptyq (tag-as-pq (sorted-map)))
+(def minq   emptyq)
+(def maxq   (tag-as-pq (sorted-map-by >)))
+
+(defn priority-queue? [m] (contains? (meta m) ::priority-queue))
 
 (defn conj-node
   "Conjoin node n onto priorityq  q with priority/weight w."

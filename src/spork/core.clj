@@ -4,3 +4,6 @@
 ;;##Todo
 ;;Deprecate spork.util.gui
 ;;Unify cljgui.
+;;Isolate externally-dependent modules, spork.incanter, spork.util.excel, 
+;;spork.cljgraph, and strip out or modularize apache pio, incanter, 
+;;jung dependencies.  

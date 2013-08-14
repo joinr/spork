@@ -1,8 +1,8 @@
 ;Module for defining generic graph search data.
-(ns spork.cljgraph.data.search
-  (:require [cljgraph [graph :as gr]]
-            [cljgraph.data [fringe :as fr]]
-            [cljgraph.data [priorityq :as pq]]))
+(ns spork.data.search
+  (:require [spork.cljgraph  [graph :as gr]]
+            [spork.protocols [fringe :as fr]]
+            [spork.data      [priorityq :as pq]]))
 
 (defn- maybe 
   ([coll elseval] (if-let [v (first coll)] v elseval))
