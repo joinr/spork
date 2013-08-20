@@ -5,8 +5,30 @@
 (ns spork.protocols.core)
 
 ;;Common function used throughout Spork.
+;;Clojure entries are basically primitive structs, one could think of them as
+;;pairs or dotted pairs.  
 (defn ^clojure.lang.MapEntry entry [k v] (clojure.lang.MapEntry. k v))
+(defn entry? [e] (= (type e) clojure.lang.MapEntry))
+(defn nested-entry? [^clojure.lang.MapEntry e] (entry? (val e)))
 
+;;It will be useful to store entries, which normally represent a weight, node
+;;pairing, behind an estimated weight.  We will use nested entries to embed 
+;;the actual [weight node] pair inside an [estimate [weight node]] pair.
+
+;;We use entries to encode node weights, as well as heuristic estimates for 
+;;algorithms like A-star search.  This let us use general entries for the 
+;;priority queues these algorithms rely on.
+(defn entry-priority [^clojure.lang.MapEntry e] (key e))
+
+(defn entry-weight [^clojure.lang.MapEntry e]
+  (key (if (nested-entry? e) (val e) e)))
+
+(defn entry-node [^clojure.lang.MapEntry e]
+  (val (if (nested-entry? e) (val e) e)))
+
+(defn maybe 
+  ([coll elseval] (if-let [v (first coll)] v elseval))
+  ([coll] (maybe coll nil)))
 
 ;;Definition for associative containers that can traverse their keys in the 
 ;;first-in-first-out order, while retaining a constant, or near-constant 

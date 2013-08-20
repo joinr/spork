@@ -8,10 +8,6 @@
             [spork.data      [priorityq :as pq]
                              [fringe :as fr]]))
 
-(defn- maybe 
-  ([coll elseval] (if-let [v (first coll)] v elseval))
-  ([coll] (maybe coll nil)))
-
 ;;__TODO__ Use transient operations for updating the search state.
 (defn update-search [state shortest distance fringe]
   (merge state {:shortest shortest 
@@ -55,7 +51,7 @@
   generic/IFringe 
 	  (conj-fringe [state n w] (assoc state :fringe (generic/conj-fringe fringe n w)))
 	  (next-fringe [state] (generic/next-fringe fringe))
-	  (pop-fringe [state] (assoc state :fringe (generic/pop-fringe fringe)))
+	  (pop-fringe [state]  (assoc state :fringe (generic/pop-fringe fringe)))
 	  (re-weigh [state n wold wnew] (assoc state :fringe 
                                         (generic/re-weigh fringe n wold wnew)))
 	  (re-label [state n w newlabel] (assoc state :fringe 
@@ -69,7 +65,7 @@
     (assert (and (not (nil? fringe)) (generic/fringe? fringe))
             (str "Invalid fringe: " fringe))
       (merge empty-search {:startnode startnode 
-                           :targetnode (maybe targetnode ::nullnode)
+                           :targetnode (generic/maybe targetnode ::nullnode)
                            :distance {startnode 0}
                            :shortest {startnode startnode}
                            :fringe fringe}))

@@ -1,10 +1,9 @@
-;;Ported from cljgraph.  Was intended to provide generic walks.  I think 
-;;we already do that in spork.util.topographic, but they don't incorporate the 
-;;end nodes.  They're meant to be simpler walks.  Maybe unify?
+;;Generic graph search libraries, with default implementations for depth,
+;;breadth, priority, random searches and traversals (walks).
 (ns spork.cljgraph.search
   (:require [spork.protocols [core :as generic]]
-            [spork.data [searchstate :as searchstate]]
-            [spork.util [topographic :as top]]))
+            [spork.data      [searchstate :as searchstate]]
+            [spork.util      [topographic :as top]]))
 
 (defn- possible?
   "Are start and target possibly transitively related in graph g?" 
@@ -18,6 +17,7 @@
    visits.  Useful for some algorithms."
   [g nd state] (top/sinks g nd))
 
+(defn unit-weight [g source sink] 1)
 ;;Note: We could probably refactor these guys.  The only thing that's different
 ;;about them is the function generating neighbors.
 
@@ -61,7 +61,16 @@
                    :neighborf default-neighborf})
 
 (def limited-walk (assoc default-walk :neighborf visit-once))
-(def unit-walk    (assoc limited-walk :weightf (fn [g source sink] 1)))
+(def unit-walk    (assoc limited-walk :weightf unit-weight))
+
+(defn next-candidate
+  "To support hueristics, we allow candidate nodes to be encoded as entries, 
+   rather than just simple keywords.  If we detect the"
+  [fringe]
+  (generic/next-fringe fringe))    
+
+
+;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
 
 (defn traverse
   "Generic fn to walk a graph.  The type of walk can vary by changing the 
@@ -77,8 +86,8 @@
           step (fn step [g targetnode {:keys [fringe] :as searchstate}]
                    (if (empty? fringe) searchstate 
                      (let [candidate (generic/next-fringe fringe)
-                           w  (:weight candidate) ;perceived weight from start
-                           nd (:node candidate)]
+                           w  (generic/entry-weight candidate) ;perceived weight from start
+                           nd (generic/entry-node candidate)]
                        (if-not (halt? searchstate targetnode nd w) 
                          (let [sinkweights (for [sink (neighborf g nd searchstate)] 
                                                 [sink (weightf g nd sink)])
@@ -94,7 +103,7 @@
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
   [g startnode & endnode ] 
-  (traverse g startnode (maybe endnode ::nullnode) 
+  (traverse g startnode (generic/maybe endnode ::nullnode) 
               (searchstate/empty-DFS startnode)
               :neighborf visit-once
               :weightf unit-weight))
@@ -105,7 +114,7 @@
    will be relative to unit-weight."
   [g startnode & endnode] 	  
   (traverse g startnode 
-              (maybe endnode ::nullnode) 
+              (generic/maybe endnode ::nullnode) 
               (searchstate/empty-BFS startnode) 
               :weightf unit-weight 
               :neighborf visit-once))
@@ -115,7 +124,7 @@
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
   [g startnode & endnode] 
-  (traverse g startnode (maybe endnode ::nullnode) 
+  (traverse g startnode (generic/maybe endnode ::nullnode) 
               (searchstate/empty-DFS startnode)
               :neighborf visit-ordered-once
               :weightf unit-weight))
@@ -125,7 +134,7 @@
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
   [g startnode & endnode] 
-  (traverse g startnode (maybe endnode ::nullnode) 
+  (traverse g startnode (generic/maybe endnode ::nullnode) 
               (searchstate/empty-RFS startnode)
               :neighborf visit-once
               :weightf unit-weight))
@@ -135,7 +144,7 @@
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
   [g startnode & endnode] 
-  (traverse g startnode (maybe endnode ::nullnode) 
+  (traverse g startnode (generic/maybe endnode ::nullnode) 
               (searchstate/empty-RFS startnode)
               :neighborf visit-neighbors-once
               :weightf unit-weight))
@@ -146,7 +155,7 @@
   edge weights in the graph."
   [g startnode & endnode] 	  
   (traverse g startnode 
-              (maybe endnode ::nullnode) 
+              (generic/maybe endnode ::nullnode) 
               (searchstate/empty-PFS startnode)))
 
 ;;explicit searches, merely enforces a walk called with an actual destination
@@ -189,6 +198,25 @@
   [g startnode endnode] 
   (priority-traversal g startnode endnode))
 
+;;__TODO__ Check implementation of a-star, I think this is generally correct.
+
+(defn a-star-search 
+  "Given a heuristic function, searches graph g for the shortest path from 
+   start node to end node.  Operates similarly to djikstra or 
+   priority-first-search, but uses a custom weight function that applies the 
+   hueristic to the weight.  heuristic should be a function that takes a 
+   target node and the current weight, and returns an estimated weight to be 
+   added to the actual weight."
+  [g heuristic-func startnode endnode]
+  (traverse g startnode endnode  
+            (searchstate/empty-PFS startnode)
+            :weightf (fn [g from to] 
+                       (+ (top/arc-weight g from to)
+                          (heuristic-func g from to)))))
+  
+
+  
+
 ;;This is identical to get components, or decompose.
 (defn graph-forest 
   "Given a graph g, and an arbitrary startnode, return the sequence of all 
@@ -209,40 +237,3 @@
                             (list state) (take-step g remaining nextstate))))
                        state))]
     (take-step g #{} (walk startnode))))
-
-;;What were these? 
-
-;(defn- compound-filter [filters state targetnode nextnode w]
-;  (if-let [f (first filters)]
-;    (if (f state targetnode nextnode w)
-;      (recur (rest filters) state targetnode nextnode w)
-;      false))
-;  true)
-;
-
-;
-;(defn- positive-more? [state targetnode nextnode w]
-;  (if (< 0 w) ;negative edgeweight
-;     (do (throw (Exception. (format "negative weight: %d detected near %s" 
-;                                     w nextnode))) false)
-;                   
-;    true))
-;
-;(defn- acyclic-more? [state targetnode nextnode w]
-;  (if (contains? (:shortest state) nextnode) ;found a cycle.
-;    (do (throw (Exception. (format "negative weight: %d detected near %s" 
-;                                   w nextnode))) false)
-;    true))    
-;
-;
-;(defn- DAG-more? (partial compound-filter [default-more? acyclic-more?]))
-;(defn- djikstra-more? (partial compound-filter [default-more? positive-more?]))
-;
-;(defmulti halting-fn (fn [state & others] (:purpose state)))
-;
-;(defmethod halting-fn nil [state & [targetnode nextnode w]]
-;  (default-more? state targetnode nextnode w))
-;(defmethod halting-fn :djikstra [state & [targetnode nextnode w]] 
-;  (djikstra-more? state targetnode nextnode w))  
-;(defmethod halting-fn :bellman-ford [state & [targetnode nextnode w]]
-;  (DAG-more? state targetnode nextnode w))

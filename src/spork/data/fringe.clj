@@ -42,8 +42,8 @@
   (re-label [fringe n w newlabel] fringe) 
   clojure.lang.Cons 
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
-  (next-fringe [fringe]    (first fringe))
-  (pop-fringe  [fringe]    (next fringe))
+  (next-fringe [fringe]     (first fringe))
+  (pop-fringe  [fringe]     (next fringe))
   (re-weigh    [fringe n wold wnew] 
     (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
       (concat prior (generic/entry n wnew) post)))             
