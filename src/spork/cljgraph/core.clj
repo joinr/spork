@@ -60,3 +60,37 @@
 (defn save-graph 
   ([g] (write-graph g anongraph))
   ([g path] (write-graph g path)))
+
+(comment 
+  
+(defn graph-walk-seq
+  "Generic fn to walk a graph.  The type of walk can vary by changing the 
+   fringe of the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a sequence of 
+   searchstates of the walk, which contains the shortest path trees, distances, 
+   etc. for multiple kinds of walks, depending on the searchstate's fringe 
+   structure."
+  [g startnode targetnode state & {:keys [halt? weightf neighborf] 
+                                   :or {halt? default-halt?
+                                        weightf get-weight
+                                        neighborf default-neighborf} }]
+    (let [walker 
+          (fn walker [g targetnode {:keys [fringe] :as searchstate}]
+					  (if-let [candidate (generic/next-fringe fringe)]
+					    (let [w (:weight candidate) ;perceived weight from start
+					          nd (:node candidate)]
+						    (if-not (halt? searchstate targetnode nd w)
+                  (lazy-seq
+                    (let [sinkweights (for [sink (neighborf g nd searchstate)] 
+                                        [sink (weightf g nd sink)])
+                          relaxation (fn [state [sink w]] 
+                                       (relax* nd sink w state))
+                          nextstate (reduce relaxation 
+                                            (generic/pop-fringe searchstate) 
+                                            sinkweights)]
+                      (concat (list searchstate) 
+                              (walker g targetnode nextstate))))
+					       (list searchstate)))
+              (list searchstate)))]
+        (walker g targetnode (generic/conj-fringe state startnode 0))))
+)

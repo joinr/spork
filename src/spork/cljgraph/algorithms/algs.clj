@@ -1,7 +1,7 @@
 (ns spork.cljgraph.algorithms.algs
   "This is the beginning of a 'hopefully' robust graph algorithms library. 
    I intend to bring in more generic functionality, eventually implementing 
-   most of the useful bits in Bob Sedgewick's opus on graphs, albeit with a 
+   most of the useful bits from Bob Sedgewick's opus on graphs, albeit with a 
    functional API, in Clojure.  This will form the basis for an additional 
    cljgraph.algorithms.networks.  I might migrate this namespace into 
    algorithms.paths, but for now it's fine.  I am still feeling out the 

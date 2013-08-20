@@ -12,19 +12,6 @@
   (if (and (top/sinks g startnode) (top/sources g targetnode)) true 
     false))
    
-(defn- get-weight
-  "Return the distance from source node to sink node."
-  [g source sink] 
-  (top/arc-weight  g source sink))
-
-(defn- unit-weight [g source sink] 1)
-
-(defn- get-candidates
-  "Return a list of adjacent nodes.  Can optionally inclusively filter 
-   candidates using filterf."
-  ([g nd] (top/sinks g nd))
-  ([g nd filterf] (filter filterf (top/sinks g nd))))
-
 (defn- default-neighborf 
   "Return a list of valid fringe nodes, adjacent to node nd in graph g, 
    relative to searchstate.  Ignores the state.  This will allow multiple 
@@ -44,15 +31,16 @@
   "Given a search state, with a shortest path tree, and a graph g, 
    determine which nodes have not been explored in g."
   [g state]
-  (clojure.set/difference (set (top/get-nodelabels g)) 
+  (clojure.set/difference (set (top/get-node-labels g)) 
                           (set (keys (:spt state)))))
 
 ;the normal mode for graph walking/searching.  
 (def default-walk {:halt? default-halt?
                    :weightf get-weight
                    :neighborf default-neighborf})
+
 (def limited-walk (assoc default-walk :neighborf visit-once))
-(def unit-walk (assoc limited-walk :weightf unit-weight))
+(def unit-walk    (assoc limited-walk :weightf (fn [g source sink] 1)))
 
 (defn graph-walk
   "Generic fn to walk a graph.  The type of walk can vary by changing the 
@@ -61,56 +49,24 @@
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
   [g startnode targetnode state  & {:keys [halt? weightf neighborf] 
-                                    :or {halt? default-halt?
-                                         weightf get-weight
+                                    :or {halt?     default-halt?
+                                         weightf   arc-weight
                                          neighborf default-neighborf} }]
-    (let [walker 
-          (fn walker [g targetnode {:keys [fringe] :as searchstate}]
-					  (if-let [candidate (generic/next-fringe fringe)]
-					    (let [w (:weight candidate) ;perceived weight from start
-					          nd (:node candidate)]
-						    (if-not (halt? searchstate targetnode nd w) 
-							    (let [sinkweights (for [sink (neighborf g nd searchstate)] 
-                                      [sink (weightf g nd sink)])
-                       relaxation (fn [state [sink w]] (relax* nd sink w state))
-                       nextstate (reduce relaxation 
-                                 (generic/pop-fringe searchstate) 
-                                 sinkweights)]
-						       (recur g targetnode nextstate))
-					       searchstate))
-              searchstate))]
-        (walker g targetnode (generic/conj-fringe state startnode 0))))
-
-
-(defn graph-walk-seq
-  "Generic fn to walk a graph.  The type of walk can vary by changing the 
-   fringe of the searchstate, the halting criteria, the weight-generating 
-   function, or criteria for filtering candidates.  Returns a sequence of 
-   searchstates of the walk, which contains the shortest path trees, distances, 
-   etc. for multiple kinds of walks, depending on the searchstate's fringe 
-   structure."
-  [g startnode targetnode state & {:keys [halt? weightf neighborf] 
-                                   :or {halt? default-halt?
-                                        weightf get-weight
-                                        neighborf default-neighborf} }]
-    (let [walker 
-          (fn walker [g targetnode {:keys [fringe] :as searchstate}]
-					  (if-let [candidate (generic/next-fringe fringe)]
-					    (let [w (:weight candidate) ;perceived weight from start
-					          nd (:node candidate)]
-						    (if-not (halt? searchstate targetnode nd w)
-                  (lazy-seq
-                    (let [sinkweights (for [sink (neighborf g nd searchstate)] 
-                                        [sink (weightf g nd sink)])
-                          relaxation (fn [state [sink w]] 
-                                       (relax* nd sink w state))
-                          nextstate (reduce relaxation 
-                                            (generic/pop-fringe searchstate) 
-                                            sinkweights)]
-                      (concat (list searchstate) 
-                              (walker g targetnode nextstate))))
-					       (list searchstate)))
-              (list searchstate)))]
+    (let [relaxation (fn [nd state [sink w]] (relax* nd sink w state))
+          walker (fn walker [g targetnode {:keys [fringe] :as searchstate}]
+                   (if (empty? fringe) searchstate 
+                     (let [candidate (generic/next-fringe fringe)
+                           w (:weight candidate) ;perceived weight from start
+                           nd (:node candidate)]
+                       (if-not (halt? searchstate targetnode nd w) 
+                         (let [sinkweights (for [sink (neighborf g nd searchstate)] 
+                                                [sink (weightf g nd sink)])
+                               relaxation (fn [state [sink w]] (relax* nd sink w state))
+                               nextstate  (reduce (partial relaxation nd) 
+                                                  (generic/pop-fringe searchstate) 
+                                                  sinkweights)]
+                           (recur g targetnode nextstate))
+                         searchstate))))]
         (walker g targetnode (generic/conj-fringe state startnode 0))))
      
 (defn mapargs [f m]
@@ -123,19 +79,12 @@
 	  (walkf g startnode (maybe endnode ::nullnode) 
                      (searchstate/empty-DFS startnode)
                      :neighborf visit-once
-                     :weightf unit-weight)))
-  
+                     :weightf unit-weight)))  
 (defn depth-walk
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
   [g] (depth-walker g graph-walk))
-
-(defn depth-walk-seq
-  "Returns a function that lazily explores all of graph g in depth-first 
-   topological order from startnode.  This is not a search.  Any paths returned 
-   will be relative to unit-weight."
-  [g] (depth-walker g graph-walk-seq))
   
 (defn- breadth-walker 
   [g walkf]
@@ -151,12 +100,6 @@
    topological order from startnode.  This is not a search, any paths returned 
    will be relative to unit-weight."
   [g] (breadth-walker g graph-walk))
-
-(defn breadth-walk-seq
-  "Returns a function that lazily explores all of graph g in a breadth-first 
-   topological order from startnode.  This is not a search, any paths returned 
-   will be relative to unit-weight."
-  [g] (breadth-walker g graph-walk-seq))
   
 (defn- priority-walker 
   [g walkf] 
@@ -169,12 +112,7 @@
   topological order from a startnode. Weights returned will be in terms of the 
   edge weights in the graph."
   [g] (priority-walker g graph-walk))
-   
-(defn priority-walk-seq
-  "Returns a function that lazily explores all of graph g in a priority-first 
-  topological order from a startnode. Weights returned will be in terms of the 
-  edge weights in the graph."
-  [g] (priority-walker g graph-walk-seq))
+
 
 (defn graph-forest 
   "Given a graph g, and an arbitrary startnode, return the sequence of all 
