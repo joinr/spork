@@ -18,13 +18,16 @@
    visits.  Useful for some algorithms."
   [g nd state] (top/sinks g nd))
 
+;;Note: We could probably refactor these guys.  The only thing that's different
+;;about them is the function generating neighbors.
+
 (defn- visit-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
    at least once, they will show up in the shortest path tree."
   [g nd {:keys [shortest] :as state}] 
   (filter #(not (contains? shortest %)) (top/sinks g nd))) 
 
-(defn- visit-once-ordered
+(defn- visit-ordered-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
    at least once, they will show up in the shortest path tree.  Additionally, 
    this will visit the nodes in the order the incident arcs were appended to the 
@@ -32,7 +35,7 @@
   [g nd {:keys [shortest] :as state}] 
   (filter #(not (contains? shortest %)) (rseq (top/sinks g nd))))
 
-(defn- visit-once-neighbors
+(defn- visit-neighbors-once
   "Treats the graph as if it's undirected.  Screen nodes that have already been 
    visited.  If we have visited any nodes at least once, they will show up in 
    the shortest path tree."
@@ -41,7 +44,10 @@
 
 (defn- default-halt?  [state targetnode nextnode w]
   (or (= targetnode nextnode) (generic/empty-fringe? (:fringe state))))
-;;_POSSIBLE OPTIMIZATION__ Maintain the open set explicitly in the search state.
+
+;;_POSSIBLE OPTIMIZATION__ Maintain the open set explicitly in the search state
+;;vs explicitly computing __unexplored__ .
+
 (defn- unexplored
   "Given a search state, with a shortest path tree, and a graph g, 
    determine which nodes have not been explored in g."
@@ -81,10 +87,7 @@
                                                   sinkweights)]
                            (recur g targetnode nextstate))
                          searchstate))))]
-        (step g targetnode (generic/conj-fringe state startnode 0))))
-     
-(defn mapargs [f m]
-  (apply f (flatten (seq m))))
+        (step g targetnode (generic/conj-fringe state startnode 0))))    
 
 (defn depth-traversal
   "Returns a function that explores all of graph g in depth-first topological 
@@ -114,7 +117,7 @@
   [g startnode & endnode] 
   (traverse g startnode (maybe endnode ::nullnode) 
               (searchstate/empty-DFS startnode)
-              :neighborf visit-once-ordered
+              :neighborf visit-ordered-once
               :weightf unit-weight))
 
 (defn random-traversal
@@ -134,10 +137,10 @@
   [g startnode & endnode] 
   (traverse g startnode (maybe endnode ::nullnode) 
               (searchstate/empty-RFS startnode)
-              :neighborf visit-once
+              :neighborf visit-neighbors-once
               :weightf unit-weight))
 
-(defn priority-walk
+(defn priority-traversal
   "Returns a function that explores all of graph g in a priority-first 
   topological order from a startnode. Weights returned will be in terms of the 
   edge weights in the graph."
@@ -145,6 +148,46 @@
   (traverse g startnode 
               (maybe endnode ::nullnode) 
               (searchstate/empty-PFS startnode)))
+
+;;explicit searches, merely enforces a walk called with an actual destination
+;;node.
+
+(defn depth-first-search
+  "Starting from startnode, explores g using a depth-first strategy, looking for
+   endnode.  Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree.  Note: depth first search is 
+   not guaranteed to find the actual shortest path, thus the shortest path tree
+   may be invalid."
+  [g startnode endnode]
+  (depth-traversal g startnode endnode))
+
+(defn bread-first-search
+  "Starting from startnode, explores g using a breadth-first strategy, looking 
+   for endnode. Returns a search state, which contains the shortest path tree 
+   or precedence tree, the shortest distance tree.  Note: breadth first search 
+   is not guaranteed to find the actual shortest path, thus the shortest path 
+   tree may be invalid."
+  [g startnode endnode]
+  (breadth-traversal g startnode endnode))
+
+(defn priority-first-search
+  "Starting from startnode, explores g using a priority-first strategy, looking 
+   for endnode. Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree.  The is equivalent to djikstra's
+   algorithm.  Note: Requires that arc weights are non-negative.  For negative 
+   arc weights, use Bellman-Ford, or condition the graph."
+  [g startnode endnode]
+  (priority-traversal g startnode endnode))
+
+(defn djikstra
+  "Starting from startnode, explores g using djikstra's algorithm, looking for
+   endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
+   If a relaxation provides a shorter path, the new path is recorded.  Returns a 
+   search state, which contains the shortest path tree or precedence tree, the 
+   shortest distance tree.  Note: Requires that arc weights are non-negative.  
+   For negative arc weights, use Bellman-Ford, or condition the graph."
+  [g startnode endnode] 
+  (priority-traversal g startnode endnode))
 
 ;;This is identical to get components, or decompose.
 (defn graph-forest 

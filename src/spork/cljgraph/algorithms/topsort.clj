@@ -10,36 +10,6 @@
 (defn- drop-roots [g]
   (reduce #(top/drop-node %1 %2) g (get-roots g)))
 
-;(defn topsort1
-;  "Topologically sort the graph g.  topsort returns a nested sequence  
-;   of topologically-equivalent nodes in the order they enter the root set. 
-;   If g is not a directed acyclic graph (DAG), returns nil.  
-;   In a DAG, we should have one or more root nodes (nodes with no incoming 
-;   arcs).  At each step, we create a subgraph by dropping the root nodes.  The 
-;   algorithm will converge on a graph with no roots.  
-;   
-;   If the graph is DAG, the algorithm will converge on the empty graph 
-;   (no nodes), (due to each node getting dropped in turn)."
-;  [g]
-;	(loop [graph g
-;         rootcount 0
-;	       acc []]
-;	  (let [roots (seq (get-roots graph))]
-;       (if roots         
-;         (recur (drop-roots graph) 
-;                (+ rootcount (count roots)) (conj acc roots))
-;         (if (= 0 (count (get-nodes graph)))
-;             acc
-;             nil)))))
-
-;(defn topsort-seq1
-;   "You may only need to consume pieces of the topology, hence the lazy option."
-;  [g] 
-;  
-;  (lazy-seq
-;    (if-let [roots (seq (get-roots g))]
-;      (concat [roots] (topsort-seq (drop-roots g)))))) 
-
 ;;##Check your logic, I don't think these do topsort like intended.
 
 (defn topsort
@@ -50,7 +20,7 @@
    in the graph."
   [g]
 	(loop [roots (set (get-roots g)) 
-	       visited #{}
+	       visited roots
          acc [(seq roots)]]
      (if (seq roots)
        (let [nextroots (->> roots

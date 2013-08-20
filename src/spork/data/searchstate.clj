@@ -8,7 +8,7 @@
             [spork.data      [priorityq :as pq]
                              [fringe :as fr]]))
 
-;;__TODO__ Use transient operations for 
+;;__TODO__ Use transient operations for updating the search state.
 
 (defn- maybe 
   ([coll elseval] (if-let [v (first coll)] v elseval))
@@ -87,10 +87,6 @@
                                          (generic/re-label fringe n w newlabel))))                 
                                 
 (def empty-search (searchstate. nil nil {} {} nil))
-(def fringe-types {::depth   fr/stack-fringe
-                   ::breadth fr/q-fringe
-                   ::priority fr/priority-fringe
-                   ::random  fr/random-fringe})
 
 (defn init-search 
   ([& {:keys [startnode targetnode fringe] 
@@ -105,9 +101,9 @@
                            :fringe fringe}))))
 
 ;revisit these definitions....
-(def empty-DFS (init-search))
-(def empty-BFS (init-search :fringe ::breadth))   
-(def empty-PFS (init-search :fringe ::priority))
-(def empty-RFS (init-search :fringe ::random))
+(def empty-DFS (init-search :fringe fr/stack-fringe))
+(def empty-BFS (init-search :fringe fr/breadth-fringe))   
+(def empty-PFS (init-search :fringe fr/priority-fringe))
+(def empty-RFS (init-search :fringe fr/random-fringe))
 
 
