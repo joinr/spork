@@ -1,6 +1,6 @@
 (ns spork.data.priorityq
   "The priorityq implementation is designed for use as an auxillary data
-   structure.  It relies on the sorted-map from clojure.core, althogh I might 
+   structure.  It relies on the sorted-map from clojure.core, although I might 
    shift the implementation to use priority-map later.  The current 
    implementation maps a set of weights (keys in the sorted-map), to sequences
    of values.  This rises from the fact that many values may share the same 

@@ -60,9 +60,9 @@
   (entryAt [this k]
     (let [v (.valAt this k this)]
       (when-not (identical? v this) ;might need to yank this guy.
-        (clojure.lang.MapEntry. k v))))
+        (generic/entry k v))))
   (seq [this] (if (empty? basemap) (seq {})
-                (map (fn [k] (clojure.lang.MapEntry. k (get basemap k))) 
+                (map (fn [k] (generic/entry k (get basemap k))) 
                      (vals idx->key))))  
   ;without implements (dissoc pm k) behavior
   (without [this k] 
@@ -77,7 +77,7 @@
   (nth [this i] (if (and (>= i 0) 
                          (< i (count basemap))) 
                   (let [k (get idx->key i)]
-                    (entry k (get basemap k)))
+                    (generic/entry k (get basemap k)))
                   (throw (Exception. (str "Index out of range " i )))))
   (nth [this i not-found] 
     (if (and (< i (count basemap)) (>= i 0))

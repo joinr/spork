@@ -22,7 +22,9 @@
 ;;list.  
 (ns spork.util.topographic
   (:require [clojure [zip :as zip]]
-            [spork.protocols :refer :all]))
+            [spork.data [orderedmap :refer [empty-ordered-map]]
+                        [fringe]]
+            [spork.protocols.core :refer :all]))
 
 (defn assoc-exists [m k v]  (if (empty? v) (dissoc m k) (assoc  m k v )))
 
@@ -43,7 +45,7 @@
 ;;sinks   : {nd #{source nodes}}
 ;;These are analagous to neighborhoods in my cljgraph library.
 (defrecord topograph [nodes sources sinks]
-  generic/ITopograph
+  ITopograph
   (-get-nodes [tg] nodes)
   (-set-nodes [tg m] (topograph. m sources sinks))
   (-conj-node [tg k v] 
@@ -167,13 +169,13 @@
   "What is the in-degree of the node?  For directed graphs, how many incident 
    arcs does this node serve as the sink for?  Self-loops count twice."
   [g nd]
-  (get-degree g nd get-sources))
+  (get-degree g nd sources))
       
 (defn get-outdegree
   "What is the in-degree of the node?  For directed graphs, how many incident 
    arcs does this node serve as the sink for?  Self-loops count twice."
   [g nd]
-  (get-degree g nd get-sinks))
+  (get-degree g nd sinks))
 
 (def missing-node? (comp not has-node?))
 
@@ -241,7 +243,7 @@
          visited  #{}
          acc       []]
     (cond (empty? fr) acc
-          (visited (first (next-fringe fr)) (recur (pop-fringe fr) visited acc) 
+          (visited (first (next-fringe fr))) (recur (pop-fringe fr) visited acc) 
           :else    
            (let [e     (next-fringe fr)
                  nd    (first e) 

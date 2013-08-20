@@ -5,40 +5,39 @@
              [spork.protocols [core :as generic]]))
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
-(defn ^clojure.lang.MapEntry entry [k v] (clojure.lang.MapEntry. k v))
 
 ;;Implementations of basic stack (depth first) and queue (breadth first) 
 ;;fringes.
 (extend-protocol generic/IFringe 
   nil 
-  (conj-fringe [fringe n w] (conj '() (entry n w)))
+  (conj-fringe [fringe n w] (conj '() (generic/entry n w)))
   (next-fringe [fringe]  nil)
   (pop-fringe  [fringe]  nil)
-  (re-weigh    [fringe n wold wnew] (conj '() (entry n w)))
+  (re-weigh    [fringe n wold wnew] (conj '() (generic/entry n wnew)))
   (re-label    [fringe n w newlabel] (throw (Exception. "Empty fringe!")))    
   clojure.lang.PersistentQueue
-  (conj-fringe [fringe n w] (conj fringe (entry n w)))
-  (next-fringe [fringe]    (first fr))
-  (pop-fringe  [fringe]    (pop fr))
+  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (next-fringe [fringe]    (first fringe))
+  (pop-fringe  [fringe]    (pop fringe))
   (re-weigh    [fringe n wold wnew] 
-    (let [[prior post] (split-with #(not= (entry n wold)) q)]
-      (into emptyq (concat prior (entry n wnew) post))))             
-  (re-label    [fringe n w newlabel] fr)  
+    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
+      (into emptyq (concat prior (generic/entry n wnew) post))))             
+  (re-label    [fringe n w newlabel] fringe)  
   clojure.lang.PersistentList
-  (conj-fringe [fringe n w] (conj fringe (entry n w)))
-  (next-fringe [fringe]    (first fr))
-  (pop-fringe  [fringe]    (next fr))
+  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (next-fringe [fringe]    (first fringe))
+  (pop-fringe  [fringe]    (next fringe))
   (re-weigh    [fringe n wold wnew] 
-    (let [[prior post] (split-with #(not= (entry n wold)) fringe)]
-      (concat prior (entry n wnew) post)))             
+    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
+      (concat prior (generic/entry n wnew) post)))             
   (re-label [fringe n w newlabel] fringe) 
   clojure.lang.Cons 
-  (conj-fringe [fringe n w] (conj fringe (entry n w)))
-  (next-fringe [fringe]    (first fr))
-  (pop-fringe  [fringe]    (next fr))
+  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (next-fringe [fringe]    (first fringe))
+  (pop-fringe  [fringe]    (next fringe))
   (re-weigh    [fringe n wold wnew] 
-    (let [[prior post] (split-with #(not= (entry n wold)) fringe)]
-      (concat prior (entry n wnew) post)))             
+    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
+      (concat prior (generic/entry n wnew) post)))             
   (re-label [fringe n w newlabel] fringe))
 
 ;;Extend the IFringe protocol to priority queues, so we get a priority fringe.
@@ -52,19 +51,20 @@
 
 (extend-protocol generic/IFringe
   spork.data.randq.randomq
-    (conj-fringe [fringe n w] (rq/conj fringe (entry n w)))
-    (next-fringe [fringe]     (rq/peek fringe))
-    (pop-fringe  [fringe]     (rq/pop fringe))
+    (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+    (next-fringe [fringe]     (peek fringe))
+    (pop-fringe  [fringe]     (pop fringe))
     (re-weigh    [fringe n wold wnew] ;;really inefficient. 
-      (let [[prior post] (split-with #(not= (entry n wold)) q)]
-        (into rq/emptyrq (concat prior (entry n wnew) post))))
+      (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
+        (into rq/emptyrq (concat prior (generic/entry n wnew) post))))
     (re-label    [fringe n w newlabel] fringe))
 
+;;__TODO__  Revert these to constants...rather than functions...
 ;;The four primitive fringes.  Just aliases for provided implementations.
 (defn q-fringe 
   "Builds a fringe that stores [node weight] entries in first-in-first-out 
    FIFO order.  Backed by a persistent queue"
-   [] (queue))
+   [] emptyq)
 (defn priority-fringe
   "Builds a fringe that stores [node weight] entries in priority order, 
    according to minimal weight.  Backed by a sorted map."

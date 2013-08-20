@@ -4,6 +4,10 @@
 ;;or specific protocols unique to their domain.
 (ns spork.protocols.core)
 
+;;Common function used throughout Spork.
+(defn ^clojure.lang.MapEntry entry [k v] (clojure.lang.MapEntry. k v))
+
+
 ;;Definition for associative containers that can traverse their keys in the 
 ;;first-in-first-out order, while retaining a constant, or near-constant 
 ;;lookup time.
