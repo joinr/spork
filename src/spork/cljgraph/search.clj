@@ -73,7 +73,7 @@
                                     :or {halt?     default-halt?
                                          weightf   top/arc-weight
                                          neighborf default-neighborf} }]
-    (let [relaxation (fn [nd state [sink w]] (relax* nd sink w state))
+    (let [relaxation (fn [nd state [sink w]] (generic/relax nd sink w state))
           step (fn step [g targetnode {:keys [fringe] :as searchstate}]
                    (if (empty? fringe) searchstate 
                      (let [candidate (generic/next-fringe fringe)

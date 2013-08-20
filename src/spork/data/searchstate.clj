@@ -51,12 +51,7 @@
 	  (shorter-path [state source sink wnew wpast]
 	    (shorter-path* source sink wnew wpast state))
 	  (equal-path   [state source sink] (equal-path* source sink state))
-    (get-spt      [state]      shortest)
-    (set-spt      [state spt] (assoc state :shortest spt))
-    (get-distance [state]      distance)
-    (set-distance [state d]   (assoc state :distance d))
-    (get-fringe   [state]      fringe)
-    (set-fringe   [state fr]  (assoc state :fringe fr))
+    (best-known-distance   [state nd] (get distance nd))
   generic/IFringe 
 	  (conj-fringe [state n w] (assoc state :fringe (generic/conj-fringe fringe n w)))
 	  (next-fringe [state] (generic/next-fringe fringe))

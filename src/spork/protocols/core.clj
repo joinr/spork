@@ -68,12 +68,7 @@
   (new-path     [state source sink w])
   (shorter-path [state source sink wnew wpast])
   (equal-path   [state source sink])
-  (get-spt      [state])
-  (set-spt      [state spt])
-  (get-distance [state])
-  (set-distance [state])
-  (get-fringe   [state])
-  (set-fringe   [state fr]))
+  (best-known-distance [state x]))
 
 (defn relax
   "Given a shortest path map, a distance map, a source node, sink node, 
@@ -91,16 +86,14 @@
       that we may ultimately end up with multiple shortest* paths."
      
   [source sink w state]  
-    (let [[shortest distance fringe]  
-                  ((juxt get-spt get-distance get-fringe) state)
-          relaxed (+ (get distance source) w)]
-      (if-let [known (distance sink)]
+    (let [relaxed (+ (best-known-distance state source) w)]
+      (if-let [known (best-known-distance state sink)]
 	      (cond 
-	        (< relaxed known) (generic/shorter-path state source sink relaxed known )            
-	        (= relaxed known) (generic/equal-path state source sink )                         
+	        (< relaxed known) (shorter-path state source sink relaxed known )            
+	        (= relaxed known) (equal-path state source sink)                         
 	        :else state)            
        ;if sink doesn't exist in distance, sink is new...
-       (generic/new-path source sink relaxed state))))
+       (new-path source sink relaxed state))))
 
 ;;A protocol for defining various topologies using a graph-based API.  Most
 ;;of the types used in this library build of a topology encoded by a persistent
