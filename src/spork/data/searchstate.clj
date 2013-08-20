@@ -8,12 +8,11 @@
             [spork.data      [priorityq :as pq]
                              [fringe :as fr]]))
 
-;;__TODO__ Use transient operations for updating the search state.
-
 (defn- maybe 
   ([coll elseval] (if-let [v (first coll)] v elseval))
   ([coll] (maybe coll nil)))
 
+;;__TODO__ Use transient operations for updating the search state.
 (defn update-search [state shortest distance fringe]
   (merge state {:shortest shortest 
                 :distance distance 
@@ -43,31 +42,6 @@
 		      context (if (vector? current) current [current])
 		      newspt (assoc shortest sink (conj context source))]                 
 		     (update-search state newspt distance fringe)))
-
-(defn- relax*
-  "Given a shortest path map, a distance map, a source node, sink node, 
-   and weight(source,sink) = w, update the search state.  
-
-   The implication of a relaxation on sink, relative to source, is that 
-   source no longer exists in the fringe (it's permanently labeled).  
-   So a relaxation can mean one of three things: 
-   1: sink is a newly discovered-node (as a consequence of visiting source);
-   2: sink was visited earlier (from a different source), but this visit exposes
-      a shorter path to sink, so it should be elevated in consideration in 
-      the search fringe.
-   3: sink is a node of equal length to the currently shortest-known path from 
-      an unnamed startnode.  We want to record this equivalence, which means 
-      that we may ultimately end up with multiple shortest* paths."
-     
-  [source sink w {:keys [shortest distance fringe] :as state}]
-    (let [relaxed (+ (get distance source) w)]
-      (if-let [known (distance sink)]
-	      (cond 
-	        (< relaxed known) (generic/shorter-path state source sink relaxed known )            
-	        (= relaxed known) (generic/equal-path state source sink )                         
-	        :else state)            
-       ;if sink doesn't exist in distance, sink is new...
-       (new-path* source sink relaxed state))))
   
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.
@@ -76,7 +50,13 @@
 	  (new-path [state source sink w] (new-path* source sink w state))           
 	  (shorter-path [state source sink wnew wpast]
 	    (shorter-path* source sink wnew wpast state))
-	  (equal-path [state source sink] (equal-path* source sink state))            
+	  (equal-path   [state source sink] (equal-path* source sink state))
+    (get-spt      [state]      shortest)
+    (set-spt      [state spt] (assoc state :shortest spt))
+    (get-distance [state]      distance)
+    (set-distance [state d]   (assoc state :distance d))
+    (get-fringe   [state]      fringe)
+    (set-fringe   [state fr]  (assoc state :fringe fr))
   generic/IFringe 
 	  (conj-fringe [state n w] (assoc state :fringe (generic/conj-fringe fringe n w)))
 	  (next-fringe [state] (generic/next-fringe fringe))
@@ -89,19 +69,18 @@
 (def empty-search (searchstate. nil nil {} {} nil))
 
 (defn init-search 
-  ([& {:keys [startnode targetnode fringe] 
-       :or   {startnode nil targetnode nil fringe ::depth}}]
-    (let [fringe (if (keyword? fringe) (get fringe-types fringe))]
-      (assert (and (not (nil? fringe)) (generic/fringe? fringe))
-               (str "Invalid fringe: " fringe))
+  [& {:keys [startnode targetnode fringe] 
+       :or   {startnode nil targetnode nil fringe fr/depth-fringe}}]
+    (assert (and (not (nil? fringe)) (generic/fringe? fringe))
+            (str "Invalid fringe: " fringe))
       (merge empty-search {:startnode startnode 
                            :targetnode (maybe targetnode ::nullnode)
                            :distance {startnode 0}
                            :shortest {startnode startnode}
-                           :fringe fringe}))))
+                           :fringe fringe}))
 
 ;revisit these definitions....
-(def empty-DFS (init-search :fringe fr/stack-fringe))
+(def empty-DFS (init-search :fringe fr/depth-fringe))
 (def empty-BFS (init-search :fringe fr/breadth-fringe))   
 (def empty-PFS (init-search :fringe fr/priority-fringe))
 (def empty-RFS (init-search :fringe fr/random-fringe))

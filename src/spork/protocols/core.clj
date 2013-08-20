@@ -67,7 +67,40 @@
 (defprotocol IGraphSearch
   (new-path     [state source sink w])
   (shorter-path [state source sink wnew wpast])
-  (equal-path   [state source sink]))
+  (equal-path   [state source sink])
+  (get-spt      [state])
+  (set-spt      [state spt])
+  (get-distance [state])
+  (set-distance [state])
+  (get-fringe   [state])
+  (set-fringe   [state fr]))
+
+(defn relax
+  "Given a shortest path map, a distance map, a source node, sink node, 
+   and weight(source,sink) = w, update the search state.  
+
+   The implication of a relaxation on sink, relative to source, is that 
+   source no longer exists in the fringe (it's permanently labeled).  
+   So a relaxation can mean one of three things: 
+   1: sink is a newly discovered-node (as a consequence of visiting source);
+   2: sink was visited earlier (from a different source), but this visit exposes
+      a shorter path to sink, so it should be elevated in consideration in 
+      the search fringe.
+   3: sink is a node of equal length to the currently shortest-known path from 
+      an unnamed startnode.  We want to record this equivalence, which means 
+      that we may ultimately end up with multiple shortest* paths."
+     
+  [source sink w state]  
+    (let [[shortest distance fringe]  
+                  ((juxt get-spt get-distance get-fringe) state)
+          relaxed (+ (get distance source) w)]
+      (if-let [known (distance sink)]
+	      (cond 
+	        (< relaxed known) (generic/shorter-path state source sink relaxed known )            
+	        (= relaxed known) (generic/equal-path state source sink )                         
+	        :else state)            
+       ;if sink doesn't exist in distance, sink is new...
+       (generic/new-path source sink relaxed state))))
 
 ;;A protocol for defining various topologies using a graph-based API.  Most
 ;;of the types used in this library build of a topology encoded by a persistent

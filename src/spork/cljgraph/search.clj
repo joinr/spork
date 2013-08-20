@@ -57,13 +57,13 @@
 
 ;the normal mode for graph walking/searching.  
 (def default-walk {:halt? default-halt?
-                   :weightf get-weight
+                   :weightf top/arc-weight
                    :neighborf default-neighborf})
 
 (def limited-walk (assoc default-walk :neighborf visit-once))
 (def unit-walk    (assoc limited-walk :weightf (fn [g source sink] 1)))
 
-(defn graph-traversal
+(defn traverse
   "Generic fn to walk a graph.  The type of walk can vary by changing the 
    fringe of the searchstate, the halting criteria, the weight-generating 
    function, or criteria for filtering candidates.  Returns a searchstate 
@@ -71,7 +71,7 @@
    multiple kinds of walks, depending on the searchstate's fringe structure."
   [g startnode targetnode state  & {:keys [halt? weightf neighborf] 
                                     :or {halt?     default-halt?
-                                         weightf   arc-weight
+                                         weightf   top/arc-weight
                                          neighborf default-neighborf} }]
     (let [relaxation (fn [nd state [sink w]] (relax* nd sink w state))
           step (fn step [g targetnode {:keys [fringe] :as searchstate}]
