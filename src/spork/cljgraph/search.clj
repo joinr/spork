@@ -24,9 +24,24 @@
   [g nd {:keys [shortest] :as state}] 
   (filter #(not (contains? shortest %)) (top/sinks g nd))) 
 
+(defn- visit-once-ordered
+  "Screen nodes that have already been visited.  If we have visited any nodes 
+   at least once, they will show up in the shortest path tree.  Additionally, 
+   this will visit the nodes in the order the incident arcs were appended to the 
+   graph, if the underlying the graph supports it."
+  [g nd {:keys [shortest] :as state}] 
+  (filter #(not (contains? shortest %)) (rseq (top/sinks g nd))))
+
+(defn- visit-once-neighbors
+  "Treats the graph as if it's undirected.  Screen nodes that have already been 
+   visited.  If we have visited any nodes at least once, they will show up in 
+   the shortest path tree."
+  [g nd {:keys [shortest] :as state}] 
+  (filter #(not (contains? shortest %)) (top/neighbors g nd)))
+
 (defn- default-halt?  [state targetnode nextnode w]
   (or (= targetnode nextnode) (generic/empty-fringe? (:fringe state))))
-
+;;_POSSIBLE OPTIMIZATION__ Maintain the open set explicitly in the search state.
 (defn- unexplored
   "Given a search state, with a shortest path tree, and a graph g, 
    determine which nodes have not been explored in g."
@@ -42,7 +57,7 @@
 (def limited-walk (assoc default-walk :neighborf visit-once))
 (def unit-walk    (assoc limited-walk :weightf (fn [g source sink] 1)))
 
-(defn graph-walk
+(defn graph-traversal
   "Generic fn to walk a graph.  The type of walk can vary by changing the 
    fringe of the searchstate, the halting criteria, the weight-generating 
    function, or criteria for filtering candidates.  Returns a searchstate 
@@ -53,74 +68,92 @@
                                          weightf   arc-weight
                                          neighborf default-neighborf} }]
     (let [relaxation (fn [nd state [sink w]] (relax* nd sink w state))
-          walker (fn walker [g targetnode {:keys [fringe] :as searchstate}]
+          step (fn step [g targetnode {:keys [fringe] :as searchstate}]
                    (if (empty? fringe) searchstate 
                      (let [candidate (generic/next-fringe fringe)
-                           w (:weight candidate) ;perceived weight from start
+                           w  (:weight candidate) ;perceived weight from start
                            nd (:node candidate)]
                        (if-not (halt? searchstate targetnode nd w) 
                          (let [sinkweights (for [sink (neighborf g nd searchstate)] 
                                                 [sink (weightf g nd sink)])
-                               relaxation (fn [state [sink w]] (relax* nd sink w state))
                                nextstate  (reduce (partial relaxation nd) 
                                                   (generic/pop-fringe searchstate) 
                                                   sinkweights)]
                            (recur g targetnode nextstate))
                          searchstate))))]
-        (walker g targetnode (generic/conj-fringe state startnode 0))))
+        (step g targetnode (generic/conj-fringe state startnode 0))))
      
 (defn mapargs [f m]
   (apply f (flatten (seq m))))
 
-;I need to abstract out these walks better...there are some obviously factorable 
-;parameters here, particularly (walkf g startnode (maybe endnode ::nullnode)...
-(defn- depth-walker [g walkf] 
-  (fn [startnode & endnode]
-	  (walkf g startnode (maybe endnode ::nullnode) 
-                     (searchstate/empty-DFS startnode)
-                     :neighborf visit-once
-                     :weightf unit-weight)))  
-(defn depth-walk
+(defn depth-traversal
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  [g] (depth-walker g graph-walk))
-  
-(defn- breadth-walker 
-  [g walkf]
-   (fn [startnode & endnode]
-	  (walkf g startnode 
-          (maybe endnode ::nullnode) 
-          (searchstate/empty-BFS startnode) 
-          :weightf unit-weight 
-          :neighborf visit-once)))  
-  
-(defn breadth-walk
+  [g startnode & endnode ] 
+  (traverse g startnode (maybe endnode ::nullnode) 
+              (searchstate/empty-DFS startnode)
+              :neighborf visit-once
+              :weightf unit-weight))
+ 
+(defn breadth-traversal
   "Returns a function that explores all of graph g in a breadth-first 
    topological order from startnode.  This is not a search, any paths returned 
    will be relative to unit-weight."
-  [g] (breadth-walker g graph-walk))
-  
-(defn- priority-walker 
-  [g walkf] 
-  (fn [startnode & endnode]
-	  (walkf g startnode (maybe endnode ::nullnode) 
-          (searchstate/empty-PFS startnode))))
+  [g startnode & endnode] 	  
+  (traverse g startnode 
+              (maybe endnode ::nullnode) 
+              (searchstate/empty-BFS startnode) 
+              :weightf unit-weight 
+              :neighborf visit-once))
+ 
+(defn ordered-traversal
+  "Returns a function that explores all of graph g in depth-first topological 
+   order from startnode.  This is not a search.  Any paths returned will be 
+   relative to unit-weight."
+  [g startnode & endnode] 
+  (traverse g startnode (maybe endnode ::nullnode) 
+              (searchstate/empty-DFS startnode)
+              :neighborf visit-once-ordered
+              :weightf unit-weight))
+
+(defn random-traversal
+  "Returns a function that explores all of graph g in depth-first topological 
+   order from startnode.  This is not a search.  Any paths returned will be 
+   relative to unit-weight."
+  [g startnode & endnode] 
+  (traverse g startnode (maybe endnode ::nullnode) 
+              (searchstate/empty-RFS startnode)
+              :neighborf visit-once
+              :weightf unit-weight))
+
+(defn undirected-traversal
+  "Returns a function that explores all of graph g in depth-first topological 
+   order from startnode.  This is not a search.  Any paths returned will be 
+   relative to unit-weight."
+  [g startnode & endnode] 
+  (traverse g startnode (maybe endnode ::nullnode) 
+              (searchstate/empty-RFS startnode)
+              :neighborf visit-once
+              :weightf unit-weight))
 
 (defn priority-walk
   "Returns a function that explores all of graph g in a priority-first 
   topological order from a startnode. Weights returned will be in terms of the 
   edge weights in the graph."
-  [g] (priority-walker g graph-walk))
+  [g startnode & endnode] 	  
+  (traverse g startnode 
+              (maybe endnode ::nullnode) 
+              (searchstate/empty-PFS startnode)))
 
-
+;;This is identical to get components, or decompose.
 (defn graph-forest 
   "Given a graph g, and an arbitrary startnode, return the sequence of all 
    depth-first shortest path trees.  This should return a sequence of 
    components within the graph, a series of depth-walks from a monotonically 
    decreasing set of startnodes."
   [g startnode]
-  (let [walk (depth-walk g)
+  (let [walk (partial depth-traversal g)
         take-step (fn take-step [g found state]
                     (if-let [remaining 
                              (clojure.set/difference found 
