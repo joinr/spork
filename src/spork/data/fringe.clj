@@ -1,7 +1,8 @@
 (ns spork.data.fringe
   "Stock implementations of the IFringe protocol from spork.protocols.fringe, as 
    inspired by Bob Sedgewick's Graph Algorithms in C."
-   (:require [spork.data      [priorityq :as pq] [randq :as rq]]
+   (:require [spork.data      [priorityq :as pq] 
+                              [randq :as rq]]
              [spork.protocols [core :as generic]]))
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)

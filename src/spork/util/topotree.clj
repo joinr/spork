@@ -101,6 +101,7 @@
  ;         m n o
  (def i-tree (subtree the-tree :i))
 
+ ;;Maybe revisit the semantics here...produces a forest.
  ;          h     i   
  ;         k l  m n o  
  (def h-i-tree (merge-tree h-tree :h i-tree  :i))

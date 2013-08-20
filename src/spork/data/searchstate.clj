@@ -4,10 +4,11 @@
 ;;the bellman-ford algorithm, but depth-first, breadth-first, and random 
 ;;searching are also supported.
 (ns spork.data.searchstate
-  (:require [spork.cljgraph  [graph :as gr]]
-            [spork.protocols [fringe :as fr]
-                             [graphsearch :as graphsearch]]
-            [spork.data      [priorityq :as pq]]))
+  (:require [spork.protocols [core :as generic]]
+            [spork.data      [priorityq :as pq]
+                             [fringe :as fr]]))
+
+;;__TODO__ Use transient operations for 
 
 (defn- maybe 
   ([coll elseval] (if-let [v (first coll)] v elseval))
@@ -24,7 +25,7 @@
   [source sink w {:keys [shortest distance fringe] :as state}]
     (update-search state (assoc shortest sink source)
                          (assoc distance sink w) 
-                         (fr/conj-fringe fringe sink w)))
+                         (generic/conj-fringe fringe sink w)))
 
 (defn- shorter-path*
   "When a shorter path is found to a node already on the fringe, we update the 
@@ -32,7 +33,7 @@
   [source sink wnew wpast {:keys [shortest distance fringe] :as state}]
     (update-search state (assoc shortest sink source) ;new spt
                    (assoc distance sink wnew)  ;shorter distance
-                   (fr/re-weigh fringe sink wpast wnew)))
+                   (generic/re-weigh fringe sink wpast wnew)))
 
 (defn- equal-path* 
   "When we discover equivalent paths, we conj them onto the shortest path tree.
@@ -62,8 +63,8 @@
     (let [relaxed (+ (get distance source) w)]
       (if-let [known (distance sink)]
 	      (cond 
-	        (< relaxed known) (shorter-path state source sink relaxed known )            
-	        (= relaxed known) (equal-path state source sink )                         
+	        (< relaxed known) (generic/shorter-path state source sink relaxed known )            
+	        (= relaxed known) (generic/equal-path state source sink )                         
 	        :else state)            
        ;if sink doesn't exist in distance, sink is new...
        (new-path* source sink relaxed state))))
@@ -71,31 +72,31 @@
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.
 (defrecord searchstate [startnode targetnode shortest distance fringe]
-  graphsearch/IGraphsearchstate
+  generic/IGraphSearch
 	  (new-path [state source sink w] (new-path* source sink w state))           
 	  (shorter-path [state source sink wnew wpast]
 	    (shorter-path* source sink wnew wpast state))
 	  (equal-path [state source sink] (equal-path* source sink state))            
-  fr/IFringe 
-	  (conj-fringe [state n w] (assoc state :fringe (fr/conj-fringe fringe n w)))
-	  (next-fringe [state] (fr/next-fringe fringe))
-	  (pop-fringe [state] (assoc state :fringe (fr/pop-fringe fringe)))
+  generic/IFringe 
+	  (conj-fringe [state n w] (assoc state :fringe (generic/conj-fringe fringe n w)))
+	  (next-fringe [state] (generic/next-fringe fringe))
+	  (pop-fringe [state] (assoc state :fringe (generic/pop-fringe fringe)))
 	  (re-weigh [state n wold wnew] (assoc state :fringe 
-                                        (fr/re-weigh fringe n wold wnew)))
+                                        (generic/re-weigh fringe n wold wnew)))
 	  (re-label [state n w newlabel] (assoc state :fringe 
-                                         (fr/re-label fringe n w newlabel))))                 
+                                         (generic/re-label fringe n w newlabel))))                 
                                 
 (def empty-search (searchstate. nil nil {} {} nil))
-(def fringe-types {::depth (fr/stack-fringe)
-                   ::breadth (fr/q-fringe)
-                   ::priorty (fr/priority-fringe)
-                   ::random  (fr/random-fringe)})
+(def fringe-types {::depth   fr/stack-fringe
+                   ::breadth fr/q-fringe
+                   ::priority fr/priority-fringe
+                   ::random  fr/random-fringe})
 
 (defn init-search 
   ([& {:keys [startnode targetnode fringe] 
        :or   {startnode nil targetnode nil fringe ::depth}}]
-    (let [fringe (if (keyword? fringe) (get fringe fringe-types))]
-      (assert (and (not (nil? fringe)) (fr/fringe? fringe))
+    (let [fringe (if (keyword? fringe) (get fringe-types fringe))]
+      (assert (and (not (nil? fringe)) (generic/fringe? fringe))
                (str "Invalid fringe: " fringe))
       (merge empty-search {:startnode startnode 
                            :targetnode (maybe targetnode ::nullnode)
