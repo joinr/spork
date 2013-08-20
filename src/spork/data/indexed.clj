@@ -3,8 +3,9 @@
 ;;data structures and clojure's idiomatic APIs.  Sometimes you just can't solve 
 ;;a problem with a zipper...
 (ns spork.data.indexed
-  (:require [spork.protocols.core :refer all]
-            [spork.util [topographic :as top]]))
+  (:require [spork.protocols.core :refer :all]
+            [spork.util [topographic :as top]
+                        [topotree    :as toptree]]))
 
 ;;Graph-Backed Indexed Data Structures
 ;;====================================
@@ -22,8 +23,8 @@
   (tree-root [t] root-node)
   (append [t other] 
     (indexed-tree. root-node 
-       (top/append-tree t root-node other (tree-root other))))
-  (prune [t k] (top/prune-tree t k)))
+       (toptree/append-tree t root-node other (tree-root other))))
+  (prune [t k] (toptree/prune-tree t k)))
 
 ;;TODO -> implement this using vectors.  Also, get it working like an indexed
 ;;list, kind of like a persistent vector.
@@ -72,4 +73,7 @@
 (defn get-parent   [t idx] (:parent   (idx->node idx t)))
 
 )
+
+
+
 

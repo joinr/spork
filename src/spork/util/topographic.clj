@@ -23,7 +23,7 @@
 (ns spork.util.topographic
   (:require [clojure [zip :as zip]]
             [spork.data [orderedmap :refer [empty-ordered-map]]
-                        [fringe]]
+                        [fringe :as fr]]
             [spork.protocols.core :refer :all]))
 
 (defn assoc-exists [m k v]  (if (empty? v) (dissoc m k) (assoc  m k v )))
@@ -73,7 +73,7 @@
   (-has-arc?  [tg source sink] (contains? (get sources sink) source))
   (-get-arc   [tg source sink] [source sink (get-in sinks [source sink])])
   (-get-sources [tg k] (vec (keys (get sources k))))
-  (-get-sinks [tg k] (vec (keys (get sinks k)))))
+  (-get-sinks [tg k]   (vec (keys (get sinks k)))))
 
 (def empty-topograph (->topograph {} {} {}))
 
@@ -228,6 +228,13 @@
         (add-arcs (map (fn [[from _ w]] [from new-label w]) 
                          (arcs-to tg old-label)))))) 
  
+
+;;We might be able to factor this out with the graph searches.
+;;We simply walk the graph searching for a node that doesn't exist.
+;;These are ALL eager walks, in that they return a vector of the walk.
+;;That being said, we can significantly speed up the walks if we use transient 
+;;vectors.  I'll work that in later as an optimization.
+;;We may want lazy walks (and maybe not!) for larger (possibly infinite) graphs.
 ;;Rudimental Graph Traversals - note search is handled elsewhere.
 ;;===============================================================
 
@@ -238,35 +245,44 @@
    of nodes visited."
   [tg k & {:keys [neighbor-func fringe]
                     :or   {neighbor-func (partial sinks tg)
-                           fringe nil}}]
-  (loop [fr        (conj-fringe fringe k 0)
-         visited  #{}
-         acc       []]
-    (cond (empty? fr) acc
-          (visited (first (next-fringe fr))) (recur (pop-fringe fr) visited acc) 
-          :else    
-           (let [e     (next-fringe fr)
-                 nd    (first e) 
-                 w     (second e)
-                 vnext (conj visited nd)
-                 xs    (filter  (complement vnext) (neighbor-func nd))]
-             (recur (reduce conj-fringe (pop-fringe fr) xs)
-                    vnext
-                    (conj acc nd))))))
+                           fringe fr/depth-fringe}}]
+  (let [get-weight (partial arc-weight tg)]
+	  (loop [fr        (conj-fringe fringe k 0)
+	         visited  #{}
+	         acc       []]
+	    (cond (empty? fr) acc
+	          (visited (first (next-fringe fr))) (recur (pop-fringe fr) visited acc) 
+	          :else    
+	           (let [e     (next-fringe fr)
+	                 nd    (first e) 
+	                 w     (second e)
+	                 vnext (conj visited nd)
+	                 xs    (filter  (complement vnext) (neighbor-func nd))]
+	             (recur (reduce (fn [acc x] (conj-fringe acc x (get-weight nd x)))  
+                              (pop-fringe fr) xs)
+	                    vnext
+	                    (conj acc nd)))))))
 
 (defn depth-walk
   "Walks the topograph in a depth-first fashion.  Note that depth-first is not 
    an in-order traversal."
   [tg k]   (walk tg k))
+
 (defn breadth-walk
   "Walks the topograph in a breadth-first fashion."
-  [tg k]   (walk tg k :fringe emptyq))
+  [tg k]   (walk tg k :fringe fr/breadth-fringe))
+
 (defn ordered-walk
   "Walks the topograph in a depth-first fashion, but preserves the ordering of 
    the nodes so that it corresponds to the order in which arcs were assoc'd.  
    This is most useful for tree traversals where the order of children matters."
   [tg k]   
   (walk tg k :neighbor-func #(rseq (sinks tg %))))
+
+(defn random-walk
+  "Walks the topograph in randomly.  Returns a vector of the random walks.  Note
+   this will return a different walk each time it is invoked."
+  [tg k] (walk tg k :fringe fr/random-fringe))                                  
 
 (defn undirected-walk
   "Views the topograph as an undirected graph, visiting all neighbors of a node,
@@ -362,24 +378,19 @@
                  (add-arcs (tree-arcs :q  
                              [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
  
- ;          h   
- ;         k l  
- (def h-tree (subtree the-tree :h))
-
- ;          i     
- ;         m n o
- (def i-tree (subtree the-tree :i))
-
- ;          h     i   
- ;         k l  m n o  
- (def h-i-tree (merge-tree h-tree :h i-tree  :i))
+ (assert (= (depth-walk the-tree :a)
+             [:a :d :g :j :q :a3 :a2 :a1 :z :y :x :w :v :u :t :s :r :p :c :b 
+              :f :i :o :n :m :e :h :l :k]))
+ (assert (= (ordered-walk the-tree :a)
+            [:a :b :e :h :k :l :f :i :m :n :o :c :d :g :j :p :q :r :s :t :u :v 
+             :w :x :y :z :a1 :a2 :a3]))
+ (assert (= (breadth-walk the-tree :a)
+            [:a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p :q :r :s :t :u :v 
+             :w :x :y :z :a1 :a2 :a3]))
+ (assert (= (undirected-walk the-tree :a) 
+           [:a :d :g :j :q :a3 :a2 :a1 :z :y :x :w :v :u :t :s :r :p :c :b :f 
+            :i :o :n :m :e :h :l :k]))
  
- ;          h   
- ;         k l
- ;        i     
- ;      m n o 
-(def h-i-at-k-tree (append-tree h-tree :k i-tree  :i))
-
  ;a directed graph...
  ;    a -> b -> d
  ;          \. ^

@@ -1,7 +1,7 @@
 ;;A set of tree operations on ITopographs.  Useful for simulating bidirectional
 ;;trees in a functional manner, and for emulating pointer-based structures.
 (ns spork.util.topotree
-  (:require [spork.util [toplist :as top]]))
+  (:require [spork.util [topographic :as top]]))
 
 ;;Tree-like Operations
 ;;====================
@@ -71,4 +71,44 @@
 (defn prune-tree
   "Removes all nodes in tg reachable from drop-root-key."
   [tg drop-root-key]        
-  (reduce #(top/disj-node %1 %2) tg (top/depth-walk tg drop-root-key)))  
+  (reduce #(top/disj-node %1 %2) tg (top/depth-walk tg drop-root-key)))
+
+
+;;testing 
+(comment
+    ;a tree of elements:
+  ;              a
+  ;            b c d 
+  ;           e f    g
+  ;          h   i     j
+  ;         k l  m n o  p q
+  ;                        r s t u v w x y z a1 a2 a3 
+ (defn tree-arcs [from xs] (map #(vector from %) xs))
+ (def the-tree (-> top/empty-topograph
+                 (top/add-arcs (tree-arcs :a [:b :c :d]))
+                 (top/add-arcs (conj (tree-arcs :b [:e :f]) [:d :g]))
+                 (top/add-arcs [[:e :h] [:f :i] [:g :j]])
+                 (top/add-arcs [[:h :k] [:h :l] [:i :m] [:i :n] [:i :o]
+                            [:j :p] [:j :q]])
+                 (top/add-arcs (tree-arcs :q  
+                             [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
+ 
+ ;          h   
+ ;         k l  
+ (def h-tree (subtree the-tree :h))
+
+ ;          i     
+ ;         m n o
+ (def i-tree (subtree the-tree :i))
+
+ ;          h     i   
+ ;         k l  m n o  
+ (def h-i-tree (merge-tree h-tree :h i-tree  :i))
+ 
+ ;          h   
+ ;         k l
+ ;        i     
+ ;      m n o 
+(def h-i-at-k-tree (append-tree h-tree :k i-tree  :i))
+
+)

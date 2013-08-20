@@ -30,6 +30,14 @@
   (re-weigh    [fringe n wold wnew] 
     (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
       (concat prior (generic/entry n wnew) post)))             
+  (re-label [fringe n w newlabel] fringe)
+  clojure.lang.PersistentList$EmptyList
+  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (next-fringe [fringe]    (first fringe))
+  (pop-fringe  [fringe]    (next fringe))
+  (re-weigh    [fringe n wold wnew] 
+    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
+      (concat prior (generic/entry n wnew) post)))             
   (re-label [fringe n w newlabel] fringe) 
   clojure.lang.Cons 
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
@@ -59,21 +67,20 @@
         (into rq/emptyrq (concat prior (generic/entry n wnew) post))))
     (re-label    [fringe n w newlabel] fringe))
 
-;;__TODO__  Revert these to constants...rather than functions...
 ;;The four primitive fringes.  Just aliases for provided implementations.
-(defn q-fringe 
+(def breadth-fringe 
   "Builds a fringe that stores [node weight] entries in first-in-first-out 
    FIFO order.  Backed by a persistent queue"
-   [] emptyq)
-(defn priority-fringe
+    emptyq)
+(def priority-fringe
   "Builds a fringe that stores [node weight] entries in priority order, 
    according to minimal weight.  Backed by a sorted map."
-  [] pq/minq)
-(defn random-fringe
+   pq/minq)
+(def random-fringe
   "Builds a fringe that stores [node weight] entries in random order.  Backed 
    by a spork.data.randq.randomq"
-  [] rq/emptyrq)
-(defn stack-fringe 
+   rq/emptyrq)
+(def depth-fringe 
   "Builds a fringe that stores [node weight] entries in last-in-first-out 
    LIFO order.  Backed by a persistent list."
-  [] (list))
+  (list))
