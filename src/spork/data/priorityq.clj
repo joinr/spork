@@ -70,8 +70,10 @@
         :else             (assoc pq w (pop q))))))
 
 (defn priority-entries [pq]
-  (map next-entry (take-while (complement empty?) (iterate drop-first pq))))
-
+  (for [[k q] (seq pq)
+        v     q]
+    [k v]))   
+   
 (defn priority-vals
   "Return a sequence of popped values from priorityq q."
   [pq]
@@ -105,10 +107,7 @@
 (deftype pqueue [dir basemap entry-count _meta]
   Object
   (toString [this] (str (.seq this)))
-;  (equals [self other]    
-;    (and (instance? pqueue other)         
-;         (identical? self other)         
-;         (= basemap  (.basemap other))))
+
   clojure.lang.ISeq
   (first [this] (next-val basemap))
   (next  [this]
@@ -134,7 +133,9 @@
   (toArray  [self]    (.toArray (seq self)))
   clojure.lang.Seqable
   (seq [this]  ; returns a LazySeq
-    (priority-vals basemap))
+    (if (zero? entry-count) 
+      (seq basemap)
+      (priority-vals basemap)))
   clojure.lang.Counted
   (count [this] entry-count)
   clojure.lang.IPersistentVector
@@ -176,15 +177,19 @@
 (def maxq (pqueue. :max (get-map :max) 0 {}))
 (def emptyq minq)
 
+;;__TODO__ Maybe implement a reader literal for the priority queue.
+
 ;;testing
 
 (comment  
   (def samples [[0.884 :a] [0.899 :b] [0.589 :c] [0.761 :d]])
   (def ordered-samples (map second (sort-by first samples)))
-  (def ordered-vec (vec ordered-samples))
-  (def regular-queue (into empty-entries ordered-samples))
+  (def ordered-vec     (vec ordered-samples))
+  (def regular-queue   (into empty-entries ordered-samples))
   (def the-q (into emptyq samples))
-  (assert (= the-q ordered-samples)) 
+  (assert (= the-q ordered-samples))
+  (assert (= the-q ordered-vec)) 
+  (assert (= ordered-vec the-q)) 
   
 )
  
