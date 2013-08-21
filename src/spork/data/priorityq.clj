@@ -89,19 +89,21 @@
    for efficient changes to both weight and the values stored in the priority 
    queue."  
   ([pq n wprev wnew]  
-    (let [nodes (drop-entry (get pq wprev) n)]
-      (-> (if (empty? nodes) (dissoc pq wprev)
-                             (assoc pq wprev nodes))
-          (conj-node n wnew))))
-  ([pq n wprev wnew transform]  
-    (let [nodes (drop-entry (get pq wprev) n)]
-      (-> (if (empty? nodes)
-            (dissoc pq wprev)
-            (assoc pq wprev nodes))
-          (conj-node (transform n) wnew)))))
-
-(defn- get-map [dir]
-  (if (= dir :min) (sorted-map) (sorted-map-by >)))
+    (if (= wprev wnew) pq
+	      (let [nodes (drop-entry (get pq wprev) n)]
+	         (-> (if (empty? nodes) (dissoc pq wprev)
+	                             (assoc pq wprev nodes))
+	            (conj-node n wnew)))))
+  ([pq n wprev wnew transform]
+    (if (= wprev wnew)
+      (assoc pq wprev (swap-entry (get pq wprev) n (transform n))))
+	    (let [nodes (drop-entry (get pq wprev) n)]
+       (-> (if (empty? nodes)
+               (dissoc pq wprev)
+               (assoc  pq wprev nodes))
+           (conj-node (transform n) wnew)))))
+  
+(defn- get-map [dir] (if (= dir :min) (sorted-map) (sorted-map-by >)))
 
 ;;A priority queue type to wrap all the previous operations.
 (deftype pqueue [dir basemap entry-count _meta]
