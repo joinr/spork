@@ -105,20 +105,33 @@
 (deftype pqueue [dir basemap entry-count _meta]
   Object
   (toString [this] (str (.seq this)))
+;  (equals [self other]    
+;    (and (instance? pqueue other)         
+;         (identical? self other)         
+;         (= basemap  (.basemap other))))
   clojure.lang.ISeq
   (first [this] (next-val basemap))
   (next  [this]
     (if (empty? basemap) nil
         (pop this)))
-  (more [this] (if (empty? basemap)
-                 (.empty this)
-                 (pop this)))
+  (more [this] (if (empty? basemap) nil
+                   (pop this)))
   clojure.lang.IPersistentCollection
   (empty [this]  (pqueue. dir (get-map dir) 0 {}))
   (equiv [this that]
-    (and (instance? pqueue that)
-         (= dir (:dir that))
-         (identical? basemap (:basemap that))))
+     (cond (= (type this) (type that)) (identical? basemap (.basemap that)))
+           (sequential? that) 
+           (loop [xs  (.seq this)
+                  ys  (seq that)]
+             (cond (and (empty? xs) (empty? ys)) true 
+                   (=   (first xs) (first ys)) (recur (rest xs)
+                                                      (rest ys))
+                   :else nil)))   
+  ;;Note -> if we don't implement this, vector equality doesn't work both ways!
+  java.util.Collection  
+  (iterator [self]    (clojure.lang.SeqIterator. (seq  self)))  
+  (size     [self]     entry-count)  
+  (toArray  [self]    (.toArray (seq self)))
   clojure.lang.Seqable
   (seq [this]  ; returns a LazySeq
     (priority-vals basemap))
@@ -127,8 +140,8 @@
   clojure.lang.IPersistentVector
   (cons [this a]
     ; called by conj
-    (loop [k (first a)
-           v (second a)]
+    (loop [v (first a)
+           k (second a)]
       (pqueue. dir (conj-node basemap k v) (inc entry-count) _meta)))
   (length [this]  (.count this))
   (assocN [this index value]
@@ -149,14 +162,13 @@
     (if (and (< i entry-count) (>= i 0))
         (nth (priority-vals basemap) i)       
          not-found))
-  Iterable
-  (iterator [this] (clojure.lang.SeqIterator. (seq this)))      
   clojure.lang.IObj
   ;adds metadata support
   (meta [this] _meta)
   (withMeta [this m] (pqueue. dir basemap entry-count m))      
   clojure.lang.Reversible
-  (rseq [this]  (reverse (priority-vals  basemap)))
+  (rseq [this]  (concat (for [q (reverse basemap)]
+                          (into '() q))))
   java.io.Serializable ;Serialization comes for free with the other stuff.
   )
 
@@ -166,7 +178,13 @@
 
 ;;testing
 
-(comment 
-  (def the-q emptyq)
+(comment  
+  (def samples [[0.884 :a] [0.899 :b] [0.589 :c] [0.761 :d]])
+  (def ordered-samples (map second (sort-by first samples)))
+  (def ordered-vec (vec ordered-samples))
+  (def regular-queue (into empty-entries ordered-samples))
+  (def the-q (into emptyq samples))
+  (assert (= the-q ordered-samples)) 
+  
 )
  
