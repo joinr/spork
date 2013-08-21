@@ -12,59 +12,163 @@
 (defn tag-as-pq [x]
   (with-meta x (assoc (meta x) ::priority-queue true)))
 
-(def emptyq (tag-as-pq (sorted-map)))
-(def minq   emptyq)
-(def maxq   (tag-as-pq (sorted-map-by >)))
+;;duplicated.
+(defn- ^clojure.lang.MapEntry entry [k v] (clojure.lang.MapEntry. k v))
+
+;;We map priorities to a queue of values.  These are stock queue manipulation 
+;;functions to allow us to eliminate items from our queue containers.
+(def empty-entries clojure.lang.persistentQueue/EMPTY)
+(defn- drop-entry [q x] 
+  (loop [acc empty-entries
+         xs  q]
+    (if (empty? xs) acc    
+      (if (= x (first x))
+          (into acc (pop xs))
+          (recur (conj acc (first xs)) (pop xs))))))
+
+(defn- swap-entry [q x1 x2] 
+  (loop [acc empty-entries
+         xs  q]
+    (if (empty? xs) acc    
+      (if (= x1 (first x))
+          (into (conj acc x2) (pop xs))
+          (recur (conj acc (first xs)) (pop xs))))))
 
 (defn priority-queue? [m] (contains? (meta m) ::priority-queue))
 
 (defn conj-node
   "Conjoin node n onto priorityq  q with priority/weight w."
-  ([q n w]
-  (assoc q w
-    (if-let [coll (get q w)] (conj coll n) [n])))
+  ([q n w]  (assoc q w
+                   (if-let [coll (get q w)] 
+                     (conj coll n) (conj empty-entries n))))
   ([q [n w]] (conj-node q n w)))
 
-(defn conj-nodes
+(defn conj-many
   "Conjoin many [node weight] pairs onto priorityq q."
   [q nws]
   (reduce conj-node q nws))
 
-(defn next-node
-  "Return {:node n :weight w} for the 
-   highest-priority node." 
-  [q]
-  (if-let [[k v] (first q)]
-    {:node (first v) :weight k}))
+(defn next-val
+  "Return the highest-priority value." 
+  [pq]
+  (first (vals pq)))
 
-(defn drop-node
+(defn next-entry 
+  "Return [priority x] for the highest-priority node." 
+  [pq]
+  (when (seq pq)
+    (entry (first (keys pq)) (next-val pq))))
+
+(defn drop-first
   "Return the priorityq resulting from disjoining the 
    highest priority node."
-  [q]
-  (let [[k v] (first q)]
+  [pq]
+  (let [[w q] (first pq)]
     (cond
-      (= 1 (count v)) (dissoc q k)
-      :else (assoc q k (subvec v 1)))))
+      (= 1  (count q))  (dissoc pq w)
+      :else             (assoc pq w (pop q)))))
 
-(defn alter-weight
+(defn priority-vals
+  "Return a sequence of popped values from priorityq q."
+  [pq]
+  (if-let [v (next-val pq)]
+    (lazy-seq (cons v (nodes (drop-node pq))))))
+
+(defn priority-entries [pq] 
+  (if-let [kv (next-entry pq)]
+    (lazy-seq (cons kv (nodes (drop-node pq))))))
+
+;;__TODO__ I think using the set as a filter is actually slow, from some forum
+;;posts.  Look at optimizing that call in alter-weight to something else. 
+
+(defn alter-value
   "Returns the result of disjoining node n, with weight wprev, and conjoining 
-   node n with weight wnew, relative to the initial priorityq q"  
-  [q n wprev wnew]
-  (let [nodes (remove #{n} (get q wprev))
-        qremaining
-          (if (seq nodes)
-                (assoc q wprev nodes)
-                (dissoc q wprev))]
-    (conj-node qremaining n wnew)))   
+   node n with weight wnew, relative to the initial priorityq q.  Caller may 
+   also supply an optional transformation to apply to the altered node, allowing
+   for efficient changes to both weight and the values stored in the priority 
+   queue."  
+  ([pq n wprev wnew]  
+    (let [nodes (drop-entry (get pq wprev) n)]
+      (-> (if (empty? nodes) (dissoc pq wprev)
+                             (assoc pq wprev nodes))
+          (conj-node  n wnew))))
+  ([pq n wprev wnew transform]  
+    (let [nodes (drop-entry (get pq wprev) n)]
+      (-> (if (empty? nodes)
+            (dissoc pq wprev)
+            (assoc pq wprev nodes))
+          (conj-node qremaining (transform n) wnew)))))
 
+(defn- get-map [dir]
+  (if (= dir :min) (sorted-map) (sorted-map-by >)))
 
-(defn node-stream
-  "Return a sequence of popped {node weight} maps from 
-   priorityq q."
-  [q]
-  (if-let [kv (next-node q)]
-    (lazy-seq (cons kv (node-stream (drop-node q))))))
+;;A priority queue type to wrap all the previous operations.
+(deftype pqueue [dir basemap entry-count _meta]
+  Object
+  (toString [this] (str (.seq this)))
+  clojure.lang.ISeq
+  (first [this] (next-val basemap))
+  (next  [this]
+    (if (empty? basemap) nil
+        (pop this)))
+  (more [this]
+    (if (empty? basemap)
+      (.empty this)
+      (pop this)))
+  clojure.lang.IPersistentCollection
+  (empty [this]  (pqueue. dir (get-map dir) 0 {}))
+  (equiv [this that]
+    (and (instance? pqueue that)
+         (= dir (:dir that))
+         (identical? basemap (:basemap that))))
+  clojure.lang.Seqable
+  (seq [this]  ; returns a LazySeq
+    (priority-vals basemap))
+  clojure.lang.Counted
+  (count [this] entry-count)
+  clojure.lang.IPersistentVector
+  (cons [this a]
+    ; called by conj
+    (loop [k (rand)
+           i (long 0)]
+      (cond (> i 10) 
+               (throw (Exception. 
+                        "Trying to conj onto random queue, generated an 
+                         improbable number of identical keys.  
+                         Check the implementation in spork.data.randomq"))
+            (not (contains? basemap k)) 
+               (pqueue. dir (assoc basemap k a) (inc entry-count) _meta)
+             :else (recur (rand) (unchecked-inc i)))))
+  (length [this]  (.count this))
+  (assocN [this index value]
+    (if (and (not (zero? entry-count))
+             (>= index entry-count)) (throw (Exception. "Index Out of Range"))
+      (let [k (nth (keys basemap))]
+        (pqueue. dir (assoc basemap k value) entry-count _meta))))
+  clojure.lang.IPersistentStack
+  (pop  [this] (if (empty? basemap) this
+                   (pqueue. dir (drop-first basemap) (dec entry-count) _meta)))
+  (peek [this] (next-val basemap))
+  clojure.lang.Indexed
+  (nth [this i] (if (and (>= i 0) 
+                         (< i entry-count)) 
+                    (nth (priority-vals basemap) i)
+                    (throw (Exception. (str "Index out of range " i )))))
+  (nth [this i not-found] 
+    (if (and (< i entry-count) (>= i 0))
+        (nth (priority-vals basemap) i)       
+         not-found))
+  Iterable
+  (iterator [this] (clojure.lang.SeqIterator. (seq this)))      
+  clojure.lang.IObj
+  ;adds metadata support
+  (meta [this] _meta)
+  (withMeta [this m] (pqueue. dir basemap entry-count m))      
+  clojure.lang.Reversible
+  (rseq [this]  (reverse (priority-vals  basemap)))
+  java.io.Serializable ;Serialization comes for free with the other stuff.
+  )
 
-
-
-
+(def minq (pqueue. :min (get-map :min) 0 {}))
+(def maxq (pqueue. :max (get-map :max) 0 {}))
+(def emptyq minq)

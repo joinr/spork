@@ -8,20 +8,17 @@
   clojure.lang.ISeq
   (first [this] (first (vals basemap)))
   (next [this]
-    (println "next")
-    (if (.deque-empty? this) nil
-      (.pop-front this)))
+    (if (empty? basemap) nil
+        (pop this)))
   (more [this]
-    ; called by rest
-    (println "more")
-    (if (.deque-empty? this)
+    (if (empty? basemap)
       (.empty this)
-      (.pop-front this)))
+      (pop this)))
   clojure.lang.IPersistentCollection
   (empty [this]  (randomq. (sorted-map) {}))
   (equiv [this that]
     (and (instance? randomq that)
-         (identical? (:basemap this) (:basemap that))))
+         (identical? basemap (:basemap that))))
   clojure.lang.Seqable
   (seq [this]  ; returns a LazySeq
     (vals basemap))
@@ -46,7 +43,7 @@
       (let [k (nth (keys basemap))]
         (randomq. (assoc basemap k value) _meta))))
   clojure.lang.IPersistentStack
-  (pop [this]  (randomq. (dissoc basemap (first (keys basemap))) _meta))
+  (pop  [this]  (randomq. (dissoc basemap (first (keys basemap))) _meta))
   (peek [this] (first    (vals basemap)))
   clojure.lang.Indexed
   (nth [this i] (if (and (>= i 0) 

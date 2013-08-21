@@ -53,7 +53,7 @@
 (extend-protocol generic/IFringe
   clojure.lang.PersistentTreeMap
     (conj-fringe [fringe n w] (pq/conj-node fringe n w))
-    (next-fringe [fringe]     (pq/next-node fringe))
+    (next-fringe [fringe]     (pq/next-val fringe))
     (pop-fringe  [fringe]     (pq/drop-node fringe))
     (re-weigh    [fringe n wold wnew] (pq/alter-weight fringe n wold wnew))
     (re-label    [fringe n w newlabel] fringe))
