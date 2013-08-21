@@ -41,9 +41,9 @@
   
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.
-(defrecord searchstate [startnode targetnode shortest distance fringe h]
+(defrecord searchstate [startnode targetnode shortest distance fringe estimator]
   generic/IGraphSearch
-	  (new-path [state source sink w] (new-path* source sink w state))           
+	  (new-path     [state source sink w] (new-path* source sink w state))           
 	  (shorter-path [state source sink wnew wpast]
 	    (shorter-path* source sink wnew wpast state))
 	  (equal-path   [state source sink] (equal-path* source sink state))
@@ -59,7 +59,7 @@
 	  (re-label    [state n w newlabel] (assoc state :fringe 
                                          (generic/re-label fringe n w newlabel))))                 
                                 
-(def empty-search (searchstate. nil nil {} {} nil))
+(def empty-search (searchstate. nil nil {} {} nil identity))
 
 (defn init-search 
   [& {:keys [startnode targetnode fringe] 

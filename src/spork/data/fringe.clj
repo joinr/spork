@@ -55,8 +55,9 @@
     (conj-fringe [fringe n w] (conj  fringe (generic/entry n w)))
     (next-fringe [fringe]     (peek fringe))
     (pop-fringe  [fringe]     (pop fringe))
-    (re-weigh    [fringe n wold wnew] (pq/alter-value fringe n wold wnew))
-    (re-label    [fringe n w newlabel] (pq/alter-value fringe n w w (fn [_] newlabel))))
+    (re-weigh    [fringe n wold wnew]  (pq/alter-value fringe n wold wnew))
+    (re-label    [fringe n w newlabel] (pq/alter-value fringe n w w 
+                                           (fn [_] newlabel))))
 
 (extend-protocol generic/IFringe
   spork.data.randq.randomq

@@ -44,7 +44,7 @@
         (randomq. (assoc basemap k value) _meta))))
   clojure.lang.IPersistentStack
   (pop  [this]  (randomq. (dissoc basemap (first (keys basemap))) _meta))
-  (peek [this] (first    (vals basemap)))
+  (peek [this]  (first    (vals basemap)))
   clojure.lang.Indexed
   (nth [this i] (if (and (>= i 0) 
                          (< i (count basemap))) 
