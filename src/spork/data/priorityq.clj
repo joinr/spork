@@ -17,7 +17,7 @@
 
 ;;We map priorities to a queue of values.  These are stock queue manipulation 
 ;;functions to allow us to eliminate items from our queue containers.
-(def empty-entries clojure.lang.persistentQueue/EMPTY)
+(def empty-entries clojure.lang.PersistentQueue/EMPTY)
 (defn- drop-entry [q x] 
   (loop [acc empty-entries
          xs  q]
@@ -30,7 +30,7 @@
   (loop [acc empty-entries
          xs  q]
     (if (empty? xs) acc    
-      (if (= x1 (first x))
+      (if (= x1 (first xs))
           (into (conj acc x2) (pop xs))
           (recur (conj acc (first xs)) (pop xs))))))
 
@@ -45,13 +45,13 @@
 
 (defn conj-many
   "Conjoin many [node weight] pairs onto priorityq q."
-  [q nws]
-  (reduce conj-node q nws))
+  [q entries]
+  (reduce conj-node q entries))
 
 (defn next-val
   "Return the highest-priority value." 
   [pq]
-  (first (vals pq)))
+  (first (first (vals pq))))
 
 (defn next-entry 
   "Return [priority x] for the highest-priority node." 
@@ -63,20 +63,19 @@
   "Return the priorityq resulting from disjoining the 
    highest priority node."
   [pq]
-  (let [[w q] (first pq)]
-    (cond
-      (= 1  (count q))  (dissoc pq w)
-      :else             (assoc pq w (pop q)))))
+  (if (empty? pq) pq
+    (let [[w q] (first pq)]
+      (cond
+        (= 1  (count q))  (dissoc pq w)
+        :else             (assoc pq w (pop q))))))
+
+(defn priority-entries [pq]
+  (map next-entry (take-while (complement empty?) (iterate drop-first pq))))
 
 (defn priority-vals
   "Return a sequence of popped values from priorityq q."
   [pq]
-  (if-let [v (next-val pq)]
-    (lazy-seq (cons v (nodes (drop-node pq))))))
-
-(defn priority-entries [pq] 
-  (if-let [kv (next-entry pq)]
-    (lazy-seq (cons kv (nodes (drop-node pq))))))
+  (map second (priority-entries pq)))
 
 ;;__TODO__ I think using the set as a filter is actually slow, from some forum
 ;;posts.  Look at optimizing that call in alter-weight to something else. 
@@ -91,13 +90,13 @@
     (let [nodes (drop-entry (get pq wprev) n)]
       (-> (if (empty? nodes) (dissoc pq wprev)
                              (assoc pq wprev nodes))
-          (conj-node  n wnew))))
+          (conj-node n wnew))))
   ([pq n wprev wnew transform]  
     (let [nodes (drop-entry (get pq wprev) n)]
       (-> (if (empty? nodes)
             (dissoc pq wprev)
             (assoc pq wprev nodes))
-          (conj-node qremaining (transform n) wnew)))))
+          (conj-node (transform n) wnew)))))
 
 (defn- get-map [dir]
   (if (= dir :min) (sorted-map) (sorted-map-by >)))
@@ -111,10 +110,9 @@
   (next  [this]
     (if (empty? basemap) nil
         (pop this)))
-  (more [this]
-    (if (empty? basemap)
-      (.empty this)
-      (pop this)))
+  (more [this] (if (empty? basemap)
+                 (.empty this)
+                 (pop this)))
   clojure.lang.IPersistentCollection
   (empty [this]  (pqueue. dir (get-map dir) 0 {}))
   (equiv [this that]
@@ -129,16 +127,9 @@
   clojure.lang.IPersistentVector
   (cons [this a]
     ; called by conj
-    (loop [k (rand)
-           i (long 0)]
-      (cond (> i 10) 
-               (throw (Exception. 
-                        "Trying to conj onto random queue, generated an 
-                         improbable number of identical keys.  
-                         Check the implementation in spork.data.randomq"))
-            (not (contains? basemap k)) 
-               (pqueue. dir (assoc basemap k a) (inc entry-count) _meta)
-             :else (recur (rand) (unchecked-inc i)))))
+    (loop [k (first a)
+           v (second a)]
+      (pqueue. dir (conj-node basemap k v) (inc entry-count) _meta)))
   (length [this]  (.count this))
   (assocN [this index value]
     (if (and (not (zero? entry-count))
@@ -172,3 +163,10 @@
 (def minq (pqueue. :min (get-map :min) 0 {}))
 (def maxq (pqueue. :max (get-map :max) 0 {}))
 (def emptyq minq)
+
+;;testing
+
+(comment 
+  (def the-q emptyq)
+)
+ 
