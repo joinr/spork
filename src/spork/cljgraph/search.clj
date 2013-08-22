@@ -42,8 +42,9 @@
   [g nd {:keys [shortest] :as state}] 
   (filter #(not (contains? shortest %)) (top/neighbors g nd)))
 
-(defn- default-halt?  [state targetnode nextnode w]
-  (or (= targetnode nextnode) (generic/empty-fringe? (:fringe state))))
+(defn- default-halt?  [state nextnode]
+  (or (= (:targetnode state) nextnode) 
+          (generic/empty-fringe? (:fringe state))))
 
 ;;_POSSIBLE OPTIMIZATION__ Maintain the open set explicitly in the search state
 ;;vs explicitly computing __unexplored__ .
@@ -78,25 +79,22 @@
    function, or criteria for filtering candidates.  Returns a searchstate 
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
-  [g startnode targetnode state  & {:keys [halt? weightf neighborf] 
-                                    :or {halt?     default-halt?
-                                         weightf   top/arc-weight
-                                         neighborf default-neighborf} }]
-    (let [relaxation (fn [nd state [sink w]] (generic/relax nd sink w state))
-          step (fn step [g targetnode {:keys [fringe] :as searchstate}]
-                   (if (empty? fringe) searchstate 
-                     (let [candidate (generic/next-fringe fringe)
-                           w  (generic/entry-weight candidate) ;perceived weight from start
-                           nd (generic/entry-node candidate)]
-                       (if-not (halt? searchstate targetnode nd w) 
-                         (let [sinkweights (for [sink (neighborf g nd searchstate)] 
-                                                [sink (weightf g nd sink)])
-                               nextstate  (reduce (partial relaxation nd) 
-                                                  (generic/pop-fringe searchstate) 
-                                                  sinkweights)]
-                           (recur g targetnode nextstate))
-                         searchstate))))]
-        (step g targetnode (generic/conj-fringe state startnode 0))))    
+  [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
+                                         :or  {halt?     default-halt?
+                                               weightf   top/arc-weight
+                                               neighborf default-neighborf}}]
+    (let [get-weight    (partial weightf   g)
+          get-neighbors (partial neighborf g)
+          relaxation    (fn [source s sink]
+                          (generic/relax s get-weight source sink))]
+      (loop [state (generic/conj-fringe startstate startnode 0)]
+        (if (generic/empty-fringe? state) state 
+            (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
+                  nd (generic/entry-node candidate)]    ;next node to visit
+              (if (halt? state nd)  state
+                  (recur (reduce (partial relaxation nd) 
+                                 (generic/pop-fringe state) 
+                                 (get-neighbors nd state))))))))) 
 
 (defn depth-traversal
   "Returns a function that explores all of graph g in depth-first topological 
@@ -200,22 +198,16 @@
 
 ;;__TODO__ Check implementation of a-star, I think this is generally correct.
 
-(defn a-star-search 
+(defn a*
   "Given a heuristic function, searches graph g for the shortest path from 
    start node to end node.  Operates similarly to djikstra or 
    priority-first-search, but uses a custom weight function that applies the 
    hueristic to the weight.  heuristic should be a function that takes a 
-   target node and the current weight, and returns an estimated weight to be 
-   added to the actual weight."
+   a source node and target node, and returns an estimated weight to be 
+   added to the actual weight.  Note, the estimated value must be non-negative."
   [g heuristic-func startnode endnode]
-  (traverse g startnode endnode  
-            (searchstate/empty-PFS startnode)
-            :weightf (fn [g from to] 
-                       (+ (top/arc-weight g from to)
-                          (heuristic-func g from to)))))
-  
-
-  
+  (traverse g startnode endnode 
+    (assoc (searchstate/empty-PFS startnode) :estimator heuristic-func)))
 
 ;;This is identical to get components, or decompose.
 (defn graph-forest 

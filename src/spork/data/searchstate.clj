@@ -14,26 +14,34 @@
                 :distance distance 
                 :fringe fringe}))
 
+(defn- estimating-conj [estimator fringe sink w target]
+  (generic/conj-fringe fringe sink (+ w (estimator sink target) w)))
+
+(defn- conj-fringe* [state sink w] 
+  (if-let [e (:estimator state)]
+    (estimating-conj e   (:fringe state) sink w (:target state))
+    (generic/conj-fringe (:fringe state) sink w)))
+
 (defn- new-path*   
   "When we discover a new path via from source to sink, we add sink to the 
-   shortest path tree, register the distance, and add source to the fringe."
-  [source sink w {:keys [shortest distance fringe h] :as state}]
+   shortest path tree, register the distance, and add sink to the fringe.
+   If an estimator is provided, we apply the estimator to the "
+  [source sink w {:keys [shortest distance fringe] :as state}]
     (update-search state (assoc shortest sink source)
-                         (assoc distance sink w) 
-                         (generic/conj-fringe fringe sink w)))
-
+                         (assoc distance sink w)
+                         (conj-fringe* state sink w)))
 (defn- shorter-path*
   "When a shorter path is found to a node already on the fringe, we update the 
-   SPT, distance, and re-weight the fringe based on the new path."   
-  [source sink wnew wpast {:keys [shortest distance fringe h] :as state}]
+   SPT, distance, and add the sink back to the fringe based on the new path."   
+  [source sink wnew wpast {:keys [shortest distance fringe] :as state}]
     (update-search state (assoc shortest sink source) ;new spt
                    (assoc distance sink wnew)  ;shorter distance
-                   (generic/re-weigh fringe sink wpast wnew)))
+                   (conj-fringe* state sink wnew)))
 
 (defn- equal-path* 
   "When we discover equivalent paths, we conj them onto the shortest path tree.
    Note, if a better path is found, the other paths will be eliminated."
-  [source sink {:keys [shortest distance fringe h] :as state}]
+  [source sink {:keys [shortest distance fringe] :as state}]
     (let [current (get shortest sink)
 		      context (if (vector? current) current [current])
 		      newspt (assoc shortest sink (conj context source))]                 
@@ -48,18 +56,13 @@
 	    (shorter-path* source sink wnew wpast state))
 	  (equal-path   [state source sink] (equal-path* source sink state))
     (best-known-distance   [state nd] (get distance nd))
-  ;;We don't even need this any more...
   generic/IFringe 
 	  (conj-fringe [state n w] (assoc state :fringe 
                                    (generic/conj-fringe fringe n w)))
 	  (next-fringe [state]  (generic/next-fringe fringe))
-	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe)))
-	  (re-weigh    [state n wold wnew] (assoc state :fringe 
-                                        (generic/re-weigh fringe n wold wnew)))
-	  (re-label    [state n w newlabel] (assoc state :fringe 
-                                         (generic/re-label fringe n w newlabel))))                 
+	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
                                 
-(def empty-search (searchstate. nil nil {} {} nil identity))
+(def empty-search (searchstate. nil nil {} {} nil nil))
 
 (defn init-search 
   [& {:keys [startnode targetnode fringe] 

@@ -61,15 +61,12 @@
 
 ;;Abstract fringes to support generic search operations.
 (defprotocol IFringe 
-  (conj-fringe [fringe n w] "Add node n with weight w to the fringe.")
+  (conj-fringe [fringe n w] 
+   "Add node n with weight w to the fringe.  Some fringes may implement conj 
+    in an associative fashion, where existing values of n are effectively 
+    overwritten with a new w, ala clojure.core/assoc")
   (next-fringe [fringe] "Get the next node on the fringe")
-  (pop-fringe [fringe] "Remove the next node from the fringe")
-  (re-weigh [fringe n wold wnew]     
-    "Return the result of updating n's weight.  Old weight wold must be 
-     provided, since it is a part of n's key." )
-  (re-label [fringe n w newlabel]
-    "Return the result of updating n's label. Weight w must be 
-     provided, since it is a part of n's key."))
+  (pop-fringe [fringe] "Remove the next node from the fringe"))
 
 (defn conj-fringe-all
   "Add many [node weight] pairs onto the fringe."
@@ -107,11 +104,12 @@
       an unnamed startnode.  We want to record this equivalence, which means 
       that we may ultimately end up with multiple shortest* paths."
      
-  [source sink w state]  
-    (let [relaxed (+ (best-known-distance state source) w)]
+  [state weight-func source sink]  
+    (let [relaxed (+ (best-known-distance state source) 
+                     (weight-func source sink))]
       (if-let [known (best-known-distance state sink)]
 	      (cond 
-	        (< relaxed known) (shorter-path state source sink relaxed known )            
+	        (< relaxed known) (shorter-path state source sink relaxed known)            
 	        (= relaxed known) (equal-path state source sink)                         
 	        :else state)            
        ;if sink doesn't exist in distance, sink is new...

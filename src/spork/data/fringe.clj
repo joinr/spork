@@ -7,67 +7,57 @@
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
 
+;;__TODO__ re-evaluate the use of entries as a standard api choice.
+;;Do we really need access to the node weights?  Can't we just look them up?
+;;The current scheme is fine if the cost of a weight function is high, but 
+;;typically it'll just be a graph lookup...We might be introducing some 
+;;overhead due to all the garbage creation for the entry objects.  Merits 
+;;re-looking.
+
 ;;Implementations of basic stack (depth first) and queue (breadth first) 
 ;;fringes.
 (extend-protocol generic/IFringe 
   nil 
   (conj-fringe [fringe n w] (conj '() (generic/entry n w)))
   (next-fringe [fringe]  nil)
-  (pop-fringe  [fringe]  nil)
-  (re-weigh    [fringe n wold wnew] (conj '() (generic/entry n wnew)))
-  (re-label    [fringe n w newlabel] (throw (Exception. "Empty fringe!")))    
+  (pop-fringe  [fringe]  nil) 
   clojure.lang.PersistentQueue
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
-  (next-fringe [fringe]    (first fringe))
-  (pop-fringe  [fringe]    (pop fringe))
-  (re-weigh    [fringe n wold wnew] 
-    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
-      (into emptyq (concat prior (generic/entry n wnew) post))))             
-  (re-label    [fringe n w newlabel] fringe)  
+  (next-fringe [fringe]     (first fringe))
+  (pop-fringe  [fringe]     (pop fringe))
   clojure.lang.PersistentList
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
-  (next-fringe [fringe]    (first fringe))
-  (pop-fringe  [fringe]    (next fringe))
-  (re-weigh    [fringe n wold wnew] 
-    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
-      (concat prior (generic/entry n wnew) post)))             
-  (re-label [fringe n w newlabel] fringe)
+  (next-fringe [fringe]     (first fringe))
+  (pop-fringe  [fringe]     (next fringe))
   clojure.lang.PersistentList$EmptyList
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
-  (next-fringe [fringe]    (first fringe))
-  (pop-fringe  [fringe]    (next fringe))
-  (re-weigh    [fringe n wold wnew] 
-    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
-      (concat prior (generic/entry n wnew) post)))             
-  (re-label [fringe n w newlabel] fringe) 
+  (next-fringe [fringe]     (first fringe))
+  (pop-fringe  [fringe]     (next fringe))
   clojure.lang.Cons 
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
   (next-fringe [fringe]     (first fringe))
   (pop-fringe  [fringe]     (next fringe))
-  (re-weigh    [fringe n wold wnew] 
-    (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
-      (concat prior (generic/entry n wnew) post)))             
-  (re-label [fringe n w newlabel] fringe))
-
-;;Extend the IFringe protocol to priority queues, so we get a priority fringe.
-(extend-protocol generic/IFringe
-  spork.data.priorityq.pqueue
-    (conj-fringe [fringe n w] (conj  fringe (generic/entry n w)))
-    (next-fringe [fringe]     (peek fringe))
-    (pop-fringe  [fringe]     (pop fringe))
-    (re-weigh    [fringe n wold wnew]  (pq/alter-value fringe n wold wnew))
-    (re-label    [fringe n w newlabel] (pq/alter-value fringe n w w 
-                                           (fn [_] newlabel))))
-
-(extend-protocol generic/IFringe
   spork.data.randq.randomq
-    (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
-    (next-fringe [fringe]     (peek fringe))
-    (pop-fringe  [fringe]     (pop fringe))
-    (re-weigh    [fringe n wold wnew] ;;really inefficient. 
-      (let [[prior post] (split-with #(not= (generic/entry n wold)) fringe)]
-        (into rq/emptyrq (concat prior (generic/entry n wnew) post))))
-    (re-label    [fringe n w newlabel] fringe))
+  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (next-fringe [fringe]     (peek fringe))
+  (pop-fringe  [fringe]     (pop fringe)))
+
+;;we wrap a priorityq with a map to get a priority fringe.
+;;Acts as an associative fringe, i.e. keeps exactly one instance of a value 
+;;on the fringe at any time.  Could be supplanted by a priority map, or a 
+;;cheaplist, or a stock priority queue that doesn't bother to eliminate stale
+;;values when re-weighing.
+(defrecord pfringe [priorities fringe]
+  generic/IFringe
+  (conj-fringe [fringe n w]
+    (pfringe. (assoc priorities n w)
+              (if-let [wold (get priorities n)]
+                (pq/alter-value fringe n wold w)
+                (conj fringe (generic/entry n w)))))
+  (next-fringe [fringe] (peek fringe))
+  (pop-fringe  [fringe] 
+    (if (empty? priorities) fringe 
+      (pfringe. (dissoc priorities (peek fringe)) (pop fringe)))))  
 
 ;;The four primitive fringes.  Just aliases for provided implementations.
 (def breadth-fringe 
@@ -77,7 +67,7 @@
 (def priority-fringe
   "Builds a fringe that stores [node weight] entries in priority order, 
    according to minimal weight.  Backed by a sorted map."
-   pq/minq)
+   (->pfringe {} pq/minq))
 (def random-fringe
   "Builds a fringe that stores [node weight] entries in random order.  Backed 
    by a spork.data.randq.randomq"
