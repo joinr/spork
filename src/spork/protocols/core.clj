@@ -73,13 +73,13 @@
   [fringe nws]
   (reduce (partial apply conj-fringe) fringe nws))  
    
-(defn fringe-stream
+(defn fringe-seq
   "Return a sequence of popped {node weight} maps from 
    priorityq q."
   [fringe]
   (if-let [kv (next-fringe fringe)]
-    (lazy-seq (cons kv (fringe-stream (pop-fringe fringe))))))
-(defn empty-fringe? [fringe] (empty? (fringe-stream fringe)))
+    (lazy-seq (cons kv (fringe-seq (pop-fringe fringe))))))
+(defn empty-fringe? [fringe] (empty? (fringe-seq fringe)))
 (defn fringe? [x] (satisfies? IFringe x))
 
 ;;Abstract protocol for operating on shortest path searches.

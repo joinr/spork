@@ -57,7 +57,7 @@
   "Return [priority x] for the highest-priority node." 
   [pq]
   (when (seq pq)
-    (entry (first (keys pq)) (next-val pq))))
+    (entry (next-val pq) (first (keys pq)))))
 
 (defn drop-first
   "Return the priorityq resulting from disjoining the 
@@ -143,8 +143,8 @@
   clojure.lang.IPersistentVector
   (cons [this a]
     ; called by conj
-    (loop [v (first a)
-           k (second a)]
+    (loop [k (first a)
+           v (second a)]
       (pqueue. dir (conj-node basemap k v) (inc entry-count) _meta)))
   (length [this]  (.count this))
   (assocN [this index value]
@@ -184,8 +184,8 @@
 ;;testing
 
 (comment  
-  (def samples [[0.884 :a] [0.899 :b] [0.589 :c] [0.761 :d]])
-  (def ordered-samples (map second (sort-by first samples)))
+  (def samples [[:a 0.884] [:b 0.899] [:c 0.589] [:d 0.761]])
+  (def ordered-samples (map first (sort-by second samples)))
   (def ordered-vec     (vec ordered-samples))
   (def regular-queue   (into empty-entries ordered-samples))
   (def the-q (into emptyq samples))

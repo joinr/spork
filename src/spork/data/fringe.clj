@@ -49,13 +49,13 @@
 ;;values when re-weighing.
 (defrecord pfringe [priorities fringe]
   generic/IFringe
-  (conj-fringe [fringe n w]
+  (conj-fringe [pf n w]
     (pfringe. (assoc priorities n w)
               (if-let [wold (get priorities n)]
                 (pq/alter-value fringe n wold w)
-                (conj fringe (generic/entry n w)))))
-  (next-fringe [fringe] (peek fringe))
-  (pop-fringe  [fringe] 
+                (conj fringe [(generic/entry n w) w]))))
+  (next-fringe [pf] (peek fringe))
+  (pop-fringe  [pf] 
     (if (empty? priorities) fringe 
       (pfringe. (dissoc priorities (peek fringe)) (pop fringe)))))  
 
@@ -76,3 +76,23 @@
   "Builds a fringe that stores [node weight] entries in last-in-first-out 
    LIFO order.  Backed by a persistent list."
   (list))
+
+;;Testing
+(comment 
+  (def nodes [[:a 2]
+              [:b 3]
+              [:c 10]
+              [:d 11]
+              [:e 0]])
+  (defn load-fringe [f] (reduce (fn [acc [n w]]
+          (generic/conj-fringe acc n w))
+        f nodes))
+  (assert (= (generic/fringe-seq (load-fringe priority-fringe))
+             '([:e 0] [:a 2] [:b 3] [:c 10] [:d 11])))
+  (assert (= (generic/fringe-seq (load-fringe depth-fringe))
+             '([:e 0] [:d 11] [:c 10] [:b 3] [:a 2])))
+  (assert (= (generic/fringe-seq (load-fringe breadth-fringe))
+             '([:a 2] [:b 3] [:c 10] [:d 11] [:e 0])))
+  
+  
+)
