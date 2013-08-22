@@ -74,8 +74,8 @@
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
 
 (defn traverse
-  "Generic fn to walk a graph.  The type of walk can vary by changing the 
-   fringe of the searchstate, the halting criteria, the weight-generating 
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
    function, or criteria for filtering candidates.  Returns a searchstate 
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
@@ -90,7 +90,7 @@
       (loop [state (generic/conj-fringe startstate startnode 0)]
         (if (generic/empty-fringe? state) state 
             (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-                  nd (generic/entry-node candidate)]    ;next node to visit
+                  nd        (first candidate)]          ;next node to visit
               (if (halt? state nd)  state
                   (recur (reduce (partial relaxation nd) 
                                  (generic/pop-fringe state) 
@@ -177,17 +177,21 @@
   [g startnode endnode]
   (breadth-traversal g startnode endnode))
 
+;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
+;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
+;;automatically switches to A*.
+
 (defn priority-first-search
   "Starting from startnode, explores g using a priority-first strategy, looking 
    for endnode. Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree.  The is equivalent to djikstra's
+   precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
    algorithm.  Note: Requires that arc weights are non-negative.  For negative 
    arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode]
   (priority-traversal g startnode endnode))
 
-(defn djikstra
-  "Starting from startnode, explores g using djikstra's algorithm, looking for
+(defn dijkstra
+  "Starting from startnode, explores g using dijkstra's algorithm, looking for
    endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
    If a relaxation provides a shorter path, the new path is recorded.  Returns a 
    search state, which contains the shortest path tree or precedence tree, the 
@@ -200,7 +204,7 @@
 
 (defn a*
   "Given a heuristic function, searches graph g for the shortest path from 
-   start node to end node.  Operates similarly to djikstra or 
+   start node to end node.  Operates similarly to dijkstra or 
    priority-first-search, but uses a custom weight function that applies the 
    hueristic to the weight.  heuristic should be a function that takes a 
    a source node and target node, and returns an estimated weight to be 
