@@ -87,11 +87,14 @@
   (new-path     [state source sink w])
   (shorter-path [state source sink wnew wpast])
   (equal-path   [state source sink])
+  (conj-visited [state source])
   (best-known-distance [state x]))
 
 (defn relax
   "Given a shortest path map, a distance map, a source node, sink node, 
-   and weight(source,sink) = w, update the search state.  
+   and weight(source,sink) = w, update the search state.
+
+   Upon visitation, sources are conjoined to the discovered vector.    
 
    The implication of a relaxation on sink, relative to source, is that 
    source no longer exists in the fringe (it's permanently labeled).  

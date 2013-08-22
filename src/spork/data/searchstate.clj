@@ -49,20 +49,21 @@
   
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.
-(defrecord searchstate [startnode targetnode shortest distance fringe estimator]
+(defrecord searchstate [startnode targetnode shortest distance fringe estimator visited]
   generic/IGraphSearch
 	  (new-path     [state source sink w] (new-path* source sink w state))           
 	  (shorter-path [state source sink wnew wpast]
 	    (shorter-path* source sink wnew wpast state))
 	  (equal-path   [state source sink] (equal-path* source sink state))
     (best-known-distance   [state nd] (get distance nd))
+    (conj-visited [state source] (conj visited source))
   generic/IFringe 
 	  (conj-fringe [state n w] (assoc state :fringe 
                                    (generic/conj-fringe fringe n w)))
 	  (next-fringe [state]  (generic/next-fringe fringe))
 	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
                                 
-(def empty-search (searchstate. nil nil {} {} nil nil))
+(def empty-search (searchstate. nil nil {} {} nil nil []))
 
 (defn init-search 
   [& {:keys [startnode targetnode fringe] 
@@ -74,6 +75,20 @@
                            :distance {startnode 0}
                            :shortest {startnode startnode}
                            :fringe fringe}))
+
+(defn get-path
+  "Recover all paths from startnode to targetnode, given shortest path tree 
+   spt."
+  [startnode targetnode spt]
+  (if (and (map? spt) (contains? spt targetnode))   
+	  (let [singleton (fn [itm] (if (vector? itm) (first itm) itm))]
+		  (loop [currnode targetnode  
+		         path nil
+             branch nil]	         
+	     (if (= currnode startnode) 
+		      (cons currnode path) 
+		      (recur (singleton (get spt currnode))  (cons currnode path) nil))))
+   nil))
 
 ;revisit these definitions....
 (def empty-DFS (init-search :fringe fr/depth-fringe))

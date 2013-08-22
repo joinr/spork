@@ -38,3 +38,26 @@
 ;(defmethod halting-fn :bellman-ford [state & [targetnode nextnode w]]
 ;  (DAG-more? state targetnode nextnode w))
 )
+
+(comment 
+;;This is identical to get components, or decompose.
+(defn graph-forest 
+  "Given a graph g, and an arbitrary startnode, return the sequence of all 
+   depth-first shortest path trees.  This should return a sequence of 
+   components within the graph, a series of depth-walks from a monotonically 
+   decreasing set of startnodes."
+  [g startnode]
+  (let [walk (partial depth-traversal g)
+        take-step (fn take-step [g found state]
+                    (if-let [remaining 
+                             (clojure.set/difference found 
+                                                     (unexplored g state))]
+                      (lazy-seq 
+                        (let [nextstart (first remaining)
+                              nextstate (walk nextstart)
+                              remaining (disj remaining nextstart)]
+                          (concat 
+                            (list state) (take-step g remaining nextstate))))
+                       state))]
+    (take-step g #{} (walk startnode))))
+)

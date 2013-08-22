@@ -228,7 +228,6 @@
         (add-arcs (map (fn [[from _ w]] [from new-label w]) 
                          (arcs-to tg old-label)))))) 
  
-
 ;;We might be able to factor this out with the graph searches.
 ;;We simply walk the graph searching for a node that doesn't exist.
 ;;These are ALL eager walks, in that they return a vector of the walk.

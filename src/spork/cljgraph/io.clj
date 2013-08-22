@@ -96,8 +96,7 @@
 (defmethod get-extension java.io.File [x] 
   (get-extension (.getName x)))
 
-
-(defmulti read-graph get-extension)
+(defmulti  read-graph get-extension)
 (defmethod read-graph :IGraph [g] g)
 (defmethod read-graph :CLJ [pth]
   (read-string (slurp pth)))
@@ -108,17 +107,11 @@
    is valid."
   (fn [g pth] (get-extension pth)))
 
-(defmethod write-graph :default [g pth]
-  (spit  (check-file pth) (pr-str g) ))
-
-(defmethod write-graph :IGraph [g pth] nil) ;should never happen.
-(defmethod write-graph :CLJ [g pth]
-  (spit  (check-file pth) (pr-str g) ))
-(defmethod write-graph :XML [g pth]
-  (graph->file g pth))
-(defmethod write-graph :GRAPHML [g pth]
-  (graph->file g pth))
-
+(defmethod write-graph :default [g pth] (spit (check-file pth) (pr-str g)))
+(defmethod write-graph :IGraph  [g pth]  nil) ;should never happen.
+(defmethod write-graph :CLJ     [g pth] (spit (check-file pth) (pr-str g)))
+(defmethod write-graph :XML     [g pth] (graph->file g pth))
+(defmethod write-graph :GRAPHML [g pth] (graph->file g pth))
 
 ;graph [
 ;        comment "This is a sample graph"

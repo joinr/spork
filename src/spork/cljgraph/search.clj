@@ -71,6 +71,15 @@
   (generic/next-fringe fringe))    
 
 
+(def search-defaults {:endnode ::nullnode
+                      :halt?     default-hault? 
+                      :weightf   top/arc-weight 
+                      :neighborf default-neighborf})
+
+;;Default for simple graph walks/explorations
+(def walk-defaults 
+  (merge search-defaults {:weightf unit-weight :neighborf visit-once}))
+
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
 
 (defn traverse
@@ -96,33 +105,33 @@
                                  (generic/pop-fringe state) 
                                  (get-neighbors nd state))))))))) 
 
+
 (defn depth-traversal
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  [g startnode & endnode ] 
-  (traverse g startnode (generic/maybe endnode ::nullnode) 
+  [g startnode & {:keys [endnode halt? neighborf weightf] :or walk-defaults}] 
+  (traverse g startnode endnode
               (searchstate/empty-DFS startnode)
-              :neighborf visit-once
-              :weightf unit-weight))
+              :neighborf neighborf
+              :weightf   weightf))
  
 (defn breadth-traversal
   "Returns a function that explores all of graph g in a breadth-first 
    topological order from startnode.  This is not a search, any paths returned 
    will be relative to unit-weight."
-  [g startnode & endnode] 	  
-  (traverse g startnode 
-              (generic/maybe endnode ::nullnode) 
+  [g startnode & {:keys [endnode halt? neighborf weightf] :or walk-defaults}] 	  
+  (traverse g startnode endnode
               (searchstate/empty-BFS startnode) 
-              :weightf unit-weight 
-              :neighborf visit-once))
+              :neighborf neighborf
+              :weightf   weightf))
  
 (defn ordered-traversal
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  [g startnode & endnode] 
-  (traverse g startnode (generic/maybe endnode ::nullnode) 
+  [g startnode & {:keys [endnode halt? weightf] :or walk-defaults}] 
+  (traverse g startnode  endnode 
               (searchstate/empty-DFS startnode)
               :neighborf visit-ordered-once
               :weightf unit-weight))
@@ -131,18 +140,18 @@
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  [g startnode & endnode] 
-  (traverse g startnode (generic/maybe endnode ::nullnode) 
+  [g startnode & {:keys [endnode halt? neighborf weightf] :or walk-defaults}] 
+  (traverse g startnode endnode 
               (searchstate/empty-RFS startnode)
-              :neighborf visit-once
-              :weightf unit-weight))
+              :neighborf neighborf
+              :weightf weightf))
 
 (defn undirected-traversal
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  [g startnode & endnode] 
-  (traverse g startnode (generic/maybe endnode ::nullnode) 
+  [g startnode & {:keys [endnode halt? weightf] :or walk-defaults}] 
+  (traverse g startnode endnode 
               (searchstate/empty-RFS startnode)
               :neighborf visit-neighbors-once
               :weightf unit-weight))
@@ -151,10 +160,11 @@
   "Returns a function that explores all of graph g in a priority-first 
   topological order from a startnode. Weights returned will be in terms of the 
   edge weights in the graph."
-  [g startnode & endnode] 	  
-  (traverse g startnode 
-              (generic/maybe endnode ::nullnode) 
-              (searchstate/empty-PFS startnode)))
+  [g startnode & {:keys [endnode halt? neighborf weightf] :or search-defaults}] 	  
+  (traverse g startnode  endnode 
+            (searchstate/empty-PFS startnode)
+            :neighborf neighborf 
+            :weightf   weightf))
 
 ;;explicit searches, merely enforces a walk called with an actual destination
 ;;node.
@@ -212,24 +222,3 @@
   [g heuristic-func startnode endnode]
   (traverse g startnode endnode 
     (assoc (searchstate/empty-PFS startnode) :estimator heuristic-func)))
-
-;;This is identical to get components, or decompose.
-(defn graph-forest 
-  "Given a graph g, and an arbitrary startnode, return the sequence of all 
-   depth-first shortest path trees.  This should return a sequence of 
-   components within the graph, a series of depth-walks from a monotonically 
-   decreasing set of startnodes."
-  [g startnode]
-  (let [walk (partial depth-traversal g)
-        take-step (fn take-step [g found state]
-                    (if-let [remaining 
-                             (clojure.set/difference found 
-                                                     (unexplored g state))]
-                      (lazy-seq 
-                        (let [nextstart (first remaining)
-                              nextstate (walk nextstart)
-                              remaining (disj remaining nextstart)]
-                          (concat 
-                            (list state) (take-step g remaining nextstate))))
-                       state))]
-    (take-step g #{} (walk startnode))))
