@@ -162,15 +162,42 @@
         (add-arcs (map (fn [[from _ w]] [from new-label w]) 
                          (arcs-to g old-label)))))) 
 
-;;Simple Connectivity Queries
+
+;;Simple Graph Walks
 ;;===========================
 
-(defn walk
+(defn depth-walk
   "A wrapper around the more thorough traversals defined in
    spork.cljgraph.search  .  Performs a depth traversal of the graph, starting 
    at startnode.  Used to define other higher order graph queries."
   [g startnode & {:keys [neighborf]}]
-  (search/depth-traversal g startnode :neighborf neighborf)) 
+  (search/depth-traversal g startnode :neighborf neighborf))
+
+(defn breadth-walk
+  "A wrapper around the more thorough traversals defined in
+   spork.cljgraph.search  .  Performs a breadth traversal of the graph, starting 
+   at startnode.  Used to define other higher order graph queries."
+  [g startnode & {:keys [neighborf]}]
+  (search/breadth-traversal g startnode :neighborf neighborf))
+
+(defn random-walk
+  "A wrapper around the more thorough traversals defined in
+   spork.cljgraph.search  .  Performs a random traversal of the graph, starting 
+   at startnode.  Used to define other higher order graph queries."
+  [g startnode & {:keys [neighborf]}]
+  (search/random-traversal g startnode :neighborf neighborf))
+
+(defn ordered-walk
+  "A wrapper around the more thorough traversals defined in
+   spork.cljgraph.search  .  Performs an ordered traversal of the graph, where 
+   the neighbors are visited in the order they were appended to the graph.
+   Starts walking from  startnode.  Used to define other higher order graph 
+   queries."
+  [g startnode & {:keys [neighborf]}]
+  (search/ordered-traversal g startnode :neighborf neighborf))
+
+;;Simple Connectivity Queries
+;;===========================
 
 ;;I may need to rethink these guys, and prefere lazy seqs, if we ever apply 
 ;;this library to large graphs or trees.  succs and preds will walk the whole 
@@ -179,16 +206,16 @@
 (defn succs
   "Returns the a set of all the nodes reachable starting from node k."
   [g k] 
-  (disj (set (:visited (walk g k :neighborf (partial sinks g))) k)))
+  (disj (set (:visited (depth-walk g k :neighborf (partial sinks g))) k)))
 
 (defn preds
   "Returns the set of all the nodes that can reach node k."
   [g k] 
-  (disj (set (:visited (walk g k :neighborf (partial sources g))) k)))
+  (disj (set (:visited (depth-walk g k :neighborf (partial sources g))) k)))
 
 (defn component
   "Returns the set of nodes that can reach or can be reached through node k."  
-  [g k] (set (:visited (walk g k :neighborf (partial neighbors g)))))
+  [g k] (set (:visited (depth-walk g k :neighborf (partial neighbors g)))))
 
 (defn components
   "Finds all components in the topograh, returning a mapping of component size 

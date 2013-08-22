@@ -57,9 +57,9 @@
                           (set (keys (:spt state)))))
 
 ;the normal mode for graph walking/searching.  
-(def default-walk {:halt? default-halt?
-                   :weightf top/arc-weight
-                   :neighborf default-neighborf})
+(def default-walk {'halt? default-halt?
+                   'weightf top/arc-weight
+                   'neighborf default-neighborf})
 
 (def limited-walk (assoc default-walk :neighborf visit-once))
 (def unit-walk    (assoc limited-walk :weightf unit-weight))
@@ -71,8 +71,8 @@
   (generic/next-fringe fringe))    
 
 
-(def search-defaults {:endnode ::nullnode
-                      :halt?     default-hault? 
+(def search-defaults {:endnode  ::nullnode
+                      :halt?     default-halt? 
                       :weightf   top/arc-weight 
                       :neighborf default-neighborf})
 
@@ -110,7 +110,8 @@
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  [g startnode & {:keys [endnode halt? neighborf weightf] :or walk-defaults}] 
+  [g startnode & {:keys [endnode halt? neighborf weightf]
+                  :or {endnode ::nullnode }}] 
   (traverse g startnode endnode
               (searchstate/empty-DFS startnode)
               :neighborf neighborf
