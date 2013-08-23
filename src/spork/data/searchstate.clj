@@ -24,8 +24,7 @@
 
 (defn- new-path*   
   "When we discover a new path via from source to sink, we add sink to the 
-   shortest path tree, register the distance, and add sink to the fringe.
-   If an estimator is provided, we apply the estimator to the "
+   shortest path tree, register the distance, and add sink to the fringe."
   [source sink w {:keys [shortest distance fringe] :as state}]
     (update-search state (assoc shortest sink source)
                          (assoc distance sink w)
@@ -65,7 +64,10 @@
                                 
 (def empty-search (searchstate. nil nil {} {} nil nil []))
 
-(defn init-search 
+(defn init-search
+  "Populates an empty search state with an initial set of parameters.  Allows
+   searches to be customized by varying the start, target, and the type of 
+   fringe used prosecute the search."
   [& {:keys [startnode targetnode fringe] 
       :or   {startnode nil targetnode nil fringe fr/depth-fringe}}]
     (assert (and (not (nil? fringe)) (generic/fringe? fringe))
@@ -90,10 +92,13 @@
 		      (recur (singleton (get spt currnode))  (cons currnode path) nil))))
    nil))
 
-;revisit these definitions....
+;;An empty depth-first search.
 (def empty-DFS (init-search :fringe fr/depth-fringe))
-(def empty-BFS (init-search :fringe fr/breadth-fringe))   
+;;An empty breadth-first search.
+(def empty-BFS (init-search :fringe fr/breadth-fringe))
+;;An empty priority-first search.
 (def empty-PFS (init-search :fringe fr/priority-fringe))
+;;An empty random-first search.
 (def empty-RFS (init-search :fringe fr/random-fringe))
 
 

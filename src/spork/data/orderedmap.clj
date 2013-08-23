@@ -118,3 +118,7 @@
   (entrySet [this] (set (.seq this))))
 
 (def empty-ordered-map (->ordered-map 0 {} (sorted-map) {} {}))
+
+(comment ;testing 
+  (def the-map (into empty-ordered-map [[:a 1] [:b 2] [:c 3]]))
+)         

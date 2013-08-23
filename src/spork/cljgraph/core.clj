@@ -1,8 +1,12 @@
 (ns spork.cljgraph.core
   (:require [spork.protocols.core :refer :all]
             [spork.cljgraph [search :as search]]
+            [spork.data [digraph :as dig]]
             [spork.util     [topographic :as top]]))
-  
+ 
+
+(def empty-graph dig/empty-digraph)
+
 ;;Graph-Backed Operations
 ;;=======================
 (defn u-arcbound [nodecount] 
@@ -255,7 +259,7 @@
       (if (< (count retained-keys) (- (count old-keys) (count retained-keys)))
           (reduce (fn [acc x] (-> (conj-node acc x (get-node g x))
                                   (add-arcs (arcs-to-clone x))))
-                  empty-topograph retained-keys)
+                  empty-graph retained-keys)
           (reduce (fn [acc x] (disj-node acc x)) g 
                   (clojure.set/difference old-keys retained-keys)))))
   ([g root-key] (subgraph g depth-walk root-key)))
@@ -269,7 +273,7 @@
 
 ;;Testing/Examples
 (comment 
-  (def the-map (into empty-ordered-map [[:a 1] [:b 2] [:c 3]]))
+
 
   ;a tree of elements:
   ;              a
@@ -279,7 +283,7 @@
   ;         k l  m n o  p q
   ;                        r s t u v w x y z a1 a2 a3 
  (defn tree-arcs [from xs] (map #(vector from %) xs))
- (def the-tree (-> empty-topograph
+ (def the-tree (-> empty-graph
                  (add-arcs (tree-arcs :a [:b :c :d]))
                  (add-arcs (conj (tree-arcs :b [:e :f]) [:d :g]))
                  (add-arcs [[:e :h] [:f :i] [:g :j]])
@@ -308,7 +312,7 @@
  ;    e -> f/^
  
  (def the-graph 
-   (-> empty-topograph
+   (-> empty-graph
        (add-arcs [[:a :b] [:b :c] [:c :d] [:e :f] [:f :c] [:b :d]]))) 
  ;a directed graph with 2 components
  ;    a -> b -> d
@@ -317,7 +321,7 @@
  ;    e -> f
  
  (def the-graph2 
-   (-> empty-topograph
+   (-> empty-graph
        (add-arcs [[:a :b] [:b :c] [:c :d] [:e :f] [:b :d]])))
  ;a directed graph with 2 components
  ;    a -> b -> d
@@ -328,7 +332,7 @@
  ;    h
  
  (def the-graph3
-   (-> empty-topograph
+   (-> empty-graph
      (add-arcs [[:a :b] [:b :c] [:c :d] [:e :f] [:b :d]])
      (conj-node :g)
      (conj-node :h)))
@@ -336,12 +340,12 @@
  ;a directed graph with 2 components
  ;    a - b - c - d - e
  (def the-list 
-   (-> empty-topograph
+   (-> empty-graph
      (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e]])))
  (def dlist (->double-list :a :e the-list))
 
- (def the-root-tree (-> empty-topograph (conj-node :root)))
- (def the-other-tree (-> empty-topograph (add-arcs (tree-arcs :a [:b :c]))))
+ (def the-root-tree (-> empty-graph (conj-node :root)))
+ (def the-other-tree (-> empty-graph (add-arcs (tree-arcs :a [:b :c]))))
  
 )
 
