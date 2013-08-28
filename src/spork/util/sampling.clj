@@ -37,6 +37,12 @@
 ;      minimum-distance:: record -> record -> float
 
 
+;;Patch
+;replacement for rand-nth, uses random number seed if provided, else defers to 
+;rand-nth 
+(defn sample-nth [xs] (nth xs (int (* (stats/*rand*) (count xs)))))
+
+
 ;Special operators for our temporal records...
 (defn record->segment
   "Convert a map into a vector of [start duration]"
@@ -233,13 +239,15 @@
    unless an alternate probabilities are provided."
   ([sample-func nodes]
     (fn [ctx] ((sample-func nodes) ctx)))
-  ([nodes] (choice rand-nth nodes)))
+  ([nodes] (choice sample-nth nodes)))
 
 ;(defn viable-weights? [pdf-map]
 ;  (or (every? integer? (vals pdf-map))
 ;      (and (every? float? (vals pdf-map)) 
 ;           (= 1.0 (float (reduce + (vals pdf-map))))))) 
         
+;;Patched to use rand binding in stats.rand 
+
 (defn weighted-choice
   "Identical to choice, except it takes a map of node->probability densities.
    Where the keys are resolvable nodes, and the densities are the probabilities
@@ -249,7 +257,7 @@
   (assert (= 1.0 (float (reduce + (vals pdf-map)))) 
           (str "Probability densities must sum to 1.0"))
   (let [nodes  (keys pdf-map) 
-        choose (fn [] (loop [r (rand)
+        choose (fn [] (loop [r (stats/*rand*)
                              xs nodes
                              ds (vals pdf-map)]
                         (cond (= (count xs) 1)  (first xs)
