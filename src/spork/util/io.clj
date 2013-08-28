@@ -16,6 +16,16 @@
               [clojure.java [io :as io]]
               [clojure [pprint :as pp]]))
 
+;;a map of the environment vars, really handy.
+(def  env-map 
+  (->> (System/getenv) (map (fn [[k v]] [(keyword k) v])) (into {})))
+
+(defn get-env
+  "Fetches an environment variable with the same name from the environment map.
+   Note, variable names are expected to be keywordized versions of their env 
+   variable names, so PATH would be :PATH, TheVar woul be :TheVar ."
+  [k] (get env-map k))
+
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
 (defn as-directory [s] 
   (if (= (subs s (dec (count s))) "\\")

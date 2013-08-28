@@ -1,3 +1,5 @@
+;;__DEPRECATE__ -> switch to spork.data.graph and spork.cljgraph.core 
+
 ;;A work-in-progress-library for persistent indexed data structures that 
 ;;retain some notion of topology.  Things like bi-directional trees, and 
 ;;doubly-linked lists, and basically any imperative structure using pointers 

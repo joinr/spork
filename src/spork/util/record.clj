@@ -1,6 +1,6 @@
 (ns spork.util.record
   (:use [spork.util.general :only [serial-comparer orient-comparer
-                             align-fields-by]]))
+                                   align-fields-by]]))
 
 (defn sub-record
   "Returns a selection of fields from r.  Automatically aligns the record

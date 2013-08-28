@@ -239,6 +239,21 @@
   [g] 
   (filter (partial island? g)  (get-node-labels g)))
 
+(defn get-roots
+  "Fetch the roots for graph g, where roots are nodes that have no inbound or 
+   source arcs.  Caller may provide a set of candidate node labels with a second
+   arg, as xs."
+  ([g xs] (filter #(top/source-node? g %) xs))
+  ([g] (get-roots g (top/get-node-labels g))))
+        
+(defn drop-roots
+  "Return the result of dropping the current set of root nodes from graph g. 
+   Root nodes are nodes that have no inbound or source arcs.  Dropping the node
+   will act akin to disj-node, and will eliminate incident arcs, possibly 
+   creating new root nodes in the resulting graph."
+  [g]
+  (reduce #(top/disj-node %1 %2) g (get-roots g)))
+
 ;;Graph Reduction and Decomposition
 ;;=================================
 
@@ -270,6 +285,32 @@
   (for [[size node-sets] (components g)
         xs               node-sets]
     (subgraph g (fn [& args] xs) (first xs))))
+
+;;Topological Sorting
+;;=================================
+
+(defn topsort
+  "Topologically sort the graph, returning a sequence of sets of topological 
+   roots.  Multiple valid topological orderings may be returned from the
+   traversing cartesian products of the result sets."
+  [g]
+	(loop [graph g
+         roots (set (get-roots g)) ;;current roots in g 
+         acc []]
+     (if (seq roots)
+       (let [xs  (mapcat (partial top/sinks graph)  roots) ;only possible new roots.
+             next-graph  (top/drop-nodes graph roots)]
+         (recur next-graph (set (get-roots next-graph xs))  (conj acc roots)))
+       (if (= (reduce + (map count acc)) 
+              (count (top/nodes g)))
+           acc
+           nil))))
+
+(defn topological-order
+  "Return an arbitrary valid topological ordering for graph g."
+  [g]
+  (persistent! 
+    (reduce (fn [acc xs] (reduce conj! acc xs)) (transient []) (topsort g)))) 
 
 ;;Testing/Examples
 (comment 
