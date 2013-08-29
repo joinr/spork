@@ -1,8 +1,7 @@
  (ns spork.cljgui.components.swing
-  (:use     [spork.cljgui.mvc])
-  (:require [spork.cljgui.graphics2d 
-                     [canvas :as j2d]
-                     [swing :as jgraphics]]
+  (:require [spork.graphics2d [canvas :as j2d]
+                              [swing :as jgraphics]]
+            [spork.mvc :refer :all]
             [spork.events [base :as events]
                           [observe :as obs]
                           [native :as native]])
@@ -696,6 +695,9 @@
 
 ;What happens when we scale the component?  We're still drawing to the 
 ;coordinate system....
+
+;;__TODO__ Rewrite paintpanel using the mvc stuff and reactives.  It's an old 
+;;implementation
 
 (defn paintpanel
   "Create a JPanel with its paint method overriden by paintf, which will be 

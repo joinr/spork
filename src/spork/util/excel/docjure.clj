@@ -1,4 +1,6 @@
 ;;Retained the original license, although I might simply rewrite docjure...
+;;Note -> There are a ton of reflection warnings, although I haven't 
+;;noticed a real speed hit yet....
 
 ;Copyright (c) 2009-2013 Martin Jul, Ative (www.ative.dk)
 ;
@@ -160,7 +162,7 @@
      (->> (map #(project-cell column-map %) row)
 	  (apply merge)))))
 
-(defn string-cell? [cell]
+(defn string-cell? [^Cell cell]
   (= Cell/CELL_TYPE_STRING (.getCellType cell)))
 
 (defn- date-or-calendar? [value]

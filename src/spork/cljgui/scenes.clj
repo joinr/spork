@@ -1,5 +1,5 @@
 (ns spork.cljgui.scenes
-  (:use [cljgui gui scenegraph behavior] ))
+  (:use [cljgui gui scenegraph behavior]))
 
 
 ;a simple scene for drawing mathematical plots...

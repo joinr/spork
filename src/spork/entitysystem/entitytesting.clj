@@ -1,5 +1,7 @@
+;;Note -> defentity is currently not working, check it out.
+
 (ns spork.entitysystem.entitytesting
-  (:use [entitysystem.store]
+  (:use [spork.entitysystem.store]
         [clojure.pprint :only [pprint]]))
 
 ;; Examples/Tests....

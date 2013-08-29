@@ -1,19 +1,19 @@
-(ns spork.util.datetime)
+(ns spork.util.datetime
+  (:import java.util.GregorianCalendar))
 
 (defn simple-date [year month day]
   (java.util.Date. (- year 1900) (dec month) day))
 
-(defn get-date []
-  (java.util.Date.))
+(defn ^java.util.Date get-date [] (java.util.Date.))
 
-(defn date->num [date]
-  (Integer/parseInt(str (+ 1900 (.getYear date)) (inc (.getMonth date)) 
+(defn ^long date->num [^java.util.Date date]
+  (Integer/parseInt (str (+ 1900 (.getYear date)) (inc (.getMonth date)) 
                         (.getDate date))))
-(defn date->time[date]
+(defn ^long date->time [^java.util.Date date]
   (.getTime date))
 
-(defn num->date [num]
-  (java.util.Date. num))
+(defn ^java.util.Date num->date [num]
+  (java.util.Date. (long num)))
 
 (defn daystream 
   ([weekday] (daystream weekday (java.util.Date.)))
@@ -24,15 +24,16 @@
   (let [daysofweek (zipmap (range 1 8) ["Sunday" "Monday" "Tuesday" 
                          "Wednesday" "Thursday" "Friday" "Saturday"])
         dayfield java.util.GregorianCalendar/DAY_OF_WEEK
-        currday (fn [cal] (.get cal dayfield))
+        currday (fn [^GregorianCalendar cal] (.get cal dayfield))
         cal (doto (java.util.GregorianCalendar.) (.setTime startdate))
-        get-weekday (fn [cal] (get daysofweek (currday cal)))
-        next-weekday (fn [cal] (do (.add cal dayfield 7) cal))
-        find-nextweekday (fn [cal] (do 
-                                     (while (not= (get-weekday cal) weekday)
-                                      (do (.add cal dayfield 1)))
-                                     cal))]
-      (letfn [(stream [wd c] 
+        get-weekday (fn [^GregorianCalendar cal] (get daysofweek (currday cal)))
+        next-weekday (fn [^GregorianCalendar cal] (do (.add cal dayfield 7) cal))
+        find-nextweekday (fn [^GregorianCalendar cal] 
+                           (do 
+                             (while (not= (get-weekday cal) weekday)
+                               (do (.add cal dayfield 1)))
+                             cal))]
+      (letfn [(stream [wd ^GregorianCalendar c] 
                 (if (not= (get-weekday c) wd)                       
                   (stream wd (find-nextweekday c))               
                   (cons (.getTime c)  

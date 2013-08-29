@@ -1,3 +1,4 @@
+;;DEPRECATE 
 ;TOM SPOON 10 July
 ;A simple package for enabling file and folder selection dialogues, assumably 
 ;from the command line.  Uses Swing GUI componenets.

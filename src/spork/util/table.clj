@@ -251,7 +251,7 @@
   "Extracts a map representation of a table, where keys are 
    fields, and values are column values. This is an unordered table."
   [tbl] 
-  (if (and (map? tbl) (not= (type tbl) util.table.column-table)) tbl
+  (if (and (map? tbl) (not= (type tbl) spork.util.table.column-table)) tbl
     (let [cols (table-columns tbl)]
       (reduce (fn [fldmap [j fld]]  (assoc fldmap fld (get cols j))) {} 
               (reverse (map-indexed vector (table-fields tbl))))))) 

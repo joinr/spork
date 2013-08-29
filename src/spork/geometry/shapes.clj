@@ -1,7 +1,9 @@
-(ns spork.cljgui.geometry.shapes
-  (:require [spork.cljgui.graphics2d [canvas :as c]
-                               [image :as image]]
-            [spork.cljgui.spatial [core :as spatial]]))
+;;Todo -> Rethink this design, now that we've merged multiple projects.  Might 
+;;be able to make it more elegant.
+(ns spork.geometry.shapes
+  (:require [spork.graphics2d [canvas :as c]
+                              [image :as image]]
+            [spork.protocols  [spatial  :as spatial]]))
 
 (defmacro defshape [name args bounds draw-body]
   `(defrecord ~name [~@args] 

@@ -1,3 +1,8 @@
+;;__TODO__ Currently the scenegraph dependency will cause this to fail.
+;;Everything else is okay.  Probably revisit this guy later though.  There is 
+;;likely a more elegant way, since this was an early attempt from a couple of 
+;;years ago...
+
 ;Tom Spoon 15 Feb 2012 
 ;This is an asynchronous drawing/state framework for implementing 
 ;model/view/controller schemes in Clojure, with Swing.  This library 
@@ -8,9 +13,10 @@
 ;form by interacting with a paintbot.  Several functions are included to allow 
 ;clients to define and access the paint bot, attach views to it, etc.
 (ns spork.cljgui.asyncdrawing
-  (:use [spork.cljgui gui]
-        [spork.cljgui.events observe native])
-  (:require [spork.cljgui [scenegraph :as sg]]))
+  (:use [spork.cljgui.components.swing]
+        [spork.cljgui.events observe native]
+        [spork.graphics2d.canvas])
+  (:require [spork.graphics2d [scenegraph :as sg]]))
 
 (def drawfuncs {:shape draw-shape 
                 :scene sg/render})

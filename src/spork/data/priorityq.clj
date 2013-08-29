@@ -1,3 +1,6 @@
+;;Optimization note: Similar to orderedmap, the basemap is trigger reflection 
+;;warnings for equiv.  Might type hint in typdef.
+
 (ns spork.data.priorityq
   "The priorityq implementation is designed for use as an auxillary data
    structure.  It relies on the sorted-map from clojure.core, although I might 

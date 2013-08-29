@@ -1,17 +1,17 @@
 ;A swing adapter for platforms in which cljgui can use swing.
 ;Currently the default, although we should have plenty of other pluggable
 ;backends. 
-(ns spork.cljgui.graphics2d.swing
-  (:use     [spork.cljgui.graphics2d.canvas])
-  (:require [spork.cljgui.graphics2d [image :as image]])
-  (:import [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
-                     GraphicsDevice GraphicsConfiguration Polygon Point 
-                     Rectangle Shape Dimension Color Transparency
-                     Component]
-           [java.awt.geom AffineTransform Point2D Rectangle2D Line2D]
-           [java.awt.image BufferedImage ImageObserver]
-           [javax.swing JFrame JComponent JPanel]
-           [javax.imageio ImageIO]))
+(ns spork.graphics2d.swing
+  (:use     [spork.graphics2d.canvas])
+  (:require [spork.graphics2d [image :as image]])
+  (:import  [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
+                      GraphicsDevice GraphicsConfiguration Polygon Point 
+                      Rectangle Shape Dimension Color Transparency
+                      Component]
+            [java.awt.geom AffineTransform Point2D Rectangle2D Line2D]
+            [java.awt.image BufferedImage ImageObserver]
+            [javax.swing JFrame JComponent JPanel]
+            [javax.imageio ImageIO]))
 
 ;Java2D wrappers....
 

@@ -1,5 +1,6 @@
-(ns spork.cljgui.spatial.quadtree
-  (:require [spork.cljgui.spatial.core :as spatial]))
+(ns spork.data.quadtree
+  (:require [spork.protocols.spatial :as spatial]
+            [spork.data.bounds :refer :all]))
 
 ;build a structure and operations to define a quadtree.
 ;for geometric primitives.

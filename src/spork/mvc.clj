@@ -1,5 +1,5 @@
 ;A separate namespace for model-view-controller protocols and paradigms.
-(ns spork.cljgui.mvc)
+(ns spork.mvc)
 
 ;IModelViewControl defines an abstract interface for us to interrogate some data
 ;and learn about useful bits relative to the Model-View-Controller paradigm.

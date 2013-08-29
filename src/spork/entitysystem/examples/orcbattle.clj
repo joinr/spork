@@ -2,7 +2,7 @@
 ;architecture....
 
 (ns spork.entitysystem.examples.orcbattle 
-  (:use [entitysystem.store]))
+  (:use [spork.entitysystem.store]))
 
 ;A record to hold the gamestate....we only really 
 ;need to keep track of our entities (via an entity store) 

@@ -1,9 +1,9 @@
 ;courtesy of Stuart Sierra 2012
 (ns spork.cljgui.flippersample
-  (:use [spork.cljgui.gui]
+  (:use [spork.cljgui.components.swing]
         [spork.cljgui.events base observe native]))
 
-(import-swing) 
+;(import-swing)
 
 (defn new-flipper []
   (agent {:total 0, :heads 0,

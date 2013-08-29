@@ -1,7 +1,7 @@
 ;This is, more or less, a port of shape primitives from Paul Hudak's 
 ;excellent book The Haskell School of Expression.  I'd like to port it 
 ;eventually...for now it's not doing anything.
-(ns spork.cljgui.geometry.primitive)
+(ns spork.geometry.primitive)
 
 ;ellipse      :: Point -> Point -> Graphic
 ;shearEllipse :: Point -> Point -> Point -> Graphic

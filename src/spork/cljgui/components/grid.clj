@@ -1,3 +1,6 @@
+;;__TODO__ Rewrite this badboy.  the scenegraph dependency and the asyncdrawing
+;;dependency will fail as it is.
+
 ;Tom Spoon Feb 13 2012
 ;This is a simple library for drawing and interacting with grids.  It's meant to
 ;serve as the basis for a visualization testbed for various graph searches, but 
@@ -6,11 +9,10 @@
 ;I ported/added via Clojure.
 
 (ns spork.cljgui.grid
-  (:use [spork.cljgui.gui]
+  (:use [spork.clgui.components.swing]
         [spork.cljgui.scenegraph] 
         [spork.cljgui.asyncdrawing]
-        [spork.cljgui.events base observe native]))
-  
+        [spork.events base observe native]))
 
 ;This serves as a testbed for visualizing various graph algorithms, specifically
 ;shortest paths, etc. 

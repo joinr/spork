@@ -3,13 +3,13 @@
 (ns spork.util.stats
   (:import [java.util.Random]))
 
-(defn pow [n x] (Math/pow n x)) 
-(defn square [n] (pow n 2)) 
-(defn sqrt [n] (Math/sqrt n)) 
-(defn ln [n] (Math/log n)) 
-(defn exp [n] (Math/exp n)) 
+(defn ^double pow [^double n ^double x] (Math/pow n x)) 
+(defn ^double square [^double n] (* n n)) 
+(defn ^double sqrt [^double n] (Math/sqrt n)) 
+(defn ^double ln [^double n] (Math/log n)) 
+(defn ^double exp [^double n] (Math/exp n)) 
 (def  E Math/E)
-(defn round [n] (Math/round n))
+(defn ^long round [^double n] (Math/round n))
 (defn distribute!
   "Provides a generating function of one argument that generates samples." 
   [f] (fn [_] (f)))
@@ -51,46 +51,47 @@
    from Simulation, Modeling, & Analysis by Law 8.3.6 on pp. 453-454."
   [m s]
   (fn []
-	  (loop [w 2]
+	  (loop [w 2.0]
 	    (let [u1 (*rand*)
 	          u2 (*rand*)
-	          v1 (dec (* 2 u1)) v2 (dec (* 2 u2))
-	          wnext (+ (square v1) (square v2))]
-	      (if (<= wnext 1)
+	          v1 (dec (* 2.0 u1)) 
+            v2 (dec (* 2.0 u2))
+	          wnext (double (+ (square v1) (square v2)))]
+	      (if (<= wnext 1.0)
 	        (+ m (* s (* v1 (pow (/ (* -2.0 (ln wnext)) wnext) 0.5))))
 	        (recur wnext))))))
 
 (defn gamma-dist
-  [alpha beta]
+  [^double alpha ^double beta]
   (fn []
-	  (if (< alpha 1)
+	  (if (< alpha 1.0)
 	    (let [b (/ (+ E alpha) E)]
-	      (loop [x 100]
-	        (if (not= x 100)
+	      (loop [x 100.0]
+	        (if (not= x 100.0)
 	          (* x beta)
 	          (let [u1 (*rand*) 
 	                u2 (*rand*)
-	                p (* b u1)]
-	            (if (< p 1)
-	              (let [y (pow p (/ 1 alpha))]
-	                (recur (if (<= u2 (exp (* -1 y))) y x)))
-	              (let [y (* -1 (ln (/ ( - b p) alpha)))]
+	                p  (* b u1)]
+	            (if (< p 1.0)
+	              (let [y (double (pow p (/ 1.0 alpha)))]
+	                (recur (if (<= u2 (exp (* -1.0 y))) y x)))
+	              (let [y (* -1.0 (ln (/ ( - b p) alpha)))]
 	                (recur (if (<= u2 (pow y (dec alpha))) y x))))))))
-	    (let [a (/ 1 (sqrt (dec (* 2 alpha))))
+	    (let [a (/ 1.0 (sqrt (dec (* 2.0 alpha))))
 	          b (- alpha (ln 4.0))
-	          q (+ alpha (/ 1 a))
+	          q (+ alpha (/ 1.0 a))
 	          th 4.5
 	          d (inc (ln th))]
-	      (loop [x 100]
-	        (if (not= x 100)
+	      (loop [x 100.0]
+	        (if (not= x 100.0)
 	          (* x beta)
 	          (let [u1 (*rand*)
 	                u2 (*rand*)
-	                v (* a (ln (/ u1 (- 1 u1))))
+	                v (* a (ln (/ u1 (- 1.0 u1))))
 	                y (* alpha (exp v))
-	                z (* u2 (pow u1 2))
+	                z (* u2 (pow u1 2.0))
 	                w (- (+ b (* q v)) y)]
-	            (if (or (>= (- (+ w d) (* th z)) 0)
+	            (if (or (>= (- (+ w d) (* th z)) 0.0)
 	                    (>= w (ln z)))
 	              (recur y)
 	              (recur x)))))))))

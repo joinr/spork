@@ -1,5 +1,5 @@
-(ns spork.cljgui.graphics2d.debug
-  (:require [cljgui.graphics2d.canvas]))
+(ns spork.graphics2d.debug
+  (:require [spork.graphics2d.canvas]))
 
 (def ^:dynamic *debug-graphics* false)
 (def commands (atom []))

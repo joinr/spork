@@ -4,8 +4,8 @@
 ;especially for rendering sprites and other goodies.
 ;So we define a simple class that can provide a default implementation for 
 ;make-bitmap, which "everyone" can use....
-(ns spork.cljgui.graphics2d.image
-  (:use [spork.cljgui.graphics2d.canvas])
+(ns spork.graphics2d.image
+  (:use [spork.graphics2d.canvas])
   (:import [java.awt GraphicsEnvironment  GraphicsDevice GraphicsConfiguration 
             Transparency Graphics2D]
            [java.awt.image BufferedImage ImageObserver]

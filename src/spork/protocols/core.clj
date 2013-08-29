@@ -2,6 +2,12 @@
 ;;Only protocols that are fairly generic, and see usage through multiple 
 ;;components will show up here.  Other components may have more localized, 
 ;;or specific protocols unique to their domain.
+
+;;Optimization note: there may be a problem with prefixing protocols with a 
+;;dash, at least in the jvm clojure.  I adopted that convention from 
+;;clojurescript, and it seems to cause some reflection issues.  We'll see 
+;;if it's actually a sticking point, or if the protocols work just fine.
+
 (ns spork.protocols.core)
 
 ;;Common function used throughout Spork.

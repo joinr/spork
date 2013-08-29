@@ -1,8 +1,10 @@
+;;Currently broken, need to update to use the reactive behaviors in a different
+;;package. Mostly rerouting.
 (ns spork.cljgui.animation.example
-  (:use [spork.cljgui.graphics2d.canvas]
-        [spork.cljgui.geometry.shapes]
-        [spork.cljgui.behavior]
-        [spork.cljgui.scene.scenegraph]
+  (:use [spork.graphics2d.canvas]
+        [spork.geometry.shapes]
+;        [spork.behavior] ;Broken at the moment, need to point to a reactive
+        [spork.scene.scenegraph]
         [spork.cljgui.components.swing])
   (:import [java.awt Graphics2D]
            [java.awt.event ActionListener]

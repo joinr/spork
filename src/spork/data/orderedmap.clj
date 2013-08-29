@@ -4,6 +4,10 @@
 ;;to maintain a separate table of ordering, but it's reasonable for the 
 ;;data sets currently used.  In the future, there may be some space effeciencies
 ;;to be gained.
+
+;;Optimization note: basemap in the typedef warns on reflection.  Might type 
+;;hint that, but should profile to see if it matters.
+
 (ns spork.data.orderedmap
   (:require [spork.protocols [core :as generic]]))
 

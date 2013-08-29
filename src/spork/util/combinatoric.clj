@@ -80,13 +80,13 @@
 ;;from n elements.
 
 ;;Better implementations of choose.
-(defn ^long choose-rec [^long n ^long k]
+(defn ^long choose [^long n ^long k]
     (if (= k 0) 1
-        (quot (* n (choose-aux (unchecked-dec n) (unchecked-dec k))) k)))
+        (quot (* n (choose (unchecked-dec n) (unchecked-dec k))) k)))
 
-(defn big-choose-rec [^long n ^long k]
+(defn big-choose [^long n ^long k]
     (if (= k 0) 1
-        (/ (*' n (choose-aux (dec n) (dec k))) k)))
+        (/ (*' n (big-choose (dec n) (dec k))) k)))
 
 (defn digits->idx 
   ([^long k digitvec]

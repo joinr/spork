@@ -1,3 +1,5 @@
+;;An implementation of an entity store, based on an entity-component
+;;architecture.  
 (ns spork.entitysystem.store)
 
 ;A component-based architecture is a collection of Domains, Systems, Components,
