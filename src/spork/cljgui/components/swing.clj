@@ -660,7 +660,7 @@
 
 (defn- guitype [c]
   (cond 
-    (= (class c) cljgui.mvc.modelview) :modelview
+    (= (class c) spork.mvc.modelview) :modelview
     (or (instance? javax.swing.JComponent c)
         (instance? java.awt.Component c) )   :component
     (satisfies? j2d/IShape c) :shape
