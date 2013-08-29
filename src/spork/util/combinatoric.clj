@@ -512,19 +512,21 @@
 ;   [213 362 685 740 902]
 ;   [274 450 465 555 936]
 ;   [368 423 570 663 795])
-  
-  (def alphabet-quadruples (span alphabet 4)) 
-;  (["A" "B" "C" "D"]
-;   ["A" "H" "L" "Z"]
-;   ["B" "E" "I" "U"]
-;   ["C" "D" "E" "F"]
-;   ["C" "M" "O" "P"]
-;   ["D" "L" "O" "Q"]
-;   ["E" "N" "O" "U"]
-;   ["G" "H" "O" "P"]
-;   ["H" "O" "Q" "Y"]
-;   ["K" "M" "P" "R"])
 
+;;This is possibly wrong.  Original test data might've been wrong though..
+  (def alphabet-quadruples (span alphabet 4)) 
+;(("A" "B" "C" "D")
+; ("A" "I" "J" "V")
+; ("B" "E" "W" "Z")
+; ("C" "D" "N" "W")
+; ("C" "Q" "R" "X")
+; ("D" "P" "Q" "W")
+; ("F" "G" "H" "N")
+; ("G" "J" "P" "W")
+; ("I" "J" "P" "V")
+; ("K" "P" "V" "W"))
+
+  (def num-lits (span (vec (map (comp keyword str) (range 26))) 4)) 
 ;a map-like structure
 (def the-map (combinatoric-map alphabet 2))
 (def random-pairs 
@@ -579,165 +581,4 @@
 
 (profile-combinatoric-map 1000 the-map)    
 
-)
-
-;;Extraneous auxillary functions.  Not really needed.
-(comment 
-(defn ^longs make-digits [^long n] (long-array (range n)))
-
-(defn make-combination [n k]  
-  (->combination (big-combination? n k) n k (make-digits k)))
-
-(defn view-combination [^combination {:keys [n k digits]}]
-  [n k (seq digits)])
-
-;;Used old naive searches.
-(defn ^combination int->combinadic
-  "Given a combinatorial basis, n choose k, represents a target integer as a 
-   combinadic, or a combination of k digits, which composed under the 
-   combinatorial basis, equal target.  We compute the combinadic from
-   most-significant to least-significant digit."
-  [^long n ^long k ^long target]
-  (let [ds (long-array k (long 0))]
-    (loop [n-bound   n
-           kdx       0
-           current-k k
-           acc target]
-      (if (= kdx k) (->combination false n k ds)
-        (let [n-chosen  (naive-choice-search n-bound current-k acc)                          
-              delta     (choose n-chosen current-k)]
-          (aset ds kdx n-chosen)                                  
-          (recur n-chosen 
-                 (unchecked-inc kdx) 
-                 (unchecked-dec current-k) 
-                 (unchecked-subtract acc delta)))))))
-
-(defn ^combination bigint->combinadic
-  "Identical to int->combinadic, but applies to big (arbitrary precision) 
-   integers"
-  [^long n ^long k target]
-  (let [ds (long-array k (long 0))]
-    (loop [n-bound   n
-           kdx       0
-           current-k k
-           acc target]
-      (if (= kdx k) (->combination true n k ds)
-        (let [n-chosen  (big-naive-choice-search n-bound current-k acc)                          
-              delta     (big-choose n-chosen current-k)]
-          (aset ds kdx n-chosen)                                  
-          (recur n-chosen 
-                 (unchecked-inc kdx) 
-                 (unchecked-dec current-k) 
-                 (-' acc delta)))))))
-
-;;Old reify implementations.  Now ported to deftype.
-(comment 
-    (reify 
-      Object
-      (toString [this] (str "#collective.combinatoric.lexmap" [n k]))      
-
-      clojure.lang.ILookup
-      ; valAt gives (get pm key) and (get pm key not-found) behavior
-      (valAt [this item] (mapping item))
-      (valAt [this item not-found] (mapping item))
-      
-      clojure.lang.IPersistentMap
-      (count [this] size)
-      (assoc [this item priority] (no-op))        
-      (empty [this] this)
-      
-      ; cons defines conj behavior
-      (cons [this e] (no-op))
-      (equiv [this o] (.equiv v o))
-      (hashCode [this] (.hashCode v))
-      (equals [this o] (identical? this o))
-      
-      ;containsKey implements (contains? pm k) behavior
-      (containsKey [this item] (< item (dec size)))
-      (entryAt [this k]
-        (let [v (.valAt this k this)]
-          (when-not (identical? v this) ;might need to yank this guy.
-            (MapEntry. k v))))
-      (seq [this] 
-        (map-indexed (fn [i k] (MapEntry. i (mapping i))) (range size))) 
-;      ;without implements (dissoc pm k) behavior
-      (without [this item] (no-op))
-      
-      Iterable
-      (iterator [this] (clojure.lang.SeqIterator. (seq this)))
-      
-      clojure.lang.IFn
-      ;makes priority map usable as a function
-      (invoke [this k] (.valAt this k))
-      (invoke [this k not-found] (.valAt this k not-found))
-      
-;      clojure.lang.IObj
-;      ;adds metadata support
-;      (meta [this] {})
-;      (withMeta [this m] (no-op))
-      
-      clojure.lang.Reversible
-      (rseq [this]
-        (seq (map (fn [i] (MapEntry. i (mapping i))) (reverse (range size))))))
-)
-
-;;Old choose implementations, ported from C#.  Found better recursive
-;;multiplicative versions.
-(defn ^long choose [^long n ^long k]
-  (assert (and (>= n 0) (>= k 0)) "Both n and k must be non-negative!")
-  (cond 
-    (< n k) 0
-    (= n k) 1
-    :else 
-    (let [width (if (< k (- n k)) (- n k) k)
-          imax  (if (< k (- n k)) k (- n k))]
-      (loop [ans (long (inc width))
-             idx 2]
-        (if (> idx imax)  ans
-            (recur (quot (* ans (+ width idx)) idx) (unchecked-inc idx)))))))
-
-;;Identical to __choose__, but allows big (aribtrary precision) integers.
-(defn big-choose [^long n ^long k]
-    (assert (and (>= n 0) (>= k 0)) "Both n and k must be non-negative!")
-    (cond 
-      (< n k) 0
-      (= n k) 1
-      :else 
-      (let [width (if (< k (- n k)) (- n k) k)
-            imax  (if (< k (- n k)) k (- n k))]
-        (loop [ans (inc' width)
-               idx 2]
-          (if (> idx imax)  ans
-            (recur (/ (*' ans (+ width idx)) idx) (inc idx)))))))
-
-
-;;Old naive methods, replaced by binary search.
-(defn naive-choice-search
-  "Currently default search function that, given n elements chosen k at a 
-   time, and a target quantity, finds the lowest value for n, such that 
-   (choose n k) is less than or equal to the target.  Uses a naive iterative 
-   method for decreasing values of n."
-  [^long n ^long k ^long target]
-  (case target 
-        0  (dec k)
-        1  k          
-    (loop [v (dec n)]     
-      (if (<= (choose v k) target)
-        v
-        (recur (dec v))))))
-
-;;Note -> this is going to be slower than molasses! If we're working with 
-;;really large combinations, n could be the upper bound of long integers.
-;;Neeed to get binary search working!
-
-(defn big-naive-choice-search
-  "Identical to the naive search, but applicable to big (arbitrary precision) 
-   integers."
-  [^long n ^long k target]
-  (cond (= target 0) (dec' k)
-        (= target 1)  k   
-        :else (loop [v (dec' n)]     
-                (if (<= (big-choose v k) target)
-                  v
-                  (recur (dec' v))))))
 )
