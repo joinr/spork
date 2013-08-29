@@ -6,6 +6,7 @@
                           [observe :as obs]
                           [native :as native]])
   (:import [java.util Vector]
+        ;   [java.io OutputStream PrintStream]
            [javax.swing JFrame JPanel Box BoxLayout JTextField JSplitPane
             JLabel JButton JOptionPane JScrollPane Timer SwingUtilities
             JFileChooser JTable JFrame JMenuBar JMenu JMenuItem JTextArea
@@ -558,7 +559,7 @@
   [& {:keys [title editable?] :or {title "Log" editable? false}}]
   (let [logbox (text-area :enabled? editable?)
         append-text (fn [x] (.append logbox (str x)))
-        clear-text (fn [] (.setText logbox ""))]
+        clear-text  (fn []  (.setText logbox ""))]
     (make-modelview
       {:get-text (fn [] (.getText logbox))} 
       (scroll-pane logbox)
@@ -569,6 +570,24 @@
        :clear-text  (->> (obs/make-observable)
                       (obs/subscribe clear-text))}
       nil)))
+
+;;Incorporated from elsewhere...jvmnotebook.org or something.
+;(defn textarea-stream-class [textarea]
+;  (proxy [OutputStream] []
+;		 (write [data]
+;				(. textarea (append "!!!")))))
+;
+;(defn init-textarea-stream [textarea]
+;  (let [out (new PrintStream (textarea-stream-class textarea))]	
+;	;; Redirect standard output stream to the TextAreaOutputStream
+;    (. System (setOut out))
+;	;; Redirect standard error stream to the TextAreaOutputStream
+;	  (. System (setErr out))))
+;
+;(defn stream->observable [])
+;(defn observed-err [])
+
+
 
 (defn simple-repl
   "Makes a very rudimentary embedded repl.  This is still in Alpha, needs to 
@@ -584,7 +603,7 @@
         read!       (fn [] (read-string (.getText input)))
         eval-       (fn [form] [form (try  (eval form)
                                        (catch Exception e 
-                                         (.getMessage e)))])        
+                                         (str "Exception " (.getMessage e))))])        
         print!      (fn [[form res]] (do (swap! history conj form) 
                                    (obs/notify! write-line!                                      
                                       (add-prompt form))
