@@ -42,31 +42,31 @@
          (vector (.getColumnIndex c) (read-cell c))) 
        (iterator-seq (.iterator r))))
 
+;;causing problems here...
 (defn row->vec [^Row r & [bound]]
   (let [bounded? (if (not (nil? bound)) 
                    (fn [n] (> n bound))
-                   (fn [_] false))]                   
+                   (fn [_] false))
+        vs (seq r)]
     (loop [acc []
            idx (int 0)
-           xs  (iterator-seq (.iterator r))]
+           xs   vs]
       (cond (empty? xs) acc           
             (bounded? idx) (subvec acc 0 bound)
-            :else (let [^Cell x (first xs)
+            :else (let [^Cell x (first xs)                       
                         y (read-cell x)
-                        i (.getColumnIndex x)
+                        i (.getColumnIndex x)                        
                         missed (reduce conj acc (take (- i idx) (repeat nil)))]
                     (recur (conj missed y) (inc i) (rest xs)))))))
-
-
 (defn rows->table
   "Converts an excel worksheet into a columnar table.  Assumes first row defines 
    field names."
   [xs] 
   (when (seq xs)
     (let [rows (->> xs 
-                 (reduce (fn [acc r] 
-                           (conj acc (row->vec r))) 
-                         []))
+                 (reduce (fn [acc r]
+                             (conj acc (row->vec r))))
+                         [])
           fields (first (subvec rows 0 1))
           records (v/transpose (subvec rows 1))]
 ;      records)))
@@ -96,14 +96,16 @@
   "Fetch a seq of contiguous rows, starting at startrow.  Rows may have
    noncontiguous cells, however...."
   [sheet]
-  (let [parts 
-        (->> (row-seq sheet)       
-          (map    (fn [^Row row] [(.getRowNum row) row]))    
-          (partition 2 1)
-          (filter (fn [[[i1 _] [i2 _]]] (= i1 (dec i2)))))]
-    (flatten 
-      (concat (map second (first parts)) 
-              (map (comp second second) (rest parts))))))
+  (let [rows (row-seq sheet)
+        parts (->> rows       
+                (map    (fn [^Row row] [(.getRowNum row) row]))    
+                (partition 2 1)
+                (filter (fn [[[i1 _] [i2 _]]] (= i1 (dec i2)))))]
+    (if (empty? parts)
+        rows
+        (flatten 
+          (concat (map second (first parts)) 
+                  (map (comp second second) (rest parts)))))))
 
 ;(defn tabular-region
 ;  "Assumes that sheet represents a table, in which case, the upper-left 
@@ -154,10 +156,11 @@
    field names.  Truncates remaining dataset to the contiguous, non-nil fields 
    in the first row."
   [sheet] 
-  (let [rows    (tabular-region sheet)
-        fields  (first rows)
-        records (v/transpose (vec (rest rows)))]      
-      (tbl/make-table fields records)))  
+  (let [rows    (tabular-region sheet)]
+    (when-let [fields  (first rows)]
+      (if-let [records (vec (rest rows))]
+        (tbl/make-table fields (v/transpose  records))
+        (tbl/make-table fields)))))
 
 (defn wb->tables
   "Extract sheets from the workbook located at wbpath, coercing them to tables 
