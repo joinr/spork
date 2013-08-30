@@ -525,7 +525,7 @@
 ; design to support the as syntax.
 ; [:age   (fn [i rec] (* 10 i))]
 
-(defmulti computed-field  (fn [x] (if (fn? x) :function (type x))))
+(defmulti  computed-field  (fn [x] (if (fn? x) :function (type x))))
 (defmethod computed-field :function [f] (fn [i rec] (f i rec)))
 (defmethod computed-field clojure.lang.Keyword [k]  (fn [i rec] (get rec k)))
 
@@ -561,11 +561,16 @@
              unique true orderings nil }}]
   (select- fields from where unique orderings)) 
 
+
+;;Note -> this isn't quite so hot, but it's a general failsafe.
+;;It's much much better to use a standard parser for each field, if the 
+;;field is a known type.
+
 (defn parse-string 
 	"Parses a string, trying various number formats.  Note, scientific numbers,
 	 or strings with digits sandwiching an E or an e will be parsed as numbers,
 	 possibly as Double/POSITIVE_INFINITY, i.e. Infinity."
-	[value]	
+	[^String value]	
   (try (Integer/parseInt value)
     (catch NumberFormatException _
       (try (Double/parseDouble value)
@@ -580,7 +585,7 @@
 	"Parses a string, trying various number formats.  Scientific numbers,
 	 or strings with digits sandwiching an E or an e will be kept as strings.  
 	 Helpful in contexts where there are alphanumeric string values."
-	[value]
+	[^String value]
 	(if-let [res (re-find scientific-reg value)]
 		value
 		(parse-string value)))
