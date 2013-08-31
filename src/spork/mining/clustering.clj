@@ -11,56 +11,66 @@
 (defn sum-squares [xs] (sum (map square xs)))
 
 ;;probably core functionality....
+;;Note! segaran injects 1-r at the end! 
 (defn pearson
   "Pearson's correlation coeffecient, probably."
   [v1 v2]
-  (let  [n           (count v1)
-         [sum1 sum2] (map #(reduce + %) [v1 v2])
-         [ss1 ss2]   (map sum-squares   [v1 v2])
+  (let  [n           (count v1)         
+         [sum1 sum2] [(sum v1) (sum v2)]
+         [ss1 ss2]   [(sum-squares v1) (sum-squares v2)]
          psum        (sum (map * v1 v2))
          numer       (- psum (/ (* sum1 sum2) n))
          denom       (java.lang.Math/sqrt 
-                       (* (- ss1 (/ (square sum1) n))
-                          (- ss2 (/ (square sum2) n))))]
-    (if (== 0.0 denom) 0.0
-        (dec (/ numer denom)))))
+                       (*  (- ss1 (/ (square sum1) n))
+                           (- ss2 (/ (square sum2) n))))]
+    (if (= 0.0 denom) 0.0
+        (/ numer denom))))
 
 ;;compute the element-wise average of two vectors.  This is a bit slow.
 (defn avg-vec [xs ys] (vec (map (fn [x y] (/ (+  x y) 2.0)) xs ys))) 
 
 ;;a simple node scheme.
 (defrecord bicluster [vec left right distance id])
+(defn all-pairs [xs]
+  (let [xs (vec xs)
+        l  (count xs)]
+    (for [i (range l)
+          j (range (inc i) l)]
+      [i j])))
 ;;rows are vectors of numbers.
 ;;Note -> I changed his vector/array-based version to a map-based version.
-;;It's more efficient.
-(defn hierarchical-cluster [rows & {:keys [distance] :or {distance pearson}}]
+;;It's more efficient.  Even still, this could be quite a bit faster.  If we 
+;;used primitive arithmetic, and dropped seq usage.  There's room for 
+;;optimization.
+(defn hierarchical-cluster [rows & {:keys [distance] 
+                                    :or {distance #(- 1.0 (pearson %1 %2))}}]
   (loop [distances {} ;cache of distance calcs
          nextid    -1
          clust (into {} (map-indexed 
                           (fn [i v] [i (->bicluster v nil nil 0.0 i)]) rows))]   
-    (if (= (count clust) 1) (first (vals clust))
-      ;loop through all pairs looking for smallest distance.
-      (let [get-node          (fn [k] (get clust k))
-            get-distance      (fn [l r] (distance (:vec l) (:vec r)))
-            cluster-idx-pairs (partition 2 1 (keys clust))
-            lowest-pair0      (first cluster-idx-pairs)
-            closest0          (apply get-distance (map get-node lowest-pair0))                     
-            [closest lowest dists] 
-                         (reduce (fn [[closest lowest-pair dists] pair]
-                            (let [[l r] (map get-node pair)                                  
-                                  dists (if (contains? dists pair) dists
-                                          (assoc dists pair (get-distance l r)))
-                                  d     (get dists pair (get-distance l r))]
-                              (if (< d closest) 
-                                [d pair dists]
-                                [closest lowest-pair dists])))  
-                          [closest0 lowest-pair0 distances] cluster-idx-pairs)                         
-            [l r]      (map get-node lowest)
-            merged-vec  (avg-vec (:vec l) (:vec r))            
-            new-cluster (->bicluster merged-vec l r closest nextid)]
-        (recur dists (dec nextid) (-> (dissoc clust (first lowest))
-                                      (dissoc (second lowest))
-                                      (assoc nextid new-cluster)))))))
+    (if (= (count clust) 1) (first (vals clust))      
+          ;loop through all pairs looking for smallest distance.
+          (let [get-node          (fn [k] (get clust k))
+                get-distance      (fn [l r] (distance (:vec l) (:vec r)))
+                cluster-idx-pairs (all-pairs (keys clust))
+                lowest-pair0      (first cluster-idx-pairs)
+                closest0          (apply get-distance (map get-node lowest-pair0))                     
+                [closest lowest dists] 
+                (reduce (fn [[closest lowest-pair dists] pair]
+                          (let [[l r] (map get-node pair)                                  
+                                dists (if (contains? dists pair) dists
+                                        (assoc dists pair (get-distance l r)))
+                                d     (get dists pair (get-distance l r))]
+                            (if (< d closest) 
+                              [d pair dists]
+                              [closest lowest-pair dists])))  
+                        [closest0 lowest-pair0 distances] cluster-idx-pairs)                         
+                [l r]      (map get-node lowest)
+                merged-vec  (avg-vec (:vec l) (:vec r))            
+                new-cluster (->bicluster merged-vec l r closest nextid)]
+            (recur dists (dec nextid) (-> (dissoc clust (first lowest))
+                                        (dissoc (second lowest))
+	                                      (assoc nextid new-cluster)))))))
 
 (defn print-cluster [clust & {:keys [branch? get-label n] 
                               :or   {branch? (fn [c] (< (:id c) 0)) 
@@ -97,7 +107,7 @@
   (let [db (read-blog-data (blog-data))
         the-cluster (hierarchical-cluster
                       (#(if limit (take limit %) %) (:data db)))]
-    (print-cluster the-cluster :get-label (:lookup db))))
+   (print-cluster the-cluster :get-label (:lookup db))))
 
 )                         
 
