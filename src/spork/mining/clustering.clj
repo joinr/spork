@@ -5,12 +5,15 @@
   (:require [spork.mining [core :as core]]
             [spork.util   [table :as tbl]]
             [spork.data   [priorityq :as pq]]
-            [spork.cljgui.components [swing :as gui]]))
+            [spork.cljgui.components [swing :as gui]]
+            [spork.util [zip :as zip]] ;added zipper operations
+            ))
 
-(defn sum [xs]   (loop [acc 0.0
-                        idx 0]
-                   (if (= idx (count xs)) acc
-                     (recur (+ acc (nth xs idx)) (unchecked-inc idx)))))
+(defn sum [xs]   
+  (loop [acc 0.0
+         idx 0]
+    (if (= idx (count xs)) acc
+      (recur (+ acc (nth xs idx)) (unchecked-inc idx)))))
 (defn square [x] (* x x))
 (defn sum-squares [xs] 
   (loop [acc 0.0
@@ -25,11 +28,8 @@
       (if (== idx b) (persistent! acc)
           (recur  (conj! acc (* (nth xs idx) (nth ys idx)))
                   (unchecked-inc idx))))))
-         
-         
 
-(defn  sum* [^doubles xs] 
-  (areduce xs idx acc 0.0 (+ acc (aget xs idx))))
+(defn sum* [^doubles xs] (areduce xs idx acc 0.0 (+ acc (aget xs idx))))
 (defn square* [^double x] (* x x))
 (defn sum-squares* [^doubles xs] 
   (areduce xs idx acc 0.0 (+ acc (square* (aget xs idx)))))
@@ -55,14 +55,15 @@
     (if (== 0.0 denom) 0.0
         (/ numer denom))))
 
+;;Faster version of pearson that uses primitive arrays 
 (defn pearson* [^doubles v1 ^doubles v2]
     (let  [n     (alength v1)
-           sum1  (sum* v1) ;(areduce v1 idx acc 0.0 (+ acc (aget v1 idx)))
-           sum2  (sum* v2) ;(areduce v2 idx acc 0.0 (+ acc (aget v2 idx)))
-           ss1   (sum-squares* v1) ;(areduce v1 idx acc 0.0 (+ acc (square* (aget v1 idx))))
-           ss2   (sum-squares* v2) ;(areduce v2 idx acc 0.0 (+ acc (square* (aget v2 idx))))
+           sum1  (sum* v1) 
+           sum2  (sum* v2) 
+           ss1   (sum-squares* v1) 
+           ss2   (sum-squares* v2) 
            pdot  (dot* v1 v2)
-           psum  (sum* pdot);(areduce pdot idx acc 0.0 (+ acc (aget pdot idx)))
+           psum  (sum* pdot)
            s1    (* sum1  sum2)
            numer   (- psum (/  s1   n))
            denom  (java.lang.Math/sqrt 
@@ -76,16 +77,61 @@
 (defn ^doubles avg-vec* [^doubles xs ^doubles ys]
   (amap xs idx acc (* (* (aget xs idx) (aget ys idx)) 0.5)))  
 
-
-;;a simple node scheme.
-(defrecord bicluster [^doubles vec left right ^double distance id])
-(defn all-pairs [xs]
-  (let [xs (vec xs)
+(defn all-pairs [xs]  
+  (let [xs (vec xs)  
         l  (count xs)]
-    (for [i (range l)
+    (for [i (range l) 
           j (range (inc i) l)]
       [(nth xs i) (nth xs j)])))
 
+;;a simple node scheme.
+(defrecord bicluster [^doubles vec left right ^double distance id])
+
+(defn ^bicluster merge-cluster [^bicluster l ^bicluster r]
+  (->bicluster (avg-vec* (:vec l) (:vec r)) l r (keyword (gensym "branch"))))
+(defn get-children [^bicluster c]
+    (seq (remove nil? [(:left c) (:right c)])))
+(defn ^bicluster append-child [^bicluster c child]
+  (let [cs (get-children c)
+        k  (count cs)]
+    (case k 
+      0 (assoc c :left child)  
+      1 (assoc c :right child)
+      2 (merge-cluster c child))))
+
+(defn ^bicluster append-children [^bicluster c xs] (reduce append-child c xs))  
+(defn c-zipper [^bicluster root]
+  (zip/zipper (fn [n] true) get-children append-children root))
+
+(extend-protocol zip/IZippable 
+  bicluster   
+  (-branch?       [x] (fn [_] true))
+  (-get-children  [x] get-children)
+  (-append-child  [x] append-child))  
+
+(defn walk-cluster [c] 
+  (loop [z (zip/as-zipper c)]
+    (if (zip/end? z) nil
+      (if-let [nd (zip/node z)]
+           (let [lid (:id (:left nd))
+                 rid (:id (:right nd))
+                 _   (println [(:id nd) lid rid])]
+             (recur (zip/next z)))
+          (do (println :bottom)
+              nil)))))
+;;biclusters now support generic zipping.
+(defn relabel-cluster
+  "Change the labels in a cluster to the values matching label-map.
+   Leaves non-matches alone."
+  [c label-map]
+  (let [relabel (fn [k] (get label-map k k))]
+	  (zip/map-zipper #(update-in % [:id] relabel) c)))     
+
+(defn summarize-cluster
+  "Useful for printing detailed information, drops the potentially large 
+   vector weights from the clusters."
+  [c]
+  (zip/map-zipper #(dissoc % :vec) c))
 
 ;;A more efficient algorithm for hierarchical clustering, based on the 
 ;;assumption that distance does not change.  We use a priority queue to manage
@@ -192,7 +238,6 @@
         (print-cluster (:left clust) :branch? branch? :get-label get-label :n (inc n)))
       (when (:right clust) 
         (print-cluster (:right clust) :branch? branch? :get-label get-label :n (inc n)))))
-
         
 ;;testing 
 (comment 
@@ -202,26 +247,34 @@
  ;;If we didn't have the table lib, we could do it the way segaran does, with 
  ;;a file-scraper.
 (defn blog-data [] (tbl/tabdelimited->table (core/get-dataset :blog)))
-(defn read-blog-data [tbl]
-  (let [blognames (tbl/table-rows (tbl/select :fields [:Blog] :from tbl))
+(defn read-blog-data [tbl & {:keys [blog-filter]}]  
+  (let [valid?    (set blog-filter)
+        tbl       (if blog-filter 
+                    (tbl/select :from tbl :where #(valid? (:Blog %)))
+                    tbl) 
+        blognames (tbl/table-rows (tbl/select :fields [:Blog] :from tbl))
         words     (subvec (tbl/table-fields tbl) 1) ;drop blog from the fields        
         lookup    (fn [id] (nth blognames id))
         data      (tbl/table-rows (tbl/drop-field :Blog tbl))]
    ;Return a map of useful data
    {:names blognames :words words :data  data  :lookup lookup}))    
-
+(def sample-blogs ["John Battelle's Searchblog"
+                   "Search Engine Watch Blog"
+                   "Read/WriteWeb"
+                   "Official Google Blog"
+                   "Search Engine Roundtable"
+                   "Google Operating System"
+                   "Google Blogoscoped"])
+(def small-db (read-blog-data (blog-data) :blog-filter sample-blogs))  
 (def db (read-blog-data (blog-data)))
-(defn compute-cluster [f]   (f (:data db)))
+(defn compute-cluster [f & [database]] (f (:data (or database db))))
 
-(defn display-clusters [& [limit]]
-  (let [db (read-blog-data (blog-data))
-        the-cluster (hierarchical-cluster
-                      (#(if limit (take limit %) %) (:data db))
-                      :distance pearson*)]
-   (print-cluster the-cluster :get-label (:lookup db))))
+(defn display-clusters [the-cluster & [database]]
+  (print-cluster the-cluster :get-label (:lookup (or database db))))
+(defn display-sample-cluster []
+  (display-clusters (compute-cluster hierarchical-cluster small-db) small-db))
 
 )                         
-
 
 ;;Older Performance tweaks
 (comment 
