@@ -31,16 +31,18 @@
 ;;a simple node scheme.
 (defrecord bicluster [vec left right distance id])
 ;;rows are vectors of numbers.
+;;Note -> I changed his vector/array-based version to a map-based version.
+;;It's more efficient.
 (defn hierarchical-cluster [rows & {:keys [distance] :or {distance pearson}}]
   (loop [distances {} ;cache of distance calcs
          nextid    -1
-         clust (vec (map-indexed 
-                      (fn [i v] (->bicluster v nil nil 0.0 i)) rows))]   
-    (if (= (count clust) 1) (first clust)
+         clust (into {} (map-indexed 
+                          (fn [i v] [i (->bicluster v nil nil 0.0 i)]) rows))]   
+    (if (= (count clust) 1) (first (vals clust))
       ;loop through all pairs looking for smallest distance.
-      (let [get-node          (fn [k] (nth clust k))
+      (let [get-node          (fn [k] (get clust k))
             get-distance      (fn [l r] (distance (:vec l) (:vec r)))
-            cluster-idx-pairs (partition 2 1 (range (count clust)))
+            cluster-idx-pairs (partition 2 1 (keys clust))
             lowest-pair0      (first cluster-idx-pairs)
             closest0          (apply get-distance (map get-node lowest-pair0))                     
             [closest lowest dists] 
@@ -56,7 +58,9 @@
             [l r]      (map get-node lowest)
             merged-vec  (avg-vec (:vec l) (:vec r))            
             new-cluster (->bicluster merged-vec l r closest nextid)]
-        (recur dists (dec nextid) (conj (subvec clust 2) new-cluster))))))
+        (recur dists (dec nextid) (-> (dissoc clust (first lowest))
+                                      (dissoc (second lowest))
+                                      (assoc nextid new-cluster)))))))
 
 (defn print-cluster [clust & {:keys [branch? get-label n] 
                               :or   {branch? (fn [c] (< (:id c) 0)) 
