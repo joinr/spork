@@ -16,14 +16,14 @@
         (throw (Exception. "dunno how to get resources in jar yet"))
         path)))
   
-(def datasets {:blog "\\spork\\mining\\sampledata\\blogdata.txt"
+(def datasets {:blog        "\\spork\\mining\\sampledata\\blogdata.txt"
                :addresslist "\\spork\\mining\\sampledata\\addresslist.txt"
                :agesonly    "\\spork\\mining\\sampledata\\agesonly.csv"
-               :articles "\\spork\\mining\\sampledata\\articles.txt"
-               :features "\\spork\\mining\\sampledata\\features.txt"
-               :feedlist "\\spork\\mining\\sampledata\\feedlist.txt"
-               :schedule "\\spork\\mining\\sampledata\\schedule.txt"
-               :matchmaker "\\spork\\mining\\sampledata\\matchmaker.csv"
+               :articles    "\\spork\\mining\\sampledata\\articles.txt"
+               :features    "\\spork\\mining\\sampledata\\features.txt"
+               :feedlist    "\\spork\\mining\\sampledata\\feedlist.txt"
+               :schedule    "\\spork\\mining\\sampledata\\schedule.txt"
+               :matchmaker  "\\spork\\mining\\sampledata\\matchmaker.csv"
                :stockfeatures "\\spork\\mining\\sampledata\\stockfeatures.txt"
                :zebo "\\spork\\mining\\sampledata\\zebo.txt"})
         

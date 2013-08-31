@@ -4,13 +4,12 @@
 (ns spork.util.table
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]
-            [spork.util [clipboard :as board] 
-                        [gui :as gui]])
+            [spork.util [clipboard :as board]]
+            [spork.cljgui.components [swing :as gui]])
   (:use [spork.util.vector]
         [spork.util.record  :only [serial-field-comparer key-function]]
         [spork.util.general :only [align-by]]
         [clojure.pprint :only [pprint]])) 
-
 
 ;Moved generic protocols to util.protocols
 ;note-> a field is just a table with one field/column....
