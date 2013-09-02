@@ -43,7 +43,7 @@
   (-branch?       [x])
   (-get-children  [x])
   (-append-child  [x]))
-(defn -append-children [x xs] (reduce -append-child x xs))
+;(defn -append-children [x xs] (reduce (-append-child x) x xs))
 (defn zipper?
   "Determines if x is a zipper, created by clojure.zip/zipper by examining 
    its meta data."
@@ -54,9 +54,11 @@
    the zipper."
   [zippable] 
   (if (zipper? zippable) zippable 
-    (clojure.zip/zipper (-branch? zippable) 
-                        (-get-children zippable) 
-                        -append-children zippable)))
+    (let [singleton (-append-child zippable)]
+      (clojure.zip/zipper (-branch? zippable) 
+                          (-get-children zippable)
+                          (fn [n cs] (reduce singleton n cs))
+                          zippable))))
 ;;Generic operations on zippables.
 (defn map-zipper
   "Map function f to each node of the zipper.  Preserves the structure of the 

@@ -19,7 +19,7 @@
   (loop [acc 0.0
          remaining xs]
     (if (empty? remaining) acc
-      (recur (+ acc (square (first xs)))
+      (recur (+ acc (square (first remaining)))
              (rest remaining)))))
 (defn dot [xs ys]
   (let [b (count xs)]
@@ -49,9 +49,10 @@
          ss2         (sum-squares v2)
          psum        (sum (dot v1 v2))
          numer       (- psum (/ (* sum1 sum2) n))
+         a           (- ss1 (/ (square sum1) n))
+         b           (- ss2 (/ (square sum2) n))
          denom       (java.lang.Math/sqrt 
-                       (*  (- ss1 (/ (square sum1) n))
-                           (- ss2 (/ (square sum2) n))))]
+                       (* a b))]
     (if (== 0.0 denom) 0.0
         (/ numer denom))))
 
@@ -72,6 +73,24 @@
     (if (== 0.0 denom) 0.0
         (/ numer denom))))
 
+(defn euclidean
+  "Computes the euclidean distance between a pair of vectors.  vector based."
+  [v1 v2]
+   (loop [idx 0
+         acc 0.0]
+     (if (= idx (count v1)) (Math/sqrt acc)
+       (recur (unchecked-inc idx)
+              (+ acc (square (- (nth v1 idx) (nth v2 idx))))))))
+
+(defn ^double euclidean*
+  "Computes the euclidean distance between a pair of vectors.  Array-based."
+  [^doubles v1 ^doubles v2]
+   (loop [idx 0
+          acc 0.0]
+     (if (= idx (alength v1)) (Math/sqrt acc)
+       (recur (unchecked-inc idx)
+              (+ acc (square* (- (aget v1 idx) (aget v2 idx))))))))
+
 ;;compute the element-wise average of two vectors.  This is a bit slow.
 (defn avg-vec [xs ys] (vec (map (fn [x y] (/ (+  x y) 2.0)) xs ys)))
 (defn ^doubles avg-vec* [^doubles xs ^doubles ys]
@@ -86,52 +105,6 @@
 
 ;;a simple node scheme.
 (defrecord bicluster [^doubles vec left right ^double distance id])
-
-(defn ^bicluster merge-cluster [^bicluster l ^bicluster r]
-  (->bicluster (avg-vec* (:vec l) (:vec r)) l r (keyword (gensym "branch"))))
-(defn get-children [^bicluster c]
-    (seq (remove nil? [(:left c) (:right c)])))
-(defn ^bicluster append-child [^bicluster c child]
-  (let [cs (get-children c)
-        k  (count cs)]
-    (case k 
-      0 (assoc c :left child)  
-      1 (assoc c :right child)
-      2 (merge-cluster c child))))
-
-(defn ^bicluster append-children [^bicluster c xs] (reduce append-child c xs))  
-(defn c-zipper [^bicluster root]
-  (zip/zipper (fn [n] true) get-children append-children root))
-
-(extend-protocol zip/IZippable 
-  bicluster   
-  (-branch?       [x] (fn [_] true))
-  (-get-children  [x] get-children)
-  (-append-child  [x] append-child))  
-
-(defn walk-cluster [c] 
-  (loop [z (zip/as-zipper c)]
-    (if (zip/end? z) nil
-      (if-let [nd (zip/node z)]
-           (let [lid (:id (:left nd))
-                 rid (:id (:right nd))
-                 _   (println [(:id nd) lid rid])]
-             (recur (zip/next z)))
-          (do (println :bottom)
-              nil)))))
-;;biclusters now support generic zipping.
-(defn relabel-cluster
-  "Change the labels in a cluster to the values matching label-map.
-   Leaves non-matches alone."
-  [c label-map]
-  (let [relabel (fn [k] (get label-map k k))]
-	  (zip/map-zipper #(update-in % [:id] relabel) c)))     
-
-(defn summarize-cluster
-  "Useful for printing detailed information, drops the potentially large 
-   vector weights from the clusters."
-  [c]
-  (zip/map-zipper #(dissoc % :vec) c))
 
 ;;A more efficient algorithm for hierarchical clustering, based on the 
 ;;assumption that distance does not change.  We use a priority queue to manage
@@ -232,7 +205,8 @@
   (do (dotimes [i n]
         (print \space))
       (if (branch? clust) 
-        (println \-)
+;        (println \-)
+        (println (str \- (:id clust) [(:id (:left clust)) (:id (:right clust))]))
         (println (get-label (:id clust))))
       (when (:left clust) 
         (print-cluster (:left clust) :branch? branch? :get-label get-label :n (inc n)))
@@ -241,6 +215,36 @@
         
 ;;testing 
 (comment 
+
+;;my own simple samples..having trouble reproducing toby's stuff exactly.
+(def sample-labels {0 "A" 1 "B" 2 "C" 3 "D" 4 "E"})
+(def rows [[1 2 3] 
+           [1 2 3]
+           [1 2 5]
+           [1 2 6]
+           [2 3 9]])
+(def rows2 [[1 2 3] ;[-1 [A, B]] [1 2 3] [1 2 3]
+           [1 2 5]
+           [1 2 6]
+           [2 3 9]])
+;;we're identical to this point
+(def rows3 [[1 2 3]   ;[-1 [A, B]]
+            [1 2 5.5] ;[-2 [C, D]] [1 2 5] [1 2 6]
+            [2 3 9]]) ;E)
+;;toby's algo chooses to merge E and -1 (a,b) into -3, where mine chooses 
+;;to merge E with -2 (c,d) into -3.  Why?
+;;logic dictates that the pairs with shortest distances should be merged...so..
+(def rows4 [[1 2 3] ;[-1 [A, B]]
+            [1.5 2.5 7.25];[-3 [-2, E]  [1 2 5.5] [2 3 9] ;[-2 [C,D]] [1 2 5] [1 2 6]
+             ])
+(def rows5 [1.25 2.25 5.125]) ;-4 [-1, -3]
+
+;;distance is closer = more correlation, hence the 1 - .
+(defn distance [v1 v2] (- 1.0 (pearson v1 v2)))
+
+(defn mindist [xs]
+  (first (sort-by #(- 1.0 (apply pearson %))))) 
+    
  ;;Blog data comes in a matrix format, with blogname | word1  | word2 ...
  ;;                                         name1    | freq11 | freq12 ...
  ;;So I just use my table API to read it and dissect it.
@@ -349,7 +353,82 @@
 
 )
                    
-                  
+;;Research (failed research) into zippers.  Note quite there.
+(comment 
+  
+(defrecord btree [data left right])
+(defn ^btree merge-btree [^btree l ^btree r]  (->btree nil l r ))
+(defn get-bchildren [^btree c] (seq (remove nil? [(:left c) (:right c)])))
+(defn ^btree append-bchild [^btree c child]
+  (let [cs (get-children c)
+        k  (count cs)]
+    (case k 
+      0 (assoc c :left child)  
+      1 (assoc c :right child)
+      2 (merge-btree c child))))
+
+(extend-protocol zip/IZippable 
+  btree   
+  (-branch?       [x] (fn [_] true))
+  (-get-children  [x] get-bchildren)
+  (-append-child  [x] append-bchild))  
+(def bsample (->btree 1
+                      (->btree 2 (->btree 3 nil nil)
+                                 (->btree 4 nil nil))
+                      (->btree 5 nil nil)))
+(def b (->btree 2 (->btree 3 nil nil)
+                  (->btree 4 nil nil)))
+
+;;bicluster zippable implementation.  ugh.
+(def ^doubles empty-doubles  (double-array []))
+(defn ^bicluster merge-cluster [^bicluster l ^bicluster r]
+  (let [[vl vr] (map ^doubles (fn [m] (get m :vec empty-doubles)) [l r])]
+    (->bicluster (avg-vec* vl vr) l r 0.0 (keyword (gensym "branch")))))
+(defn get-children [^bicluster c]
+    (seq (remove nil? [(:left c) (:right c)])))
+(defn ^bicluster append-child [^bicluster c child]
+  (let [cs (get-children c)
+        k  (count cs)]
+    (case k 
+      0 (assoc c :left child)  
+      1 (assoc c :right child)
+      2 (merge-cluster c child))))
+
+(defn ^bicluster append-children [^bicluster c xs] (reduce append-child c xs))  
+(defn c-zipper [^bicluster root]
+  (zip/zipper (fn [n] true) get-children append-children root))
+
+(extend-protocol zip/IZippable 
+  bicluster   
+  (-branch?       [x] (fn [_] true))
+  (-get-children  [x] get-children)
+  (-append-child  [x] append-child))  
+
+(defn walk-cluster [c] 
+  (loop [z (zip/as-zipper c)]
+    (if (zip/end? z) nil
+      (if-let [nd (zip/node z)]
+           (let [lid (:id (:left nd))
+                 rid (:id (:right nd))
+                 _   (println [(:id nd) lid rid])]
+             (recur (zip/next z)))
+          (do (println :bottom)
+              nil)))))
+;;biclusters now support generic zipping.
+(defn relabel-cluster
+  "Change the labels in a cluster to the values matching label-map.
+   Leaves non-matches alone."
+  [c label-map]
+  (let [relabel (fn [k] (get label-map k k))]
+	  (zip/map-zipper #(update-in % [:id] relabel) c)))     
+
+(defn summarize-cluster
+  "Useful for printing detailed information, drops the potentially large 
+   vector weights from the clusters."
+  [c]
+  (zip/map-zipper #(dissoc % :vec) c))
+
+)
           
         
         
