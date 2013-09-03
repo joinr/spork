@@ -81,8 +81,8 @@
    specific implementation....while benefitting from the existence of 
    BufferedImage"
   [w h & {:keys [transp image-format ] 
-                          :or {transp :translucent
-                               image-format  :buffered-image}}]
+          :or {transp :translucent
+               image-format  :buffered-image}}]
   (->image image-format (make-imgbuffer w h (get-transparency transp))
            w h transp))
 

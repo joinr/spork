@@ -238,26 +238,44 @@
   ;horizontal line to the right item
    (->line :black x (- bottom (/ h2 2)) (+ x ll) (- bottom (/ h2 2)))])
 
-(defn leaf->shape [x y top bottom h1 h2]
+(defn leaf->shape [x y top bottom h1 h2] 
+  )
 
 ;;I broke out segaran's code into a draw-branch and draw-leaf function pair.
 (defn draw-branch [canvas x y top bottom h1 h2 line-length]
   )
+
+(defn get-height
+  "Height of a cluster is a recursive function that determines the number of  
+   levels in the tree."
+  [c]
+  (if (leaf? c) 1
+    (+ (get-height (:left c)) 
+       (get-height (:right c)))))
+
+(defn error-depth
+  "Computes the amount of error in each node, used to inform a scaling factor.
+   Another recursive function.  This basically adds the distance in each 
+   branch."
+  [c]
+  (if (leaf? c) 0
+      (+ (:distance c) (max (error-depth (:left c) (:right c))))))
 
 ;;Need to adapt this to the line shapes, where I assume x,y,w,h 
 ;;rather than x1,y1,x2,y2
 (defn draw-node [canvas clust x y scaling labels  
                      & {:keys [branch? height] 
                         :or {branch? #(< (:id %) 0)  height 20}}]
-  (if (not (branch? clust))
-       ;For leaves, we just draw a lebel of text.
-       
+  (if (leaf? clust))
+       ;For leaves, we just draw a label of text.
+       (canvas/draw-shape (->plain-text :black (+ x 5) (+ y 5) (get labels (:id clust))))
     (let [h1 (get-height (:left clust))
           h2 (get-height (:right clust))
           top    (/ (- y (+ h1 h2)) 2) ;ugh
           bottom (/ (+ y (+ h1 h2)) 2) ;ugh
           ;line length
           line-length (* (:distance clust) scaling)]
+      ;;This is a little bit ugly, but I'll refactor it later.
       (do (-> (->> canvas           
                 ;;These are the actual drawing calls...          
                 ;vertical line from this cluster to children
@@ -276,38 +294,22 @@
               labels :branch? branch :height height)
             (draw-node (:right clust) (+ x line-length) (+ top (/ h1 2)) scaling
               labels :branch? branch :height height))
-        canvas))
-    
-    
-    
-      
-  )
+        canvas)))
 
-
-(defn get-height
-  "Height of a cluster is a recursive function that determines the number of  
-   levels in the tree."
-  [c]
-  (if (leaf? c) 1
-    (+ (get-height (:left c)) 
-       (get-height (:right c)))))
-
-(defn error-depth
-  "Computes the amount of error in each node, used to inform a scaling factor.
-   Another recursive function.  This basically adds the distance in each 
-   branch."
-  [c]
-  (if (leaf? c) 0
-      (+ (:distance c) (max (error-depth (:left c) (:right c))))))
 
 (defn draw-dendrogram [clust labels & {:keys [jpeg height width] 
                                        :or {jpeg "clusters.jpg" 
                                             height 20 
                                             width 1200}}]
-  (let [h     (* (get-height c) height)
-        depth (get-depth c)
-        scaling (/ (- width 150) depth)]
-    (
+  (let [h       (* (get-height c) height)
+        depth   (get-depth c)
+        scaling (/ (- width 150) depth)
+        img     (img/make-imgbuffer width h)
+        drawing (canvas/get-graphics img)]
+    (->> (drawing 
+    
+    
+    ()))
         
 
 ;;Testing 
