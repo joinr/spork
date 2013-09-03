@@ -6,9 +6,14 @@
             [spork.util   [table :as tbl]]
             [spork.data   [priorityq :as pq]]
             [spork.cljgui.components [swing :as gui]]
+            [spork.graphics2d [canvas :as canvas]
+                              [image  :as img]
+                              [swing  :as swingcanvas]]
+            [spork.geometry.shapes :refer :all]
             [spork.util [zip :as zip]] ;added zipper operations
             ))
 
+(defn halve [x] (/ x 2))
 (defn sum [xs]   
   (loop [acc 0.0
          idx 0]
@@ -100,6 +105,7 @@
 (defn ^doubles avg-vec* [^doubles xs ^doubles ys]
   (amap xs idx acc (* (* (aget xs idx) (aget ys idx)) 0.5)))  
 
+;;General function;
 (defn all-pairs [xs]  
   (let [xs (vec xs)  
         l  (count xs)]
@@ -107,8 +113,10 @@
           j (range (inc i) l)]
       [(nth xs i) (nth xs j)])))
 
+;;There's something more general here....
 ;;a simple node scheme.
 (defrecord bicluster [^doubles vec left right ^double distance id])
+(defn leaf? [^bicluster c] (and (:left c) (:right c)))
 
 ;;A more efficient algorithm for hierarchical clustering, based on the 
 ;;assumption that distance does not change.  We use a priority queue to manage
@@ -209,13 +217,97 @@
   (do (dotimes [i n]
         (print \space))
       (if (branch? clust) 
-;        (println \-)
-        (println (str \- (:id clust) [(:id (:left clust)) (:id (:right clust))]))
+        (println \-)
+;        (println (str \- (:id clust) [(:id (:left clust)) (:id (:right clust))]))
         (println (get-label (:id clust))))
       (when (:left clust) 
         (print-cluster (:left clust) :branch? branch? :get-label get-label :n (inc n)))
       (when (:right clust) 
         (print-cluster (:right clust) :branch? branch? :get-label get-label :n (inc n)))))
+        
+
+;;visualization
+;;At some point, I will factor this out into generic tree-drawing operations.
+;;For now, we port straight from segaran.
+
+(defn branch->shape [clust x y top bottom h1 h2 line-length]
+  ;vertical line from this cluster to children  
+  [(->line :black x (+ top (/ h1 2)) x (- bottom (/ h2 2)))
+  ;horizontal line to the left item
+   (->line :black x (+ top (/ h1 2)) (+ x line-length) (+ top (/ h1 2)))
+  ;horizontal line to the right item
+   (->line :black x (- bottom (/ h2 2)) (+ x ll) (- bottom (/ h2 2)))])
+
+(defn leaf->shape [x y top bottom h1 h2]
+
+;;I broke out segaran's code into a draw-branch and draw-leaf function pair.
+(defn draw-branch [canvas x y top bottom h1 h2 line-length]
+  )
+
+;;Need to adapt this to the line shapes, where I assume x,y,w,h 
+;;rather than x1,y1,x2,y2
+(defn draw-node [canvas clust x y scaling labels  
+                     & {:keys [branch? height] 
+                        :or {branch? #(< (:id %) 0)  height 20}}]
+  (if (not (branch? clust))
+       ;For leaves, we just draw a lebel of text.
+       
+    (let [h1 (get-height (:left clust))
+          h2 (get-height (:right clust))
+          top    (/ (- y (+ h1 h2)) 2) ;ugh
+          bottom (/ (+ y (+ h1 h2)) 2) ;ugh
+          ;line length
+          line-length (* (:distance clust) scaling)]
+      (do (-> (->> canvas           
+                ;;These are the actual drawing calls...          
+                ;vertical line from this cluster to children
+                (canvas/draw-shape 
+                  (->line :black x (+ top (/ h1 2)) x (- bottom (/ h2 2))))
+                ;horizontal line to the left item
+                (canvas/draw-shape
+                  (->line :black x (+ top (/ h1 2)) 
+                          (+ x line-length) (+ top (/ h1 2))))
+                ;horizontal line to the right item
+                (canvas/draw-shape 
+                  (->line :black x (- bottom (/ h2 2)) 
+                          (+ x line-length) (- bottom (/ h2 2)))))
+            ;;Recursive calls for each branch.
+            (draw-node (:left clust) (+ x line-length) (+ top (/ h1 2)) scaling 
+              labels :branch? branch :height height)
+            (draw-node (:right clust) (+ x line-length) (+ top (/ h1 2)) scaling
+              labels :branch? branch :height height))
+        canvas))
+    
+    
+    
+      
+  )
+
+
+(defn get-height
+  "Height of a cluster is a recursive function that determines the number of  
+   levels in the tree."
+  [c]
+  (if (leaf? c) 1
+    (+ (get-height (:left c)) 
+       (get-height (:right c)))))
+
+(defn error-depth
+  "Computes the amount of error in each node, used to inform a scaling factor.
+   Another recursive function.  This basically adds the distance in each 
+   branch."
+  [c]
+  (if (leaf? c) 0
+      (+ (:distance c) (max (error-depth (:left c) (:right c))))))
+
+(defn draw-dendrogram [clust labels & {:keys [jpeg height width] 
+                                       :or {jpeg "clusters.jpg" 
+                                            height 20 
+                                            width 1200}}]
+  (let [h     (* (get-height c) height)
+        depth (get-depth c)
+        scaling (/ (- width 150) depth)]
+    (
         
 
 ;;Testing 

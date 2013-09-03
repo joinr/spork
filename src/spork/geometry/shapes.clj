@@ -28,6 +28,12 @@
 (defn ->square [color x y w]
   (->rectangle color x y w w))
 
+(defshape text [color font s x y]
+  (spatial/bbox x y (c/bitmap-width source) (c/bitmap-height source))
+  (c/draw-image c source transparency x y))
+
+(defn ->plain-text [color s x y] (->text color :default s x y))
+
 (defshape wire-rectangle 
   [color x y w h]
   (spatial/bbox x y w h)
@@ -110,8 +116,6 @@
 
 (defn make-sprite [s trans x y]
   (->sprite (image/shape->img s trans) trans x y))
-
-
 
 ;(defshape line3D 
 ;  [color x1 y1 z1 x2 y2 z2] 
