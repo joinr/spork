@@ -219,3 +219,8 @@
   (shape-bounds [s] "Get a bounding box for the shape.")
   (draw-shape [s c] "Draw the shape onto a canvas."))
 
+(defn draw-shapes
+  "Draws a sequence of shapes, xs, to canvas c."
+  [xs c]
+  (reduce (fn [c s] (draw-shape s c)) c))
+  

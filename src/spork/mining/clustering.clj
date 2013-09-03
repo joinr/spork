@@ -279,16 +279,14 @@
       (do (-> (->> canvas           
                 ;;These are the actual drawing calls...          
                 ;vertical line from this cluster to children
-                (canvas/draw-shape 
-                  (->line :black x (+ top (/ h1 2)) x (- bottom (/ h2 2))))
+                (canvas/draw-shapes
+                  [(->line :black x (+ top (/ h1 2)) x (- bottom (/ h2 2)))
                 ;horizontal line to the left item
-                (canvas/draw-shape
-                  (->line :black x (+ top (/ h1 2)) 
-                          (+ x line-length) (+ top (/ h1 2))))
+                   (->line :black x (+ top (/ h1 2)) 
+                          (+ x line-length) (+ top (/ h1 2)))
                 ;horizontal line to the right item
-                (canvas/draw-shape 
                   (->line :black x (- bottom (/ h2 2)) 
-                          (+ x line-length) (- bottom (/ h2 2)))))
+                          (+ x line-length) (- bottom (/ h2 2)))]))
             ;;Recursive calls for each branch.
             (draw-node (:left clust) (+ x line-length) (+ top (/ h1 2)) scaling 
               labels :branch? branch :height height)
@@ -306,7 +304,9 @@
         scaling (/ (- width 150) depth)
         img     (img/make-imgbuffer width h)
         drawing (canvas/get-graphics img)]
-    (->> (drawing 
+    (->> drawing
+      (canvas/draw-shape 
+      (->rectangle :white 0 0 width h)
     
     
     ()))
