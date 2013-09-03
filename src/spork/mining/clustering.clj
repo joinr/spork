@@ -73,6 +73,10 @@
     (if (== 0.0 denom) 0.0
         (/ numer denom))))
 
+;;distance is closer = more correlation, hence the - 1 .
+(defn max-correlation  [v1 v2] (- 1.0 (pearson v1 v2)))
+(defn ^double max-correlation* [^doubles v1 ^doubles v2] (- 1.0 (pearson v1 v2)))
+
 (defn euclidean
   "Computes the euclidean distance between a pair of vectors.  vector based."
   [v1 v2]
@@ -111,7 +115,7 @@
 ;;the fringe of clusters, and only add edges when new clusters are created, 
 ;;relative to the remaining clusters.
 (defn hierarchical-cluster-any 
-  [rows & {:keys [distance]  :or {distance #(- 1.0 (pearson %1 %2))}}]
+  [rows & {:keys [distance]  :or {distance max-correlation}}]
   (let [c-distance (memoize (fn [l r] (distance (:vec l) (:vec r))))
         valid?       (fn [m [l r]] (and (contains? m l) (contains? m r))) 
         distribute   (fn [x ys] (map #(vector x %) ys))
@@ -147,7 +151,7 @@
 (defn hierarchical-cluster-numeric
   "A much faster implementation in practice, due to the use of double arrays 
    vs vectors.  Allows users to pass in distance functions that consume arrays."
-  [rows & {:keys [distance] :or {distance #(- 1.0 (pearson* %1 %2))}}]
+  [rows & {:keys [distance] :or {distance max-correlation*}}]
   (let [rows (map double-array rows)
         c-distance (memoize (fn ^double c-distance [l r] (distance (:vec l) (:vec r))))
         valid?       (fn [m [l r]] (and (contains? m l) (contains? m r))) 
@@ -213,43 +217,16 @@
       (when (:right clust) 
         (print-cluster (:right clust) :branch? branch? :get-label get-label :n (inc n)))))
         
-;;testing 
+
+;;Testing 
 (comment 
 
-;;my own simple samples..having trouble reproducing toby's stuff exactly.
-(def sample-labels {0 "A" 1 "B" 2 "C" 3 "D" 4 "E"})
-(def rows [[1 2 3] 
-           [1 2 3]
-           [1 2 5]
-           [1 2 6]
-           [2 3 9]])
-(def rows2 [[1 2 3] ;[-1 [A, B]] [1 2 3] [1 2 3]
-           [1 2 5]
-           [1 2 6]
-           [2 3 9]])
-;;we're identical to this point
-(def rows3 [[1 2 3]   ;[-1 [A, B]]
-            [1 2 5.5] ;[-2 [C, D]] [1 2 5] [1 2 6]
-            [2 3 9]]) ;E)
-;;toby's algo chooses to merge E and -1 (a,b) into -3, where mine chooses 
-;;to merge E with -2 (c,d) into -3.  Why?
-;;logic dictates that the pairs with shortest distances should be merged...so..
-(def rows4 [[1 2 3] ;[-1 [A, B]]
-            [1.5 2.5 7.25];[-3 [-2, E]  [1 2 5.5] [2 3 9] ;[-2 [C,D]] [1 2 5] [1 2 6]
-             ])
-(def rows5 [1.25 2.25 5.125]) ;-4 [-1, -3]
-
-;;distance is closer = more correlation, hence the 1 - .
-(defn distance [v1 v2] (- 1.0 (pearson v1 v2)))
-
-(defn mindist [xs]
-  (first (sort-by #(- 1.0 (apply pearson %))))) 
-    
  ;;Blog data comes in a matrix format, with blogname | word1  | word2 ...
  ;;                                         name1    | freq11 | freq12 ...
  ;;So I just use my table API to read it and dissect it.
  ;;If we didn't have the table lib, we could do it the way segaran does, with 
  ;;a file-scraper.
+ 
 (defn blog-data [] (tbl/tabdelimited->table (core/get-dataset :blog)))
 (defn read-blog-data [tbl & {:keys [blog-filter]}]  
   (let [valid?    (set blog-filter)
@@ -431,5 +408,35 @@
 )
           
         
+;;testing, troubleshooting.  turns out python is jacked.
+(comment 
+
+;;my own simple samples..having trouble reproducing toby's stuff exactly.
+(def sample-labels {0 "A" 1 "B" 2 "C" 3 "D" 4 "E"})
+(def rows [[1 2 3] 
+           [1 2 3]
+           [1 2 5]
+           [1 2 6]
+           [2 3 9]])
+(def rows2 [[1 2 3] ;[-1 [A, B]] [1 2 3] [1 2 3]
+           [1 2 5]
+           [1 2 6]
+           [2 3 9]])
+;;we're identical to this point
+(def rows3 [[1 2 3]   ;[-1 [A, B]]
+            [1 2 5.5] ;[-2 [C, D]] [1 2 5] [1 2 6]
+            [2 3 9]]) ;E)
+;;toby's algo chooses to merge E and -1 (a,b) into -3, where mine chooses 
+;;to merge E with -2 (c,d) into -3.  Why?
+;;logic dictates that the pairs with shortest distances should be merged...so..
+(def rows4 [[1 2 3] ;[-1 [A, B]]
+            [1.5 2.5 7.25];[-3 [-2, E]  [1 2 5.5] [2 3 9] ;[-2 [C,D]] [1 2 5] [1 2 6]
+             ])
+(def rows5 [1.25 2.25 5.125]) ;-4 [-1, -3]
+
+(defn mindist [xs]
+  (first (sort-by #(apply max-correlation %)))) 
+    
+)
         
              
