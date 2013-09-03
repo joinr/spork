@@ -13,7 +13,6 @@
             [spork.util [zip :as zip]] ;added zipper operations
             ))
 
-(defn halve [x] (/ x 2))
 (defn sum [xs]   
   (loop [acc 0.0
          idx 0]
@@ -209,6 +208,13 @@
       (hierarchical-cluster-any     rows 
          :distance (or distance #(- 1.0 (pearson %1 %2))))))
 
+(defn cluster->table
+  "Converts the cluster into a tabular representation.
+   At the end of the day, the cluster is just a database of arcs, the edges of 
+   which describe the nearness of the cluster."
+  [cluster]
+  )
+
 (defn print-cluster [clust & {:keys [branch? get-label n] 
                               :or   {branch? (fn [c] (< (:id c) 0)) 
                                      get-label identity 
@@ -236,7 +242,7 @@
   ;horizontal line to the left item
    (->line :black x (+ top (/ h1 2)) (+ x line-length) (+ top (/ h1 2)))
   ;horizontal line to the right item
-   (->line :black x (- bottom (/ h2 2)) (+ x ll) (- bottom (/ h2 2)))])
+   (->line :black x (- bottom (/ h2 2)) (+ x line-length) (- bottom (/ h2 2)))])
 
 (defn leaf->shape [x y top bottom h1 h2] 
   )
@@ -263,14 +269,17 @@
 
 ;;ABSTRACT TREE DRAWING
 ;;=====================
-;;Note -> these are really arbitrary tree-drawing functions....there's a good 
+;;Note: these are really arbitrary tree-drawing functions....there's a good 
 ;;abstraction here.  If we replace distance with a uniform depth function, then 
 ;;it'll draw any binary tree.  Seems like a simple extension to n-ary trees.
+
+;;Since we already have an abstract tree protocol, it would be nice to have 
+;;an abstract tree shape, based on the templates implied below.
 
 
 ;;Turn a branch into a list of drawable shapes.  Forms the backing for drawing 
 ;;trees, i.e. draws the connectivity between nodes.
-(defn branch->shape [left-height right-height top bottom line-length]
+(defn branch->shape [x left-height right-height top bottom line-length]
   [(->line :black x (+ top (/ left-height 2)) 
                   x (- bottom (/ right-height 2)))
    ;horizontal line to the left item
@@ -299,7 +308,8 @@
         ;;This is a little bit ugly, but I'll refactor it later.
         ;;These are the actual drawing calls...          
         ;vertical line from this cluster to children
-        (reduce conj (branch->shape left-height right-height top bottom line-length) 
+        (reduce conj (branch->shape left-height right-height x 
+                                    top bottom line-length) 
           ;;Recursive calls for each branch.
           [(node->shape (:left clust) child-length (+ top (/ left-height 2)) 
                         scaling labels :height height)
@@ -311,8 +321,8 @@
   [clust labels & {:keys [jpeg height width] :or {jpeg "clusters.jpg" 
                                                   height 20 
                                                   width 1200}}]
-  (let [h       (* (get-height c) height)
-        depth   (get-depth c)
+  (let [h       (* (get-height clust) height)
+        depth   (error-depth clust)
         scaling (/ (- width 150) depth)
         img     (img/make-imgbuffer width h)
         drawing (canvas/get-graphics img)

@@ -197,6 +197,17 @@
   (draw-string    [canvas color font s x y]  "Draws a string at x,y.")
   (draw-image     [canvas img transparency x y] "Draws an IBitmap at x,y."))
 
+
+;;__TODO__ Turn these stubs into protocol members.
+(defn text-width
+  "Currently a stub.
+   Returns the width, in pixels, of some text."  
+  ^long [canvas txt] 0)
+(defn text-height
+  "Currently a stub.
+   Returns the height, in pixels, of some text."  
+  ^long [canvas txt] 0)
+
 ;these are fancy rendering options.  We prefer them if supported.
 ;if the device supports them, then we'll use them.  Otherwise, we use the 
 ;primtive drawing functions above to draw.

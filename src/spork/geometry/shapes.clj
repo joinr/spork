@@ -29,8 +29,8 @@
   (->rectangle color x y w w))
 
 (defshape text [color font s x y]
-  (spatial/bbox x y (c/bitmap-width source) (c/bitmap-height source))
-  (c/draw-image c source transparency x y))
+  (spatial/bbox x y (c/text-width s) (c/text-height s))
+  (c/draw-string c color font s x y))
 
 (defn ->plain-text [color s x y] (->text color :default s x y))
 
@@ -40,14 +40,13 @@
   (c/draw-rectangle c color x y w h))
 
 (defn negate [n] (* -1 n))
-(defn halve [n] (/ n 2))
+(defn halve  [n] (/ n 2))
 
 (defn relative-coords 
-  ([size]
-		  [((comp negate halve) size) 
-		   ((comp negate halve) size) 
-		    size 
-		    size])
+  ([size]  [((comp negate halve) size) 
+            ((comp negate halve) size) 
+            size 
+            size])
   ([x1 y1 x2 y2] [x1 y1 x2 y2]))
 
 (defn ->relative-rectangle [color size]
