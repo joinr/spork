@@ -261,8 +261,14 @@
   (if (leaf? c) 0
       (+ (:distance c) (max (error-depth (:left c) (:right c))))))
 
-;;Need to adapt this to the line shapes, where I assume x,y,w,h 
-;;rather than x1,y1,x2,y2
+;;ABSTRACT TREE DRAWING
+;;=====================
+;;Note -> these are really arbitrary tree-drawing functions....there's a good 
+;;abstraction here.  If we replace distance with a uniform depth function, then 
+;;it'll draw any binary tree.  Seems like a simple extension to n-ary trees.
+
+;;Original drawnode from segaran, ported directly here.  I will modify this guy
+;;as needed.
 (defn draw-node [canvas clust x y scaling labels  
                      & {:keys [branch? height] 
                         :or {branch? #(< (:id %) 0)  height 20}}]
@@ -303,13 +309,13 @@
         depth   (get-depth c)
         scaling (/ (- width 150) depth)
         img     (img/make-imgbuffer width h)
-        drawing (canvas/get-graphics img)]
+        drawing (canvas/get-graphics img)
+        background [(->rectangle :white 0 0 width h)
+                    ]
     (->> drawing
-      (canvas/draw-shape 
-      (->rectangle :white 0 0 width h)
-    
-    
-    ()))
+         (canvas/draw-shape 
+         ))))
+
         
 
 ;;Testing 
