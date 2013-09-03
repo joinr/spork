@@ -267,40 +267,45 @@
 ;;abstraction here.  If we replace distance with a uniform depth function, then 
 ;;it'll draw any binary tree.  Seems like a simple extension to n-ary trees.
 
-;;Original drawnode from segaran, ported directly here.  I will modify this guy
-;;as needed.
-(defn draw-node [canvas clust x y scaling labels  
-                     & {:keys [branch? height] 
-                        :or {branch? #(< (:id %) 0)  height 20}}]
-  (if (leaf? clust))
-       ;For leaves, we just draw a label of text.
-       (canvas/draw-shape (->plain-text :black (+ x 5) (+ y 5) (get labels (:id clust))))
-    (let [h1 (get-height (:left clust))
-          h2 (get-height (:right clust))
-          top    (/ (- y (+ h1 h2)) 2) ;ugh
-          bottom (/ (+ y (+ h1 h2)) 2) ;ugh
-          ;line length
-          line-length (* (:distance clust) scaling)]
-      ;;This is a little bit ugly, but I'll refactor it later.
-      (do (-> (->> canvas           
-                ;;These are the actual drawing calls...          
-                ;vertical line from this cluster to children
-                (canvas/draw-shapes
-                  [(->line :black x (+ top (/ h1 2)) x (- bottom (/ h2 2)))
-                ;horizontal line to the left item
-                   (->line :black x (+ top (/ h1 2)) 
-                          (+ x line-length) (+ top (/ h1 2)))
-                ;horizontal line to the right item
-                  (->line :black x (- bottom (/ h2 2)) 
-                          (+ x line-length) (- bottom (/ h2 2)))]))
-            ;;Recursive calls for each branch.
-            (draw-node (:left clust) (+ x line-length) (+ top (/ h1 2)) scaling 
-              labels :branch? branch :height height)
-            (draw-node (:right clust) (+ x line-length) (+ top (/ h1 2)) scaling
-              labels :branch? branch :height height))
-        canvas)))
 
+;;Turn a branch into a list of drawable shapes.  Forms the backing for drawing 
+;;trees, i.e. draws the connectivity between nodes.
+(defn branch->shape [left-height right-height top bottom line-length]
+  [(->line :black x (+ top (/ left-height 2)) 
+                  x (- bottom (/ right-height 2)))
+   ;horizontal line to the left item
+   (->line :black x (+ top (/ left-height 2)) 
+                  (+ x line-length) (+ top (/ left-height 2)))
+   ;horizontal line to the right item
+   (->line :black x (- bottom (/ right-height 2)) 
+                  (+ x line-length) (- bottom (/ right-height 2)))])
 
+;;This was originally a mutable drawing call.  Rather than do that, I'm just 
+;;traversing over the cluster, computing a corresponding nested sequence 
+;;of shapes for it.  Same difference, but more data-friendly and less 
+;;side-effecty.
+(defn node->shape [canvas clust x y scaling labels
+                   & {:keys [height] :or {height 20}}]
+  (when clust ;cluster may be nil
+    (if (leaf? clust) ;leaves are just text labels.
+      (->plain-text :black (+ x 5) (+ y 5) (get labels (:id clust)))
+      (let [left-height (get-height (:left  clust))
+            right-height     (get-height (:right clust))
+            top    (/ (- y (+ left-height right-height)) 2) ;top of the node
+            bottom (/ (+ y (+ left-height right-height)) 2) ;bottom of the node
+            ;line length, for the line that crosses over 
+            line-length (* (:distance clust) scaling)
+            child-length (+ x line-length)]
+        ;;This is a little bit ugly, but I'll refactor it later.
+        ;;These are the actual drawing calls...          
+        ;vertical line from this cluster to children
+        (reduce conj (branch->shape left-height right-height top bottom line-length) 
+          ;;Recursive calls for each branch.
+          [(node->shape (:left clust) child-length (+ top (/ left-height 2)) 
+                        scaling labels :height height)
+           (node->shape (:right clust) child-length (- bottom (/ left-height 2)) 
+                        scaling labels :height height)])))))
+  
 (defn draw-dendrogram [clust labels & {:keys [jpeg height width] 
                                        :or {jpeg "clusters.jpg" 
                                             height 20 
