@@ -311,9 +311,9 @@
         img     (img/make-imgbuffer width h)
         drawing (canvas/get-graphics img)
         background [(->rectangle :white 0 0 width h)
-                    ]
+                    (->line      :black 0 (/ h 2) 10 (/ h 2))]]
     (->> drawing
-         (canvas/draw-shape 
+         (canvas/draw-shapes 
          ))))
 
         
