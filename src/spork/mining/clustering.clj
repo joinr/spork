@@ -284,8 +284,8 @@
 ;;traversing over the cluster, computing a corresponding nested sequence 
 ;;of shapes for it.  Same difference, but more data-friendly and less 
 ;;side-effecty.
-(defn node->shape [canvas clust x y scaling labels
-                   & {:keys [height] :or {height 20}}]
+(defn node->shape 
+  [clust x y scaling labels & {:keys [height] :or {height 20}}]
   (when clust ;cluster may be nil
     (if (leaf? clust) ;leaves are just text labels.
       (->plain-text :black (+ x 5) (+ y 5) (get labels (:id clust)))
@@ -305,11 +305,12 @@
                         scaling labels :height height)
            (node->shape (:right clust) child-length (- bottom (/ left-height 2)) 
                         scaling labels :height height)])))))
-  
-(defn draw-dendrogram [clust labels & {:keys [jpeg height width] 
-                                       :or {jpeg "clusters.jpg" 
-                                            height 20 
-                                            width 1200}}]
+
+;;An all-in-one wrapper to draw the clusters to the canvas as a dendrogram.
+(defn dendrogram->image 
+  [clust labels & {:keys [jpeg height width] :or {jpeg "clusters.jpg" 
+                                                  height 20 
+                                                  width 1200}}]
   (let [h       (* (get-height c) height)
         depth   (get-depth c)
         scaling (/ (- width 150) depth)
@@ -317,11 +318,10 @@
         drawing (canvas/get-graphics img)
         background [(->rectangle :white 0 0 width h)
                     (->line      :black 0 (/ h 2) 10 (/ h 2))]]
-    (->> drawing
-         (canvas/draw-shapes 
-         ))))
-
-        
+    (canvas/draw-shapes img
+      [background 
+       (node->shape clust 10 (/ h 2) scaling labels)])))  
+     
 
 ;;Testing 
 (comment 
