@@ -1,4 +1,5 @@
-(ns spork.graphics2d.canvas)
+(ns spork.graphics2d.canvas
+  (:require [spork.protocols [spatial :as spatial]]))
 
 ;We can actually do some cool stuff here...
 ;The absolute minimum primitives we need are...
@@ -229,6 +230,7 @@
 (defprotocol IShape
   (shape-bounds [s]   "Get a bounding box for the shape.")
   (draw-shape   [s c] "Draw the shape onto a canvas."))
+ 
 
 (defn shape-seq?
   "Function that determines if the collection is a simple sequence of things 
@@ -236,11 +238,6 @@
    directly support IShape and knows how to draw itself."
   [x]  (and (sequential? x) (not (satisfies? IShape x))))  
 
-
-;;maybe....
-(comment 
-  (defn draw [s c]
-    (draw-shape s (get-graphics c))))
 
 ;;Protocol for more efficient drawing operations, if a canvas supports them.
 (defprotocol IInternalDraw
@@ -252,5 +249,15 @@
   [c xs]
   (if (satisfies? IInternalDraw c) (-draw-shapes c xs) 
     (reduce 
-      (fn [c s] (if (not (shape-coll? s)) (draw-shape s c) (draw-shapes c s))) 
+      (fn [c s] (if (not (shape-seq? s)) (draw-shape s c) (draw-shapes c s))) 
       c xs)))
+
+(extend-protocol IShape 
+  clojure.lang.PersistentVector
+  (shape-bounds [xs] (when xs (spatial/group-bounds (map shape-bounds xs))))
+  (draw-shape   [xs c] (draw-shapes c xs)))
+
+;;maybe....
+(defn draw [s c]
+  (let [g  (if (satisfies? ICanvas2D c) c (get-graphics c))]
+    (draw-shape s g)))
