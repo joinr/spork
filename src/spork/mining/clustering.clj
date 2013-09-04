@@ -115,7 +115,8 @@
 ;;There's something more general here....
 ;;a simple node scheme.
 (defrecord bicluster [^doubles vec left right ^double distance id])
-(defn leaf? [^bicluster c] (and (:left c) (:right c)))
+(defn leaf? [^bicluster c] 
+  (and (empty? (:left c)) (empty? (:right c))))
 
 ;;A more efficient algorithm for hierarchical clustering, based on the 
 ;;assumption that distance does not change.  We use a priority queue to manage
@@ -212,8 +213,11 @@
   "Converts the cluster into a tabular representation.
    At the end of the day, the cluster is just a database of arcs, the edges of 
    which describe the nearness of the cluster."
-  [cluster]
-  )
+  [cluster])
+
+(defn table->cluster 
+  "We can define an operation that takes any table of data and performs 
+   clustering on it." [tbl query])
 
 (defn print-cluster [clust & {:keys [branch? get-label n] 
                               :or   {branch? (fn [c] (< (:id c) 0)) 
@@ -265,7 +269,7 @@
    branch."
   [c]
   (if (leaf? c) 0
-      (+ (:distance c) (max (error-depth (:left c) (:right c))))))
+      (+ (:distance c) (max (error-depth (:left c)) (error-depth (:right c))))))
 
 ;;ABSTRACT TREE DRAWING
 ;;=====================
@@ -275,7 +279,6 @@
 
 ;;Since we already have an abstract tree protocol, it would be nice to have 
 ;;an abstract tree shape, based on the templates implied below.
-
 
 ;;Turn a branch into a list of drawable shapes.  Forms the backing for drawing 
 ;;trees, i.e. draws the connectivity between nodes.
@@ -297,11 +300,11 @@
   [clust x y scaling labels & {:keys [height] :or {height 20}}]
   (when clust ;cluster may be nil
     (if (leaf? clust) ;leaves are just text labels.
-      (->plain-text :black (+ x 5) (+ y 5) (get labels (:id clust)))
+      (->plain-text :black (get labels (:id clust)) (+ x 5.0) (+ y 5.0))
       (let [left-height (get-height (:left  clust))
             right-height     (get-height (:right clust))
-            top    (/ (- y (+ left-height right-height)) 2) ;top of the node
-            bottom (/ (+ y (+ left-height right-height)) 2) ;bottom of the node
+            top    (/ (- y (+ left-height right-height)) 2.0) ;top of the node
+            bottom (/ (+ y (+ left-height right-height)) 2.0) ;bottom of the node
             ;line length, for the line that crosses over 
             line-length (* (:distance clust) scaling)
             child-length (+ x line-length)]
@@ -324,15 +327,12 @@
   (let [h       (* (get-height clust) height)
         depth   (error-depth clust)
         scaling (/ (- width 150) depth)
-        img     (img/make-imgbuffer width h)
+        img     (img/make-image width h)
         drawing (canvas/get-graphics img)
         background [(->rectangle :white 0 0 width h)
                     (->line      :black 0 (/ h 2) 10 (/ h 2))]]
-    (canvas/draw-shapes img
-      [background 
-       (node->shape clust 10 (/ h 2) scaling labels)])))  
-     
-
+    (canvas/draw-shapes img [background
+                             (node->shape clust 10 (/ h 2) scaling labels)])))
 ;;Testing 
 (comment 
 
@@ -348,12 +348,12 @@
         tbl       (if blog-filter 
                     (tbl/select :from tbl :where #(valid? (:Blog %)))
                     tbl) 
-        blognames (tbl/table-rows (tbl/select :fields [:Blog] :from tbl))
+        blognames (first (tbl/table-columns (tbl/select :fields [:Blog] :from tbl)))
         words     (subvec (tbl/table-fields tbl) 1) ;drop blog from the fields        
-        lookup    (fn [id] (nth blognames id))
+        labels    (zipmap (range (count blognames)) blognames)
         data      (tbl/table-rows (tbl/drop-field :Blog tbl))]
    ;Return a map of useful data
-   {:names blognames :words words :data  data  :lookup lookup}))    
+   {:names blognames :words words :data  data  :labels labels}))    
 (def sample-blogs ["John Battelle's Searchblog"
                    "Search Engine Watch Blog"
                    "Read/WriteWeb"
@@ -365,8 +365,12 @@
 (def db (read-blog-data (blog-data)))
 (defn compute-cluster [f & [database]] (f (:data (or database db))))
 
+(def clust (compute-cluster hierarchical-cluster))
+(def small-clust (compute-cluster hierarchical-cluster small-db))
+
 (defn display-clusters [the-cluster & [database]]
-  (print-cluster the-cluster :get-label (:lookup (or database db))))
+  (let [labels (:labels (or database db))]
+    (print-cluster the-cluster :get-label labels)))
 (defn display-sample-cluster []
   (display-clusters (compute-cluster hierarchical-cluster small-db) small-db))
 

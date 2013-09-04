@@ -242,6 +242,7 @@
   (set-state      [ctx state] ctx)
   (make-bitmap    [ctx w h transp] (make-imgbuffer w h transp)))
 
+;encapsulation for everything swing...plumbing mostly.
 (defrecord swing-graphics [^Graphics2D g options]
   IGraphicsContext 
   (get-alpha      [ctx]  (get-composite g))
@@ -258,17 +259,40 @@
                             (do (set-transform* g t) g)
                             options))  
   (translate-2d   [ctx x y] (swing-graphics. 
-                              (doto ctx (.translate (int x) (int y)))
+                              (doto g (.translate (int x) (int y)))
                               options))
   (scale-2d       [ctx x y] (swing-graphics. 
-                              (doto ctx (.scale (int x) (int y))) 
+                              (doto g (.scale (int x) (int y))) 
                               options))                 
   (rotate-2d      [ctx theta] (swing-graphics. 
-                                (doto ctx (.rotate (float theta)))
+                                (doto g (.rotate (float theta)))
                                options))  
   (set-state      [ctx state] ctx)
   (make-bitmap    [ctx w h transp] (make-imgbuffer w h 
-                                       (get-transparency transp))))
+                                       (get-transparency transp)))
+  ICanvas2D
+  (get-context    [sg]  g)
+  (set-context    [sg ctx] (swing-graphics. ctx options))  
+  (draw-point     [sg color x1 y1 w] 
+    (swing-graphics. (draw-point g color x1 y1 w)  options))  
+  (draw-line      [sg color x1 y1 x2 y2] 
+    (swing-graphics. (draw-line g color x1 y1 x2 y2) options)) 
+  (draw-rectangle [sg color x y w h]
+    (swing-graphics. (draw-rectangle g color x y w h) options))
+  (fill-rectangle [sg color x y w h]
+    (swing-graphics. (fill-rectangle g color x y w h) options))   
+  (draw-ellipse   [sg color x y w h]
+    (swing-graphics. (draw-ellipse g color x y w h) options))  
+  (fill-ellipse   [sg color x y w h]
+    (swing-graphics. (fill-ellipse g color x y w h) options))  
+  (draw-string    [sg color font s x y]
+    (swing-graphics. (draw-string g color font s x y) options))  
+  (draw-image     [sg img transparency x y]
+    (swing-graphics. 
+      (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil)
+      options))
+  IInternalDraw
+  (-draw-shapes [sg xs] (assoc sg :g (draw-shapes g xs))))
 
 (def empty-swing-context (->swing-graphics nil nil))
 

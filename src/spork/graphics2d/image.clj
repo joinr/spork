@@ -6,6 +6,7 @@
 ;make-bitmap, which "everyone" can use....
 (ns spork.graphics2d.image
   (:use [spork.graphics2d.canvas])
+  (:require [spork.protocols [spatial :as spatial]])
   (:import [java.awt GraphicsEnvironment  GraphicsDevice GraphicsConfiguration 
             Transparency Graphics2D]
            [java.awt.image BufferedImage ImageObserver]
@@ -62,19 +63,50 @@
   (as-buffered-image [b fmt] b)
   (write-image [b dest fmt] (save-image b dest (fn [_] nil))))
 
-
-(defrecord image [image-format data width height transparency]
+;;Images are mutable...It might be interesting to look at persistent images 
+;;later (could certainly do it).
+(defrecord image [image-format ^BufferedImage data width height transparency]
   IBitMap 
-  (bitmap-width [b]  width)
-  (bitmap-height [b] height)
+  (bitmap-width    [b]  width)
+  (bitmap-height   [b] height)
   (bitmap-graphics [b] (get-graphics-img data))
-  (bitmap-format [b] image-format)
+  (bitmap-format   [b] image-format)
   (as-buffered-image [b fmt] (cond (= image-format  fmt :buffered-image) data 
                                    (= fmt image-format ) 
                                      (as-buffered-image data fmt)
                                      :else (throw (Exception. 
                                            "No other formats implemented."))))
-  (write-image [b dest fmt] (save-image data dest (fn [_] nil))))
+  (write-image [b dest fmt] (save-image data dest (fn [_] nil)))
+  IShape 
+  (shape-bounds [s]   (spatial/bbox 0 0 width height))
+  (draw-shape   [s c] (draw-image c data transparency 0 0))
+  I2DGraphicsProvider
+  (get-graphics [s] (get-graphics-img data))
+  ICanvas2D
+  (get-context    [canvas] 
+    (get-context data)) 
+  (set-context    [ig ctx]  
+    (assoc ig :data (set-context data ctx))) 
+  (draw-point     [ig color x y w] 
+    (do (draw-point (get-graphics data) color x y w) ig))    
+  (draw-line      [ig color x1 y1 x2 y2]
+    (do (draw-line (get-graphics data) color x1 y1 x2 y2) ig))
+  (draw-rectangle [ig color x y w h]  
+    (do (draw-rectangle (get-graphics data) color x y w h) ig))
+  (fill-rectangle [ig color x y w h]  
+    (do (fill-rectangle (get-graphics data) color x y w h) ig))
+  (draw-ellipse   [ig color x y w h]  
+    (do (draw-ellipse (get-graphics data) color x y w h) ig))
+  (fill-ellipse   [ig color x y w h]  
+    (do (fill-ellipse (get-graphics data) color x y w h) ig))
+  (draw-string    [ig color font s x y] 
+    (do (draw-string (get-graphics data) color font s x y) ig))
+  (draw-image     [ig img transparency x y] 
+    (do (draw-image (get-graphics data) img transparency x y) ig))
+  IInternalDraw
+  (-draw-shapes [ig xs] (let [g (get-graphics data)]
+                          (do (draw-shapes g xs)
+                            ig))))
   
 (defn make-image
   "Creates a portable image-buffer, which allows us to abstract away the java

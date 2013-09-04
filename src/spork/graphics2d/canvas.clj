@@ -225,21 +225,32 @@
 ;A general protocol for drawing arbitrary shapes.  Specifically, we let the 
 ;shape, using primitive canvas operations, dictate how it's drawn.  I elevated
 ;this protocol (used to be locked up in shapes), because it's important enough
-;to have here...  That way, a namespace and just 
+;to have here...That way, a namespace and just 
 (defprotocol IShape
-  (shape-bounds [s] "Get a bounding box for the shape.")
+  (shape-bounds [s]   "Get a bounding box for the shape.")
   (draw-shape   [s c] "Draw the shape onto a canvas."))
 
-(defn shape-coll?
+(defn shape-seq?
   "Function that determines if the collection is a simple sequence of things 
    that can be drawn using IShape, or if, despite being a sequence, already 
    directly support IShape and knows how to draw itself."
-  [x]  (and (coll? x) (not (satisfies? IShape x))))  
+  [x]  (and (sequential? x) (not (satisfies? IShape x))))  
+
+
+;;maybe....
+(comment 
+  (defn draw [s c]
+    (draw-shape s (get-graphics c))))
+
+;;Protocol for more efficient drawing operations, if a canvas supports them.
+(defprotocol IInternalDraw
+  (-draw-shapes [canvas xs]))
 
 (defn draw-shapes
   "Draws a sequence of shapes, xs, to canvas c.  Expands collections into a 
    sequence of shapes, if and only is the collection is not a shape collection."
-  [xs c]
-  (reduce 
-    (fn [c s] (if (not (shape-coll? s)) (draw-shape s c) (draw-shapes c s))) c))
-  
+  [c xs]
+  (if (satisfies? IInternalDraw c) (-draw-shapes c xs) 
+    (reduce 
+      (fn [c s] (if (not (shape-coll? s)) (draw-shape s c) (draw-shapes c s))) 
+      c xs)))
