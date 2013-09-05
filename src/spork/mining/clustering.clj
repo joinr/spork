@@ -423,7 +423,7 @@
   (display-clusters (compute-cluster hierarchical-cluster small-db) small-db))
 (defn view-blog-cluster []
   (gui/view (dendrogram->image clust (:labels db))))
-(defn view-desires-cluster []
+(defn view-zebo-cluster []
   (gui/view (dendrogram->image zebo-clust (:labels desired-data))))
 ;;Note -> this operation may take a while; there are a lot of words!
 (defn view-blog-cluster-by-words []
