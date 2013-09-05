@@ -426,10 +426,10 @@
   ([name data] (shelf (label name)
                       (as-JTable data :sorted true))))
 
-(defn ^JFrame ->scrollable-view [content & {:keys [title]}] 
+(defn ^JFrame ->scrollable-view [content & {:keys [title width height]}] 
   (doto (JFrame. title)
     (.add (JScrollPane. content))
-    (.setSize 400 600)
+    (.setSize (or width 400) (or height 600))
     (.setVisible true)))
 
 (defn choose-from
@@ -742,17 +742,17 @@
                                      (str (str (System/getProperty "user.home") 
                                                "\\" "SavedBuffer.png")) ]
                                (do (j2d/write-image buffer savepath nil)
-                                 (alert (str "Saved image to " savepath)))))))]                               
-       (doto panel                                                     
-         (.setPreferredSize (Dimension. width height))
-         (.addMouseListener savelistener))))
+                                 (alert (str "Saved image to " savepath)))))))]                                      
+         (doto panel                                                     
+           (.setPreferredSize (Dimension. width height))
+           (.addMouseListener savelistener))))
   ([paintf] (paintpanel 250 250 paintf)))
 
 (defmethod display :shape [^JFrame frm s]
-  (let [{:keys [x y width height]} (j2d/shape-bounds s)]
+  (let [{:keys [x y width height]} (j2d/shape-bounds s)]    
     (display frm (paintpanel 
-                   (inc (+ width x)) 
-                   (inc (+ height y)) #(j2d/draw-shape s %)))))
+                     (inc (+ width x)) 
+                     (inc (+ height y)) #(j2d/draw-shape s %)))))
 
 (defn repaint [^JPanel p] (.repaint p))
                   
@@ -840,17 +840,18 @@
 (defmethod view JTable [t & {:keys [title] :or {title "Table"}}]
   (->scrollable-view t :title title))
 
-(defmethod view :default [s] 
+(defmethod view :default [s & {:keys [title] :or {title "Shape"}}] 
   (if (satisfies? j2d/IShape s)
+    ;(->scrollable-view s :title title)))
     (view (empty-frame) s)))
 
 (defn swing-canvas [width height] 
   (let [frm (empty-frame)
         painter (atom (fn [g] nil))        
-        panel  (doto 
-                 (proxy [JPanel] [] (paint [g]  (@painter g)))
-                 (.setPreferredSize (Dimension. width height)))
-        _      (add-watch painter :repaint (fn [k r o n]
+        panel   (doto 
+                  (proxy [JPanel] [] (paint [g]  (@painter g)))
+                  (.setPreferredSize (Dimension. width height)))
+        _       (add-watch painter :repaint (fn [k r o n]
                                              (repaint panel)))]
     (do (doto (display frm panel) (toggle-top))
       {:frame frm 

@@ -10,7 +10,8 @@
                               [image  :as img]
                               [swing  :as swingcanvas]]
             [spork.geometry.shapes :refer :all]
-            [spork.util [zip :as zip]] ;added zipper operations
+            [spork.util [zip :as zip]
+                        [vector :as v]] ;added zipper operations
             ))
 
 (defn sum [xs]   
@@ -117,6 +118,33 @@
 (defrecord bicluster [^doubles vec left right ^double distance id])
 (defn leaf? [^bicluster c] 
   (and (empty? (:left c)) (empty? (:right c))))
+(defn get-children [^bicluster c]
+    (seq (remove nil? [(:left c) (:right c)])))
+;;Note: tree-seq makes tree walkers trivial...means graph conversion is also 
+;;trivial...
+(defn walk-cluster [c] 
+  (tree-seq (complement leaf?) 
+            (fn [nd] (let [parent (:id nd)]
+                       (map #(assoc % :parent parent)
+
+                            (get-children nd))))     c))
+(defn label-with [m] (fn [x] (get m x x)))
+(defn cluster-nodes [c & [labels]]
+  (->> (walk-cluster c)
+       (map (fn [n] (-> n (update-in [:left] :id) (update-in [:right] :id))))))
+
+(defn relabel-nodes [labels node-seq]
+  (let [get-label (label-with labels)]
+    (map (fn [nd] 
+           (-> nd
+             (update-in [:id] get-label)
+             (update-in [:left] get-label)
+             (update-in [:right] get-label)
+             (update-in [:parent] get-label)))
+         node-seq)))
+
+(defn map-nodes [f c] (map f (cluster-nodes c)))
+
 
 ;;A more efficient algorithm for hierarchical clustering, based on the 
 ;;assumption that distance does not change.  We use a priority queue to manage
@@ -301,22 +329,24 @@
   (when clust ;cluster may be nil
     (if (leaf? clust) ;leaves are just text labels.
       (->plain-text :black (get labels (:id clust)) (+ x 5.0) (+ y 5.0))
-      (let [left-height (get-height (:left  clust))
-            right-height     (get-height (:right clust))
-            top    (/ (- y (+ left-height right-height)) 2.0) ;top of the node
-            bottom (/ (+ y (+ left-height right-height)) 2.0) ;bottom of the node
+      (let [left-height      (* (get-height (:left  clust)) height)
+            right-height     (* (get-height (:right clust)) height)
+            vertical-offset  (/ (+ left-height right-height) 2.0)
+            top    (- y vertical-offset) ;top of the node
+            bottom (+ y vertical-offset) ;bottom of the node
             ;line length, for the line that crosses over 
-            line-length (* (:distance clust) scaling)
+            line-length  (* (:distance clust) scaling)
             child-length (+ x line-length)]
+        ;(assert (> top 0.0) "Top node is off the page!")
         ;;This is a little bit ugly, but I'll refactor it later.
         ;;These are the actual drawing calls...          
         ;vertical line from this cluster to children
-        (reduce conj (branch->shape left-height right-height x 
-                                    top bottom line-length) 
+        (reduce conj (branch->shape  x left-height right-height 
+                                     top bottom line-length) 
           ;;Recursive calls for each branch.
           [(node->shape (:left clust) child-length (+ top (/ left-height 2)) 
                         scaling labels :height height)
-           (node->shape (:right clust) child-length (- bottom (/ left-height 2)) 
+           (node->shape (:right clust) child-length (- bottom (/ right-height 2)) 
                         scaling labels :height height)])))))
 
 ;;An all-in-one wrapper to draw the clusters to the canvas as a dendrogram.
@@ -342,18 +372,24 @@
  ;;If we didn't have the table lib, we could do it the way segaran does, with 
  ;;a file-scraper.
  
-(defn blog-data [] (tbl/tabdelimited->table (core/get-dataset :blog)))
-(defn read-blog-data [tbl & {:keys [blog-filter]}]  
-  (let [valid?    (set blog-filter)
-        tbl       (if blog-filter 
-                    (tbl/select :from tbl :where #(valid? (:Blog %)))
+(defn blog-data []
+  (->> (tbl/tabdelimited->table (core/get-dataset :blog)) 
+       (tbl/rename-fields {:Blog :Item})))
+(defn zebo-data [] (tbl/tabdelimited->table (core/get-dataset :zebo)))
+
+(defn read-item-data [tbl & {:keys [item-filter]}]  
+  (let [valid?    (set item-filter)
+        tbl       (if item-filter 
+                    (tbl/select :from tbl :where #(valid? (:Item %)))
                     tbl) 
-        blognames (first (tbl/table-columns (tbl/select :fields [:Blog] :from tbl)))
-        words     (subvec (tbl/table-fields tbl) 1) ;drop blog from the fields        
-        labels    (zipmap (range (count blognames)) blognames)
-        data      (tbl/table-rows (tbl/drop-field :Blog tbl))]
+        itemnames  (first (tbl/table-columns (tbl/select :fields [:Item] :from tbl)))
+        words      (subvec (tbl/table-fields tbl) 1) ;drop blog from the fields
+        wordlabels (zipmap (range (count words)) words) ;another look at clusters.        
+        labels     (zipmap (range (count itemnames)) itemnames)
+        data       (tbl/table-rows (tbl/drop-field :Item tbl))]
    ;Return a map of useful data
-   {:names blognames :words words :data  data  :labels labels}))    
+   {:names itemnames :words words :wordlabels wordlabels :data  data  :labels labels}))
+
 (def sample-blogs ["John Battelle's Searchblog"
                    "Search Engine Watch Blog"
                    "Read/WriteWeb"
@@ -361,18 +397,39 @@
                    "Search Engine Roundtable"
                    "Google Operating System"
                    "Google Blogoscoped"])
-(def small-db (read-blog-data (blog-data) :blog-filter sample-blogs))  
-(def db (read-blog-data (blog-data)))
+(def small-db (read-item-data (blog-data) :blog-filter sample-blogs))  
+(def db       (read-item-data (blog-data)))
+(def desired-data (read-item-data (zebo-data)))
 (defn compute-cluster [f & [database]] (f (:data (or database db))))
 
 (def clust (compute-cluster hierarchical-cluster))
+(def zebo-clust (compute-cluster hierarchical-cluster desired-data)) 
+;;This guy takes a while...
+(def word-clust  
+  (delay (do (println "Computing word clusters...may take a minute")
+             (compute-cluster hierarchical-cluster
+                (assoc db :data (v/transpose (:data db)))))))
+(def zebo-word-clust  
+  (delay (do (println "Computing word clusters...may take a minute")
+             (compute-cluster hierarchical-cluster
+                (assoc desired-data :data (v/transpose (:data desired-data)))))))
 (def small-clust (compute-cluster hierarchical-cluster small-db))
+(def tiny-clust  (first (filter (fn [nd] (= (:id nd) -4)) (walk-cluster small-clust))))
 
 (defn display-clusters [the-cluster & [database]]
   (let [labels (:labels (or database db))]
     (print-cluster the-cluster :get-label labels)))
 (defn display-sample-cluster []
   (display-clusters (compute-cluster hierarchical-cluster small-db) small-db))
+(defn view-blog-cluster []
+  (gui/view (dendrogram->image clust (:labels db))))
+(defn view-desires-cluster []
+  (gui/view (dendrogram->image zebo-clust (:labels desired-data))))
+;;Note -> this operation may take a while; there are a lot of words!
+(defn view-blog-cluster-by-words []
+    (gui/view (dendrogram->image @word-clust (:wordlabels db))))
+(defn view-zebo-cluster-by-words []
+    (gui/view (dendrogram->image @zebo-word-clust (:wordlabels db))))    
 
 )                         
 

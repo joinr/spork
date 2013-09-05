@@ -214,6 +214,17 @@
            (assoc (table-columns tbl) idx 
                   (normalize-column col (count-rows tbl)))))))) 
 
+(defn rename-fields
+  "Rename existing fields according to a mapping of old to new fields."
+  [lookup tbl]
+  (reduce (fn [acc fldname] 
+            (if-let [new-name (get lookup fldname)]
+              (let [[_ xs] (vec (first (get-field fldname tbl)))] 
+                (conj-field [new-name xs] acc))
+              (conj-field (vec (first (get-field fldname tbl))) acc)))
+          empty-table
+          (table-fields tbl)))
+
 (defn conj-fields
   "Conjoins multiple fieldspecs into tbl, where each field is defined by a  
    vector of [fieldname & [columnvalues]]"
