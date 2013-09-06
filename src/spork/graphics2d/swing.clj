@@ -7,7 +7,7 @@
   (:import  [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
                       GraphicsDevice GraphicsConfiguration Polygon Point 
                       Rectangle Shape Dimension Color Transparency
-                      Component]
+                      Component Stroke]
             [java.awt.geom AffineTransform Point2D Rectangle2D Line2D]
             [java.awt.image BufferedImage ImageObserver]
             [javax.swing JFrame JComponent JPanel]
@@ -207,7 +207,10 @@
       #(do (.drawString % (str s) (float x) (float y)) %)))
   
   (draw-image [^Graphics2D g img transparency x y]
-    (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil)))
+    (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil))
+  IStroked
+   (get-stroke [^Graphics2D ctx] (.getStroke ctx))
+   (set-stroke [^Graphics2D ctx ^Stroke s] (doto ctx (.setStroke s))))
   
 ;  ICanvas2DExtended
 ;  (-draw-polygon   [^Graphics2D g color points] )
@@ -291,6 +294,9 @@
     (swing-graphics. 
       (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil)
       options))
+  IStroked
+  (get-stroke [sg]   (.getStroke g))
+  (set-stroke [sg s] (swing-graphics. (doto g (.setStroke s)) options))
   IInternalDraw
   (-draw-shapes [sg xs] (assoc sg :g (draw-shapes g xs))))
 

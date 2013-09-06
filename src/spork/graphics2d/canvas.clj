@@ -102,7 +102,12 @@
     (scale-2d       [ctx x y])
     (rotate-2d      [ctx theta])
     (set-state      [ctx state])
-    (make-bitmap    [ctx w h transp]))    
+    (make-bitmap    [ctx w h transp])) 
+
+;;slight hack to enable some visual trickery.
+(defprotocol IStroked
+   (get-stroke [ctx])
+   (set-stroke [ctx s]))
 
 (defn with-color
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
@@ -156,6 +161,15 @@
   (let [alpha0 (get-alpha ctx)]
     (-> (f (set-alpha ctx alpha))
       (set-alpha alpha0))))
+
+(defn with-stroke
+  "Given a drawing function f, where f::IStroked->IStroked, 
+   temporarily changes the stroke of the context, applies f, then undoes
+   the blend."
+  [stroke ctx f]
+  (let [stroke0 (get-stroke ctx)]
+    (-> (f (set-stroke ctx stroke))
+      (set-stroke stroke0))))
 
 ;note - there are different ways to blend and composite two images...
 ;OpenGL uses a slew of blending rules and a blendfunction (these are built-in).
@@ -223,6 +237,7 @@
 ;(defn draw-path [canvas points])
 ;(draw-poly-line [canvas points]
 
+
 ;A general protocol for drawing arbitrary shapes.  Specifically, we let the 
 ;shape, using primitive canvas operations, dictate how it's drawn.  I elevated
 ;this protocol (used to be locked up in shapes), because it's important enough
@@ -230,14 +245,12 @@
 (defprotocol IShape
   (shape-bounds [s]   "Get a bounding box for the shape.")
   (draw-shape   [s c] "Draw the shape onto a canvas."))
- 
 
 (defn shape-seq?
   "Function that determines if the collection is a simple sequence of things 
    that can be drawn using IShape, or if, despite being a sequence, already 
    directly support IShape and knows how to draw itself."
   [x]  (and (sequential? x) (not (satisfies? IShape x))))  
-
 
 ;;Protocol for more efficient drawing operations, if a canvas supports them.
 (defprotocol IInternalDraw

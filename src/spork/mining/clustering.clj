@@ -9,11 +9,19 @@
             [spork.graphics2d [canvas :as canvas]
                               [image  :as img]
                               [swing  :as swingcanvas]]
+            [spork.graphics2d [strokes :as strokes]]
             [spork.geometry.shapes :refer :all]
             [spork.util [zip :as zip]
                         [vector :as v]] ;added zipper operations
             ))
 
+(defrecord fancy-line [color x1 y1 x2 y2]
+  canvas/IShape
+  (shape-bounds [s]   (canvas/shape-bounds (->line color x1 y1 x2 y2)))
+  (draw-shape   [s c] 
+    (canvas/with-stroke (strokes/->jitter-stroke 2.0 2.0)  c
+      #(canvas/draw-line % color x1 y1 x2 y2))))
+  
 (defn sum [xs]   
   (loop [acc 0.0
          idx 0]
@@ -144,6 +152,7 @@
          node-seq)))
 
 (defn map-nodes [f c] (map f (cluster-nodes c)))
+
 
 
 ;;A more efficient algorithm for hierarchical clustering, based on the 

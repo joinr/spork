@@ -528,7 +528,7 @@
   (let [{:keys [model view control state]} 
         (text-dialogue prompt :text-component text-component 
                               :exit-on exit-on)
-        get-selection #(deref (:selected model))]
+        get-selection! #(deref (:selected model))]
     (with-disposable 
       [ibox (display-simple 
                 (stack
@@ -542,7 +542,7 @@
                        (:closing)
                        (obs/subscribe (fn [_] (obs/notify! (:cancel control)
                                              :cancelled))))]
-        (get-selection)))))
+        (get-selection!)))))
 
 (defn memo-box 
   "Presents the user with a text area, which allows them to type in multiple 
@@ -558,17 +558,17 @@
    by mouse/keyboard input."
   [& {:keys [title editable?] :or {title "Log" editable? false}}]
   (let [logbox (text-area :enabled? editable?)
-        append-text (fn [x] (.append logbox (str x)))
-        clear-text  (fn []  (.setText logbox ""))]
+        append-text! (fn [x] (.append logbox (str x)))
+        clear-text!  (fn []  (.setText logbox ""))]
     (make-modelview
       {:get-text (fn [] (.getText logbox))} 
       (scroll-pane logbox)
       {:append-text (->> (obs/make-observable)
-                      (obs/subscribe append-text))
+                      (obs/subscribe append-text!))
        :write-line  (->> (obs/make-observable)
-                      (obs/subscribe  #(append-text (str % \newline))))
+                      (obs/subscribe  #(append-text! (str % \newline))))
        :clear-text  (->> (obs/make-observable)
-                      (obs/subscribe clear-text))}
+                      (obs/subscribe clear-text!))}
       nil)))
 
 ;;Incorporated from elsewhere...jvmnotebook.org or something.
