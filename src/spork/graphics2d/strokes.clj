@@ -8,11 +8,37 @@
     (FlatteningPathIterator. (.getPathIterator s nil) flatness))
   ([^Shape s] (shape->path s 1.0)))  
 
+
 (defn ^Shape shape->stroked [^Shape s] (.createStrokedShape (BasicStroke. 10) s))   
 (defn path-done? [^PathIterator p] (.isDone p))
 
-(defn ^doubles ->segment [& xs]
+(defn ^doubles ->coords [& xs]
   (double-array (take 6 (if (seq xs) xs (repeat 0.0)))))
+(def path-types {PathIterator/SEG_MOVETO :move-to
+                 PathIterator/SEG_CLOSE  :close 
+                 PathIterator/SEG_LINETO :line-to})                        
+
+(defrecord segment [path-type ^long type ^doubles coords])    
+(defn ^segment path->segment 
+  ([^PathIterator it ^segment acc]  (if (path-done? it) nil
+                                      (let [pts (:coords acc)
+                                            res (.currentSegment it pts)
+                                            path-type (get path-types res res)]
+                                        (-> (assoc acc :type res)
+                                            (assoc :path-type path-type)))))
+  ([^PathIterator it] (path->segment it (->segment nil 0 (->coords)))))
+
+(defn path-seq [^PathIterator it]
+  (if-let [seg (path->segment it)]
+    (lazy-seq (cons seg (path-seq (doto it (.next)))))))  
+(defn path-vec [^PathIterator it]
+  (loop [acc (transient [])
+         it  it]
+    (if (path-done? it) (persistent! acc)
+      (recur (conj! acc (path->segment it))
+             (doto it (.next))))))
+         
+
 
 (defn ^float randomize 
   ([^double amplitude ^double x]  (float (+ x (- (* (rand) amplitude) 1.0))))
