@@ -62,6 +62,8 @@
   ([^double amplitude ^double x]  (float (+ x (- (* (rand) amplitude) 1.0))))
   ([^double x] (float (randomize 2.0 x))))
 
+(defprotocol IStroke 
+  (stroke [s x]))
 ;;Path basics: 
 ;;MoveTo initializes a subpath at a coordinate. 
 ;;LineTo, QuadTo, CubeTo, define an extension of the path's current coordinate
@@ -69,15 +71,15 @@
 ;;Winding rules determine how to perform hit testing on paths, to support 
 ;;geometric queries on the general path. 
 
-GeneralPath path = new GeneralPath();
-path.moveTo(100,100); ;;initialize the path. 
-path.lineTo(300,205); ;;draw a line from previous (100,100) to 300,205
-path.quadTo(205,250,340,300);; draw a quad line from previous (300,205), 
+;GeneralPath path = new GeneralPath();
+;path.moveTo(100,100); ;;initialize the path. 
+;path.lineTo(300,205); ;;draw a line from previous (100,100) to 300,205
+;path.quadTo(205,250,340,300);; draw a quad line from previous (300,205), 
                             ;; to 205,250, with CP at 340,300 
-path.lineTo(340,350); ;;draw a line from previous, 340,300
-path.closePath();
+;path.lineTo(340,350); ;;draw a line from previous, 340,300
+;path.closePath();
 
-(defn cover-distance [the-path detail distance next dy dx]  
+(defn cover-distance [the-path detail distance next dy dx lastx lasty]  
   (if (< distance next)  
     (float (- next distance))                 
     (let [r (/ 1.0 distance)
@@ -95,8 +97,8 @@ path.closePath();
 ;;Pattered off of Jerry Huxtable's excellent demo code in java.
 (defn ^GeneralPath jittered-path [detail jitter ^Shape s]
   (let [^GeneralPath the-path (GeneralPath.)
-        ^PathIterator it (shape->path (shape->stroked s))        
-        points  (float-array 6)]
+        ^PathIterator it      (shape->path (shape->stroked s))        
+        points                (float-array 6)]
     (loop [movex   (float 0.0)
            movey   (float 0.0)
            lastx   (float 0.0) 
@@ -119,16 +121,26 @@ path.closePath();
               (aset points 1 (float movey))
               (recur movex movey lastx lasty thisx thisy first next))
           PathIterator/SEG_LINETO
-          (let [thisx (float (randomize (aget points 0))) ;extract the x + jitter
-                thisy (float (randomize (aget points 1))) ;extract the y + jitter
+          (let [thisx (float (randomize (aget points 0)));extract the x + jitter
+                thisy (float (randomize (aget points 1)));extract the y + jitter
                 dx    (- thisx lastx) ;how far we jittered horizontally
                 dy    (- thisy lasty) ;how far we jittered vertically
                 distance (Math/sqrt (+ (* dx dx) (* dy dy))) ;total distance
-                next-nxt (cover-distance the-path detail distance next dx dy)]
+                next-nxt (cover-distance the-path detail distance next dx dy 
+                                         lastx lasty)]
             (recur movex movey thisx thisy thisx thisy false next-nxt))
           (do (.next it)
             (recur movex movey lastx lasty thisx thisy first next)))))))
  
 (defn ->jitter-stroke [detail jitter]
-  (reify java.awt.Stroke
-    (createStrokedShape [this shape] (jittered-path detail jitter shape))))  
+  (reify 
+    java.awt.Stroke
+    (createStrokedShape [this shape] (jittered-path detail jitter shape))
+    IStroke
+    (stroke [this s] (.createStrokedShape this s))))
+
+;;Testing 
+(comment 
+(import '[java.awt.geom Rectangle2D Line2D] )
+(defn ^Line2D ->jline [x1 y1 x2 y2] (java.awt.geom.Line2D$Double. x1 y1 x2 y2))  
+)
