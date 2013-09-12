@@ -57,7 +57,7 @@
 (defn ->fn    [x]    {:compare-fn x})
 
 ;;utility to tag values as key-generators to be used when comparing.
-(defn ->map   [f]    {:compare-fn (fn [l r] (f l) (f r))})
+(defn ->key   [f]    {:compare-fn (fn [l r] (f l) (f r))})
 (defn ->eq    [f v]  {:compare-fn (fn [l r] (= (f l r) v))})
 
 ;;Flip the comparison direction, to go from ascending to descending.
