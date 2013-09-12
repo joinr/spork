@@ -104,8 +104,7 @@
   [comparers]
   (fn [x y] 
     (loop [cs comparers]
-      (if (empty? cs)
-          0
+      (if (empty? cs) 0
           (let [res ((first cs) x y)]
             (if (zero? res)
               (recur (rest cs))
