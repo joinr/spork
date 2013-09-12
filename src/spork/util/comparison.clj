@@ -24,7 +24,7 @@
     :serial   (gen/serial-comparer (vec (map as-comparer x)))))
  
 ;;utility to tag values as key-generators to be used when comparing.
-(defn ->key   [f]   (fn [l r] (f l) (f r)))
+(defn ->key   [f]   (fn [l r] (compare (f l) (f r))))
 
 ;;if function f, when compared to the left input, yields v, implies left is greater.
 (defn ->where 
