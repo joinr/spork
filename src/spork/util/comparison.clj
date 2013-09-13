@@ -7,6 +7,36 @@
 ;;Flip the comparison direction, to go from ascending to descending.
 (defn flip    [f]   (fn [l r] (f r l)))
 
+
+;;utility to tag values as key-generators to be used when comparing.
+(defn ->key   [f]  (fn [l r] (compare (f l) (f r))))
+(def  ->val (->key identity))
+
+;;if function f, when compared to the left input, yields v, implies left is greater.
+(defn ->where-key 
+  [f v] (fn [l r] (compare (= (f l) v) (= (f r) v))))
+
+;;applies pred to the left value in comparison.
+;;gross definition of "less"
+;;(defn ->lesser [pred] (fn [l r] (pred l)))
+
+;;bases preference on an exact match of value v.
+(defn ->where  [v]
+  (if (fn? v) 
+    (fn [l r] (v l r))
+    (->where-key identity v)))
+
+(defn ->not [c]   
+  (flip (if (fn? c) c (->comparer c))))
+
+;;if any predicate returns a true, yields true.
+(defn ->any   [preds] (fn [l r] (if (some (fn [p] (p l)) preds)
+                                  true
+                                  false)))  
+
+;;Invert the default ordering 
+(defn ->descending [f]  (flip f))
+
 ;;For nested rules, we traverse the rule set and compile them.  Just an 
 ;;optimization step.
 
@@ -18,26 +48,14 @@
 
 ;;allow composite comparer rules.  Given a (possibly nested) sequence of 
 ;;comparisons, it'll compile the comparers into a single rule.
-(defn as-comparer [x]
+(defn ->comparer [x]
   (case (comparison-type x)
-    (:fn :keyword) x
-    :serial   (gen/serial-comparer (vec (map as-comparer x)))))
- 
-;;utility to tag values as key-generators to be used when comparing.
-(defn ->key   [f]   (fn [l r] (compare (f l) (f r))))
+    :fn  x
+    :keyword (->key x)
+    :serial  (gen/serial-comparer (vec (map as-comparer x)))))
 
-;;if function f, when compared to the left input, yields v, implies left is greater.
-(defn ->where 
-  ([f] (fn [l r] (f l r)))
-  ([f v] (fn [l r] (= (f l r) v))))
-
-;;if any predicate returns a true, yields true.
-(defn ->any   [preds] (fn [l r] (some (fn [p] (p l)) preds)))  
-
-;;Invert the default ordering 
-(defn ->descending [f]  (flip f))
-
-;;need a defcomparer....we have something like this in util.table, and util.record.
+;;need a defcomparer....we have something like this in util.table, and 
+;;util.record.
 ;;You could do something really cool here, and actually provide a special 
 ;;scripting language.  Maybe later.
 (defmacro defcomparer
@@ -45,5 +63,5 @@
    key functions provided.  For now, only sequential comparison is supported.
    Optionally, user may supply an argument for a context."
   [name rule]
-  `(let [sc# (as-comparer ~rule)]
+  `(let [sc# (->comparer ~rule)]
      (defn ~name  [~'l ~'r] (sc# ~'l ~'r))))
