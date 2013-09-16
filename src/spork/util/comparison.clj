@@ -26,8 +26,7 @@
     (fn [l r] (v l r))
     (->where-key identity v)))
 
-(defn ->not [c]   
-  (flip (if (fn? c) c (->comparer c))))
+
 
 ;;if any predicate returns a true, yields true.
 (defn ->any   [preds] (fn [l r] (if (some (fn [p] (p l)) preds)
@@ -52,7 +51,10 @@
   (case (comparison-type x)
     :fn  x
     :keyword (->key x)
-    :serial  (gen/serial-comparer (vec (map as-comparer x)))))
+    :serial  (gen/serial-comparer (vec (map ->comparer x)))))
+
+(defn ->not [c]   
+  (flip (if (fn? c) c (->comparer c))))
 
 ;;need a defcomparer....we have something like this in util.table, and 
 ;;util.record.
