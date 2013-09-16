@@ -114,6 +114,8 @@
 ;state after performing the side-effect.
 
 
+;;__TODO__ Rewrite this using topologies from spork.graph
+
 (defrecord event-network [name clients subscriptions])
 
 

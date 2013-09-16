@@ -7,7 +7,6 @@
 ;;Flip the comparison direction, to go from ascending to descending.
 (defn flip    [f]   (fn [l r] (f r l)))
 
-
 ;;utility to tag values as key-generators to be used when comparing.
 (defn ->key   [f]  (fn [l r] (compare (f l) (f r))))
 (def  ->val (->key identity))
@@ -25,8 +24,6 @@
   (if (fn? v) 
     (fn [l r] (v l r))
     (->where-key identity v)))
-
-
 
 ;;if any predicate returns a true, yields true.
 (defn ->any   [preds] (fn [l r] (if (some (fn [p] (p l)) preds)

@@ -154,9 +154,6 @@
 ;Add a handler for new-event, that handles the observation using supplied 
 ;handler f.
 
-
-
-
 (defn ->condition [label condition] {:label label :condition condition})
 (defn condition-label [c] (get c :label))
 (defn condition-pred [c]  (get c :condition))
@@ -183,8 +180,8 @@
        (register-routes (get-network state)
           {(event-watcher event-name) {event-name f}
            event-name {:all (fn [state e] 
-                              (if (condition-true? state e)
-                                  (add-event state 
+                              (if (condition-true? state e) ;checks for the condition.
+                                  (add-event state ;trigger the observation of the event.
                                        (->simple-event eid (get-time state)))
                                   state))}}))))
 
