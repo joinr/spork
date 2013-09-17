@@ -76,6 +76,8 @@
 ;;encoding, of k digits, in a combinatorial basis. 
 (defrecord combination [^Boolean big ^long n ^long k ^longs digits]) 
 
+(defn combination? [x] (= (type x) combination))
+
 ;;Returns the number of combinations possible when choosing k items at a time 
 ;;from n elements.
 
@@ -153,6 +155,7 @@
             (aset xs idx (inc current))
             (assoc c :digits xs))))))) 
 
+;;may be obe...
 (defn compare-digits
   "Traverses the digits, from left to right, looking to see which is 'less' in 
    the most significant bit."
@@ -165,6 +168,19 @@
               res (compare x y)]
           (if (not= res 0) res 
               (recur (rest ls) (rest rs)))))))      
+
+(defn compare-combinations
+  "Traverses the digits, from left to right, looking to see which is 'less' in 
+   the most significant bit."
+  [^combination l ^combination r]
+  (let [^longs ls (:digits l)
+        ^longs rs (:digits r)]
+    (loop [idx (int 0)
+           res 0]
+      (if (= idx (alength ls)) res
+        (let [res (compare (aget ls idx) (aget rs idx))]
+          (if (not= res 0) res 
+            (recur (unchecked-inc idx) res)))))))   
 
 (defn ^long middle
   "Aux Used for binary search."
@@ -363,28 +379,44 @@
 ;;API Functions
 ;;=============
 
+;;A simple protocol to support fetching underlying lexicographic functionality.
+;;The exists mainly to allow us to stick in a uniform "digit" representation 
+;;while doing complicated things, like searching, and then project the result
+;;onto the domain at the end.  I got deja vu writing this.  
+(defprotocol ILexographer
+  (-get-lexographer [l] 
+    "Return a function that maps integers to the k-digit combinatorial basis 
+     that l is defined on")
+  (-mth-lex [l m] "Using l, map m to a combination"))
+
+;;returns a function :: int -> combination
 (defn get-lexographer
   "Convenience function to derive an appropriate mapping function for us.
-   Returns a function the maps integers combinations."
-  [n k]
-  (let [big-limit (big-choose n k)]
-    (if (long-able? big-limit)
-      (fn [m]       
-        (assert (and (>= m 0) (<= m (dec (choose n k)))) 
-                (str "index " m "out of bounds: "  [0 (dec (choose n k))]))
-        (small-mth-lexicographic-element n k m))
-      (fn [m] 
-        (assert (and (>= m 0) (<= m (dec' big-limit))) 
+   Returns a function the maps integers combinations. Caller may alternately 
+   supply a single input that satisfies ILexographer."
+  ([n k] (let [big-limit (big-choose n k)]
+           (if (long-able? big-limit)
+             (fn [m]       
+               (assert (and (>= m 0) (<= m (dec (choose n k)))) 
+                       (str "index " m "out of bounds: "  [0 (dec (choose n k))]))
+               (small-mth-lexicographic-element n k m))
+             (fn [m] 
+               (assert (and (>= m 0) (<= m (dec' big-limit))) 
                 (str "index " m "out of bounds: "  [0 (dec' big-limit)]))
-        (big-mth-lexicographic-element n k m)))))
+               (big-mth-lexicographic-element n k m)))))
+  ([l] (if (satisfies? ILexographer l) 
+           (-get-lexographer l)
+           (get (meta l) :lexographer))))
 
+;;Returns combinations.
 (defn mth-lexicographic-element
   "Centralized api for computing the mth lexicographic element of a mathematical
    combination.  Dispatches depending on whether the possible combinations of 
    m can be computed using longs, or whether arbitrary precision integers are 
-   required."
-  [n k m]
-  ((get-lexographer n k) m))
+   required.  Caller may alternately supply a single input that satisfies 
+   ILexographer."
+  ([n k m] ((get-lexographer n k) m))
+  ([lex m] (get-lexographer lex m)))
 
 (defn comb-stream [n k]
   (let [f (if (big-combination? n k) big-choose choose)]
@@ -405,15 +437,16 @@
 ;;this.
 (defn combination-map 
   "Given a sequence of inputs s, and a choice value, returns a function that 
-   maps x, an index in the lexigraphic ordering of the unique elements of 
+   maps x, an index in the lexicographic ordering of the unique elements of 
    s when chosen k at a time, to a k-length vector with entries drawn from the 
    unique elements of s."
   [s k & {:keys [cached?] :or {cached true}}]
   (let [v (vec (distinct s))
         n (count v)
-        combination-map (memoize-if cached? (partial combination->domain v))
-        m->combination  (get-lexographer n k)]
-    (comp combination-map m->combination)))
+        cmap  (partial combination->domain v)
+        m->combination (memoize-if cached? (get-lexographer n k))]
+    (-> (memoize-if cached? (comp cmap m->combination))
+        (with-meta {:lexographer m->combination}))))
 
 (defn span
   "Returns 10 samples spanning the combinatorial domain s, k items at a time."
@@ -439,7 +472,11 @@
 
 (def no-op #(throw (Exception. "operation not supported")))
 
-(deftype lexmap [elements bin-size size mapping]    
+(deftype lexmap [elements element->idx bin-size size mapping]
+  ILexographer 
+  (-get-lexographer [l] (get-lexographer mapping))
+  (-mth-lex [l m] (-mth-lex (get-lexographer mapping)))
+  
   Object
   (toString [this] (str "#collective.combinatoric.lexmap" 
                         [(count elements) bin-size]))      
@@ -480,7 +517,7 @@
       
   clojure.lang.IFn
   ;makes lex map usable as a function
-  (invoke [this k] (.valAt this k))
+  (invoke [this k]           (.valAt this k))
   (invoke [this k not-found] (.valAt this k not-found))
   
 ;      clojure.lang.IObj
@@ -501,21 +538,66 @@
    return combinations of integers as expected."
   [s k & {:keys [cached?] :or {cached true}}]
   (let [s  (if (number? s) (range s) s) 
-        mapping (combination-map s k :cached cached?)
-        v (vec (distinct s))
-        n (count v)        
+        mapping  (combination-map s k :cached cached?)
+        elements (vec (distinct s))
+        element->idx (into {} (map-indexed (fn [i x] [x i]) elements)) ;decoding combinations
+        n (count elements)        
         size (big-choose n k)]
-    (->lexmap v k size mapping)))
+    (->lexmap elements element->idx k size mapping)))
+
+(defn digits->elements
+  "Projects a sequence of digits onto the domain of elements that the
+   combinatoric map draws from. Returns a vector of elements."
+  [^lexmap cmap digits] 
+  (let [idx->elements (.elements cmap)]
+    (persistent! (reduce (fn [v dig] (conj! v (get idx->elements dig)))
+                         (transient []) digits))))
+
+(defn elements->digits 
+   "Projects a sequence of digits onto the domain of elements that the
+   combinatoric map draws from.  Returns a vector of elements."
+  [^lexmap cmap elements] 
+  (let [elements->idx (.element->idx cmap)]
+    (persistent! (reduce (fn [v el] (conj! v (get elements->idx el)))
+                         (transient []) elements))))
+
+(defn ^combination elements->combination
+  "Projects a vector of elements, in the 'nice' domain of the lexmap into a 
+   primitive util.combinatoric.combination for faster operations.  Primarily 
+   used for performing effecient inverse operations."
+  [^lexmap cmap elements]
+  (let [^combination c (get cmap 0)]
+    (assoc c :digits (long-array (elements->digits cmap elements)))))
+
+(defn ^combination digits->combination
+  [^lexmap cmap digits]
+   (let [^combination c (get cmap 0)]
+    (assoc c :digits (long-array digits))))
+
+;;is combination a vector of elements in the  domain?  
+;;Should be...
+;;In other words, the mth combination will yield ["A" "B" "C" "D"]
+;;We want to then say, what's the m for ["D" "C" "B" "A"] ?
+;;We need an internal mapping from domain -> idx 
+;;idx -> domain is already in v.
 
 (defn combination->key
   "Returns the key, or a value for m where m is inverse mapping from combination
    to lexicographic indices.  Essentially the inverse of 
-   mth-lexicographic-element"
-  [cmap combination]
-  (let [binfunc (if (long-able? (count cmap))
-                  #(binary-nearest %1 %2 %3 %4 :comparer compare-digits)  
-                  #(big-binary-nearest %1 %2 %3 %4 :comparer compare-digits))]
-    (binfunc 0 (count cmap) #(get cmap %) combination)))
+   mth-lexicographic-element."
+  [^lexmap cmap ^combination comb]
+  (let [binfunc 
+          (if (long-able? (count cmap))
+            #(binary-nearest %1 %2 %3 %4 :comparer compare-combinations)   
+            #(big-binary-nearest %1 %2 %3 %4 :comparer compare-combinations))]
+    (binfunc 0 (count cmap) #(mth-lexicographic-element cmap %) comb)))
+(defn elements->key 
+  [^lexmap cmap elements]
+  (combination->key cmap (elements->combination elements)))
+(defn digits->key 
+  [^lexmap cmap digits]
+  (combination->key cmap (digits->combination elements)))
+  
 
 (defn profile-combinatoric-map [sample-count m]
   (let [n       (count m)
@@ -577,6 +659,9 @@
   (def num-lits (span (vec (map (comp keyword str) (range 26))) 4)) 
 ;a map-like structure
 (def the-map (combinatoric-map alphabet 2))
+;;=>(elements->digits the-map (digits->elements the-map [0 1]))
+;;[0 1]
+
 (def random-pairs 
   (map the-map (take 10 (repeatedly #(rand-int (count the-map))))))
 ;(["A" "Z"]
