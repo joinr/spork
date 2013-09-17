@@ -319,7 +319,6 @@
         mapped (amap digits idx ^longs ret (- (dec n) (aget digits idx)))]
     (->combination true n k mapped)))
 
-
 ;;API Functions
 ;;=============
 
@@ -467,7 +466,15 @@
         size (big-choose n k)]
     (->lexmap v k size mapping)))
 
-;(defn get-key [cmap xs]
+(defn combination->key
+  "Returns the key, or a value for m where m is inverse mapping from combation
+   to lexicographic indices.  Essentially the inverse of 
+   mth-lexicographic-element"
+  [cmap combination]
+  (let [binfunc (if (long-able? (count cmap))
+                  binary-nearest 
+                  big-binary-nearest)]
+    (binfunc 0 (count cmap) #(get cmap %) combination)))
 
 (defn profile-combinatoric-map [sample-count m]
   (let [n       (count m)
