@@ -564,40 +564,45 @@
 (defn ^combination elements->combination
   "Projects a vector of elements, in the 'nice' domain of the lexmap into a 
    primitive util.combinatoric.combination for faster operations.  Primarily 
-   used for performing effecient inverse operations."
+   used for performing efficient inverse operations."
   [^lexmap cmap elements]
   (let [^combination c (get cmap 0)]
     (assoc c :digits (long-array (elements->digits cmap elements)))))
 
 (defn ^combination digits->combination
+  "Projects a vector of digits, relative to the domain of the lexmap into a 
+   primitive util.combinatoric.combination for faster operations.  Primarily 
+   used for performing efficient inverse operations."
   [^lexmap cmap digits]
    (let [^combination c (get cmap 0)]
     (assoc c :digits (long-array digits))))
 
-;;is combination a vector of elements in the  domain?  
-;;Should be...
-;;In other words, the mth combination will yield ["A" "B" "C" "D"]
-;;We want to then say, what's the m for ["D" "C" "B" "A"] ?
-;;We need an internal mapping from domain -> idx 
-;;idx -> domain is already in v.
-
 (defn combination->key
   "Returns the key, or a value for m where m is inverse mapping from combination
    to lexicographic indices.  Essentially the inverse of 
-   mth-lexicographic-element."
+   mth-lexicographic-element.  Currently uses a binary search to find the 
+   match, although there is probably some slick way to do it analytically.
+   I am consulting with the grey beards on that.  Until then, the binary search
+   is a decent compromise."
   [^lexmap cmap ^combination comb]
   (let [binfunc 
           (if (long-able? (count cmap))
             #(binary-nearest %1 %2 %3 %4 :comparer compare-combinations)   
             #(big-binary-nearest %1 %2 %3 %4 :comparer compare-combinations))]
     (binfunc 0 (count cmap) #(mth-lexicographic-element cmap %) comb)))
+
 (defn elements->key 
   [^lexmap cmap elements]
   (combination->key cmap (elements->combination elements)))
+
 (defn digits->key 
   [^lexmap cmap digits]
   (combination->key cmap (digits->combination elements)))
   
+
+
+;;Profiling
+;;=========
 
 (defn profile-combinatoric-map [sample-count m]
   (let [n       (count m)
