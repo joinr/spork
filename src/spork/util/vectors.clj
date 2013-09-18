@@ -82,24 +82,24 @@
        (defrecord ~name [~@hinted-xs]
          IDoubleVector
          (~'dimension [~'v] ~dimension)     
-         (~'vec-nth [~'v ~'idx] 
+         (vec-nth [~'v ~'idx] 
            (case  (long ~'idx)
              ~@idx->x         
              (throw (Exception. (str "Index out of bounds: " ~'idx)))))
-         (~'set-vec [~'v ~'idx ~'x]            
+         (set-vec [~'v ~'idx ~'x]            
            (let [k# (if (integer? ~'idx)
                       (case (long ~'idx) 
                         ~@(flatten 
                             (map-indexed (fn [i x] [i (keyword x)]) xs)))
                       ~'idx)]  
              (assoc ~'v k# (double ~'x))))
-         (~'map-vec [~'v1 ~'f] 
+         (map-vec [~'v1 ~'f] 
            (~ctor ~@(map-indexed (fn [idx x] `(~'f ~x)) xs)))
-         (~'map-vec [~'v1 ~'v2 ~'f] 
+         (map-vec [~'v1 ~'v2 ~'f] 
            (~ctor ~@(map-indexed 
-                      (fn [idx x] `(~'f (~'vec-nth ~'v2 ~idx) ~x)) xs)))
+                      (fn [idx x] `(~'f (vec-nth ~'v2 ~idx) ~x)) xs)))
          ~@imps)
-       (~'swap! ~'vecs ~'assoc ~dimension ~arrow-ctr))))
+       (~'swap! vecs ~'assoc ~dimension ~arrow-ctr))))
 
 
 (defn get-vec-ctor

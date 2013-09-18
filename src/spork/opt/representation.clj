@@ -3,7 +3,7 @@
 ;;include arrays of normalized floating point values [0.0, 1.0], and bitstrings.
 ;;Primitive operations are wrapped for maximum effeciency.
 (ns spork.opt.representation
-  (:require [spork.util.vectors :refer :all]
+  (:require [spork.util [vectors  :as v]]
             [spork.util.combinatoric :refer [combinatoric-map elements->key 
                                              combinatoric-map?]])) 
 
@@ -69,7 +69,7 @@
     (internal-perturb s deltas) ;use fast version if we can 
     (with-double-encoding encoding  ;else coerce to doublevec.
       (-> (*encode* s)
-          (vec-add deltas)
+          (v/vec-add deltas)
           (*decode*)))))
  
 ;;Defining Ranges for Solution Representations
@@ -295,7 +295,7 @@
        (if (empty? ys) (persistent! acc)
            (let [k (first ys)
                  n (get spec k)]
-             (recur (assoc! acc k (from-normal n (vec-nth dvec idx)))
+             (recur (assoc! acc k (from-normal n (v/vec-nth dvec idx)))
                     (rest ys)
                     (inc idx))))))))
 
@@ -305,7 +305,7 @@
   [spec]
   (let [ks (into [] (keys spec))       
         a  (double-array (count ks))
-        base-vec (get-empty-vec (count ks))]
+        base-vec (v/get-empty-vec (count ks))]
 	  (fn [s]
      (loop [acc base-vec
             ys  ks
@@ -313,7 +313,7 @@
        (if (empty? ys) acc
          (let [k (first ys)
                n (get spec k)]
-           (recur (set-vec acc idx (to-normal n (get s k))) 
+           (recur (v/set-vec acc idx (to-normal n (get s k))) 
                   (rest ys) 
                   (inc idx))))))))
 
@@ -327,7 +327,7 @@
            idx 0]
       (if (empty? fs) (persistent! acc)
         (let [n (first fs)]
-          (recur (conj! acc (from-normal n (vec-nth dvec idx)))
+          (recur (conj! acc (from-normal n (v/vec-nth dvec idx)))
                  (rest fs)
                  (unchecked-inc idx)))))))
 
@@ -335,7 +335,7 @@
   "Given a specification for a representation, returns a function that maps 
    the solution domain to double vectors."
   [spec]
-  (let [base-vec (get-empty-vec (count spec))]
+  (let [base-vec (v/get-empty-vec (count spec))]
 	  (fn [s]
      (loop [acc base-vec 
             fs  spec
@@ -343,7 +343,7 @@
             idx 0]
        (if (empty? fs) acc
          (let [n (first fs)]
-           (recur (set-vec acc idx (to-normal n (first vs))) 
+           (recur (v/set-vec acc idx (to-normal n (first vs))) 
                   (rest fs) 
                   (rest vs) 
                   (unchecked-inc idx))))))))  
@@ -492,13 +492,13 @@
   "Creates a double vector of random normalized points, based off a template
    vector." 
   [base-vec]
-  (map-vec base-vec (fn [^double x] (rand)) )) 
+  (v/map-vec base-vec (fn [^double x] (rand)) )) 
 
 (defn basis-vector 
   "Computes a feasible vector for the required dimensionality of the 
    normalization specs associated with normalizer."
   [normalizer]
-  (random-normal-vector (get-empty-vec (normal-dimensions normalizer))))
+  (random-normal-vector (v/get-empty-vec (normal-dimensions normalizer))))
 
 ;;Defining Solution Representations
 ;;=================================
