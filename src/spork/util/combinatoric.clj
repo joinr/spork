@@ -343,8 +343,8 @@
    maps x, an index in the lexicographic ordering of the unique elements of 
    s when chosen k at a time, to a k-length vector with entries drawn from the 
    unique elements of s."
-  [s k & {:keys [cached?] :or {cached true}}]
-  (let [v (vec (distinct s))
+  [s k & {:keys [cached? unique?] :or {cached true unique? false}}]
+  (let [v (vec (if unique? s (distinct s)))
         n (count v)
         cmap  (partial combination->domain v)
         m->combination (memoize-if cached? (get-lexographer n k))]
@@ -441,16 +441,16 @@
    return combinations of integers as expected."
   [s k & {:keys [cached?] :or {cached true}}]
   (let [s  (if (number? s) (range s) s) 
-        mapping  (combination-map s k :cached cached?)
-        elements (vec (distinct s))
+        elements (vec (if (set? s) s (distinct s)))                       
         element->idx (into {} (map-indexed (fn [i x] [x i]) elements)) ;decoding combinations
+        mapping  (combination-map elements k :cached cached? :unique? true) 
         n (count elements)        
         size (big-choose n k)]
     (->lexmap elements element->idx k size mapping)))
 
 (defn combinatoric-map?
   "Predicate to determine if m is a combinatoric map."
-  [m] (or (= (type m) lexmap) (statisfies? ILexographer m)))
+  [m] (or (= (type m) lexmap) (satisfies? ILexographer m)))
 
 (defn digits->elements
   "Projects a sequence of digits onto the domain of elements that the

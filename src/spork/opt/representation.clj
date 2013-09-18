@@ -4,9 +4,8 @@
 ;;Primitive operations are wrapped for maximum effeciency.
 (ns spork.opt.representation
   (:require [spork.util.vectors :refer :all]
-            [spork.util [combinatoric :as c] 
-                        :refer [combinatoric-map elements->key 
-                                combinatoric-map?]])) 
+            [spork.util.combinatoric :refer [combinatoric-map elements->key 
+                                             combinatoric-map?]])) 
 
 ;;Solution Representations
 ;;========================
@@ -546,6 +545,8 @@
    :birth-to-now  [1981 2013]
    :tank-capacity [0.0 105.0]})
 
+(def city-pairs (combinatoric-map cities 2))
+
 (def repspec 
   (with-ranges common-ranges 
     (as-range {:year     :birth-to-now 
@@ -578,7 +579,7 @@
     :pho})
 
 (def lunch-members #{:john :rick :tom})
-
+(def parties (combinatoric-map lunch-members 2))  
 
 (def weekdays #{:monday :tuesday :wednesday :thursday :friday})
 
