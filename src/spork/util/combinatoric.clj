@@ -75,12 +75,12 @@
 ;;of items, k is the partition or choice number, and digits are a valid 
 ;;encoding, of k digits, in a combinatorial basis. 
 (defrecord combination [^Boolean big ^long n ^long k ^longs digits]) 
-
 (defn combination? [x] (= (type x) combination))
 
 ;;Returns the number of combinations possible when choosing k items at a time 
 ;;from n elements.
 
+;;__TODO__ See if Hanson's Hack makes this mo' betta
 ;;Better implementations of choose.
 (defn ^long choose [^long n ^long k]
     (if (= k 0) 1
@@ -90,16 +90,6 @@
     (if (= k 0) 1
         (/ (*' n (big-choose (dec n) (dec k))) k)))
 
-(defn digits->idx 
-  ([^long k digitvec]
-   (loop [idx (dec k)
-          k   k
-          acc 0]
-     (if (< idx 0) acc
-         (recur (unchecked-dec idx) (unchecked-dec  k) 
-                (long (+ (choose (nth digitvec idx)  k) acc))))))
-  ([digitvec] (digits->idx (count digitvec) digitvec)))
-
 (defn long-able?
   "Yields true if x is within the maximum integers representable by a Long."
   [x] (<= x upper-bound))
@@ -108,66 +98,7 @@
   "Returns false if the combinations of n choose k exceed the upper bounds of 
    a Long."
   [n k] (not (long-able? (big-choose n k))))   
-
-(defn scan
-  "Auxillary function for incrementing digits in a combinatorially encoded base.
-   Finds the digit to be incremented."
-  [^long k ^long base ^longs digits]
-  (loop [idx (dec k)
-         current (aget digits idx)
-         bound (+ base idx)]
-    (if (< idx 0) -1 
-      (if (< current bound)
-        idx
-        (recur (dec idx) 
-               (aget digits (dec idx)) 
-               (+ base (dec idx)))))))
-
-(defn add-digit
-  "Auxillary function to represent the addition of a digit in a combinatorial 
-   base.  Due to some tricks in the algorithm, we simply increment the kth 
-   digit, at idx, and change every digit to the right - of lesser significanc
-   - to be left neighbor + 1."
-  [^combination c idx]
-  (let [^longs ds (:digits c) 
-        xs     (aclone ds)
-        len    (:k c)]        
-    (loop [previous (inc (aset xs idx 1))
-           i  (inc idx)]
-      (when (< i len)
-        (aset xs i  previous)
-        (recur (inc previous) (inc i))))
-    (assoc c :digits xs)))      
-      
-(defn increment
-  "Auxillary function to increment a number represented in a combinatorial  
-   basis. Increments the digit at k, or adds a digit via add-digit."
-  [^combination {:keys [k n digits] :as c}]
-  (let [base    (- n k)
-        idx     (scan k base digits)]    
-    (if (< idx 0) c
-      (let [current (aget ^longs digits idx)]
-        (if (= current (+ base idx))        
-          (if (> idx 0)
-            (add-digit c (dec idx))
-            c)
-          (let [xs (aclone ^longs digits)]
-            (aset xs idx (inc current))
-            (assoc c :digits xs))))))) 
-
-;;may be obe...
-(defn compare-digits
-  "Traverses the digits, from left to right, looking to see which is 'less' in 
-   the most significant bit."
-  [l r] 
-  (loop [ls l
-         rs r]
-    (if (or (empty? ls) (empty? rs)) 0
-        (let [x (first ls)
-              y (first rs)
-              res (compare x y)]
-          (if (not= res 0) res 
-              (recur (rest ls) (rest rs)))))))      
+  
 
 (defn compare-combinations
   "Traverses the digits, from left to right, looking to see which is 'less' in 
@@ -190,14 +121,6 @@
   "Aux Used for binary search."
   [^long l ^long u] (+ l (quot (- u l) 2)))
 
-(defn nearest [f x]
-  (fn [left right]
-    (let [fl (f left)
-          fu (f right)]
-      (cond (and (<= fl x) (> fu x)) left
-            (<= fu x) right))))
-
-
 ;;V2...this needs checking
 (defn nearest-custom [f x comparer]
   (fn [left right]
@@ -208,19 +131,6 @@
           right-less? (not= (comparer fu x) 1)]
       (if (and left-less? right-more?) left
            right))))
-(comment 
-(defn nearest-custom [f x comparer]
-  (fn [left right]
-    (let [fl (f left)
-          fu (f right)
-          left-less?  (not= (comparer fl x) 1)
-          right-more? (=    (comparer fu x) 1)
-          right-less? (not= (comparer fu x) 1)]
-      (cond (and left-less? right-more?) left
-             right-less? right
-             ))))
-)
-
 
 (defn binary-nearest-custom 
   "A customize-able binary search.  Given a range defined by lower bound l, 
@@ -278,8 +188,6 @@
 ;;In other words, we convert between integers and a combinatorial numerical 
 ;;basis by "counting" in base (choose _ k).
 
-;;Replace the naive-choice-search with (choice-search n-bound current-k acc)
-
 (defn ^combination int->combinadic
   "Given a combinatorial basis, n choose k, represents a target integer as a 
    combinadic, or a combination of k digits, which composed under the 
@@ -300,7 +208,6 @@
                  (unchecked-dec current-k) 
                  (unchecked-subtract acc delta)))))))
 
-;;Replace the naive-choice-search with (big-choice-search n-bound current-k acc)
 
 (defn ^combination bigint->combinadic
   "Identical to int->combinadic, but applies to big (arbitrary precision) 
@@ -380,7 +287,7 @@
 ;;=============
 
 ;;A simple protocol to support fetching underlying lexicographic functionality.
-;;The exists mainly to allow us to stick in a uniform "digit" representation 
+;;This exists mainly to allow us to stick in a uniform "digit" representation 
 ;;while doing complicated things, like searching, and then project the result
 ;;onto the domain at the end.  I got deja vu writing this.  
 (defprotocol ILexographer
@@ -416,11 +323,7 @@
    required.  Caller may alternately supply a single input that satisfies 
    ILexographer."
   ([n k m] ((get-lexographer n k) m))
-  ([lex m] (get-lexographer lex m)))
-
-(defn comb-stream [n k]
-  (let [f (if (big-combination? n k) big-choose choose)]
-    (map (partial mth-lexicographic-element n k) (range (f n k)))))
+  ([lex m] ((get-lexographer lex) m)))
 
 (defn combination->domain
   "Given an indexed domain of elements, vector v, and a combination, projects 
@@ -475,7 +378,7 @@
 (deftype lexmap [elements element->idx bin-size size mapping]
   ILexographer 
   (-get-lexographer [l] (get-lexographer mapping))
-  (-mth-lex [l m] (-mth-lex (get-lexographer mapping)))
+  (-mth-lex [l m] (-mth-lex (get-lexographer mapping) m))
   
   Object
   (toString [this] (str "#collective.combinatoric.lexmap" 
@@ -554,8 +457,9 @@
                          (transient []) digits))))
 
 (defn elements->digits 
-   "Projects a sequence of digits onto the domain of elements that the
-   combinatoric map draws from.  Returns a vector of elements."
+   "Projects a sequence of elements onto the ordinal positions of each elements 
+    in the combinatoric map's domain.  Returns a vector of digits, or ordinal 
+    indices into the map's elements."
   [^lexmap cmap elements] 
   (let [elements->idx (.element->idx cmap)]
     (persistent! (reduce (fn [v el] (conj! v (get elements->idx el)))
@@ -566,7 +470,7 @@
    primitive util.combinatoric.combination for faster operations.  Primarily 
    used for performing efficient inverse operations."
   [^lexmap cmap elements]
-  (let [^combination c (get cmap 0)]
+  (let [^combination c (mth-lexicographic-element cmap 0)]
     (assoc c :digits (long-array (elements->digits cmap elements)))))
 
 (defn ^combination digits->combination
@@ -574,7 +478,7 @@
    primitive util.combinatoric.combination for faster operations.  Primarily 
    used for performing efficient inverse operations."
   [^lexmap cmap digits]
-   (let [^combination c (get cmap 0)]
+   (let [^combination c (mth-lexicographic-element cmap 0)]
     (assoc c :digits (long-array digits))))
 
 (defn combination->key
@@ -591,13 +495,18 @@
             #(big-binary-nearest %1 %2 %3 %4 :comparer compare-combinations))]
     (binfunc 0 (count cmap) #(mth-lexicographic-element cmap %) comb)))
 
-(defn elements->key 
+;;Convenience functions 
+(defn elements->key
+  "Give a sequence of elements in a combinatoric map's domain, returns the 
+   lexicographic integer key associated with the element sequence."
   [^lexmap cmap elements]
-  (combination->key cmap (elements->combination elements)))
+  (combination->key cmap (elements->combination cmap elements)))
 
 (defn digits->key 
+  "Give a sequence of indices in a combinatoric map's domain, returns the 
+   lexicographic integer key associated with the sequence."
   [^lexmap cmap digits]
-  (combination->key cmap (digits->combination elements)))
+  (combination->key cmap (digits->combination cmap digits)))
   
 
 
@@ -648,7 +557,6 @@
 ;   [274 450 465 555 936]
 ;   [368 423 570 663 795])
 
-;;This is possibly wrong.  Original test data might've been wrong though..
   (def alphabet-quadruples (span alphabet 4)) 
 ;(("A" "B" "C" "D")
 ; ("A" "I" "J" "V")
@@ -680,11 +588,38 @@
 ; ["A" "C"]
 ; ["C" "T"])      
 
+(def rand-ms (take 10 (repeatedly #(rand-int (count the-map)))))
+;;(266 286 238 207 97 209 11 99 243 285)
+
+(def rand-elements (map #(vector % (get the-map %)) rand-ms)) 
+;;([266 ["O" "W"]]
+;; [286 ["Q" "X"]]
+;; [238 ["M" "R"]]
+;; [207 ["K" "N"]]
+;; [97  ["E" "I"]]
+;; [209 ["K" "P"]]
+;; [11  ["A" "M"]]
+;; [99  ["E" "K"]]
+;; [243 ["M" "W"]]
+;; [285 ["Q" "W"]])
+
+(def the-keys (map (fn [[idx xs]] 
+                     [idx xs (elements->key the-map xs)]) rand-elements))
+;;([266 ["O" "W"] 266]
+;; [286 ["Q" "X"] 286]
+;; [238 ["M" "R"] 238]
+;; [207 ["K" "N"] 207]
+;; [97  ["E" "I"]  97]
+;; [209 ["K" "P"] 209]
+;; [11  ["A" "M"]  11]
+;; [99  ["E" "K"]  99]
+;; [243 ["M" "W"] 243]
+;; [285 ["Q" "W"] 285])
+
 (= (count the-map) (choose (count alphabet) 2))
 ;true
 
 ;;Large combinatorial domains...
-
 (def bigmap (combinatoric-map 1000 8))
 
 (first bigmap)
@@ -718,9 +653,18 @@
 ;;[82 229 332 342 467 699 704 980]
 
 (profile-combinatoric-map 1000 the-map)    
+;;"Elapsed time: 36.540119 msecs"
 
 )
 
+;;Obsolete 
+;;========
+
+(comment ;;possible lib funcs
+  (defn comb-stream [n k]
+    (let [f (if (big-combination? n k) big-choose choose)]
+      (map (partial mth-lexicographic-element n k) (range (f n k)))))
+)
 
 (comment ;v1 
 (defn binary-nearest [l u f x]
@@ -756,6 +700,100 @@
                (cond (= guess x) n
                      (< guess x) (recur n upper)
                      (> guess x) (recur lower  n)))))))
+)
+
+(comment 
+;;old version of nearest, used for bin search.
+(defn nearest [f x]
+  (fn [left right]
+    (let [fl (f left)
+          fu (f right)]
+      (cond (and (<= fl x) (> fu x)) left
+            (<= fu x) right))))
+  
+  
+(defn nearest-custom [f x comparer]
+  (fn [left right]
+    (let [fl (f left)
+          fu (f right)
+          left-less?  (not= (comparer fl x) 1)
+          right-more? (=    (comparer fu x) 1)
+          right-less? (not= (comparer fu x) 1)]
+      (cond (and left-less? right-more?) left
+             right-less? right
+             ))))
+)
+
+(comment ;outdated, no longer using this stuff, from C# port
+                  
+  (defn digits->idx 
+    ([^long k digitvec]
+      (loop [idx (dec k)
+             k   k
+             acc 0]
+        (if (< idx 0) acc
+          (recur (unchecked-dec idx) (unchecked-dec  k) 
+                 (long (+ (choose (nth digitvec idx)  k) acc))))))
+    ([digitvec] (digits->idx (count digitvec) digitvec)))
+(defn scan
+  "Auxillary function for incrementing digits in a combinatorially encoded base.
+   Finds the digit to be incremented."
+  [^long k ^long base ^longs digits]
+  (loop [idx (dec k)
+         current (aget digits idx)
+         bound (+ base idx)]
+    (if (< idx 0) -1 
+      (if (< current bound)
+        idx
+        (recur (dec idx) 
+               (aget digits (dec idx)) 
+               (+ base (dec idx)))))))
+
+(defn add-digit
+  "Auxillary function to represent the addition of a digit in a combinatorial 
+   base.  Due to some tricks in the algorithm, we simply increment the kth 
+   digit, at idx, and change every digit to the right - of lesser significanc
+   - to be left neighbor + 1."
+  [^combination c idx]
+  (let [^longs ds (:digits c) 
+        xs     (aclone ds)
+        len    (:k c)]        
+    (loop [previous (inc (aset xs idx 1))
+           i  (inc idx)]
+      (when (< i len)
+        (aset xs i  previous)
+        (recur (inc previous) (inc i))))
+    (assoc c :digits xs)))      
+      
+(defn increment
+  "Auxillary function to increment a number represented in a combinatorial  
+   basis. Increments the digit at k, or adds a digit via add-digit."
+  [^combination {:keys [k n digits] :as c}]
+  (let [base    (- n k)
+        idx     (scan k base digits)]    
+    (if (< idx 0) c
+      (let [current (aget ^longs digits idx)]
+        (if (= current (+ base idx))        
+          (if (> idx 0)
+            (add-digit c (dec idx))
+            c)
+          (let [xs (aclone ^longs digits)]
+            (aset xs idx (inc current))
+            (assoc c :digits xs)))))))
+;;We're doing comparisons internall on combination types for speed.  No longer
+;;used...
+(defn compare-digits
+  "Traverses the digits, from left to right, looking to see which is 'less' in 
+   the most significant bit."
+  [l r] 
+  (loop [ls l
+         rs r]
+    (if (or (empty? ls) (empty? rs)) 0
+        (let [x (first ls)
+              y (first rs)
+              res (compare x y)]
+          (if (not= res 0) res 
+              (recur (rest ls) (rest rs)))))))   
 )
 
 (comment ;older versions, replaced by binary-nearest-custom
