@@ -112,7 +112,9 @@
   (as-range [x] (into {} (for [[k v] x] [k (as-range v)])))
   clojure.lang.PersistentArrayMap
   (as-range [x] (into {} (for [[k v] x] [k (as-range v)])))
-  clojure.lang.PersistentHashSet
+  clojure.lang.PersistentHashSet 
+  (as-range [x] x)
+  spork.util.combinatoric.lexmap ;combinatoric maps are valid ranges now
   (as-range [x] x))
 
 
@@ -351,9 +353,9 @@
   [t] 
   (cond (float? t)   :float      
         (integer? t) :int
+        (combinatoric-map? t) :combination
         (map? t)     :map-spec
         (set? t)     :set
-        (combinatoric-map? t) :combination
         (vector-range? t) :vec-range
         (vector? t)  :vec-spec
         :else        nil))
@@ -561,7 +563,7 @@
   (with-ranges common-ranges
     (as-range [:cities])))
 
-(def sol (normalizer repspec))
+(def sol         (normalizer repspec))
 (def simple-spec {:year [1981 2013]})
 (def simple-spec-fives {:year [1981 2013 5]})
 (def simple-sol (normalizer simple-spec))
@@ -585,7 +587,7 @@
 
 (defsolution lunch 
   [loc     lunch-locations 
-   members lunch-members 
+   members parties
    day     weekdays])
 
 (clojure.pprint/pprint 
