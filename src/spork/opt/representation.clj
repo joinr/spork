@@ -2,10 +2,11 @@
 ;;projections onto various normalized representations.  Default represntations
 ;;include arrays of normalized floating point values [0.0, 1.0], and bitstrings.
 ;;Primitive operations are wrapped for maximum effeciency.
-(ns spork.collective.representation
+(ns spork.opt.representation
   (:require [spork.util.vectors :refer :all]
             [spork.util [combinatoric :as c] 
-                        :refer [combinatoric-map]])) 
+                        :refer [combinatoric-map elements->key 
+                                combinatoric-map?]])) 
 
 ;;Solution Representations
 ;;========================
@@ -170,8 +171,8 @@
    :int   :integer 
    :real+ :positive-real
    :real- :negative-real 
-   :int+ :positive-int
-   :int- :negative-int})
+   :int+  :positive-int
+   :int-  :negative-int})
 
 ;;Range Constraints
 ;;=================
@@ -232,6 +233,11 @@
         norm    (double  (count ordered))]
     (fn [^double x] (nth ordered (Math/floor (* x norm))))))
 
+
+;;Note: this guy eagerly enumerates the categories; we actually don't 
+;;want that for combinatorial domains.  As such, we'll keep the categorical
+;;and combinatorial domains separate, even though they're both VERY similar.
+
 (defn category->normal
   "Returns a function that maps discrete elements of a categorical
    set to doubles."
@@ -241,23 +247,28 @@
         inverse (into {} (for [[k v] ordered] [v (double (/ k norm))]))]
     (fn [x] (get inverse x))))
 
-;;NEED TO ADD SUPPORT FOR COMBINATORIAL DOMAINS HERE
-;;==================================================
-(defn combination->normal 
+
+(defn normal->combination 
   "Returns a function that maps double inputs to discrete elements of a 
    combinatoric map."
   [cmap]
   (let [norm (double (count cmap))]
-    (fn [^Double x] (nth cmap (Math/floor (* x norm)))))) 
+    (fn [^Double x] (get cmap (Math/floor (* x norm)))))) 
 
-(defn normal->combination [cmap]  
-  )
+(defn combination->normal
+  "Returns a function that maps discrete elements of a combinatoric map to 
+   normalized values."
+  [cmap]
+  (let [idx->normal (numeric->normal 0 (count cmap))] 
+    (^double fn [xs] (idx->normal (elements->key cmap xs)))))
 
 ;;Normalization
 ;;=============
 
 ;;A normalizer is something that knows how to project values to and from 
-;;a normalized range [0.0 1.0], and vice-versa.
+;;a normalized range [0.0 1.0], and vice-versa.  We represent complex solutions
+;;in a generic, normalized vector by composing normalizers across multiple 
+;;domains.
 (defprotocol INormalizer
   (to-normal [izer n] 
     "Projects n into a normal value between [0.0 1.0]")
@@ -336,10 +347,6 @@
                   (rest vs) 
                   (unchecked-inc idx))))))))  
 
-
-
-(defn combinatorial-range? [r] (= (type r) c/lexmap))
-
 (defn type-map
   "Aux function for dispatching on normalization types."
   [t] 
@@ -347,7 +354,7 @@
         (integer? t) :int
         (map? t)     :map-spec
         (set? t)     :set
-        (combinatorial-range? t) :combination
+        (combinatoric-map? t) :combination
         (vector-range? t) :vec-range
         (vector? t)  :vec-spec
         :else        nil))
@@ -355,7 +362,7 @@
 ;;Default implementations for normalizing doubles, ints, and categorical data, 
 ;;so we have a simplified normalization interface.  These implementations will 
 ;;be composed in map-based specifications to conveniently describe solution 
-;;representations.
+;;representations.  We also handle combinatorial domains effeciently.
 
 (defmulti normalizer
   "Builds a function that, based on the args provided, creates a normalization 
@@ -400,6 +407,23 @@
   (make-normalizer (category->normal xs) 
                    (normal->category xs)
                    :spec {:category xs}))
+
+;;__TODO__ Figure allow a caching scheme, to push the combinations into 
+;;categorical data for small-enough combinations.  There's a cutoff where it's 
+;;probably more efficient.  I'm assuming 100 for now...although that may change
+;;to something much larger (maybe 1000?) after profiling.
+
+;;Combinations are like categorical data, but they are not enumerated eagerly. 
+(defmethod normalizer [:combination]  [xs & rest]
+  (if (<= (count xs) 100)
+    (let [cached (vec (vals xs))] ;enumerate the combinations for small domains.         
+      (make-normalizer (category->normal cached) 
+                       (normal->category cached)
+                       :spec {:category cached}))
+    ;;otherwise use the potentially gigantic, but efficient combinatorial map.
+    (make-normalizer (combination->normal xs) 
+                     (normal->combination xs)
+                     :spec {:combination xs})))
 
 ;;vectors are implicit range specifications.
 (defmethod normalizer [:vec-range]  [xs & rest]
@@ -551,7 +575,8 @@
     :house-of-dynasty
     :the-greek
     :indian
-    :pho})  
+    :pho})
+
 (def lunch-members #{:john :rick :tom})
 
 

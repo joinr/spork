@@ -448,6 +448,10 @@
         size (big-choose n k)]
     (->lexmap elements element->idx k size mapping)))
 
+(defn combinatoric-map?
+  "Predicate to determine if m is a combinatoric map."
+  [m] (or (= (type m) lexmap) (statisfies? ILexographer m)))
+
 (defn digits->elements
   "Projects a sequence of digits onto the domain of elements that the
    combinatoric map draws from. Returns a vector of elements."
