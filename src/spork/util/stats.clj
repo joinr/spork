@@ -1,19 +1,21 @@
 ;this is a quick port of the stats work from megan's file...
 ;Tom-> I moved this out of the main routines... .it's just a stats library....re
 (ns spork.util.stats
+  (:require [spork.util [vectors :as v]]
+            [spork.util.numerics :refer :all])
   (:import [java.util.Random]))
 
-(defn ^double pow [^double n ^double x] (Math/pow n x)) 
-(defn ^double square [^double n] (* n n)) 
-(defn ^double sqrt [^double n] (Math/sqrt n)) 
-(defn ^double ln [^double n] (Math/log n)) 
-(defn ^double exp [^double n] (Math/exp n)) 
-(def  E Math/E)
-(defn ^long round [^double n] (Math/round n))
+(defprotocol IDistribution 
+  (^double pdf [d ^double x] 
+   "Samples the probability density function from d, using u.")
+  (^double cdf [d ^double x]
+   "Samples the cumulative distribution function from d, using u.")
+  (^double invcdf [d ^double p]
+   "Samples the inverse cumulative distribution function, given p."))
+
 (defn distribute!
   "Provides a generating function of one argument that generates samples." 
   [f] (fn [_] (f)))
-
 
 (defn ^java.util.Random make-random [^long seed]
   (java.util.Random. seed))
@@ -61,6 +63,19 @@
 	        (+ m (* s (* v1 (pow (/ (* -2.0 (ln wnext)) wnext) 0.5))))
 	        (recur wnext))))))
 
+(defrecord normald [^double mu ^double sig]
+  IDistribution 
+  (^double pdf [s ^double u] 
+    (* (/ 0.39842280401432678 sig) (exp (* -0.5 (square (/ (- x mu) sig))))))
+  (^double cdf [s ^double u] 
+    (
+
+;;Another normal, from Numerical Recipes v3
+(defn gaussian-dist 
+  [^double mu ^double ssig]
+  (fn ^double  
+  
+
 (defn gamma-dist
   [^double alpha ^double beta]
   (fn []
@@ -95,6 +110,13 @@
 	                    (>= w (ln z)))
 	              (recur y)
 	              (recur x)))))))))
+
+
+;;From numerical recipes.
+(defn ^double cauchy [^double loc ^double scale]
+  (* (/ 1.0 Math/PI) (/ scale (+ (square (- (- (rand) 0.5) loc)) (square scale))))) 
+
+
 (defn beta-dist
   [a1 a2]
   (let [sample-g1 (gamma-dist a1 1)

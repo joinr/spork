@@ -31,8 +31,6 @@
   (rep/from-normal sol (rep/random-normal-vector (rep/basis-vector sol))))
 (defn ^double square [^double x] (* x x))
 
-(defn ^double cauchy [^double loc ^double scale]
-  (* (/ 1.0 Math/PI) (/ scale (+ (square (- (- (rand) 0.5) loc)) (square scale))))) 
   
 
 (defn cauchy-vec [v]
