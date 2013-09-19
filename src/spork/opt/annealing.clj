@@ -181,7 +181,7 @@
 ;;Useful Generating (Neighborhood) Functions 
 ;;==========================================
 ;;Generating functions in simulated annealing typically map a coordinate, 
-;;normalized to unit space, to an coordinate in the solution space.  If the 
+;;normalized to unit space, to a coordinate in the solution space.  If the 
 ;;solution has multiple dimensions [like a vector], then the generated 
 ;;coordinate will likewise be multi-dimensional.  The literature proposes a 
 ;;couple of generic ways to sample from continuous generating functions, and 

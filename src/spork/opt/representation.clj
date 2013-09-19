@@ -37,8 +37,8 @@
 
 ;;At the highest level of abstraction, we want to define means for altering or 
 ;;changing solution representations to facilitate the search process.  One 
-;;practical and general means of perturbing solutions, particulalry solutions
-;;with and encoding to normalized vectors, is to add an n-dimensional float 
+;;practical and general means of perturbing solutions, particularly solutions
+;;with an encoding to normalized vectors, is to add an n-dimensional float 
 ;;vector to the normalized vector representation of the solution.  
 
 ;;For some types, we want to allow a means for quickly munging through 
@@ -278,6 +278,12 @@
   (normalizer-spec [izer] 
      "Returns the rangespec(s) - that define normalization."))  
 
+;;Anything that can be normalized will have a normal basis.  In this case, we 
+;;encode the normal basis as an n-dimensional IDoubleVector 
+(defprotocol INormalized 
+  (normal-basis [x] 
+    "Returns an n-dimensional IDoubleVector that represents the basis for x."))
+
 ;;We have allowing maps to serve as specifications for converting to and from 
 ;;normalized float arrays.
 
@@ -285,20 +291,37 @@
 ;;========================================================
 (defn normals->map
   "Given a specification for a representation, returns a function that maps a 
-   double vector to the solution domain."
-  [spec]
-  (let [ks (into [] (keys spec))]
-	  (fn [dvec]
-     (loop [acc (transient spec)
-            ys  ks
-            idx 0]
-       (if (empty? ys) (persistent! acc)
-           (let [k (first ys)
-                 n (get spec k)]
-             (recur (assoc! acc k (from-normal n (v/vec-nth dvec idx)))
-                    (rest ys)
-                    (inc idx))))))))
-
+   double vector to the solution domain.  Allows a custom initial record, 
+   typically an empty instance of a record via defrecord, instead of the 
+   generic map.  This preserves the record type, and the custom solution 
+   normalization encoding for records defined via defsolution.  defsolution
+   will embed its empty-record as :empty-record in the metadata of the spec."
+  ([spec]
+    (if-let [empty-record (get (meta spec) :empty-record)]
+      (normals->map spec empty-record) ;prefer the record
+      (let [ks (into [] (keys spec))]  ;use a generic map
+        (fn [dvec]
+          (loop [acc (transient {})
+                 ys  ks
+                 idx 0]
+            (if (empty? ys) (persistent! acc)
+            (let [k (first    ys)
+                  n (get spec  k)]
+              (recur (assoc! acc k (from-normal n (v/vec-nth dvec idx)))
+                     (rest ys)
+                     (inc idx)))))))))
+  ([spec rec] 
+    (let [ks (into [] (keys spec))]
+      (fn [dvec]
+        (loop [acc rec
+               ys  ks
+               idx 0]
+          (if (empty? ys) acc
+            (let [k (first    ys)
+                  n (get spec  k)]
+              (recur (assoc acc k (from-normal n (v/vec-nth dvec idx)))
+                     (rest ys)
+                     (inc idx)))))))))
 (defn map->normals
   "Given a specification for a representation, returns a function that maps 
    the solution domain to a double vector."
@@ -363,7 +386,7 @@
 ;;Default implementations for normalizing doubles, ints, and categorical data, 
 ;;so we have a simplified normalization interface.  These implementations will 
 ;;be composed in map-based specifications to conveniently describe solution 
-;;representations.  We also handle combinatorial domains effeciently.
+;;representations.  We also handle combinatorial domains efficiently.
 
 (defmulti normalizer
   "Builds a function that, based on the args provided, creates a normalization 
@@ -451,8 +474,8 @@
       (normals->vec normalizer-vec)
       :spec {:vec-spec xs})))
 
-;;Exploring Domains
-;;=================
+;;Functions for Exploring Domains
+;;===============================
 (defn domain-to-normals [n xs] (map (partial to-normal n)  xs))
 (defn normals->domain   [n normals] (map (partial from-normal n) normals))
 
@@ -481,12 +504,14 @@
 (defn normal-dimensions
   "Given a multi-dimensional normalization, returns the count of dimensions."
   [norm]
-  (let [[normal-tag spec] (first (normalizer-spec norm))]
-    (case normal-tag
-      (:vec-spec :map-spec) (count spec)
-      (throw (Exception. 
-               (str "Requires a normalization spec with one or more dimensions:"
-                    spec))))))
+  (if (satisfies? INormalized norm)
+      (count (normal-basis norm))
+      (let [[normal-tag spec] (first (normalizer-spec norm))]
+        (case normal-tag
+          (:vec-spec :map-spec) (count spec)
+          (throw (Exception. 
+                   (str "Requires a normalization spec with one or more dimensions:"
+                        spec)))))))
 
 (defn random-normal-vector
   "Creates a double vector of random normalized points, based off a template
@@ -498,7 +523,23 @@
   "Computes a feasible vector for the required dimensionality of the 
    normalization specs associated with normalizer."
   [normalizer]
+  (if (satisfies? INormalized normalizer)
+      (normal-basis normalizer)
+      (v/get-empty-vec (normal-dimensions normalizer))))
+
+(defn random-basis-vector 
+  "Computes a random feasible vector for the required dimensionality of the 
+   normalization specs associated with normalizer."
+  [normalizer]
   (random-normal-vector (v/get-empty-vec (normal-dimensions normalizer))))
+
+(defn normalize
+  "Uses the built-in normalizer for solution s to map the s onto a normal 
+   vector."
+  [s] (to-normal s s))
+
+(defn read-solution [s xs] (from-normal s xs))
+ 
 
 ;;Defining Solution Representations
 ;;=================================
@@ -519,23 +560,44 @@
         ranges     (map second  binds)
         normalizer-name (symbol (str name "-normalizer"))
         rand-name  (symbol (str "random-" name "!")) 
-        spec-map   (apply array-map (interleave field-keys ranges))]
+        spec-map   (apply array-map (interleave field-keys ranges))
+        basic-name (symbol (str "basic-" name))
+        basis-name (symbol (str name "-basis"))
+        empty-name (symbol (str "empty-" name))
+        ctor       (symbol (str "->" name))
+        map-ctor   (symbol (str "map" ctor))]
     `(do
-       (def ~normalizer-name (normalizer ~spec-map)) 
+       (declare ~normalizer-name ~basis-name)
        (defrecord ~name [~@fields]
          INormalizer 
          (~'to-normal   [~'izer ~'s] (to-normal ~normalizer-name ~'s))
          (~'from-normal [~'izer ~'n] (from-normal ~normalizer-name ~'n))
-         (~'normalizer-spec [~'izer]  ~normalizer-name) 
+         (~'normalizer-spec [~'izer]  ~normalizer-name)
+         INormalized 
+         (~'normal-basis [~'x] ~basis-name)
          IDoubleVectorEncoder
          (~'encode-doublevector [~'izer ~'dv] 
            (to-normal ~normalizer-name ~'dv))
          IDoubleVectorDecoder
          (~'decode-doublevector [~'izer ~'dv] 
            (from-normal ~normalizer-name ~'dv)))
-       (let [basis# (basis-vector ~normalizer-name)]
-         (defn ~rand-name [] 
-           (from-normal ~normalizer-name (random-normal-vector basis#)))))))
+       (def ~normalizer-name 
+         (normalizer (with-meta ~spec-map {:empty-record (~map-ctor {})})))
+       (def   ~basis-name (basis-vector ~normalizer-name))        
+       (defn ~rand-name [] 
+         (from-normal ~normalizer-name (random-normal-vector ~basis-name)))
+       (def  ~basic-name (from-normal ~normalizer-name ~basis-name)))))
+
+(defmacro with-solution
+  "Given a solution representation, provides two functions that can be used 
+   in the body.  as-normal and as-solution .  (as-normals s) yields the solution in 
+   normalized vector form.  (as-solution [0.2 0.3 ...]) reads an IDoubleVector 
+   assumed to be in normalized form, and returns the decoded solution.
+   body is evaluated in this context."
+  [r & body]
+  `(let [~'as-normals #(normalize %)
+         ~'as-solution (partial read-solution ~r)]
+     ~@body))
 
 ;;Testing
 ;;=======
