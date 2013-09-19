@@ -82,13 +82,41 @@
 
 ;;__TODO__ See if Hanson's Hack makes this mo' betta
 ;;Better implementations of choose.
+
+(comment 
+(defn ^long w-choose [^long n ^long k]
+    (let [k (if (< (- n k) k) (- n k) k)
+          bound (inc k)]
+      (loop [prod 1
+             i    1]
+        (if (= i bound) prod 
+          (recur (quot (unchecked-multiply 
+                         prod (unchecked-inc 
+                                (unchecked-subtract n i))) i)
+                 (unchecked-inc i))))))    
+
+(defn w-big-choose [^long n ^long k]
+    (let [k (if (< (- n k) k) (- n k) k)
+          bound (inc k)]
+      (loop [prod 1N
+             i    1]
+        (if (= i bound) prod 
+          (recur (quot (*' prod (inc (-' n i))) i)
+                 (unchecked-inc i))))))
+)
+
+
+(comment ;deprecated in favor of John Warren and Hanson's hacks!
 (defn ^long choose [^long n ^long k]
     (if (= k 0) 1
         (quot (* n (choose (unchecked-dec n) (unchecked-dec k))) k)))
-
-(defn big-choose [^long n ^long k]
+         
+  (defn big-choose [^long n ^long k]
     (if (= k 0) 1
         (/ (*' n (big-choose (dec n) (dec k))) k)))
+)
+
+
 
 (defn long-able?
   "Yields true if x is within the maximum integers representable by a Long."
@@ -826,3 +854,60 @@
                      (< guess x) (recur n upper)
                      (> guess x) (recur lower  n)))))))
 )
+
+(comment ;a much more elegant implementation by JW!
+  (defn ^long choose [^long n ^long k]
+    (let [k (if (< (- n k) k) (- n k) k)
+          bound (inc k)]
+      (loop [prod 1
+             i    1]
+        (if (= i bound) prod 
+          (recur (quot (* prod (inc (- n i))) i)
+                 (inc i))))))
+         
+  (defn ^long choose-fast [^long n ^long k]
+    (let [k (if (< (- n k) k) (- n k) k)
+          bound (inc k)]
+      (loop [prod 1
+             i    1]
+        (if (= i bound) prod 
+          (recur (quot (unchecked-multiply 
+                         prod (unchecked-inc 
+                                (unchecked-subtract n i))) i)
+                 (unchecked-inc i))))))         
+         
+)
+          
+
+(comment ;deprecated in favor of John Warren and Hanson's hacks!
+(defn ^long choose [^long n ^long k]
+    (if (= k 0) 1
+        (quot (* n (choose (unchecked-dec n) (unchecked-dec k))) k)))
+         
+  (defn big-choose [^long n ^long k]
+    (if (= k 0) 1
+        (/ (*' n (big-choose (dec n) (dec k))) k)))
+)
+
+(comment 
+;;Assumes 1-based...
+(defn lex-rank [xs n m]
+  (loop [rank 0 
+         j 1  
+         i 0  
+         remaining xs]
+    (if (= i m) rank
+      (let [x (long (first remaining))
+            _ (println [i x])
+            next-rank 
+               (loop [k j                       
+                      r rank]
+                 (do (println [:inside k r])
+                     (if (>= k x) (long r)
+                       (recur (inc k) 
+                              (long (+ r (choose (- n k) (- m i 1))))))))] 
+        (recur (long next-rank) (inc x) (inc i) (rest remaining))))))
+)           
+
+
+    
