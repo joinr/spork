@@ -83,27 +83,27 @@
 ;;__TODO__ See if Hanson's Hack makes this mo' betta
 ;;Better implementations of choose.
 
-(comment 
-(defn ^long w-choose [^long n ^long k]
-    (let [k (if (< (- n k) k) (- n k) k)
-          bound (inc k)]
-      (loop [prod 1
-             i    1]
-        (if (= i bound) prod 
-          (recur (quot (unchecked-multiply 
-                         prod (unchecked-inc 
-                                (unchecked-subtract n i))) i)
-                 (unchecked-inc i))))))    
+;(comment 
+(defn ^long choose [^long n ^long k]
+  (let [k (max 0 k (if (< (- n k) k) (- n k) k))
+        bound (inc k)]
+    (loop [prod 1
+           i    1]
+      (if (= i bound) prod 
+        (recur (quot (unchecked-multiply 
+                       prod (unchecked-inc 
+                              (unchecked-subtract n i))) i)
+               (unchecked-inc i))))))    
 
-(defn w-big-choose [^long n ^long k]
-    (let [k (if (< (- n k) k) (- n k) k)
+(defn big-choose [^long n ^long k]
+    (let [k (max 0 k (if (< (- n k) k) (- n k) k))
           bound (inc k)]
       (loop [prod 1N
              i    1]
         (if (= i bound) prod 
           (recur (quot (*' prod (inc (-' n i))) i)
                  (unchecked-inc i))))))
-)
+;)
 
 
 (comment ;deprecated in favor of John Warren and Hanson's hacks!
@@ -811,6 +811,7 @@
           (let [xs (aclone ^longs digits)]
             (aset xs idx (inc current))
             (assoc c :digits xs)))))))
+
 ;;We're doing comparisons internall on combination types for speed.  No longer
 ;;used...
 (defn compare-digits
@@ -889,24 +890,44 @@
         (/ (*' n (big-choose (dec n) (dec k))) k)))
 )
 
+
 (comment 
+; ([0 [0 1 2]] 
+;  [1 [0 1 3]] 
+;  [2 [0 1 4]] 
+;  [3 [0 1 5]] 
+;  [4 [0 1 6]] 
+;  [5 [0 1 7]] 
+;  [6 [0 1 8]] 
+;  [7 [0 1 9]] 
+;  [8 [0 2 3]] 
+;  [9 [0 2 4]])
+
+(defn lex-r [xs n m])
+
+;;Still working on getting this ported, and understanding the algorithm.
+
 ;;Assumes 1-based...
-(defn lex-rank [xs n m]
+(defn lex-rank [xs n k]
   (loop [rank 0 
-         j 1  
-         i 0  
-         remaining xs]
-    (if (= i m) rank
-      (let [x (long (first remaining))
-            _ (println [i x])
-            next-rank 
-               (loop [k j                       
-                      r rank]
-                 (do (println [:inside k r])
-                     (if (>= k x) (long r)
-                       (recur (inc k) 
-                              (long (+ r (choose (- n k) (- m i 1))))))))] 
-        (recur (long next-rank) (inc x) (inc i) (rest remaining))))))
+         j 0  ;minimum entry found, this will always be ascending.
+         i 0] ;current digit
+    (if (= i k) rank ;parsed all digits.
+      (let [x (get xs i)
+            kbelow (- k i 1) ;the result of computing combinations for 
+            next-rank (loop [prior j     ;for each j <= prior < x,                        
+                             r rank]
+                        (if (>= prior x) (long r) ;return the new rank
+                          (let [combos (choose (- n prior) kbelow) ;there are 
+                                ]
+                          (recur (inc prior)  ;advance k
+                                 (long (+ r combos)  
+                                 ;add the combinations of (- n k) (- m i 1)
+                                 ;for each possible value of prior less then                                 
+                                 ;x, there are (choose (- n prior) (- m i 1))
+                                 )))))] 
+        (recur (long next-rank) (inc x) (inc i))))))
+  
 )           
 
 
