@@ -15,6 +15,7 @@
 (defn ^double floor [^double n] (Math/floor n))
 (defn ^double ceil [^double n] (Math/ceil n))
 (defn ^double abs [^double n] (Math/abs n))
+(defn ^double tan [^double n] (Math/tan n))
 
 (defmacro SQR [n] `(* ~n ~n))
 
@@ -121,6 +122,14 @@
   [^double z ^double w]
   (exp (- (+ (gammln z) (gammln w)) (gammln (+ z w)))))  
 
+
+
+
+
+
+
+
+(comment 
 (let [ncof 28
       ;;Stored Chebyshev coefficients.  We can probably calc these on our own.
       ^doubles cof (double-array
@@ -214,8 +223,8 @@
                                                              (* t 0.17087277))))))))))))))))))
           ans (* t (exp (+ (* (- z) z)
                            expansion)))]
-      (if (>= x 0.0) ans (- 2.0 ans))))
-                           
+      (if (>= x 0.0) ans (- 2.0 ans)))))
+)                           
                            
                            
                            

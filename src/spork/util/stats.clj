@@ -5,13 +5,21 @@
             [spork.util.numerics :refer :all])
   (:import [java.util.Random]))
 
+(set! *warn-on-reflection* true)
 (defprotocol IDistribution 
-  (^double pdf [d ^double x] 
+  (^double sample [d rng])
+  (^double pdf [d x] 
    "Samples the probability density function from d, using u.")
-  (^double cdf [d ^double x]
+  (^double cdf [d  x]
    "Samples the cumulative distribution function from d, using u.")
-  (^double invcdf [d ^double p]
+  (^double invcdf [d p]
    "Samples the inverse cumulative distribution function, given p."))
+
+(defn sample! 
+  ([dist rng] (sample dist rng))
+  ([dist]     (sample dist *rand*)))
+
+(defn no-op [] (throw (Exception. "Not implemented")))
 
 (defn distribute!
   "Provides a generating function of one argument that generates samples." 
@@ -20,8 +28,14 @@
 (defn ^java.util.Random make-random [^long seed]
   (java.util.Random. seed))
 
-(defn ^double draw [^java.util.Random gen] 
-  (.nextFloat gen))
+(defprotocol IRNG 
+  (^double draw [prng]))
+
+(extend-protocol IRNG 
+  java.util.Random
+  (^double draw [gen] (.nextDouble gen))
+  clojure.core$rand 
+  (^double draw [gen] (gen)))
 
 (def ^:dynamic *rand* clojure.core/rand) 
 
@@ -48,6 +62,23 @@
     (repeatedly f))
   ([f] (repeatedly f)))
 
+(defrecord normald [^double m ^double s]
+  IDistribution
+  (sample [d rng]  (loop [w 2.0]
+                     (let [u1 (draw rng)
+                           u2 (draw rng)
+                           v1 (dec (* 2.0 u1)) 
+                           v2 (dec (* 2.0 u2))
+                           wnext (double (+ (square v1) (square v2)))]
+                       (if (<= wnext 1.0)
+                         (+ m (* s (* v1 (pow (/ (* -2.0 (ln wnext)) wnext) 0.5))))
+                         (recur wnext)))))
+  (pdf [d x] (no-op))
+  (cdf [d x] (no-op))
+  (invcdf [d x] (no-op)))
+
+(def unormal (->normald 0.0 1.0))
+
 (defn normal-dist
   "Computes a normal random variable. Ported from Malone's work, ported
    from Simulation, Modeling, & Analysis by Law 8.3.6 on pp. 453-454."
@@ -63,18 +94,99 @@
 	        (+ m (* s (* v1 (pow (/ (* -2.0 (ln wnext)) wnext) 0.5))))
 	        (recur wnext))))))
 
-(defrecord normald [^double mu ^double sig]
-  IDistribution 
-  (^double pdf [s ^double u] 
-    (* (/ 0.39842280401432678 sig) (exp (* -0.5 (square (/ (- x mu) sig))))))
-  (^double cdf [s ^double u] 
-    (
 
-;;Another normal, from Numerical Recipes v3
-(defn gaussian-dist 
-  [^double mu ^double ssig]
-  (fn ^double  
-  
+;;cauchy distribution, ported from GSL
+(defrecord cauchyd [^double scale ^double loc]
+   IDistribution 
+   (sample [s rng] (invcdf s (draw rng)))             
+   (pdf [s  x]   
+     (let [u (/ (- x loc) scale)]
+       (/ (/ 1.0 (* Math/PI scale)) (+ 1.0 (square u)))))
+   (cdf    [s  x] (- (* (/ 1.0 Math/PI) (Math/atan (/ (- x loc) scale)))
+                            0.5))
+   (invcdf [d  p] 
+     (+ (* scale (tan (* Math/PI (- p 0.5)))) loc)))   
+
+(def ucauchy (->cauchyd 1.0 0.0))
+
+;gsl_ran_gaussian_ratio_method (const gsl_rng * r, const double sigma)
+;{double u, v, x, y, Q;
+;  const double s = 0.449871  ;    /* Constants from Leva */
+;  const double t = -0.386595 ;		
+;  const double a = 0.19600   ;
+;  const double b = 0.25472   ;
+;  const double r1 = 0.27597  ;
+;  const double r2 = 0.27846  ;
+;  do                            
+;     /* This loop is executed 1.369 times on average  */
+;    {/* Generate a point P = (u, v) uniform in a rectangle enclosing
+;        the K+M region v^2 <= - 4 u^2 log(u). */
+;      /* u in (0, 1] to avoid singularity at u = 0 */
+;      u = 1 - gsl_rng_uniform (r);
+;      /* v is in the asymmetric interval [-0.5, 0.5).  However v = -0.5
+;         is rejected in the last part of the while clause.  The
+;         resulting normal deviate is strictly symmetric about 0
+;         (provided that v is symmetric once v = -0.5 is excluded). */
+;      v = gsl_rng_uniform (r) - 0.5;
+;      /* Constant 1.7156 > sqrt(8/e) (for accuracy); but not by too
+;         much (for efficiency). */
+;      v *= 1.7156;
+;      /* Compute Leva's quadratic form Q */
+;      x = u - s;
+;      y = fabs (v) - t;
+;      Q = x * x + y * (a * y - b * x);
+;      /* Accept P if Q < r1 (Leva) */
+;      /* Reject P if Q > r2 (Leva) */
+;      /* Accept if v^2 <= -4 u^2 log(u) (K+M) */
+;      /* This final test is executed 0.012 times on average. */
+;      while (Q >= r1 && (Q > r2 || v * v > -4 * u * u * log (u)));
+;      return sigma * (v / u)};       /* Return slope */
+;    }
+(let [s  0.449871  ;    /* Constants from Leva */
+      t  -0.386595 ;		
+      a   0.19600  ;
+      b   0.25472  ;
+      r1  0.27597  ;
+      r2  0.27846]
+  (defn ^double gaussian-rand [r ^double sigma]
+    (loop [u (- 1.0 (draw r))
+           v (* (- (draw r) 0.5) 1.7156) ;magic constant (sqrt (/ 8 e))
+           x (- u s)
+           y (- (abs v) t)
+           Q (+ (* x x) (* y (- (* a y) (* b x))))]
+       (if (not (and (>= Q r1) 
+                     (or (> Q r2) (> (* v v) (* -4.0 u u (ln u))))))
+         (* sigma (/ v u))
+         (recur (- 1.0 (draw r))
+                (* (- (draw r) 0.5) 1.7156) ;magic constant (sqrt (/ 8 e))
+                (- u s)
+                (- (abs v) t)
+                (+ (* x x) (* y (- (* a y) (* b x)))))))))
+         
+;;ported from the GSL, using the Ratio method for the Gaussian
+(defrecord gaussiand [^double sigma]
+  IDistribution
+  (sample [s rng] (gaussian-rand rng sigma))  
+  (pdf    [s  x & rest]   
+    (let [u (/ x (abs sigma))]
+      (* (/ 1.0 (* (sqrt (* 2.0 Math/PI)) 
+                   (abs sigma)))
+         (exp (/ (* (- u)  u)  2.0)))))
+  (cdf    [s  x & rest] (no-op))
+  (invcdf [d  p & rest] (no-op)))
+
+(def ugaussian (->gaussiand 1.0))
+
+(defrecord normald [^double mean ^double sigma]
+  IDistribution
+  (sample [s rng] (gaussian-rand rng sigma))  
+  (pdf    [s  x & rest]   
+    (let [u (/ x (abs sigma))]
+      (* (/ 1.0 (* (sqrt (* 2.0 Math/PI)) 
+                   (abs sigma)))
+         (exp (/ (* (- u)  u)  2.0)))))
+  (cdf    [s  x & rest] (no-op))
+  (invcdf [d  p & rest] (no-op)))
 
 (defn gamma-dist
   [^double alpha ^double beta]
