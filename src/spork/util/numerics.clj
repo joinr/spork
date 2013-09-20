@@ -123,12 +123,6 @@
   (exp (- (+ (gammln z) (gammln w)) (gammln (+ z w)))))  
 
 
-
-
-
-
-
-
 (comment 
 (let [ncof 28
       ;;Stored Chebyshev coefficients.  We can probably calc these on our own.

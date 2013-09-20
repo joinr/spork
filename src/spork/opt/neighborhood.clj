@@ -4,7 +4,7 @@
 ;;for any representation.
 (ns spork.opt.neighborhood
   (:require [spork.opt [representation :as rep]]
-            [spork.util [vectors :as v]]))
+            [spork.util [vectors :as v] [stats :as s]]))
 
 ;;Generic Neighborhoods
 ;;=====================
@@ -29,9 +29,8 @@
   "Generates a random neighbor based on the solution's normalized encoding."
   [sol] 
   (rep/from-normal sol (rep/random-normal-vector (rep/basis-vector sol))))
-(defn ^double square [^double x] (* x x))
 
-  
+(defn ^double square [^double x] (* x x))
 
 (defn cauchy-vec [v]
   (let [x (double (rand))]    
@@ -39,8 +38,7 @@
 
 (defn cauchy-neighbor [sol]
   (rep/from-normal sol (cauchy-vec (rep/basis-vector sol)))) 
-
-                   
+                  
 ;;Another general way to sample an n-dimensional space is to use some 
 ;;distribution.
 

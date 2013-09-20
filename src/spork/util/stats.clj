@@ -6,6 +6,9 @@
   (:import [java.util.Random]))
 
 (set! *warn-on-reflection* true)
+
+(def ^:dynamic *rand* clojure.core/rand) 
+
 (defprotocol IDistribution 
   (^double sample [d rng])
   (^double pdf [d x] 
@@ -37,7 +40,7 @@
   clojure.core$rand 
   (^double draw [gen] (gen)))
 
-(def ^:dynamic *rand* clojure.core/rand) 
+
 
 (defmacro with-generator
   "Temporarily overrides clojure.rand to use a new random number 
@@ -167,26 +170,26 @@
 (defrecord gaussiand [^double sigma]
   IDistribution
   (sample [s rng] (gaussian-rand rng sigma))  
-  (pdf    [s  x & rest]   
+  (pdf    [s  x]   
     (let [u (/ x (abs sigma))]
       (* (/ 1.0 (* (sqrt (* 2.0 Math/PI)) 
                    (abs sigma)))
          (exp (/ (* (- u)  u)  2.0)))))
-  (cdf    [s  x & rest] (no-op))
-  (invcdf [d  p & rest] (no-op)))
+  (cdf    [s  x] (no-op))
+  (invcdf [d  p] (no-op)))
 
 (def ugaussian (->gaussiand 1.0))
 
 (defrecord normald [^double mean ^double sigma]
   IDistribution
   (sample [s rng] (gaussian-rand rng sigma))  
-  (pdf    [s  x & rest]   
+  (pdf    [s  x]   
     (let [u (/ x (abs sigma))]
       (* (/ 1.0 (* (sqrt (* 2.0 Math/PI)) 
                    (abs sigma)))
          (exp (/ (* (- u)  u)  2.0)))))
-  (cdf    [s  x & rest] (no-op))
-  (invcdf [d  p & rest] (no-op)))
+  (cdf    [s  x] (no-op))
+  (invcdf [d  p] (no-op)))
 
 (defn gamma-dist
   [^double alpha ^double beta]
