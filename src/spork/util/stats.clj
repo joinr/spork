@@ -2,7 +2,8 @@
 ;Tom-> I moved this out of the main routines... .it's just a stats library....re
 (ns spork.util.stats
   (:require [spork.util [vectors :as v]]
-            [spork.util.numerics :refer :all])
+            [spork.util.numerics :refer :all]
+            [spork.util [ranges :as r]])
   (:import [java.util.Random]))
 
 (set! *warn-on-reflection* true)
@@ -22,6 +23,18 @@
   ([dist rng] (sample dist rng))
   ([dist]     (sample dist *rand*)))
 
+(defn ranged-distribution
+  "Given an IDistribution d, derives a new distribution that constrains values 
+   according to the given range specification, where range-spec is a valid 
+   range as defined by spork.util.ranges ."
+  [dist range-spec]
+  (let [clamp (as-range range-spec)]
+    (reify IDistribution
+      (sample [s rng] (clamp (sample dist rng)))             
+      (pdf    [s  x]  (pdf dist  (clamp x)))        
+      (cdf    [s  x]  (cdf dist (sample x)))
+      (invcdf [d  p]  (clamp (invcdf dist p))))))   
+
 (defn no-op [] (throw (Exception. "Not implemented")))
 
 (defn distribute!
@@ -39,8 +52,6 @@
   (^double draw [gen] (.nextDouble gen))
   clojure.core$rand 
   (^double draw [gen] (gen)))
-
-
 
 (defmacro with-generator
   "Temporarily overrides clojure.rand to use a new random number 

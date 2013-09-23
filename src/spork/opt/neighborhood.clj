@@ -33,6 +33,10 @@
 
 (defn ^double square [^double x] (* x x))
 
+(defn cauchy-between [^double lower ^double upper]
+  (^double fn [^double u]
+              (stats/
+  
 ;;Composite Neighborhoods
 ;;=======================
 ;;A more sophisticated way to generate neighborhoods using our normalized 
@@ -49,9 +53,7 @@
    for each element of the solution, and project the result back onto the 
    normalized solution vector."
   [sol dist]
-  
-  
-)  
+  )  
 
 (defn cauchy-vec [v]
   (let [x (double (rand))]    
