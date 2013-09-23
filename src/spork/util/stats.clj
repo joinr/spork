@@ -121,6 +121,24 @@
 
 (def ucauchy (->cauchyd 1.0 0.0))
 
+
+;;another way of generating cauchy vars....
+;;have two random variables that are normally distributed.  If their mean is 
+;;0, then we get a cauchy distribution.
+(comment ;;still working on this guy. 
+	(defn ->normal-ratiod [x y]
+	  (let [x (->normald loc 1.0)
+	        y (->normald loc 1.0)]        
+	   (reify IDistribution 
+	     (sample [s rng] (invcdf s (draw rng)))             
+	     (pdf    [s  x]   
+	       (let  [u (/ (- x loc) scale)]
+	         (/ (/ 1.0 (* Math/PI scale)) (+ 1.0 (square u)))))
+	     (cdf    [s  x]  (+ (/ (Math/atan (/ (- x loc) scale)) Math/PI) 0.5))
+	     (invcdf [d  p]))))
+)
+
+
 (defn rand-cauchy
   "Projects a random variable drawn from a normal cauchy distribution 
    onto the range [0,1]  Acts a drop-in replacement for the standard random 

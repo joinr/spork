@@ -112,7 +112,8 @@
         (get-vec-ctor dimension))))
 
 (def get-empty-vec 
-  "Simple function for cached access to n-dimensional vector constructors."
+  "Simple function for cached access to n-dimensional vector constructors.
+   Given a dimension, will return an empty vector of said dimension."
   (memoize (fn [n] 
              (apply (get-vec-ctor n) (into [] (take n (repeat 0.0)))))))
 
