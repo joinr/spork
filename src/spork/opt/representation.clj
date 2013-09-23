@@ -6,7 +6,8 @@
   (:require [spork.util [vectors  :as v]]
             [spork.util.ranges :refer [as-range
                                        float-clamp
-                                       int-clamp]]
+                                       int-clamp
+                                       vector-range?]]
             [spork.util.combinatoric :refer [combinatoric-map elements->key 
                                              combinatoric-map?]])) 
 

@@ -4,7 +4,8 @@
 ;;output domains).
 ;;__TODO__ Add type hints for clamped values.  I think we're going to hit 
 ;;reflection warnings.
-(ns spork.util.ranges)
+(ns spork.util.ranges
+  (:require [spork.util.combinatoric]))
 
 ;;Defining Ranges for Solution Representations
 ;;============================================

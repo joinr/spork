@@ -28,12 +28,12 @@
    according to the given range specification, where range-spec is a valid 
    range as defined by spork.util.ranges ."
   [dist range-spec]
-  (let [clamp (as-range range-spec)]
+  (let [clamp (r/as-range range-spec)]
     (reify IDistribution
-      (sample [s rng] (clamp (sample dist rng)))             
-      (pdf    [s  x]  (pdf dist  (clamp x)))        
-      (cdf    [s  x]  (cdf dist (sample x)))
-      (invcdf [d  p]  (clamp (invcdf dist p))))))   
+      (sample [s rng] (clamp     (sample dist rng)))             
+      (pdf    [s  x]  (pdf dist  (clamp  dist x)))        
+      (cdf    [s  x]  (cdf dist  (sample dist x)))
+      (invcdf [d  p]  (clamp     (invcdf dist p))))))   
 
 (defn no-op [] (throw (Exception. "Not implemented")))
 
@@ -108,7 +108,6 @@
 	        (+ m (* s (* v1 (pow (/ (* -2.0 (ln wnext)) wnext) 0.5))))
 	        (recur wnext))))))
 
-
 ;;cauchy distribution, ported from GSL
 (defrecord cauchyd [^double scale ^double loc]
    IDistribution 
@@ -116,12 +115,18 @@
    (pdf [s  x]   
      (let [u (/ (- x loc) scale)]
        (/ (/ 1.0 (* Math/PI scale)) (+ 1.0 (square u)))))
-   (cdf    [s  x] (- (* (/ 1.0 Math/PI) (Math/atan (/ (- x loc) scale)))
-                            0.5))
+   (cdf    [s  x]  (+ (/ (Math/atan (/ (- x loc) scale)) Math/PI) 0.5))
    (invcdf [d  p] 
      (+ (* scale (tan (* Math/PI (- p 0.5)))) loc)))   
 
 (def ucauchy (->cauchyd 1.0 0.0))
+
+(defn rand-cauchy
+  "Projects a random variable drawn from a normal cauchy distribution 
+   onto the range [0,1]  Acts a drop-in replacement for the standard random 
+   variable, which is based on a [0 1] uniform distribution."
+  ([] (cdf ucauchy (sample! ucauchy)))
+  ([rng] (cdf ucauchy (sample! ucauchy rng))))
 
 ;gsl_ran_gaussian_ratio_method (const gsl_rng * r, const double sigma)
 ;{double u, v, x, y, Q;
