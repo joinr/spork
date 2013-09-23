@@ -14,7 +14,8 @@
 ;;according to some strategy.  As our solution representations efficiently
 ;;map complex variable domains to an underlying normalized representation, we 
 ;;can define neighborhood functions as either manipulations of the normalized 
-;;form, or as transforms of the "nicer" solution domain.  
+;;form, or as transforms of the "nicer" solution domain.
+
 
 ;;Randomly Sampled Neighborhoods
 ;;==============================
@@ -32,6 +33,26 @@
 
 (defn ^double square [^double x] (* x x))
 
+;;Composite Neighborhoods
+;;=======================
+;;A more sophisticated way to generate neighborhoods using our normalized 
+;;solution form, is to treat each element of the normal vector as a stochastic
+;;variable drawn from a unique distribution.  This is identical to the default 
+;;behavior above, where we effectively treat any n-element normalized vector 
+;;as the scaled output of a random variate based on a neighborhood spec.
+;;The neighborhood spec is a simple data structure that maps elements in the 
+;;normal vector to distributions.  It also maintains any data for the 
+;;distributions, which will help us mix arbitrary variables. 
+
+(defn sample-across
+  "Given an input distribution, we sample from the distribution n times, once 
+   for each element of the solution, and project the result back onto the 
+   normalized solution vector."
+  [sol dist]
+  
+  
+)  
+
 (defn cauchy-vec [v]
   (let [x (double (rand))]    
     (v/map-vec (rep/random-normal-vector v) #(/ (- % 0.5) x))))
@@ -39,6 +60,10 @@
 (defn cauchy-neighbor [sol]
   (rep/from-normal sol (cauchy-vec (rep/basis-vector sol)))) 
                   
+
+
+(defn cauchy-from [temp x0 x1]
+
 ;;Another general way to sample an n-dimensional space is to use some 
 ;;distribution.
 
