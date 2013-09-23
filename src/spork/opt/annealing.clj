@@ -1,7 +1,9 @@
 ;;A namespace for defining simulated annealing stochastic optimization
 ;;strategies, using the optimization libraries in collective.core.
 (ns spork.opt.annealing
-  (:require [spork.opt [core :as core]]))
+  (:require [spork.opt [core :as core]]
+            [spork.util [stats :as stats]]
+            [spork.util.numerics :refer :all]))
 
 ;;__Simulated Annealing__ comes in various forms, but the one most
 ;;commonly taught or described is of the Boltzmann form, or Boltzmann
@@ -180,6 +182,7 @@
 
 ;;Useful Generating (Neighborhood) Functions 
 ;;==========================================
+
 ;;Generating functions in simulated annealing typically map a coordinate, 
 ;;normalized to unit space, to a coordinate in the solution space.  If the 
 ;;solution has multiple dimensions [like a vector], then the generated 
@@ -191,7 +194,13 @@
 ;;discrete representations.  That means we can use just about any generic 
 ;;probability density function as a generating function for our neighborhood.
 
-(defn ->normal-point [xs] )     
+;;This technique is so useful, in fact, that an entire branch of spork is 
+;;dedicated to specification of solution encodings in a normalized vector 
+;;represenation.  __spork.opt.representation__ and __spork.opt.neighborhood__
+;;provide functions and macros for defining solution representations in high 
+;;level domains, while handling all of the normalized vector encoding and 
+;;decoding processes for us.  We will extend their functionality here, to 
+;;implement various annealing strategies.
 
 ;;There are a couple of generating functions used in the literature.
 ;;We can generalize the Boltzmann dis
@@ -206,7 +215,32 @@
 ;;Fast Annealing uses a Cauchy distribution, which for d-dimensional 
 ;;spaces, is an ensemble of D 1-dimensional Cauchy distributions, which
 ;;are actually identical.
-(defn cauchy-gen [t d] 'not-implemented) 
+(defn cauchy-gen [t d] ) 
+
+
+;;Adaptive Simulated Annealing Generating Function 
+;;================================================
+
+;;ASA uses a custom distribution, defined by Dr. Ingber, to provide a parametric
+;;search over the dimensions of a state space that a) maintains so-called 
+;;statistical guarantee (i.e. does not preclude the possibility) of finding the 
+;;global optimum, and b) allows for parameterization across different 
+;;temperatures.  Essentially, Dr. Ingber's generating function allows the 
+;;annealer to dynamically adapt the sensitivity of the search in each dimension, 
+;;and provides a convenient mechanism for both re-annealing, and quenching.
+
+(defn asa-dist
+  "Given a uniform random variate, uv, and a temperature parameter, 
+   samples returns a value between [-1 1]."
+  [temp]
+  (let [y    (rand)
+        dir  (Math/signum (- y 0.5))]
+    (* dir 
+       temp 
+       (- (Math/pow (+ 1.0 (/ 1.0 temp)) (Math/abs (- (* 2.0 y) 1.0)))
+          1.0))))
+
+
 
 ;;Simulated Annealing Parameters
 ;;==============================

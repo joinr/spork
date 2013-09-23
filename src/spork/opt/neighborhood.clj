@@ -23,11 +23,13 @@
 ;;The simplest neighborhood is to range over the normalized form of the 
 ;;solution, in each dimension, using a uniform distribution.  The normal form 
 ;;is defined specifically to make this easy to do.  Since the solution takes 
-;;care of encoding everything, any range-based constraints will enforced 
+;;care of encoding everything, any range-based constraints will be enforced 
 ;;automatically.
 
 (defn random-neighbor
-  "Generates a random neighbor based on the solution's normalized encoding."
+  "Generates a random neighbor based on the solution's normalized encoding.
+   This is equivalent to drawing from a uniform distribution n times, one for
+   each element of the vector."
   [sol] 
   (rep/from-normal sol (rep/random-normal-vector (rep/basis-vector sol))))
 
@@ -35,7 +37,8 @@
 
 (defn cauchy-vec
   "Given a vector, returns a random normal vector with each element drawn from 
-   cauchy distribution, whose elements range between [0, 1]."  
+   cauchy distribution, whose elements range between [0, 1].  Provided as a 
+   default since we tend to use it for stochastic optimization."  
   [v]
   (v/map-vec v (fn [_] (stats/rand-cauchy))))
 
@@ -60,8 +63,15 @@
            idx 0]
       (if (= idx bound) acc
           (recur (v/set-vec acc idx (f idx (v/vec-nth v0 idx)))
-                 (unchecked-inc idx))))))             
+                 (unchecked-inc idx))))))
 
+;;__TODO__ Check performance on this guy.  Get may be expensive, or may not.
+;;It allows for multiple uses of 
+(defn vec-juxt
+  "Like clojure.core/juxt, applies a sequence of distributions to each element
+   of the vector v0, returning a new vector."
+  [v0 fs]
+  (vec-by v0 (fn [idx ^double x] ((get fs idx) idx x))))
 
 ;;Neighborhoods, at least numerically distributed, are just manipulations of 
 ;;normal vectors.  The solution encoding does the rest of the work for us, 
@@ -79,8 +89,9 @@
 ;;Testing 
 (comment 
 (rep/defsolution one-d [x [0 50]])
-(def simple-vec  (v/->vec1 0.0))
-(defn cauchy-samples [n] 
-  (into [] (take n (map #(v/vec-nth % 0) (repeatedly #(cauchy-vec simple-vec)))))) 
+(def cauchy-xs (take 100 (repeatedly (fn [] (cauchy-neighbor basic-one-d)))))
+(def random-xs (take 100 (repeatedly (fn [] (random-neighbor basic-one-d)))))
+
+
 )
 
