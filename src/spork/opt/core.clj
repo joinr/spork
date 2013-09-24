@@ -37,7 +37,7 @@
   (-parameters [sol] "A map of immutable parameters for the solver strategy.")
   (-solution   [sol] "Return the current solution.")
   (-best       [sol] "Return the best solution found.") 
-  (-cost       [sol] "Assign a cost to the current solution. Returns a float.")
+  (-cost       [sol] "Returns a cost function that maps solutions to floats.")
   (-neighbors  [sol] "Given a seed solution, generate a seq of neighbors.")
   (-push-state [sol s] "Pushes the next state onto the environment")  
   (-continue?  [sol]  "Termination criteria for searching.")
@@ -55,7 +55,7 @@
   [solution cost & [opts]]
   (let [t    (get opts :t 10000) 
         iter (get opts :t 0) 
-        n     (get opts :n 0)]
+        n    (get opts :n 0)]
     (->search-state solution cost solution cost t iter n)))
 
 ;;__search-env__ is the default implementation for __ISolveable__.  
@@ -72,10 +72,10 @@
   (-parameters [s] parameters)  
   (-solution   [s] (:currentsol state))
   (-best       [s] (:bestsol state))
-  (-cost       [s] ((:costf parameters) (-solution s)))
-  (-neighbors  [s] ((:neighborf parameters) (-solution s)))
+  (-cost       [s] (:costf parameters))
+  (-neighbors  [s] ((:neighborf parameters) s))
   (-push-state [s new-state]  (->search-env parameters new-state))
-  (-continue?  [s] ((:continuef parameters) parameters state))
+  (-continue?  [s] ((:continuef parameters) s))
   (-accept?    [s x1 x2] (apply (:accept? parameters) x1 x2 s))
   (-decay      [s] ((:decayf parameters) s)))
 
@@ -90,9 +90,11 @@
    solving or not.  If the state's iteration limit is exceeded, or, if the 
    strategy has a notion of temperature, if the temperature drops below a 
    thresh-hold, the search should stop." 
-  [{:keys [tmin itermax] :as params} {:keys [t iter] :as state}] 
-  (or (contains? state :converged) 
-      (and (> t tmin) (not (iterated? iter itermax)))))
+  [env]
+  (let [{:keys [tmin itermax] :as params} (-parameters env) 
+        {:keys [t iter] :as state}        (-state env)]
+    (or (contains? state :converged) 
+        (and (> t tmin) (not (iterated? iter itermax))))))
 
 (defn improved? 
   "The default acceptance criterion.  Combined  with other  default stochastic 
@@ -154,9 +156,9 @@
    neighboring state from the current  state, using the search parameters
    in the environment."        
   [env] 
-  (if-let [candidates  (-neighbors (-solution env))] ;if we can move..
+  (if-let [candidates  (-neighbors env)] ;if we can move..
     (let  [{:keys [t currentcost bestcost iter] :as state} (-state env)
-           nextsol (rand-nth candidates)   ;find a new state
+           nextsol  (rand-nth candidates)   ;find a new state
            nextcost ((-cost env) nextsol)] ;cost the new state
       (-decay   ;decay/increment the result of...        
        (-push-state env ;incoporating the new solution where...
@@ -177,6 +179,19 @@
                          :accept?    improved?
                          :transition default-transition})
 
+(defn naive-neighbor
+  "Applies f to the current neighbor to generate new neighbors.
+   f is ignorant of anything beyond the current solution."
+  [f]
+  #(f (-solution %)))
+
+(defn parametric-neighbor
+  "Applies f to the current neighbor and the environment to generate new 
+   neighbors. f can use the entire environment to generate neighbors."
+  [f]
+  #(f (-solution %) %))
+
+
 (defn ->basic-parameters
   "A map of basic search parameters required for any search environment.
    Certain search strategies will no doubt inject additional parameters, 
@@ -187,7 +202,7 @@
 
 (defn ->solver [init-solution cost-function neighbor-function & extra-params]
   (let [params  (reduce merge 
-                  (concat [(->basic-parameters :cost-function cost-function 
+                  (concat [(->basic-parameters :costf cost-function 
                              :neighborf neighbor-function)]  extra-params))]
     (->search-env params 
       (apply ->initial-search-state init-solution 

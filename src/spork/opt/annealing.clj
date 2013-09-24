@@ -337,20 +337,22 @@
 
 ;;this is a really crappy way to go, will implement a more performant version 
 ;;later...
-(defn simple-anneal [vars f]  
+(defn simple-anneal [vars cost-func]  
   (let [binds (partition 2 vars)
         steps (for [[n [l u]] binds]
                  (asa-stepper l u))
         xs    (vec (map first binds))
-        neighbor (fn [vs] 
-                   (loop [ks  vs 
-                          remaining steps
-                          acc []]
-                     (if (empty? remaining) acc 
-                         (recur (rest ks)
-                                (rest steps)
-                                (conj acc ((first steps) (first ks)))))))] 
-    (anneal xs f neighbor {}))) 
+        neighbor (core/parametric-neighbor 
+                   (fn [vs env]
+                     (let [t (-> (core/-state env) :t)]
+                       (loop [ks  vs 
+                              remaining steps
+                              acc []]
+                         (if (empty? remaining) [acc] 
+                           (recur (rest ks)
+                                  (rest steps)
+                                  (conj acc ((first steps) t (first ks)))))))))] 
+    (anneal xs cost-func neighbor {}))) 
 
 (comment 
 ;;test annealable...make a random number generator, where cost is number 
@@ -389,6 +391,8 @@
 
 (def simple-samples (samples 10 20))
 (def uni-samples (samples 0.0 1.0))
+(def problem (simple-anneal [0 [0 100]] 
+                            (fn [xs] (abs (- (first xs) 50)))))
 )        
 
 ;;misread 
