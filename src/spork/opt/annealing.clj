@@ -248,30 +248,29 @@
 ;;This can be any range of values, but since we already have a normalized 
 ;;representation, the step function will wander over the range [0 1].
 ;;__TODO__ See if we can generalize this to use any distribution.
+;;__TODO__ We're sampling and tossing out draws that exceed constraints.
+;;The upside is that we're probably unlikely to exceed constraints for long, 
+;;the downside is we're wasting draws.  Is there a way to not waste draws? 
 (defn asa-stepper 
   "Given a numeric range, defined by lower and upper, returns a function 
    that performs steps across the range, yielding values between [lower upper] .
    Uses a temperature parameter, temp, and the value of a previous value, 
    x0, to compute x."
-  [lower upper]
+  [lower upper & {:keys [step-func] :or {step-func asa-dist}}]
   (let [width (- lower upper)
-        clamp (r/float-clamp lower upper)]
+        between? (fn [^double x] (and (>= x lower) (<= x upper)))
+        take-step!   (^double fn [^double temp] (* (step-func temp) width))]
     (^double fn [^double temp ^double x0]
-      (clamp (+ x0  (* (asa-dist temp) width))))))    
-        
-(comment ;testing 
-(def lbound 10)
-(def ubound 20)
-(def stepper (asa-stepper lbound ubound))
-(def samples 
-  (let [t0 100000.0]
-    (iterate (fn [[t k x0 n]] 
-              (let [x (stepper t x0)]
-                (if (zero? (mod n 10.0))
-                  [(asa-decay t0 (inc k)) (inc k)  x (inc n)]
-                  [(asa-decay t0 k) k x (inc n)])))
-            [t0 0 15 0])))            
-)        
+      (loop [step (+ x0 (take-step! temp))
+             n    0]
+        (if (between? step) step
+            (if (> n 30) 
+              (throw (Exception. "Problem in asa-stepper, too many reps."))
+            (recur (+ x0 (take-step! temp)) (unchecked-inc n))))))))
+
+
+(defn midpoint [x y] 
+  (+ x (/ (-  y x) 2.0)))
 
 
 ;;Simulated Annealing Parameters
@@ -329,3 +328,18 @@
        (map (juxt (comp get-solution :bestsol) :bestcost))
        (take 100)))
 )
+
+(comment ;testing 
+  
+(defn samples [lower upper & {:keys [t0] :or {t0 1000000}}]
+  (let [stepper (asa-stepper lower upper)]
+    (iterate (fn [[t k x0 n]] 
+               (let [x (stepper t x0)]
+                 (if (zero? (mod n 10.0))
+                   [(asa-decay t0 (inc k)) (inc k)  x (inc n)]
+                   [(asa-decay t0 k) k x (inc n)])))
+             [t0 0 (midpoint lower upper) 0])))
+
+(def simple-samples (samples 10 20))
+(def uni-samples (samples 0.0 1.0))
+)        
