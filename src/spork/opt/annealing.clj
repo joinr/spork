@@ -331,7 +331,9 @@
 ;;and adds new annealing-specific parameters.
 (core/defsolver anneal
   {:keys [decay-function temp tmin itermax equilibration accept?] :as opts}
-  (merge blank-sa-params opts))
+  (merge blank-sa-params  
+         opts 
+         {:t (or temp (get blank-sa-params :temp))}))
 
 ;;this is a really crappy way to go, will implement a more performant version 
 ;;later...

@@ -51,8 +51,12 @@
 ;;A bundle of data pertinent to any search.  Intended to be widely
 ;;applicable across a number of different search strategies.
 (defrecord search-state [currentsol currentcost bestsol bestcost t iter n])
-(defn ->initial-search-state [solution cost]
-  (->search-state solution cost solution cost 1 0 0))
+(defn ->initial-search-state 
+  [solution cost & [opts]]
+  (let [t    (get opts :t 10000) 
+        iter (get opts :t 0) 
+        n     (get opts :n 0)]
+    (->search-state solution cost solution cost t iter n)))
 
 ;;__search-env__ is the default implementation for __ISolveable__.  
 ;;Given a set of parameters and an initial state, we have a search
@@ -79,7 +83,7 @@
   "Helper function to allow us to define a simple notion of searches unbound
    iteration limits.  If itermax is :inf, the iteration is unconstrained."
   [iter itermax] 
-  (when (not= itermax :inf) (> itermax iter)))
+  (when (not= itermax :inf) (< itermax iter)))
 
 (defn default-continuef 
   "The standard mechanism for determining if a given state should continue 
@@ -182,11 +186,13 @@
   (merge default-parameters m))
 
 (defn ->solver [init-solution cost-function neighbor-function & extra-params]
-  (->search-env 
-   (reduce merge 
-     (concat [(->basic-parameters :cost-function cost-function 
-                                  :neighborf neighbor-function)]  extra-params))
-   (->initial-search-state init-solution (cost-function init-solution))))
+  (let [params  (reduce merge 
+                  (concat [(->basic-parameters :cost-function cost-function 
+                             :neighborf neighbor-function)]  extra-params))]
+    (->search-env params 
+      (apply ->initial-search-state init-solution 
+             (cost-function init-solution) 
+             params))))
 
 (defmacro defsolver
   "Convenience macro to define solver setups for us.  Yields a named function
@@ -194,7 +200,8 @@
    the resulting map"
   [name params & map-body]  
   `(defn ~name [~'init-solution ~'cost-function ~'neighbor-function ~params]
-     (let [processed-map# (~'or ~@map-body {})]
+     (let [processed-map# (~'or ~@map-body {})
+           blah# (println processed-map#)]
        (assert (map? processed-map#) 
                "map-body must evaluate to a valid parameter map")
        (->solver ~'init-solution ~'cost-function ~'neighbor-function processed-map#))))
