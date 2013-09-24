@@ -1,7 +1,7 @@
 ;;A namespace for defining simulated annealing stochastic optimization
 ;;strategies, using the optimization libraries in collective.core.
 (ns spork.opt.annealing
-  (:require [spork.opt [core :as core]]
+  (:require [spork.opt [core :as core :refer [with-solve]]]
             [spork.util [stats :as stats]
                         [ranges :as r]]            
             [spork.util.numerics :refer :all]))
@@ -207,7 +207,6 @@
 ;;Usually named "g", these generating functions are designed to assign a 
 ;;probabilty to reaching a particular state from an existing state.
 
-
 ;;The boltzmann distribution is a poor neighborhood function in practice.
 ;;Working on implementing the Gaussian form of this guy later.
 (comment 
@@ -315,10 +314,12 @@
   (->sa-params 
     (geometric-decay 0.9) 
     1000000 0.00000001 1000 1
-    (fn [x1 x2 env]
-      (let [t (get (core/solve-state env) :t)]
-        (boltzmann-accept? x1 x2 t)))))
-
+    (fn [incumbent candidate env]
+      (let [t            (get (core/solve-state env) :t)
+            old-cost     (core/candidate-cost incumbent)
+            new-cost     (core/candidate-cost candidate)
+            _ (println ['testing t c old-cost new-cost])]
+        (boltzmann-accept? t old-cost new-cost)))))
 
 ;;ASA requires us to keep track of a vector of temperatures, and a vector of 
 ;;cooling schedules for each parameter.  This allows us to re-scale the 
@@ -396,7 +397,7 @@
 (def simple-samples (samples 10 20))
 (def uni-samples    (samples 0.0 1.0))
 (def problem        (simple-anneal [0 [0 100]] 
-                                   (fn [xs] (abs (- (first xs) 50)))))
+                         (fn [xs] (abs (- (first xs) 50)))))
 )        
 
 ;;misread 
