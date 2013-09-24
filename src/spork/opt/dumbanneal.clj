@@ -23,20 +23,27 @@
     (fn [temp xs]
       (v/map-vec-indexed xs (fn [idx x0] ((get steps idx) temp x0))))))
 
+(defn dev [c x] (abs (- c x))) 
+(def unconstrained [-100000  100000])
 (defn simple-anneal 
-  [init-solution cost-function step-function & 
-   {:keys [t0 tmin itermax equilibration accept? init-cost decay] 
-      :or {t0 10000000 tmin 0.0000001  itermax 100000  equilibration 1  
-           accept? ann/boltzmann-accept?  init-cost (cost-function init-solution)
-           decay (ann/geometric-decay 0.9)}}]
-  (loop [temp t0
-         n 1
-         i 0
-         converged? false
-         current-sol  init-solution
-         current-cost init-cost          
-         best-sol     init-solution
-         best-cost    init-cost]
+  [cost-function init-solution & 
+   {:keys [t0 tmin itermax equilibration accept? init-cost decay step-function
+           ranges] 
+    :or {t0 10000000 tmin 0.0000001  itermax 100000  equilibration 1  
+         accept? ann/boltzmann-accept?  init-cost (cost-function init-solution)
+         decay  (ann/geometric-decay 0.9)
+         ranges (for [x init-solution] unconstrained)}}]
+  (assert (coll? init-solution) 
+          "Solutions must be vectors of at least one element")
+  (let [step-function (or step-function (make-step-fn ranges))]
+    (loop [temp t0
+           n 1
+           i 0
+           converged?   false
+           current-sol  init-solution
+           current-cost init-cost          
+           best-sol     init-solution
+           best-cost    init-cost]
     (if converged? 
       {:temp temp :n n :i i    :current-solution current-sol 
        :best-solution best-sol :best-cost best-cost}
@@ -44,7 +51,7 @@
             n    (long (if (= n 0) equilibration n))]
         (if (or (< temp tmin) (> i itermax))
             (recur temp  n i true current-sol current-cost best-sol best-cost) ;exit
-            (let [new-sol (step-function temp current-sol)
+            (let [new-sol  (step-function temp current-sol)
                   new-cost (cost-function new-sol)
                   n (dec n)
                   i (inc i)]
@@ -53,12 +60,16 @@
                        new-sol new-cost (if (< new-cost best-cost) new-sol best-sol)
                        (min new-cost best-cost))
                 (recur temp n i converged? current-sol 
-                       current-cost best-sol best-cost))))))))
-
+                       current-cost best-sol best-cost)))))))))
 ;;testing 
 (comment 
 (def the-solution [5])
 (def zero-ten [0 10])
 (def the-spec [zero-ten])
-(def the-step (make-step-fn the-spec))               
+(def the-step (make-step-fn the-spec))  
+(def the-cost-func (fn [xs] 
+                     (reduce + (map (fn [x] 
+                                      (abs (- x 2))) xs))))
+
+
  )
