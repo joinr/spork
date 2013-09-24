@@ -66,6 +66,12 @@
 (def  vecs (atom {}))
 (defn vec-exists? [n] (contains? @vecs n))
 
+;;this is terrible.
+(defn map-vec-indexed [v f]
+  (let [idx (atom -1)]
+    (map-vec v (fn [x] (do (swap! idx unchecked-inc)
+                           (f @idx x))))))
+
 (defmacro defvec
   "Facilitates easy, ad-hoc creation of clojure records that map to 
    n-dimensional primitive vectors.  They can be used interchange-ably, and 

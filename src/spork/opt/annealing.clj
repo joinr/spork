@@ -111,7 +111,7 @@
   ([t oldcost newcost]
     (/ 1.0 (+ 1.0 (Math/pow E (/ (- newcost oldcost) t))))))
 
-(defn- boltzmann-accept?
+(defn boltzmann-accept?
   "Use the Boltzmann energy equation to determine probability of accepting 
    a poorer solution at a given temperature t.  Better solutions are accepted
    with P = 1.0, while poorer solutions are accepted with P = e^(-delta / t)"
@@ -163,7 +163,7 @@
   [decay-rate] 
   (assert (and (> decay-rate 0) (<= decay-rate 1)) 
           "decay-rate must be between (0,1]")
-  (fn [t] (* decay-rate t)))
+  (fn [t & args] (* decay-rate t)))
 
 (defn asa-decay 
   "The cooling schedule defined by Dr. Lester Ingber's Adaptive Simulated
