@@ -2,7 +2,8 @@
 ;;strategies, using the optimization libraries in collective.core.
 (ns spork.opt.annealing
   (:require [spork.opt [core :as core]]
-            [spork.util [stats :as stats]]
+            [spork.util [stats :as stats]
+                        [ranges :as r]]            
             [spork.util.numerics :refer :all]))
 
 ;;__Simulated Annealing__ comes in various forms, but the one most
@@ -231,7 +232,10 @@
 
 (defn asa-dist
   "Given a uniform random variate, uv, and a temperature parameter, 
-   samples returns a value between [-1 1]."
+   samples returns a value between [-1 1].  As temperature decreases, the 
+   values pack really tightly around 0.0, although, like the Cauchy distribution
+   we may still see seemingly large, but infrequent, jumps across the parameter
+   space."
   [temp]
   (let [y    (rand)
         dir  (Math/signum (- y 0.5))]
@@ -240,6 +244,34 @@
        (- (Math/pow (+ 1.0 (/ 1.0 temp)) (Math/abs (- (* 2.0 y) 1.0)))
           1.0))))
 
+;;The asa-dist is used to build a function that walks across a parameter range.
+;;This can be any range of values, but since we already have a normalized 
+;;representation, the step function will wander over the range [0 1].
+;;__TODO__ See if we can generalize this to use any distribution.
+(defn asa-stepper 
+  "Given a numeric range, defined by lower and upper, returns a function 
+   that performs steps across the range, yielding values between [lower upper] .
+   Uses a temperature parameter, temp, and the value of a previous value, 
+   x0, to compute x."
+  [lower upper]
+  (let [width (- lower upper)
+        clamp (r/float-clamp lower upper)]
+    (^double fn [^double temp ^double x0]
+      (clamp (+ x0  (* (asa-dist temp) width))))))    
+        
+(comment ;testing 
+(def lbound 10)
+(def ubound 20)
+(def stepper (asa-stepper lbound ubound))
+(def samples 
+  (let [t0 100000.0]
+    (iterate (fn [[t k x0 n]] 
+              (let [x (stepper t x0)]
+                (if (zero? (mod n 10.0))
+                  [(asa-decay t0 (inc k)) (inc k)  x (inc n)]
+                  [(asa-decay t0 k) k x (inc n)])))
+            [t0 0 15 0])))            
+)        
 
 
 ;;Simulated Annealing Parameters
