@@ -35,15 +35,57 @@
 (defprotocol ISolveable
   (solve-state      [sol] "A chunk of state, likely a map, necessary for the solver.")
   (solve-parameters [sol] "A map of immutable parameters for the solver strategy.")
-  (solve-solution   [sol] "Return the current solution.")
-  (solve-best       [sol] "Return the best solution found.")
-  (solve-optimum    [sol] "Returns the cost of the best solution found.")
-  (solve-cost       [sol] "Returns a cost function that maps solutions to floats.")
-  (solve-neighbors  [sol] "Given a seed solution, generate a seq of neighbors.")
-  (solve-push-state [sol s] "Pushes the next state onto the environment")  
-  (solve-continue?  [sol]  "Termination criteria for searching.")
-  (solve-accept?    [sol]  "Acceptance criteria for candidate solutions.")
-  (solve-decay      [sol]  "Hook for implementing parametric/state variations"))
+  (solve-push-state [sol s] "Pushes the next state onto the environment"))  
+
+;;A bundle of data pertinent to any search.  Intended to be widely
+;;applicable across a number of different search strategies.
+(defrecord search-state 
+  [currentsol currentcost bestsol bestcost t iter n accepted])
+(defn ->initial-search-state 
+  [solution cost & [opts]]
+  (let [t    (get opts :t 10000) 
+        iter (get opts :t 0) 
+        n    (get opts :n 0)
+        accepted (get opts :accepted 0)]
+    (->search-state solution cost solution cost t iter n accepted)))
+
+;;__search-env__ is the default implementation for __ISolveable__.  
+;;Given a set of parameters and an initial state, we have a search
+;;environment.  The search environment is meant to bundle all the
+;;information we need to prosecute a search using whatever hueristic
+;;we want to.  In other words, we define new search strategies on top
+;;of the search environment framework.
+
+(defrecord search-env [parameters state]
+  ISolveable
+  (solve-state       [s] state)
+  (solve-parameters  [s] parameters)  
+  (solve-push-state  [s new-state]  (->search-env parameters new-state)))
+
+;;Protocol-derived functionality.  This is kind of a weak wrapping around maps.
+
+(defn get-parameter 
+  "Auxillary function to fetch parameter k from the solution environment s."
+  [s k] (-> (solve-parameters s) (get k)))
+
+(defn solve-continue? "Termination criteria for searching."  
+  [s] ((:continuef (solve-parameters s)) s))  
+(defn solve-solution "Return the current solution."
+  [s] (:currentsol (solve-state s) ))
+(defn solve-best  "Return the best solution found."
+  [s] (:bestsol (solve-state s)))
+(defn solve-optimum  "Returns the cost of the best solution found."
+  [s] (:bestcost (solve-state s)))
+(defn solve-cost  "Returns a cost function that maps solutions to floats."
+  [s] (:costf (solve-parameters s)))
+(defn solve-neighbors "Given a seed solution, generate a seq of neighbors."
+  [s] ((:neighborf (solve-parameters s)) s))
+(defn solve-continue? "Continuation criteria for the solve."  
+  [s] ((:continuef (solve-parameters s)) s))
+(defn solve-accept? "Acceptance criteria for candidate solutions."
+  [s] (:accept? (solve-parameters s)))
+(defn solve-decay "Hook for implementing parametric/state variations"
+  [s] ((:decayf (solve-parameters s) s)))
 
 (defmacro with-solve [sol & body]
   `(let [~'*state*      (solve-state ~sol)
@@ -56,42 +98,6 @@
          ~'accept?      (solve-accept? ~sol)
          ~'decay        (solve-decay ~sol)]
      ~@body))
-
-(defn get-parameter 
-  "Auxillary function to fetch parameter k from the solution environment s."
-  [s k] (-> (solve-parameters s) (get k)))
-
-;;A bundle of data pertinent to any search.  Intended to be widely
-;;applicable across a number of different search strategies.
-(defrecord search-state [currentsol currentcost bestsol bestcost t iter n])
-(defn ->initial-search-state 
-  [solution cost & [opts]]
-  (let [t    (get opts :t 10000) 
-        iter (get opts :t 0) 
-        n    (get opts :n 0)]
-    (->search-state solution cost solution cost t iter n)))
-
-;;__search-env__ is the default implementation for __ISolveable__.  
-;;Given a set of parameters and an initial state, we have a search
-;;environment.  The search environment is meant to bundle all the
-;;information we need to prosecute a search using whatever hueristic
-;;we want to.  In other words, we define new search strategies on top
-;;of the search environment framework.
-;;WE HAVE REFLECTION WARNINGS HERE!
-;;=================================
-(defrecord search-env [parameters state]
-  ISolveable
-  (solve-state       [s] state)
-  (solve-parameters  [s] parameters)  
-  (solve-solution    [s] (:currentsol state))
-  (solve-best        [s] (:bestsol state))
-  (solve-optimum     [s] (:bestcost state))
-  (solve-cost        [s] (:costf parameters))
-  (solve-neighbors   [s] ((:neighborf parameters) s))
-  (solve-push-state  [s new-state]  (->search-env parameters new-state))
-  (solve-continue?   [s] ((:continuef parameters) s))
-  (solve-accept?     [s] (:accept? parameters))
-  (solve-decay       [s] ((:decayf parameters) s)))
 
 (defn- iterated? 
   "Helper function to allow us to define a simple notion of searches unbound
@@ -124,7 +130,8 @@
 
 ;;record the result of choosing a new solution, and moving the state.
 (defn- move-state [newsol newcost prevstate]
-  (merge prevstate {:currentsol newsol :currentcost newcost}))
+  (merge prevstate {:currentsol newsol :currentcost newcost 
+                    :accepted (inc (:accepted prevstate))}))
 
 ;;increment the iteration count, advancing the search.
 (defn- increment-state [{:keys [iter] :as prevstate}]
@@ -272,13 +279,3 @@
   [env]
   (let [trans (get-parameter env :transition)]
     (take-while solve-continue? (iterate trans env))))
-
-
-
-
-
-
-
-
-
-

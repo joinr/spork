@@ -104,7 +104,9 @@
    state.  They are named cost since we use cost functions as energy analogues.
    t is temperature.  As t decreases, the probability of accepting 'worse' 
    energy states - higher costs - decreases rapidly.  At higher temperatures, 
-   the disparity between energy states has less influence on the probability."
+   the disparity between energy states has less influence on the probability.
+   As t approaches infinity, the contribution of the exponential term decreases, 
+   approach a p of 0.5."
   ([t delta]  (/ 1.0 (+ 1.0 (Math/pow E (/ delta t)))))
   ([t oldcost newcost]
     (/ 1.0 (+ 1.0 (Math/pow E (/ (- newcost oldcost) t))))))
@@ -317,8 +319,7 @@
     (fn [incumbent candidate env]
       (let [t            (get (core/solve-state env) :t)
             old-cost     (core/candidate-cost incumbent)
-            new-cost     (core/candidate-cost candidate)
-            _ (println ['testing t c old-cost new-cost])]
+            new-cost     (core/candidate-cost candidate)]
         (boltzmann-accept? t old-cost new-cost)))))
 
 ;;ASA requires us to keep track of a vector of temperatures, and a vector of 
