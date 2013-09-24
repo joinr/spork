@@ -113,7 +113,7 @@
   "Use the Boltzmann energy equation to determine probability of accepting 
    a poorer solution at a given temperature t.  Better solutions are accepted
    with P = 1.0, while poorer solutions are accepted with P = e^(-delta / t)"
-  [oldcost newcost t] 
+  [t oldcost newcost] 
   (let [delta (- oldcost newcost)]
     (if (pos? delta) true 
       (<= (rand) (boltzmann-sample t (* -1.0 delta))))))   
@@ -312,8 +312,12 @@
 ;;__blank-sa-params__ provides a sane set of defaults for simulated
 ;;annealing, and will garantee that a solve will terminate.
 (def blank-sa-params 
-  (->sa-params (geometric-decay 0.9) 
-               1000000 0.00000001 1000 1 boltzmann-accept?))
+  (->sa-params 
+    (geometric-decay 0.9) 
+    1000000 0.00000001 1000 1
+    (fn [x1 x2 env]
+      (let [t (get (core/solve-state env) :t)]
+        (boltzmann-accept? x1 x2 t)))))
 
 
 ;;ASA requires us to keep track of a vector of temperatures, and a vector of 
@@ -344,7 +348,7 @@
         xs    (vec (map first binds))
         neighbor (core/parametric-neighbor 
                    (fn [vs env]
-                     (let [t (-> (core/-state env) :t)]
+                     (let [t (-> (core/solve-state env) :t)]
                        (loop [ks  vs 
                               remaining steps
                               acc []]
@@ -390,9 +394,9 @@
              [t0 0 (midpoint lower upper) 0])))
 
 (def simple-samples (samples 10 20))
-(def uni-samples (samples 0.0 1.0))
-(def problem (simple-anneal [0 [0 100]] 
-                            (fn [xs] (abs (- (first xs) 50)))))
+(def uni-samples    (samples 0.0 1.0))
+(def problem        (simple-anneal [0 [0 100]] 
+                                   (fn [xs] (abs (- (first xs) 50)))))
 )        
 
 ;;misread 

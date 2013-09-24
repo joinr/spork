@@ -33,20 +33,32 @@
 ;;to a problem solving strategy, as well as the basic transforms
 ;;necessary to derive a solution.
 (defprotocol ISolveable
-  (-state [sol] "A chunk of state, likely a map, necessary for the solver.")
-  (-parameters [sol] "A map of immutable parameters for the solver strategy.")
-  (-solution   [sol] "Return the current solution.")
-  (-best       [sol] "Return the best solution found.") 
-  (-cost       [sol] "Returns a cost function that maps solutions to floats.")
-  (-neighbors  [sol] "Given a seed solution, generate a seq of neighbors.")
-  (-push-state [sol s] "Pushes the next state onto the environment")  
-  (-continue?  [sol]  "Termination criteria for searching.")
-  (-accept?    [sol x1 x2]  "Acceptance criteria for candidate solutions.")
-  (-decay      [sol] "Hook for implementing parametric/state variations"))
+  (solve-state [sol] "A chunk of state, likely a map, necessary for the solver.")
+  (solve-parameters [sol] "A map of immutable parameters for the solver strategy.")
+  (solve-solution  [sol] "Return the current solution.")
+  (solve-best       [sol] "Return the best solution found.") 
+  (solve-cost        [sol] "Returns a cost function that maps solutions to floats.")
+  (solve-neighbors   [sol] "Given a seed solution, generate a seq of neighbors.")
+  (solve-push-state  [sol s] "Pushes the next state onto the environment")  
+  (solve-continue?   [sol]  "Termination criteria for searching.")
+  (solve-accept?    [sol x1 x2]  "Acceptance criteria for candidate solutions.")
+  (solve-decay       [sol] "Hook for implementing parametric/state variations"))
+
+(defmacro with-solve [sol & body]
+  `(let [~'*state*      (solve-state ~sol)
+         ~'*parameters* (solve-parameters ~sol)
+         ~'*best*       (solve-best ~sol)
+         ~'cost         (solve-cost ~sol)
+         ~'neighbors    (solve-neighbors ~sol)
+         ~'push-state   (partial solve-push-state ~sol)
+         ~'continue?    (partial solve-continue? ~sol)
+         ~'accept?      (partial solve-accept? ~sol)
+         ~'decay        (solve-decay ~sol)]
+     ~@body))
 
 (defn get-parameter 
   "Auxillary function to fetch parameter k from the solution environment s."
-  [s k] (-> (-parameters s) (get k)))
+  [s k] (-> (solve-parameters s) (get k)))
 
 ;;A bundle of data pertinent to any search.  Intended to be widely
 ;;applicable across a number of different search strategies.
@@ -68,16 +80,16 @@
 ;;=================================
 (defrecord search-env [parameters state]
   ISolveable
-  (-state      [s] state)
-  (-parameters [s] parameters)  
-  (-solution   [s] (:currentsol state))
-  (-best       [s] (:bestsol state))
-  (-cost       [s] (:costf parameters))
-  (-neighbors  [s] ((:neighborf parameters) s))
-  (-push-state [s new-state]  (->search-env parameters new-state))
-  (-continue?  [s] ((:continuef parameters) s))
-  (-accept?    [s x1 x2] (apply (:accept? parameters) x1 x2 s))
-  (-decay      [s] ((:decayf parameters) s)))
+  (solve-state      [s] state)
+  (solve-parameters [s] parameters)  
+  (solve-solution   [s] (:currentsol state))
+  (solve-best       [s] (:bestsol state))
+  (solve-cost        [s] (:costf parameters))
+  (solve-neighbors   [s] ((:neighborf parameters) s))
+  (solve-push-state  [s new-state]  (->search-env parameters new-state))
+  (solve-continue?   [s] ((:continuef parameters) s))
+  (solve-accept?    [s x1 x2] ((:accept? parameters) x1 x2 s))
+  (solve-decay       [s] ((:decayf parameters) s)))
 
 (defn- iterated? 
   "Helper function to allow us to define a simple notion of searches unbound
@@ -91,8 +103,8 @@
    strategy has a notion of temperature, if the temperature drops below a 
    thresh-hold, the search should stop." 
   [env]
-  (let [{:keys [tmin itermax] :as params} (-parameters env) 
-        {:keys [t iter] :as state}        (-state env)]
+  (let [{:keys [tmin itermax] :as params} (solve-parameters env) 
+        {:keys [t iter] :as state}        (solve-state env)]
     (or (contains? state :converged) 
         (and (> t tmin) (not (iterated? iter itermax))))))
 
@@ -129,7 +141,7 @@
 ;;instance, if there are no valid neighboring solutions, 
 ;;we can bail out.
 (defn- set-converged-state [env]
-  (-push-state env (assoc (-state env) :converged :true)))
+  (solve-push-state  env (assoc (solve-state env) :converged :true)))
 
 (defn simple-decay
   "Auxillary function to help advance the search using the notion 
@@ -140,29 +152,29 @@
    the iteration count.  decay provides a simple hooking mechanism into
    the search process, and allows us access to the state."
   [env]
-  (let [state (-state env)
+  (let [state (solve-state env)
         t (:t state)
         n (:n state)
         decay-rate (or (get-parameter env :decay-rate) 1.0)
         equilibration (get-parameter env :equilibration)]
-    (-> state
-        (assoc :t (if (= n 0) (* decay-rate t) t)) ;temperature decay
-        (assoc :n (if (< n equilibration) (inc n) 0)) ;equilibration
-        (increment-state) 
-        (-push-state env))))
+    (solve-push-state env
+      (-> state
+          (assoc :t (if (= n 0) (* decay-rate t) t)) ;temperature decay
+          (assoc :n (if (< n equilibration) (inc n) 0)) ;equilibration
+          (increment-state)))))
 
 (defn default-transition
   "Given a solveable environment, returns the result of choosing a 
    neighboring state from the current  state, using the search parameters
    in the environment."        
   [env] 
-  (if-let [candidates  (-neighbors env)] ;if we can move..
-    (let  [{:keys [t currentcost bestcost iter] :as state} (-state env)
+  (if-let [candidates  (solve-neighbors  env)] ;if we can move..
+    (let  [{:keys [t currentcost bestcost iter] :as state} (solve-state env)
            nextsol  (rand-nth candidates)   ;find a new state
-           nextcost ((-cost env) nextsol)] ;cost the new state
-      (-decay   ;decay/increment the result of...        
-       (-push-state env ;incoporating the new solution where...
-          (if (-accept? currentcost nextcost env)   ;found a desireable state.
+           nextcost ((solve-cost  env) nextsol)] ;cost the new state
+      (solve-decay   ;decay/increment the result of...        
+       (solve-push-state env ;incoporating the new solution where...
+          (if (solve-accept? env currentcost nextcost)   ;found a desireable state.
               (->> (move-state nextsol nextcost state) ;record transition
                    (better-state nextsol nextcost)) ;check improvement
               ;or we discard the new state.
@@ -183,13 +195,13 @@
   "Applies f to the current neighbor to generate new neighbors.
    f is ignorant of anything beyond the current solution."
   [f]
-  #(f (-solution %)))
+  #(f (solve-solution %)))
 
 (defn parametric-neighbor
   "Applies f to the current neighbor and the environment to generate new 
    neighbors. f can use the entire environment to generate neighbors."
   [f]
-  #(f (-solution %) %))
+  #(f (solve-solution %) %))
 
 
 (defn ->basic-parameters
@@ -234,8 +246,8 @@
   [env]
   (let [trans (get-parameter env :transition)]
     (loop [current-env env]
-      (if (-continue? current-env) 
-        (recur (-push-state current-env (trans current-env)))
+      (if (solve-continue?  current-env) 
+        (recur (solve-push-state  current-env (trans current-env)))
         current-env))))
 
 (defn solutions
@@ -246,7 +258,7 @@
    when -continue? no longer succeeds."
   [env]
   (let [trans (get-parameter env :transition)]
-    (take-while -continue? (iterate trans env))))
+    (take-while solve-continue? (iterate trans env))))
 
 
 
