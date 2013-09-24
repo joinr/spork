@@ -77,8 +77,6 @@
 ;;Boltzmann Annealing and Generic Simulated Annealing
 ;;====================================================
 
-;;our second favorite mathematical constant.
-(def ^:const E Math/E) 
 
 ;;In the literature, simulated annealing schemes are usefully broken down 
 ;;into 3 important functions: 
@@ -153,8 +151,7 @@
    While simple, and fast, cooling in this fashion guarantees that we will 
    NOT maintain the ability to explore the entire state space."
   [decay-rate t0 k]
-  (assert (and (> decay-rate 0) (<= decay-rate 1)) 
-          "decay-rate must be between (0,1]")
+  (assert (and (> decay-rate 0) (<= decay-rate 1)) "decay-rate outside (0,1]")
   (* t0 (Math/pow E (* (- decay-rate  1.0) k))))
 
 (defn geometric-decay 
@@ -203,20 +200,39 @@
 ;;decoding processes for us.  We will extend their functionality here, to 
 ;;implement various annealing strategies.
 
-;;There are a couple of generating functions used in the literature.
-;;We can generalize the Boltzmann dis
 
+;;Deviation Probability Densities 
+;;===============================
+;;There are a couple of generating functions used in the literature.
+;;Usually named "g", these generating functions are designed to assign a 
+;;probabilty to reaching a particular state from an existing state.
+
+
+;;The boltzmann distribution is a poor neighborhood function in practice.
+;;Working on implementing the Gaussian form of this guy later.
+(comment 
 (defn- boltzmann-neighbor 
   ([dimensions t old-x new-x]
     (let [delta (- new-x old-x)
           mult  (Math/pow (* 2.0 Math/PI) (/ dimensions -2.0))]
       (* (/ 1.0 (+ (1.0 (Math/pow E delta)))))))
   ([t old-x new-x] (boltzmann-neighbor 1.0 t old-x new-x)))
+)
+
 
 ;;Fast Annealing uses a Cauchy distribution, which for d-dimensional 
 ;;spaces, is an ensemble of D 1-dimensional Cauchy distributions, which
-;;are actually identical.
-(defn cauchy-gen [t d] ) 
+;;are actually identical. We can use our Cauchy vector, with a temperature 
+;;parameter that alters the scale.
+
+;;Still working on this guy.  Doesn't matter much, since I'm using ASA 
+;;primarily.
+(comment 
+(defn fast-annealing-pdf [temp d x]
+  (/ temp 
+     (Math/pow (+ (* x x) (* temp temp))
+               (/ (+ d 1) 2))))
+)
 
 
 ;;Adaptive Simulated Annealing Generating Function 
@@ -236,13 +252,13 @@
    values pack really tightly around 0.0, although, like the Cauchy distribution
    we may still see seemingly large, but infrequent, jumps across the parameter
    space."
-  [temp]
-  (let [y    (rand)
-        dir  (Math/signum (- y 0.5))]
-    (* dir 
-       temp 
-       (- (Math/pow (+ 1.0 (/ 1.0 temp)) (Math/abs (- (* 2.0 y) 1.0)))
-          1.0))))
+  ([temp y]
+    (let [dir  (Math/signum (- y 0.5))]
+      (* dir 
+         temp 
+         (- (Math/pow (+ 1.0 (/ 1.0 temp)) (Math/abs (- (* 2.0 y) 1.0)))
+            1.0))))
+  ([temp] (asa-dist temp (rand))))
 
 ;;The asa-dist is used to build a function that walks across a parameter range.
 ;;This can be any range of values, but since we already have a normalized 
@@ -268,9 +284,15 @@
               (throw (Exception. "Problem in asa-stepper, too many reps."))
             (recur (+ x0 (take-step! temp)) (unchecked-inc n))))))))
 
-
 (defn midpoint [x y] 
   (+ x (/ (-  y x) 2.0)))
+
+
+;;Reannealing
+;;===========
+;;Re-annealing is useful to spread out the search over the parameter space 
+;;evenly.  Implementation pending.
+
 
 
 ;;Simulated Annealing Parameters
@@ -293,6 +315,12 @@
   (->sa-params (geometric-decay 0.9) 
                1000000 0.00000001 1000 1 boltzmann-accept?))
 
+
+;;ASA requires us to keep track of a vector of temperatures, and a vector of 
+;;cooling schedules for each parameter.  This allows us to re-scale the 
+;;temperature
+;(defrecord asa-params [
+
 ;;Basic Annealers 
 ;;===============
 
@@ -304,6 +332,23 @@
 (core/defsolver anneal
   {:keys [decay-function temp tmin itermax equilibration accept?] :as opts}
   (merge blank-sa-params opts))
+
+;;this is a really crappy way to go, will implement a more performant version 
+;;later...
+(defn simple-anneal [vars f]  
+  (let [binds (partition 2 vars)
+        steps (for [[n [l u]] binds]
+                 (asa-stepper l u))
+        xs    (vec (map first binds))
+        neighbor (fn [vs] 
+                   (loop [ks  vs 
+                          remaining steps
+                          acc []]
+                     (if (empty? remaining) acc 
+                         (recur (rest ks)
+                                (rest steps)
+                                (conj acc ((first steps) (first ks)))))))] 
+    (anneal xs f neighbor {}))) 
 
 (comment 
 ;;test annealable...make a random number generator, where cost is number 
@@ -343,3 +388,19 @@
 (def simple-samples (samples 10 20))
 (def uni-samples (samples 0.0 1.0))
 )        
+
+;;misread 
+(comment  
+(defn asa-dist2
+  "Given a uniform random variate, uv, and a temperature parameter, 
+   samples returns a value between [-1 1].  As temperature decreases, the 
+   values pack really tightly around 0.0, although, like the Cauchy distribution
+   we may still see seemingly large, but infrequent, jumps across the parameter
+   space."
+  ([temp ^double y]
+    (/ 1.0 
+       (* 2.0 
+          (+ (Math/abs y) temp)
+          (ln (+ 1.0 (/ 1.0 temp))))))
+  ([temp] (asa-dist2 (rand))))
+)
