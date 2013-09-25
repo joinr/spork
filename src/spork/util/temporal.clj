@@ -2,7 +2,7 @@
 ;;ordered quality, like event streams, data that has a notion of start and 
 ;;duration, etc. 
 (ns spork.util.temporal
-  (:require [generators :as gen]))
+  (:require [spork.util [generators :as gen]]))
 
 (defn temporal-profile
   "Extracts an event-driven profile of the concurrent records over time from a 
