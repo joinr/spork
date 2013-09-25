@@ -54,25 +54,33 @@
 
 (defn peak-activities
   "Computes peak concurrent activities, as per activity-profile, for a sequence 
-   of temporal records xs.  Returns the top N active days."
-  [xs & {:keys [start-func duration-func] 
-         :or   {start-func :Start duration-func :Duration}}]
-  (let [active-count (fn [r] (:count r))
-        sorted  (->> (activity-profile (sort-by start-func xs) 
+   of temporal records xs.  Returns the top N active days.  Caller may supply 
+   a custom peak-function, which operates on records of 
+   {t {:actives #{...}} :count n}"
+  [xs & {:keys [start-func duration-func peak-function] 
+         :or   {start-func :Start duration-func :Duration 
+                peak-function (fn [r] (:count r))}}]
+  (let [sorted  (->> (activity-profile (sort-by start-func xs) 
                             :start-func start-func 
                             :duration-func duration-func)
-                     (sort-by (fn [[t r]] (active-count r))) 
+                     (sort-by (fn [[t r]] (peak-function r))) 
                      (reverse))
-        peak (active-count (second (first sorted)))]
+        peak    (active-count (second (first sorted)))]
     (take-while (fn [[t r]] (= (active-count r) peak))
                 sorted))) 
 
 ;;given a sequence of demands, we need a way to compute peak demand for 
 ;;each src.
-(defn peaks-by [f xs & {:keys [start-func duration-func] 
-                        :or   {start-func :Start duration-func :Duration}}]
+(defn peaks-by
+  "Groups xs by a key function, f, and for each group, returns the peak activity
+   sample as defined by an optional peak-function.  Defaults to the number of 
+   active records in an activity sample as the peak."
+  [f xs & {:keys [start-func duration-func peak-function] 
+           :or   {start-func :Start duration-func :Duration
+                  peak-function (fn [r] (:count r))}}]
   (into {} 
     (for [[k recs] (group-by f xs)]
       [k (first (peak-activities recs :start-func start-func 
-                                      :duration-func duration-func))])))
+                                      :duration-func duration-func
+                                      :peak-function peak-function))])))
 
