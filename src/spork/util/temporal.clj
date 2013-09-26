@@ -80,7 +80,9 @@
                   peak-function (fn [r] (:count r))}}]
   (into {} 
     (for [[k recs] (group-by f xs)]
-      [k (first (peak-activities recs :start-func start-func 
-                                      :duration-func duration-func
-                                      :peak-function peak-function))])))
+      (let [[t peak-record] 
+                (first (peak-activities recs :start-func start-func 
+                                        :duration-func duration-func
+                                        :peak-function peak-function))] 
+        [k (assoc peak-record :t t)]))))
 
