@@ -22,7 +22,9 @@
     (map #(get xs (dec %)) 
          (take-while #(<= % n) (map rank (iterate inc 1))))))    
 
-(def median    "Computes the median of xs."  (first (partial quantiles 2)))
+(defn median
+  "Computs the median of a set of values xs.  Does not assume xs are ordered."
+  [xs] (first (quantiles 2 xs)))
 (def quartiles   (partial quantiles 4))
 (def deciles     (partial quantiles 10))
 (def percentiles (partial quantiles 100))
