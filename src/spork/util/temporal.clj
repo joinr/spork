@@ -65,8 +65,8 @@
                             :duration-func duration-func)
                      (sort-by (fn [[t r]] (peak-function r))) 
                      (reverse))
-        peak    (active-count (second (first sorted)))]
-    (take-while (fn [[t r]] (= (active-count r) peak))
+        peak    (peak-function (second (first sorted)))]
+    (take-while (fn [[t r]] (= (peak-function r) peak))
                 sorted))) 
 
 ;;given a sequence of demands, we need a way to compute peak demand for 
