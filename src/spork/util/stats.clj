@@ -37,7 +37,7 @@
          n   0
          ks  xs]
     (if (empty? ks) (/ tot n)
-        (recur (+ tot (first k))
+        (recur (+ tot (first ks))
                (unchecked-inc n)
                (rest ks)))))
 
