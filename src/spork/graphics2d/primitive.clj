@@ -68,8 +68,8 @@
 (defn cube-right   [s] (p3 s))
 
 (defn mid-point [p1 p2]
-  (->point (/ (+ (point-x p1) (point-x p2)) 2.0)
-           (/ (+ (point-y p1) (point-y p2)) 2.0)))
+  (->point (/ (+ ^double (point-x p1) ^double (point-x p2)) 2.0)
+           (/ (+ ^double (point-y p1) ^double (point-y p2)) 2.0)))
 
 (defn divide-quad
   "Divides a quad segment into two quad segments."
@@ -83,10 +83,10 @@
         lc (mid-point l ctrl)
         ctrlx1 (point-x lc)
         ctrly1 (point-y lc)
-        cr (mid-point crtl r)
+        cr (mid-point ctrl r)
         ctrlx2 (point-x cr)
         ctrly2 (point-y cr)
-        new-ctrl (mid-point lc cr)
+        new-ctrl  (mid-point lc cr)
         new-ctrlx (point-x new-ctrl)
         new-ctrly (point-y new-ctrl)]    
     [x1 y1 ctrlx1 ctrly1 new-ctrlx new-ctrly
@@ -124,7 +124,7 @@
 
 ;;In progress
 (comment 
-(defn flatten-quadratic
+(defn flatten-quadratic-segment
   "If s2 defines a segment that is a quad, then we generate a set of points.
    We recursively subdivide the quadratic curve between (p1 s1), until a 
    desired flatness is achieved or a limit is reached."

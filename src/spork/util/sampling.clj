@@ -2,48 +2,48 @@
 (ns spork.util.sampling
   (:require [spork.util [stats :as stats]]))
 
-;This rose from the "stochastic demand generation" problem that was presented
-;in a somewhat convoluted solution in VBA...
-;The basic process is this: 
-;  We have a population of records P.
-;  We want to define functions that sample from the population, according to 
-;    ad-hoc constraints, to generate samples of records.  These functions are
-;    record-generators, and they typically involve identifying a set of records,
-;    the "template" population, and then modifying the template according to 
-;    some function.  Modification means mapping a function to the template 
-;    population that returns a sampled population (i.e. transforming template
-;    or original records into sampled records).  
-;  We then want to define a sample as a function of a population and a sequence of
-;  or [record-generator, frequency] pairs, that reduces the sequence of one 
-;  generator pairs by applying the record-generator to the population, frequency 
-;  times, accumulating the resulting sample-records.
+;;This rose from the "stochastic demand generation" problem that was presented
+;;in a somewhat convoluted solution in VBA...
+;;The basic process is this: 
+;;  We have a population of records P.
+;;  We want to define functions that sample from the population, according to 
+;;    ad-hoc constraints, to generate samples of records.  These functions are
+;;    record-generators, and they typically involve identifying a set of records,
+;;    the "template" population, and then modifying the template according to 
+;;    some function.  Modification means mapping a function to the template 
+;;    population that returns a sampled population (i.e. transforming template
+;;    or original records into sampled records).  
+;;  We then want to define a sample as a function of a population and a sequence of
+;;  or [record-generator, frequency] pairs, that reduces the sequence of one 
+;;  generator pairs by applying the record-generator to the population, frequency 
+;;  times, accumulating the resulting sample-records.
 
-;  There is an additional, post-processing phase, where we validate the sample.
-;  A valid sample is a set of records in which:
-;    A set of dependencies between records from the original population P are 
-;    enforced, in that if record A from population P exists in sample S, and
-;    record B from population P is dependent upon A, then record B must also 
-;    exist in S, where 
-;    dependent:: record -> record -> boolean
+;;  There is an additional, post-processing phase, where we validate the sample.
+;;  A valid sample is a set of records in which:
+;;    A set of dependencies between records from the original population P are 
+;;    enforced, in that if record A from population P exists in sample S, and
+;;   record B from population P is dependent upon A, then record B must also 
+;;    exist in S, where 
+;;    dependent:: record -> record -> boolean
 
-;    For two records x1, x2, which are members of an equivalence class, denoted
-;    by equivalent:: record -> record -> boolean
-;    x1 and x2 cannot "intersect", where 
-;      intersection:: record -> record -> boolean
-;    The "distance" between records identified as members of an equivalance 
-;      class  is either 0 or (distance x1 x2) >= (minimum-distance x1 x2) > 0
-;      where
-;      distance :: record -> record -> float
-;      minimum-distance:: record -> record -> float
+;;    For two records x1, x2, which are members of an equivalence class, denoted
+;;    by equivalent:: record -> record -> boolean
+;;    x1 and x2 cannot "intersect", where 
+;;      intersection:: record -> record -> boolean
+;;    The "distance" between records identified as members of an equivalance 
+;;      class  is either 0 or (distance x1 x2) >= (minimum-distance x1 x2) > 0
+;;      where
+;;      distance :: record -> record -> float
+;;      minimum-distance:: record -> record -> float
 
 
-;;Patch
-;replacement for rand-nth, uses random number seed if provided, else defers to 
-;rand-nth 
+;;__Patched__
+;;replacement for rand-nth, uses random number seed if provided, else defers to 
+;;rand-nth 
 (defn sample-nth [xs] (nth xs (int (* (stats/*rand*) (count xs)))))
 
 
-;Special operators for our temporal records...
+;;Special operators for our temporal records...
 (defn record->segment
   "Convert a map into a vector of [start duration]"
   [r] [(:start r) (+ (:start r) (:duration r))])
@@ -53,8 +53,9 @@
   [seg]
   {:start (first seg) :duration (- (second seg) (first seg))})
 
-;functions for dealing with abstract 1D line segments, as represented by vector
-;pairs, where each entry in the vector is a point on a shared axis.
+;;Functions for dealing with abstract 1D line segments, as represented by vector
+;;pairs, where each entry in the vector is a point on a shared axis.
+
 (defn overlap?
   "Determine if two segments, or 2 coordinate pairs, overlap."
   ([s1 e1 s2 e2] (and (<= s1 e2) (>= e1 s2)))
@@ -93,8 +94,13 @@
              (max s1 (min e1 e2))])
         :else nil))
 
-;for records that contain a :start and :duration field, we can view them as 
-;line segments on the temporal axis.
+;;Operations on Temporal Records
+;;==============================
+
+;;For records that contain a :start and :duration field, we can view them as 
+;;line segments on the temporal axis.
+;;__TODO__ Move these operations to spork.util.temporal
+
 (defn record-distance [r1 r2] 
   (apply segment-distance (map record->segment) [r1 r2]))
 
@@ -115,6 +121,11 @@
 
 (defn unbounded-segment? [s] 
   (= s [Double/NEGATIVE_INFINITY Double/POSITIVE_INFINITY]))
+
+(defn record-segment? [r]
+  (and (map? r) 
+       (contains? r :start)
+       (contains? r :duration)))
 
 (defn translate
   "Shifts record along its temporal axis by delta."
@@ -200,20 +211,6 @@
                                (func-val)
                                func-val)]))))
 
-;(defn subsume-by
-;  "Allows a user-supplied function to determine the order in which a set of 
-;   records should be merged.  f should be a function that returns a value 
-;   amenable to comparison, using clojure.core/compare."
-;  [f xs])
-
-;some convenience operators....
-;since we're likely dealing with tables...or record sets....it'd be nice 
-;to have an operator for describing them...
-
-;We define a little language for building abstract syntax trees that correspond
-;to a computation that...for now....produces a vector of records.
-
-;Now...there are operators in our language...
 (defn following-recs [rs]
   (reduce (fn [acc x] 
             (conj acc (follow (last acc) x))) [(first rs)] (rest rs)))
@@ -222,11 +219,67 @@
   (reduce (fn [acc x] 
             (conj acc (lead x (last acc)))) [(first rs)] (rest rs)))
 
+;;Currently on hold.
+;(defn subsume-by
+;;  "Allows a user-supplied function to determine the order in which a set of 
+;;   records should be merged.  f should be a function that returns a value 
+;;   amenable to comparison, using clojure.core/compare."
+;;  [f xs])
+
+
+
+;;Towards a Language for Describing Sampling Rules
+;;================================================
+
+;;We define a little language for building abstract syntax trees that correspond
+;;to a computation that...for now....produces a vector of records.
+
+;;The idea is to allow users to build an abstract syntax tree using this 
+;;language, which describes a potentially highly complex rule for sampling 
+;;from a corpus of records.  Rather than use macros, I implemented specific 
+;;data types to provide a "node" for each bit of the language, and provide 
+;;a set of combinators that allow us to compose these nodes into a directed 
+;;acyclic graph that represents the abstract syntax tree of the rule.  
+
+;;This approach is used throughout computer science, to provide a flexible, 
+;;data-driven way to define complex rules.  We gain quite a bit of leverage, 
+;;in that we can compose arbitrarily complex rules from simple rules, and 
+;;that we can extend the language as-needed by added new primitives and 
+;;means of combination.  
+
+;;While adding a layer of complexity (due to the seperate node structures), the 
+;;topology for a ruleset is independent of any corpus of samples.  As a result,
+;;the composite rule is just another chunk of data, which can be applied in the 
+;;context of a sampling evaluation, against ANY corpus of samples.
+
+;;Additionally, since the sampling rule is actually a structure, it is easy to 
+;;visualize and debug (unlike a compiled function).  We can even pipe it into 
+;;an interactive graph-based program and allow users to visually define their 
+;;own sampling rules, or, as-is currently the practice, to define rules using 
+;;standard clojure data structures like vectors and maps.  
+
+;;Later, to actually use the sampling rule to derive a sample from some data, 
+;;we will define a function that evaluates the sampling rule __in the context__
+;;of the corpus of samples.  The effect is that the rule structure is traversed
+;;from some root node (possibly specified by the caller), and the leaves of the
+;;traversal result in a sampling action.  The sampling action at a particular 
+;;leaf node is declaratively defined by the "path" of nodes leading up to 
+;;the leaf node.  So we have a simple tree-walker that visits the leaf nodes, 
+;;applies the rule to the corpus, and returns all of the samples.
+
+;;__Note__ After reconsidering the initial implementation, I may ditch the 
+;;separate node structures in favor of just using lists and macros (more of a 
+;;Lispy style, and more elegant).  To be determined...
+
+
+;;Operators
+;;=========
+
 (defn chain
   "chain - takes a node list and creates a node that produces a list of nodes 
   that are chained together so that the end of one node is 'before the next.  
   Returns the concatenated, chained nodes, where chaining is defined by f.
-  Default behavior ensures that any nodes in the list follow each otherso that 
+  Default behavior ensures that any nodes in the list follow each other so that 
   their start and end time (+ start duration) overlap."
   ([chain-func nodes]
     (fn [ctx] 
@@ -292,10 +345,6 @@
   [rec nodes]
   (transform #(merge % rec) nodes))
 
-(defn record-segment? [r]
-  (and (map? r) 
-       (contains? r :start)
-       (contains? r :duration)))
 
 (defn truncate-record
   "Uses the boundary set by base-record to truncate target-record.
@@ -329,20 +378,36 @@
            (constrain) 
            (filter (complement nil?))))))    
 
-(defn merge-context [rec nodes]
+(defn merge-context
+  "Merges the value of rec into the context, effectively altering the evaluation
+   context."
+  [rec nodes]
   (fn [ctx] (nodes (merge rec ctx)))) 
 
-(defn sample-context [ctx nodes] (nodes ctx))
-(defn compose [n1 n2]
+(defn sample-context
+  "Given an evalution context, typically a map of {rule-name rule|value}.  
+   Value may be another rule (a node), a rule-name (a keyword), or a primitive
+   value.  In this case, primitive values are any other data type, but are 
+   typically sequences of clojure map strucures (i.e. records) in practice."
+  [ctx nodes] (nodes ctx))
+
+(defn compose
+  "Returns a sampler that samples n1 with a context, then samples n2 with the 
+   resulting context of n1's sampling.  Akin to function composition."
+  [n1 n2]
   (fn [ctx] (n2 (n1 ctx))))
 
-;This is a slight break with the original version, in that I've developed a 
-;simple little-language to describe the phenomenon (actually many phenomena).
 
+;;Data Structures for Nodes
+;;=========================
 (defn node-type [nd] (get nd :node-type))
 (defn node-data [nd] (get nd :node-data))
 
-;node constructors
+;;Node constructors.  We define different abstract nodes from a general node, 
+;;which is just a clojure map with a type key.  Each node correponds to 
+;;primitives or operators in our sampling language.  We add more features to 
+;;the language by adding more nodes, and implementing their behavior when 
+;;traversed.
 (defn ->node  [type data] 
   {:node-type type :node-data data})
 (defn ->chain [nodes]    
@@ -360,6 +425,18 @@
 (defn ->constrain    
   [constraints nodes] 
   (->node :constrain {:constraints constraints :children nodes}))
+
+;;Evaluation Semantics for Sampling Rules
+;;=======================================
+
+;;To evaluate our syntax tree, we define a multimethod called __sample-node__ .
+;;__sample-node__ is defined for each type of node in our language, and 
+;;enforces the unique evaluation semantics of the node during traversal.
+
+;;__Note:__ Much of this could be implemented using a custom lisp reader and 
+;;evaluator, and would be more elegant.  There is some utility to retaining 
+;;the classical "node" approach, in that we can see the node data and debug it
+;;visually.  We could do the same with lists of symbols, and may yet.
 
 (defmulti  sample-node
   "A generic method for traversing a sample-tree, collecting records at each 
@@ -380,6 +457,12 @@
 (defn lift [x] (fn [ctx] (sample-node x ctx)))
 (defn node? [x] (and (map? x) (contains? x :node-type)))
 
+;;The default behavior for sampling a node is to determine if the node is 
+;;a primitive atom (leaf/data),a singleton node (leaf), or  a composite node 
+;;(branch).  Primitive elements, like numbers, strings, keywords, and symbols, 
+;;are first looked up in the current context.  If the result is not a node, 
+;;the data is returned, otherwise, the newly-fetched node is sampled 
+;;recursively.  Sequences of nodes (composite nodes), are sampled sequentially.
 (defmethod sample-node :default  [node ctx]
   (cond (sequential? node) (map #(sample-node % ctx) node) 
         (or (keyword? node) 
@@ -392,6 +475,11 @@
         :else (if-let [remaining (node-data node)]
                 (sample-node remaining ctx)
                 node)))
+
+;;Each implementation of sample-node invokes the previously defined combinators
+;;on its child or children, ensuring that the children are sampled or "lifted" 
+;;as necessary for evaluation.  This is an area that feels a bit redundant, 
+;;since we're just wrapping previously-defined functions from above.
 
 (defmethod sample-node :leaf     [node ctx] (get ctx (node-data node)))
 (defmethod sample-node :chain    [node ctx] ((chain (node-data node)) ctx))
@@ -421,13 +509,18 @@
 (defmethod sample-node :concatenate [node ctx]
   ((concatenate (node-data node)) ctx))
 
+;;Sampling API
+;;============
+
 (defn sample-from
   "Convenience function for executing complex queries.  Useful for building 
    queries inline, using the ->> threading macro."
   [ctx query]
   (sample-node query ctx))
 
-(comment ;testing
+
+;;testing
+(comment
   ;A population of records from which to sample.       
 (def example-population-table
   [{:group "LandPrey" :start 1 :duration 1000 :SRC "Donkey"  :quantity 2}
@@ -485,6 +578,7 @@
 (def p4 {:sample (->replications 3 [(->constrain {:tfinal 5000 
                                                   :duration-max 5000}
                                                  :case1)])})
+;;We can compose p1..p4 into a database of rules just using clojure.core/merge
 (def sample-graph (merge p1 p2 p3 p4))
 
 (sample-from sample-graph :case1)
