@@ -2,14 +2,14 @@
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and are suppoorted as stand-alone dependencies.
-   This project is an uberjar that includes all of the modular bits in a single 
-   jar, for easier dependencies.  spork is purpose-built to be clojure-centric, 
-   focusing on a functional API, a default towards purity and persistent data 
+   This project is an uberjar that includes all of the modular bits in a single
+   jar, for easier dependencies.  spork is purpose-built to be clojure-centric,
+   focusing on a functional API, a default towards purity and persistent data
    structures, with alternative mutable/imperative counterparts.  The vast
-   majority of spork is written in Clojure, with an intentional nod toward 
-   independence from external libraries, particularly Java libs.  Consequently, 
-   spork should provide a lightweight, clojure-based platform for the topics 
-   covered by the libraries.  I am currently working to eliminate legacy 
+   majority of spork is written in Clojure, with an intentional nod toward
+   independence from external libraries, particularly Java libs.  Consequently,
+   spork should provide a lightweight, clojure-based platform for the topics
+   covered by the libraries.  I am currently working to eliminate legacy
    java dependencies where possible."
   :url "None Currently"
   :license {:name "Eclipse Public License"

@@ -1,13 +1,13 @@
-;;An implementation of segmented paths and primitive verticee.  Used as a 
+;;An implementation of segmented paths and primitive verticee.  Used as a
 ;;primitive facility for defining shapes and constructive geometry.
 ;;Work in progress, should free us from J2d entirely...
 (ns spork.graphics2d.primitive
   (:require [spork.util [vectors :as v]])
   (:import  [spork.util.vectors vec2 vec3]))
 
-(defn ^vec2 ->point 
+(defn ^vec2 ->point
   ([^double x ^double y] (v/->vec2 x y))
-  ([p] (v/->vec2 (v/vec-nth p 0) (v/vec-nth p 1))))  
+  ([p] (v/->vec2 (v/vec-nth p 0) (v/vec-nth p 1))))
 
 (defn ^double point-x [p] (v/vec-nth p 0))
 (defn ^double point-y [p] (v/vec-nth p 1))
@@ -15,25 +15,25 @@
 (def origin (->point 0.0 0.0))
 
 ;;adapted from j2d, not sure i'll need it though.
-(defn segment-type [^long id] 
+(defn segment-type [^long id]
   (case id
     0 :close
     1 :cubic
     2 :line
     3 :quad
-    4 :move 
+    4 :move
     5 :even
     6 :nonzero))
 
-(defprotocol ISegment 
+(defprotocol ISegment
   (seg-id [s])
   (seg-p1 [s])
   (seg-p2 [s])
   (seg-p3 [s]))
 
 (defmacro seg-op [name args body]
-  (let [op-name (symbol (str "seg-" name))] 
-   `(defn ~name [~@args] 
+  (let [op-name (symbol (str "seg-" name))]
+   `(defn ~name [~@args]
       (if (satisfies? ISegment ~'s)
         (~op-name ~'s)
         ~body))))
@@ -50,15 +50,15 @@
   (seg-p2 [s] p2)
   (seg-p3 [s] p3))
 
-(defn ^seg line-to  [xy] 
+(defn ^seg line-to  [xy]
   (->seg 2 (->point xy) origin origin))
 (defn ^seg curve-to [xy control1-xy control2-xy]
   (->seg 1 (->point xy) (->point control1-xy) (->point control2-xy)))
-(defn ^seg quad-to  [xy control-xy] 
+(defn ^seg quad-to  [xy control-xy]
   (->seg 3 (->point xy) (->point control-xy) origin))
 (defn ^seg move-to  [xy]
   (->seg 4 (->point xy) origin origin))
-(def ^seg close 
+(def ^seg close
   (->seg 0 origin origin origin))
 
 (defn quad-at      [s] (p1 s))
@@ -88,7 +88,7 @@
         ctrly2 (point-y cr)
         new-ctrl  (mid-point lc cr)
         new-ctrlx (point-x new-ctrl)
-        new-ctrly (point-y new-ctrl)]    
+        new-ctrly (point-y new-ctrl)]
     [x1 y1 ctrlx1 ctrly1 new-ctrlx new-ctrly
      new-ctrlx new-ctrly ctrlx2 ctrly2 x2 y2]))
 
@@ -102,31 +102,31 @@
   (->seg (aget xs 0)
          (->point (aget xs 1) (aget xs 2))
          (->point (aget xs 3) (aget xs 4))
-         (->point (aget xs 5) (aget xs 6))))                     
+         (->point (aget xs 5) (aget xs 6))))
 
-;;a path is defined as a sequence of segments. 
-;;so...anything can be a path if it can provide a sequence of 
+;;a path is defined as a sequence of segments.
+;;so...anything can be a path if it can provide a sequence of
 ;;segments...
 
 (defprotocol IPath
   (get-path [s] "Return a sequence of segments that define the shape."))
 
 (defrecord path [segments]
-  IPath 
+  IPath
   (get-path [s] segments))
 
-(defn as-points [xs] 
-  (cond (number? (first xs)) (map #(apply ->point %) (partition 2 xs)) 
+(defn as-points [xs]
+  (cond (number? (first xs)) (map #(apply ->point %) (partition 2 xs))
         (satisfies? v/IDoubleVector (first xs)) xs
-        :else (throw (Exception. 
-                       (str "Cannot coerce to 2d point:" (first xs))))))              
+        :else (throw (Exception.
+                       (str "Cannot coerce to 2d point:" (first xs))))))
 
 
 ;;In progress
-(comment 
+(comment
 (defn flatten-quadratic-segment
   "If s2 defines a segment that is a quad, then we generate a set of points.
-   We recursively subdivide the quadratic curve between (p1 s1), until a 
+   We recursively subdivide the quadratic curve between (p1 s1), until a
    desired flatness is achieved or a limit is reached."
   [limit s1 s2]
   (let [l    (p1 s1)
@@ -135,23 +135,25 @@
         divide-seg ]
     ))
 )
-    
-;;if p2 is a cubic, or a quad, we need to flatten it. 
+
+(comment
+;;if p2 is a cubic, or a quad, we need to flatten it.
 (defn flatten-path [limit s1 s2]
   (case (segment-type s2)
     :cubic (flatten-cubic limit s1 s2)
     :quad  (flatten-quadratic limit s1 s2)
     nil))
-  
+)
 
 (defn ->polygon [coords]
   (let [pts (as-points coords)]
-    (-> (reduce (fn [acc p] (conj! acc (line-to p))) 
+    (-> (reduce (fn [acc p] (conj! acc (line-to p)))
               (transient [(move-to (first pts))])
               (rest pts))
         (conj! close)
         (persistent!)
         (->path))))
+
 
 ;;so a general path defines a shape like so:
 ;gp1 = new GeneralPath();
@@ -164,15 +166,16 @@
 
 ;;analogously
 
-;(->polygon [50 10 
+;(->polygon [50 10
 ;            70 80
-;            90 40 
+;            90 40
 ;            10 40
 ;            50 80])
 
-          
-          
-  
+
+
+
+
 
 
 
