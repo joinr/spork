@@ -1,5 +1,6 @@
 (ns spork.graphics2d.canvas
-  (:require [spork.protocols [spatial :as spatial]]))
+  (:require [spork.protocols  [spatial :as spatial]]
+            [spork.graphics2d [primitive :as prim]]))
 
 ;We can actually do some cool stuff here...
 ;The absolute minimum primitives we need are...
@@ -195,6 +196,10 @@
 (defn add-canvas [name make-canvas]
   (swap! (fn [s] (assoc s name make-canvas)) devices))
 
+;;I'll probably revist this, and, instead of a loose wrapper around the 
+;;graphics device, build it up from real primitives like paths and regions.
+;;Then define everything on top of that.  
+
 ;these are the bare bones rendering procedures we must have for 2 dimensional
 ;rendering.  They're copped from a couple of different APIs.
 ;Note -> these aren't even "that" primitive....we could have a rasterization 
@@ -225,7 +230,8 @@
 
 ;these are fancy rendering options.  We prefer them if supported.
 ;if the device supports them, then we'll use them.  Otherwise, we use the 
-;primtive drawing functions above to draw.
+;primtive drawing functions above to draw.  ;;These are actually our primitive 
+;drawing operations...
 (defprotocol ICanvas2DExtended
   (-draw-polygon   [canvas color points] "Outlines a polygon defined by points.")
   (-fill-polygon   [canvas color points] "Fills a polygon defined by points.")

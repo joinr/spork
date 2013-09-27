@@ -59,13 +59,13 @@
 (defrecord matrix3 [^vec3 x ^vec3 y ^vec3 z]
 (defrecord matrix4 [^vec4 x ^vec4 y ^vec4 z ^vec4 w]
   IMatrix
-  (back [x] )
-  (up [x])
+  (back  [x])
+  (up    [x])
   (right [x])
   (front [x])
-  (down [x])
-  (left [x])
-  (back [x])
+  (down  [x])
+  (left  [x])
+  (back  [x])
 
 (defn make-matrix 
   ([x y]     (->matrix2 x y))
