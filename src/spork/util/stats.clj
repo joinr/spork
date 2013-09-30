@@ -40,30 +40,6 @@
         (recur (+ tot (first ks))
                (unchecked-inc n)
                (rest ks)))))
-
-;;a slow mean computation.
-(comment 
-  (defn mean [xs] 
-    (apply / (reduce (fn [[tot n] k] [(+ tot k) (inc n)]) [0 0] xs)))
-)
-
-
-(def even-samples [3, 6, 7, 8, 8, 10, 13, 15, 16, 20])
-(def odd-samples (conj even-samples 22))
-
-(defn quantiles [q xs]
-  (let [xs (vec (sort xs))
-        n  (count xs)
-        rank (fn [k] (long (Math/ceil (+ (* n (/ k q)) 0.5))))]
-    (map #(get xs (dec %)) 
-         (take-while #(<= % n) (map rank (iterate inc 1))))))
-    
-(def median      (partial quantiles 2))
-(def quartiles   (partial quantiles 4))
-(def deciles     (partial quantiles 10))
-(def percentiles (partial quantiles 100))
-
-
 (defprotocol IDistribution 
   (^double sample [d rng])
   (^double pdf [d x] 
