@@ -34,6 +34,11 @@
 
 (defrecord ga-parameters [size fitness breed select join])
 
+;;Most results of genetic algorithms will return a map of useful 
+;;information.
+(defn ->ga-result [best gen pop scores]
+  {:best best :generation gen :population pop :scores scores})
+
 ;;Both selection and breeding are pretty diverse topics.  We'll allow 
 ;;the caller to define specific implementations for both.  Breeding,
 ;;in general, maps a population to another population.  Selection is 
@@ -44,27 +49,67 @@
 ;;result of breeding is then passed to a join operator, which
 ;;integrates the new population with the old. 
 
-(defn get-best [m]   (get m :best)
-(defn assess-fitness [f xs]
+(defn get-best         [m]   (get m :best))
+(defn evaluate-fitness! [m k v] 
+  (let [m (assoc! m k v)]
+    (if-let [vbest (get-best m :best)]
+      (if (> v vbest) (assoc! m :best v) m)
+      m)))
+    
+;;We can use an array internally is speed becomes an issue.
+;;Currently, I'm using a transient map for storing fitness data.
+
+(defn assess-fitness 
+  "Using fitness function f, which maps a member of xs to a floating point 
+   value, returns data that indicates the fitness of each member of xs, 
+   along with the fittest member."
+  [f xs]
   (persistent! 
-   (reduce (fn [acc [idx x]] 
-             (let [^double v (fitness x)]                                                                                         (-> (if (> v (get-best m))                                                                                            (assoc! acc :best idx)                                                                                             acc)                                                                                                             (assoc! acc idx (fitness x)))))
-           (transient {}) (map-indexed xs))))
+   (reduce (fn [acc [idx x]] (evaluate-fitness! acc idx (f v)))                               
+           (transient {}) (map-indexed vector xs))))
 
 ;;A simple implementation of a genetic algorithm: 
 (defn ga-solve 
   "Given parameters for a genetic algorithm, and an initial population, 
-   continually breeds, selects, joins, the population until a stopping 
+   continually breeds and joins, the population until a stopping 
    criterion is met.  Fitness is inferred to mean more fit = higher value. 
    This is a stylistic choice, which differs from other methods.  As such, 
    individuals compared by fitness will prefer a higher fitness value.  In 
    the context of ga, I think it's more intuitive.  Callers need to enforce
-   this mechanism."
-  [{:keys [size fitness breed select join] :as params} init-pop terminate?]
-  (let [asess (partial asses-fitness fitness)]
+   this mechanism.  Note: both breeding and joining will likely involve some 
+   form of selection, however the implementation is up to the caller."
+  [init-pop terminate? & {:keys [size fitness breed join] :as ga-params}]
+  (let [asess (partial asses-fitness fitness)
+        init-scores (assess init-pop)
+        step (comp join breed)]
     (loop [pop    init-pop
-           scores (asses-fitness init-pop)
-           best   
-           ]
+           scores init-scores
+           best   (:best init-scores)
+           gen 0]
+      (if (terminate? gen pop scores best) 
+        (->ga-result best gen pop scores)
+        (let [new-scores (assess pop)             
+              new-pop    (join pop (breed pop scores))]
+          (recur new-pop new-scores (get-best new-scores) (unchecked-inc gen)))))))
 
+;;Given the simple framework ga-solve provides, we implement some
+;;techniques in Essential Metahueristics.
+
+(defn truncation-selection 
+  "Uses a (mu,lambda) truncation selection evolutionary strategy.  Every generation, 
+   the n fittest parents are selected (truncation).  Each of these parents produces 
+   population-size / n  children via mutation.  Children replace the parents."
+  [init-pop terminate? n population-size mutate] 
+  (let [replace  (fn [old new] new)
+        truncate (fn [pop scores] 
+                   (for [[idx score] (take n (sort-by second (seq scores)))]
+                     (get pop idx)))
+        k-spawn   (quot population-size n)
+        get-mutants (fn [xs] (mapcat #(take k-spawn (repeatedly mutate %)) xs))]
+    (ga-solve init-pop terminate? 
+        :size population-size :breed (comp get-mutants truncate) :join replace)))
+
+          
+                       
+                       
   
