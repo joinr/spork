@@ -69,7 +69,7 @@
            (transient {}) (map-indexed vector xs))))
 
 ;;A simple implementation of a genetic algorithm: 
-(defn ga-solve 
+(defn evo-solve 
   "Given parameters for a genetic algorithm, and an initial population, 
    continually breeds and joins, the population until a stopping 
    criterion is met.  Fitness is inferred to mean more fit = higher value. 
@@ -95,21 +95,37 @@
 ;;Given the simple framework ga-solve provides, we implement some
 ;;techniques in Essential Metahueristics.
 
+;;Replaces the old population with a new population.
+(defn replacing-join [old new] new)
+;;Adds the new population to the old population.
+(defn additive-join  [old new] (reduce conj old new))
+
 (defn truncation-selection 
   "Uses a (mu,lambda) truncation selection evolutionary strategy.  Every generation, 
    the n fittest parents are selected (truncation).  Each of these parents produces 
    population-size / n  children via mutation.  Children replace the parents."
   [init-pop terminate? n population-size mutate] 
-  (let [replace  (fn [old new] new)
-        truncate (fn [pop scores] 
+  (let [truncate (fn [pop scores] 
                    (for [[idx score] (take n (sort-by second (seq scores)))]
                      (get pop idx)))
         k-spawn   (quot population-size n)
         get-mutants (fn [xs] (mapcat #(take k-spawn (repeatedly mutate %)) xs))]
-    (ga-solve init-pop terminate? 
-        :size population-size :breed (comp get-mutants truncate) :join replace)))
+    (evo-solve init-pop terminate? 
+        :size population-size :breed (comp get-mutants truncate) :join replacing-join)))
 
-          
-                       
-                       
-  
+(defn additive-truncation-selection
+  "Uses a (mu + lambda) truncation selection evolutionary strategy.  Every generation, 
+   the n fittest parents are selected (truncation).  Each of these parents produces 
+   population-size / n  children via mutation. Children join the parents for the 
+   next round.  Maintains a population size of mu + lambda"
+  [init-pop terminate? n population-size mutate] 
+  (let [truncate (fn [pop scores] 
+                   (for [[idx score] (take n (sort-by second (seq scores)))]
+                     (get pop idx)))
+        k-spawn   (quot population-size n)
+        get-mutants (fn [xs] (mapcat #(take k-spawn (repeatedly mutate %)) xs))
+        conj-mutants (fn [pop scores] (let [parents (truncate pop scores)
+                                            children (get-mutants parents)]
+                                        (reduce conj parents children)))
+    (evo-solve init-pop terminate? 
+        :size population-size :breed conj-mutants :join replacing-join))))
