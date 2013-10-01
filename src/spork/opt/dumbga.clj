@@ -7,7 +7,7 @@
 ;;candidate solutions.
 (ns spork.opt.dumbga
   (:require [spork.util.numerics :refer :all]
-            [spork.util [vectors :as v]]))
+            [spork.util [vectors :as v] [bitset :as b]]))
 
 
 ;;genetic algorithms will tend to look similar to our generic solution
@@ -79,7 +79,7 @@
    this mechanism.  Note: both breeding and joining will likely involve some 
    form of selection, however the implementation is up to the caller."
   [init-pop terminate? & {:keys [size fitness breed join] :as ga-params}]
-  (let [asess (partial asses-fitness fitness)
+  (let [assess (partial assess-fitness fitness)
         init-scores (assess init-pop)
         step (comp join breed)]
     (loop [pop    init-pop
@@ -128,4 +128,6 @@
                                             children (get-mutants parents)]
                                         (reduce conj parents children)))
     (evo-solve init-pop terminate? 
-        :size population-size :breed conj-mutants :join replacing-join))))
+               :size population-size :breed conj-mutants :join replacing-join))))
+
+

@@ -137,6 +137,16 @@
     (binding [*mutate!* true]
       (reduce (fn [bs idx] (set-bits bs idx false)) copy xs))))
 
+(defn random-bitset
+  "Creates a random bitset of length n."
+  [n]
+  (binding [*mutate!* true]
+    (loop [^BitSet acc (make-bitset n)
+           idx 0]
+      (if (= idx n) acc
+          (recur (if (> (rand) 0.5) (set-bits acc idx true) acc)
+                 (unchecked-inc idx))))))
+
 ;;Testing 
 (comment 
 
@@ -188,7 +198,7 @@
   java.io.Serializable ;Serialization comes for free with the other things implemented
   )
 
-(defn bit-vec [& xs]
+(defn bit-vector [& xs]
   (->bitset (conj-bits empty-bits xs) {}))
 
 ;;bit-backed operations from clojure.set
@@ -218,10 +228,14 @@
          (->bitset copy {}))
        (->bitset (disj-bits  (.bits l) r) {})))
   ([l r & xs] (reduce bit-difference l (conj xs r))))
+
+(defn random-bit-vector [n] (->bitset (random-bitset n) {}))
+
+    
   
 ;;testing deftype
 (comment
-  (def the-set (bit-vec 1 2 3 4 5))
+  (def the-set (bit-vector 1 2 3 4 5))
 ; (difference the-set the-set)
   
   )
