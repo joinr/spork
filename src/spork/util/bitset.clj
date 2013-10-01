@@ -4,12 +4,20 @@
 (ns spork.util.bitset 
   (:import java.util.BitSet))
 
-(defn ^BitSet ->bitset [n]
+;;The persistent bitset implementation here is a copy-on-write wrapper around
+;;the java.util.BitSet .  As such, its performance characteristics for large
+;;sets are dubious, but for small bitstrings, it may be nice.
+
+(defn ^BitSet make-bitset [n]
   (BitSet. (long n)))
 
 (def empty-bits (BitSet. 0))
 
-(defn ^BitSet clone [^BitSet bs] (.clone bs))
+(def ^:dynamic *mutate!* nil)
+
+(defn ^BitSet clone [^BitSet bs]
+  (if *mutate!* bs
+      (.clone bs)))
 
 (defn ^BitSet and-bits 
   "Performs a logical AND of this target bit set with the argument bit set."
@@ -64,7 +72,8 @@
 
 (defn ^long length
   "Returns the \"logical size\" of this BitSet: the index of the highest set bit in the BitSet plus one."
- [^BitSet bs] (.length bs)) 
+  [^BitSet bs] (long (.length bs)))
+
 (defn ^long next-set-bit 
   "Returns the index of the first bit that is set to true that occurs on or after the specified starting index."
   [^BitSet bs ^long idx]
@@ -105,89 +114,114 @@
 (defn ^boolean bit-equals [^BitSet bs other]
   (.equals bs other))
 
-(defn get-clear-bits [^BitSet bs]
-  (take-while #(>= % 0) (iterate (fn [idx] (next-clear-bit bs idx))  0)))
-(defn get-set-bits [^BitSet bs]
-  (take-while #(>= % 0) (iterate (fn [idx] (next-set-bit bs idx)) 0)))
-         
-    
-    
-    
-         
+(defn stepper [bs f idx bound]  
+  (lazy-seq
+   (let [res (f bs idx)]
+     (when (and (>= res 0) (< res bound))
+       (concat (list res) (stepper bs f (+ res 1) bound))))))
+
+(defn bit-step [^BitSet bs f idx]
+  (let [bound  (length bs)]
+    (stepper bs f idx bound)))
+
+(defn get-clear-bits [^BitSet bs]  (bit-step bs next-clear-bit 0))
+(defn get-set-bits   [^BitSet bs]  (bit-step bs next-set-bit 0))
+
+(defn conj-bits [bs xs]
+  (let [copy (clone bs)]
+    (binding [*mutate!* true]
+      (reduce (fn [bs idx] (set-bits bs idx)) copy xs))))
+
+(defn disj-bits [bs xs]
+  (let [copy (clone bs)]
+    (binding [*mutate!* true]
+      (reduce (fn [bs idx] (set-bits bs idx false)) copy xs))))
 
 ;;Testing 
 (comment 
 
 (def the-bits (->bitset 10))
-(def two-three (-> the-bits (set-bits 1 2 true)))
-(def four-five (-> the-bits (set-bits 3 4 true)))
+(def two-three (-> the-bits (set-bits 1 3 true)))
+(def four-five (-> the-bits (set-bits 3 5 true)))
+
+;(conj-bits empty-bits [1 2 3 4])
+
+;(-> (conj-bits empty-bits [1 2 3 4]) (disj-bits [2 4]))
 
 )
 
+;;a bitset is our clojure-themed wrapper for the BitSet.  It makes the BitSet look like
+;;a persistent clojure set.
 (deftype bitset [^BitSet bits _meta]
   Object
   (toString [this] (str (.seq this)))
   clojure.lang.IPersistentSet
-  (count [this] (count basemap))
-  (empty [this] (ordered-map. empty-bits _meta))
+  (count [this] (length bits))
+  (empty [this] (bitset. empty-bits _meta))
   ;cons defines conj behavior
   (cons  [this n]  (bitset. (set-bits bits n true) _meta))
-  (equiv [this o]  (.equiv bits o)) 
+  (equiv [this o]  (.equals bits o)) 
   (hashCode [this] (.hashCode bits))
   (equals [this o] (or (identical? this o) (.equals bits o)))
-  (contains [this n] (get-bit bits k))
+  (contains [this n] (get-bit bits n))
   (get    [this n]   (get-bit bits n))
-  (seq [this] (if (is-empty? bits) (seq #{})
-                  (map 
-  ;without implements (dissoc pm k) behavior
-  (without [this k] 
-    (if (not (contains? basemap k)) this
-        (ordered-map. n
-                      (dissoc basemap k) 
-                      (dissoc idx->key (get key->idx k))
-                      (dissoc key->idx k)
-                      _meta)))
-    
-  clojure.lang.Indexed
-  (nth [this i] (if (and (>= i 0) 
-                         (< i (count basemap))) 
-                  (let [k (get idx->key i)]
-                    (generic/entry k (get basemap k)))
-                  (throw (Exception. (str "Index out of range " i )))))
-  (nth [this i not-found] 
-    (if (and (< i (count basemap)) (>= i 0))
-        (get basemap (get idx->key i))        
-         not-found))  
-  Iterable
-  (iterator [this] (clojure.lang.SeqIterator. (seq this)))
-      
-  clojure.lang.IFn
-  ;makes lex map usable as a function
-  (invoke [this k] (.valAt this k))
-  (invoke [this k not-found] (.valAt this k not-found))
-  
-  clojure.lang.IObj
-  ;adds metadata support
-  (meta [this] _meta)
-  (withMeta [this m] (ordered-map. n basemap idx->key key->idx m))
-      
-  clojure.lang.Reversible
-  (rseq [this]
-    (seq (map (fn [k] (clojure.lang.MapEntry. k (get basemap k))) 
-              (reverse (vals idx->key)))))
-
-  java.io.Serializable ;Serialization comes for free with the other things implemented
-  clojure.lang.MapEquivalence
-  
-  java.util.Map ;Makes this compatible with java's map
-  (size [this] (count basemap))
-  (isEmpty [this] (zero? (count basemap)))
-  (containsValue [this v] (some #{v} (vals (basemap this)) v))
-  (get [this k] (.valAt this k))
-  (put [this k v] (throw (UnsupportedOperationException.)))
-  (remove [this k] (throw (UnsupportedOperationException.)))
-  (putAll [this m] (throw (UnsupportedOperationException.)))
-  (clear [this] (throw (UnsupportedOperationException.)))
-  (keySet [this] (set (keys basemap))) ;;modify
-  (values [this] (map val (.seq this)))
-  (entrySet [this] (set (.seq this))))
+  (seq    [this]     (get-set-bits bits))
+  clojure.lang.Indexed
+  (nth [this  i]
+    (if (and (>= i 0) (<  i ^long (length bits)))
+      (get-bit bits i)
+      (throw (Exception. (str "Index out of range " i)))))
+  (nth [this i not-found] 
+    (if (and  (>= i 0) (< i ^long (length bits)))
+      (get-bit bits i)
+      not-found))
+  Iterable
+  (iterator [this] (clojure.lang.SeqIterator. (seq this)))
+  clojure.lang.IFn
+  ;makes bitset usable as a function
+  (invoke [this k] (.contains this k))
+  (invoke [this k not-found] (.contains this k not-found))
+  clojure.lang.IObj
+  ;adds metadata support
+  (meta [this] _meta)
+  (withMeta [this m] (bitset. bits m))      
+  java.io.Serializable ;Serialization comes for free with the other things implemented
+  )
+
+(defn bit-vec [& xs]
+  (->bitset (conj-bits empty-bits xs) {}))
+
+;;bit-backed operations from clojure.set
+(defn bit-union
+  ([l] l)
+  ([l r]
+     (->bitset (or-bits (.bits l) (.bits r)) {}))
+  ([l r & xs]
+     (reduce bit-union l (conj xs r))))
+     
+(defn bit-intersection
+  ([l] l)
+  ([l r] (->bitset (and-bits (.bits l) (.bits r)) {}))
+  ([l r & xs] (reduce bit-intersection (conj xs r))))
+
+(defn bit-difference
+  ([l] l)
+  ([l r]
+     (if  (< (count l) (count r))  ;lesser
+       (let [copy (clone (.bits l))
+             bits (binding [*mutate!* true]
+                    (reduce (fn [result item]                 
+                              (if (contains? r item)
+                                (set-bits result item false)
+                                result))
+                            copy l))]
+         (->bitset copy {}))
+       (->bitset (disj-bits  (.bits l) r) {})))
+  ([l r & xs] (reduce bit-difference l (conj xs r))))
+  
+;;testing deftype
+(comment
+  (def the-set (bit-vec 1 2 3 4 5))
+; (difference the-set the-set)
+  
+  )

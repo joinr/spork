@@ -21,7 +21,4 @@
 (defn count-choices [n depth]
   (bit-and mask (bit-shift-right n depth)))
 
-;(defn active-choices [n depth]
-;  (if (== (chount-choices n depth) 0) nil
-;    (let [offset (bit-shift-left 1 depth)]
-;      (loop [i (Math/pow 2 depth)
+;;currently not implemented very well...
