@@ -23,7 +23,7 @@
 (defshape rectangle 
   [color x y w h]
   (spatial/bbox x y w h)
-  (c/fill-rectangle c color x y w h ))
+  (c/fill-rectangle c color x y w h))
 
 (defn ->square [color x y w]
   (->rectangle color x y w w))
@@ -91,6 +91,7 @@
   ([s color]
     (assoc (boundingbox->rectangle (c/shape-bounds s)) :color color))
   ([s] (->visual-bounds s :black)))  
+     
 
 ;(extend-protocol IShape
 ;  cljgui.spatial.boundingbox
