@@ -1,4 +1,5 @@
 ;;TODO->port this to core.matrix or something official.
+;;Note: hollowed out, most stuff is in vecmath.
 ;I've been getting some crazy ideas from computational geometry....namely the
 ;ability to unify 2d and 3d ops under a single set of rules and operations..
 ;It's pretty cool...In any case, this is currently a library based on the 
