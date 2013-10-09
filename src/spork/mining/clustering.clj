@@ -42,7 +42,7 @@
           (recur  (conj! acc (* (nth xs idx) (nth ys idx)))
                   (unchecked-inc idx))))))
 
-(defn sum* [^doubles xs] (areduce xs idx acc 0.0 (+ acc (aget xs idx))))
+(defn sum*    [^doubles xs] (areduce xs idx acc 0.0 (+ acc (aget xs idx))))
 (defn square* [^double x] (* x x))
 (defn sum-squares* [^doubles xs] 
   (areduce xs idx acc 0.0 (+ acc (square* (aget xs idx)))))

@@ -132,5 +132,5 @@
 
 ;;Basic vectors, from 1 to 4 dimensions.
 ;;This should cover a wide range of problems. 
-(doseq [i (map inc (range 3))]
+(doseq [i (map inc (range 4))]
   (eval `(~'defvec ~(symbol (str "vec" i)) "double" ~i)))
