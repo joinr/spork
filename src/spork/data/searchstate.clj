@@ -77,43 +77,44 @@
                            :distance {startnode 0}
                            :shortest {startnode startnode}
                            :fringe fringe}))
+        
+(defn backtrack
+  "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
+   backtrack throught the shortest path tree to yield a pair of a path, and 
+   all the branching subpaths encountered along the way."
+  [preds startnode tail-path]
+  (loop [path          tail-path
+         pending-paths []]
+    (let [node (first path)] 
+      (if (= node startnode) [path pending-paths]
+          (let [prior  (get preds node)
+                prior-node   (if (coll? prior) (first coll) prior)
+                branch-paths (when (coll? prior) 
+                               (for [nd (rest prior)]
+                                 (cons nd path)))]
+                (recur (cons prior path) 
+                       (into pending-paths branch-paths)))))))
 
-(defn spt-path
-  "Recover the first feasible path from startnode to targetnode, given shortest 
-   path tree spt, if one exists."
-  [startnode targetnode spt]
-  (if (contains? spt targetnode)   
-	  (let [singleton (fn [itm] (if (vector? itm) (first itm) itm))]
-		  (loop [currnode targetnode  
-		         path    (list)]	         
-	     (if (= currnode startnode) 
-		      (cons currnode path)
-           (when (contains? spt currnode)
-             (recur (singleton (get spt currnode))  (cons currnode path))))))
-   nil))
+(defn paths 
+  "Given a shortest-path-tree that encodes the predecessors of nodes 
+   from 
+   "
+  [preds startnode endnode]
+  (->> (iterate (fn [[current-path pending-paths]]
+                  (let [[next-path new-subpaths] 
+                        (backtrack preds startnode 
+                                   (first (pending-paths)))]
+                    [next-path (into pending-paths new-subpaths)]))
+                (backtrack preds startnode (list endnode)))
+       (map first)
+       (take-while (complement nil?))))           
 
-;;This is jacked.
-
-;(defn spt-paths*
-;  "Recover a sequence of all paths from startnode to targetnode, given shortest 
-;   path tree spt, if any exist."
-;  [startnode targetnode spt]
-;  (iterate (fn [path pending]
-;             (cond (coll? (first path)                    
-;                      (let [prior    (rest path)
-;                            ps (into pending 
-;                                 (for [p (first path)] (cons p prior)))]
-;                        (recur (first ps) (rest ps))))                                                
-;                   (= (first path) startnode) path
-;                   :else (recur (cons (get spt (first path)) path) pending))) 
-                   
 (defn path? 
   ([state targetnode] (best-known-distance state targetnode))
   ([state] (path? state (:targetnode state))))
 (defn path-seq 
   ([state targetnode] (best-known-distance state targetnode))
   ([state] (path-seq state (:targetnode state))))
-
 ;;An empty depth-first search.
 (def empty-DFS (init-search :fringe fr/depth-fringe))
 ;;An empty breadth-first search.
