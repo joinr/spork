@@ -175,21 +175,21 @@
    spork.cljgraph.search  .  Performs a depth traversal of the graph, starting 
    at startnode.  Used to define other higher order graph queries."
   [g startnode & {:keys [neighborf]}]
-  (search/depth-traversal g startnode :neighborf neighborf))
+  (search/depth-walk g startnode :neighborf neighborf))
 
 (defn breadth-walk
   "A wrapper around the more thorough traversals defined in
    spork.cljgraph.search  .  Performs a breadth traversal of the graph, starting 
    at startnode.  Used to define other higher order graph queries."
   [g startnode & {:keys [neighborf]}]
-  (search/breadth-traversal g startnode :neighborf neighborf))
+  (search/breadth-walk g startnode :neighborf neighborf))
 
 (defn random-walk
   "A wrapper around the more thorough traversals defined in
    spork.cljgraph.search  .  Performs a random traversal of the graph, starting 
    at startnode.  Used to define other higher order graph queries."
   [g startnode & {:keys [neighborf]}]
-  (search/random-traversal g startnode :neighborf neighborf))
+  (search/random-walk g startnode :neighborf neighborf))
 
 (defn ordered-walk
   "A wrapper around the more thorough traversals defined in
@@ -198,7 +198,7 @@
    Starts walking from  startnode.  Used to define other higher order graph 
    queries."
   [g startnode & {:keys [neighborf]}]
-  (search/ordered-traversal g startnode :neighborf neighborf))
+  (search/ordered-walk g startnode :neighborf neighborf))
 
 ;;Simple Connectivity Queries
 ;;===========================

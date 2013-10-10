@@ -17,7 +17,7 @@
 (defn- estimating-conj [estimator fringe sink w target]
   (generic/conj-fringe fringe sink (+ w (estimator sink target) w)))
 
-(defn- conj-fringe* [state sink w] 
+(defn- conj-fringe*    [state sink w] 
   (if-let [e (:estimator state)]
     (estimating-conj e   (:fringe state) sink w (:target state))
     (generic/conj-fringe (:fringe state) sink w)))
