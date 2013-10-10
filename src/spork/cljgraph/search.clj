@@ -2,9 +2,14 @@
 ;;breadth, priority, random searches and traversals (walks).
 (ns spork.cljgraph.search
   (:require [spork.protocols [core :as generic]]
-            [spork.data      [searchstate :as searchstate]]
-            [spork.util      [topographic :as top]]))
+            [spork.data      [searchstate :as searchstate]]))
 
+;;minor duplication here, due to some copying around.
+(defn arc-weight [tg from to]
+  (assert (has-arc? tg from to) (str "Arc does not exist " [from to]))
+  (nth (generic/-get-arc tg from to) 2))
+
+(defn get-node-labels  [tg] (keys (generic/-get-nodes tg)))
 
 ;;This is a slight hack.  We have a neighbors function defined in cljgraph.core,
 ;;but we need it for one tiny function here.  I could pull in cljgraph.core as 
@@ -63,12 +68,12 @@
   "Given a search state, with a shortest path tree, and a graph g, 
    determine which nodes have not been explored in g."
   [g state]
-  (clojure.set/difference (set (top/get-node-labels g)) 
+  (clojure.set/difference (set (get-node-labels g)) 
                           (set (keys (:spt state)))))
 
 ;the normal mode for graph walking/searching.  
 (def walk-defaults {:halt? default-halt?
-                    :weightf top/arc-weight
+                    :weightf   arc-weight
                     :neighborf default-neighborf})
 
 (def limited-walk (assoc walk-defaults :neighborf visit-once))
@@ -83,7 +88,7 @@
 
 (def search-defaults {:endnode  ::nullnode
                       :halt?     default-halt? 
-                      :weightf   top/arc-weight 
+                      :weightf   arc-weight 
                       :neighborf default-neighborf})
 
 ;;Default for simple graph walks/explorations
@@ -100,7 +105,7 @@
    multiple kinds of walks, depending on the searchstate's fringe structure."
   [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
                                          :or  {halt?     default-halt?
-                                               weightf   top/arc-weight
+                                               weightf   arc-weight
                                                neighborf default-neighborf}}]
     (let [get-weight    (partial weightf   g)
           get-neighbors (partial neighborf g)
@@ -175,7 +180,7 @@
 ;;explicit searches, merely enforces a walk called with an actual destination
 ;;node.
 
-(defn depth-first-search
+(defn dfs
   "Starting from startnode, explores g using a depth-first strategy, looking for
    endnode.  Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree.  Note: depth first search is 
@@ -184,7 +189,7 @@
   [g startnode endnode]
   (depth-walk g startnode :endnode endnode))
 
-(defn bread-first-search
+(defn bfs
   "Starting from startnode, explores g using a breadth-first strategy, looking 
    for endnode. Returns a search state, which contains the shortest path tree 
    or precedence tree, the shortest distance tree.  Note: breadth first search 
@@ -193,11 +198,7 @@
   [g startnode endnode]
   (breadth-walk g startnode :endnode endnode))
 
-;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
-;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
-;;automatically switches to A*.
-
-(defn priority-first-search
+(defn pfs
   "Starting from startnode, explores g using a priority-first strategy, looking 
    for endnode. Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
@@ -205,6 +206,10 @@
    arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode]
   (priority-walk g startnode :endnode endnode))
+
+;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
+;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
+;;automatically switches to A*.
 
 (defn dijkstra
   "Starting from startnode, explores g using dijkstra's algorithm, looking for
@@ -228,29 +233,46 @@
   (traverse g startnode endnode 
     (assoc (searchstate/empty-PFS startnode) :estimator heuristic-func)))
 
+;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
+
+(defn negative-cycles?
+  "Predicate for determining if the spt in the search state resulted in negative
+   cycles."
+  [g final-search-state get-weight]
+  (let [distance  (:distance final-search-state)
+        ;we violate the triangle inequality if we can improve any distance.
+        improvement? (fn [[u v]] (< (+ (get distance u) (get-weight u v)) 
+                                 (get distance v)))
+        nodes (keys (generic/-get-nodes g))]
+    (some improvement? (for [u nodes
+                             v (generic/-get-sinks g u)]  [u v]))))
+
 (defn bellman-ford
   "The Bellman-Ford algorithm can be represented as a generic search similar
    to the relaxation steps from dijkstra's algorithm.  The difference is that
    we allow negative edge weights, and non-negative cycles.  The search uses 
    a queue for the fringe, rather than a priority queue.  Other than that, 
    the search steps are almost identical."
-  [g startnode endnode]
-  (let [validate-bf (fn [s] (throw (Exception. "Check for Negative Cycle!")))
+  [g startnode endnode & {:keys [weightf neighborf] 
+                          :or   {weightf   arc-weight
+                                 neighborf default-neighborf}}]
+  (let [halt?         default-halt?
         startstate    (searchstate/empty-BFS startnode)
-        get-weight    (partial weightf   g)
+        bound         (dec (count (generic/-get-nodes g))) ;v - 1 
+        get-weight    (partial weightf g)
         get-neighbors (partial generic/-get-sources g)
         relaxation    (fn [source s sink] 
-                        (generic/relax s get-weight source sink))]
-    (loop [state (generic/conj-fringe startstate startnode 0)]
-      (if (generic/empty-fringe? state) (validate-bf state) 
-        (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-              nd        (first candidate)]          ;next node to visit
-          (if (halt? state nd)  state
+                        (generic/relax s get-weight source sink))
+        validate      (fn [s] (if (negative-cycles? g s get-weight)
+                                  (assoc s :negative-cycles true)
+                                  s))]
+    (loop [state (generic/conj-fringe startstate startnode 0)
+           idx   0]
+      (if (or (generic/empty-fringe? state) (= idx bound))
+          (validate-bf state) 
+          (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
+                nd        (first candidate)]          ;next node to visit
             (recur (reduce (partial relaxation nd) 
                            (generic/pop-fringe state) 
                            (get-neighbors nd state))))))))
-          
-
-  )
-
 

@@ -1,7 +1,7 @@
 ;;A set of tree operations on ITopographs.  Useful for simulating bidirectional
 ;;trees in a functional manner, and for emulating pointer-based structures.
 (ns spork.util.topotree
-  (:require [spork.util [topographic :as top]]))
+  (:require [spork.cljgraph [core :as top]]))
 
 ;;Tree-like Operations
 ;;====================
@@ -84,7 +84,7 @@
   ;         k l  m n o  p q
   ;                        r s t u v w x y z a1 a2 a3 
  (defn tree-arcs [from xs] (map #(vector from %) xs))
- (def the-tree (-> top/empty-topograph
+ (def the-tree (-> top/empty-graph
                  (top/add-arcs (tree-arcs :a [:b :c :d]))
                  (top/add-arcs (conj (tree-arcs :b [:e :f]) [:d :g]))
                  (top/add-arcs [[:e :h] [:f :i] [:g :j]])

@@ -78,19 +78,41 @@
                            :shortest {startnode startnode}
                            :fringe fringe}))
 
-(defn get-path
-  "Recover all paths from startnode to targetnode, given shortest path tree 
-   spt."
+(defn spt-path
+  "Recover the first feasible path from startnode to targetnode, given shortest 
+   path tree spt, if one exists."
   [startnode targetnode spt]
-  (if (and (map? spt) (contains? spt targetnode))   
+  (if (contains? spt targetnode)   
 	  (let [singleton (fn [itm] (if (vector? itm) (first itm) itm))]
 		  (loop [currnode targetnode  
-		         path nil
-             branch nil]	         
+		         path    (list)]	         
 	     (if (= currnode startnode) 
-		      (cons currnode path) 
-		      (recur (singleton (get spt currnode))  (cons currnode path) nil))))
+		      (cons currnode path)
+           (when (contains? spt currnode)
+             (recur (singleton (get spt currnode))  (cons currnode path))))))
    nil))
+
+;;This is jacked.
+
+;(defn spt-paths*
+;  "Recover a sequence of all paths from startnode to targetnode, given shortest 
+;   path tree spt, if any exist."
+;  [startnode targetnode spt]
+;  (iterate (fn [path pending]
+;             (cond (coll? (first path)                    
+;                      (let [prior    (rest path)
+;                            ps (into pending 
+;                                 (for [p (first path)] (cons p prior)))]
+;                        (recur (first ps) (rest ps))))                                                
+;                   (= (first path) startnode) path
+;                   :else (recur (cons (get spt (first path)) path) pending))) 
+                   
+(defn path? 
+  ([state targetnode] (best-known-distance state targetnode))
+  ([state] (path? state (:targetnode state))))
+(defn path-seq 
+  ([state targetnode] (best-known-distance state targetnode))
+  ([state] (path-seq state (:targetnode state))))
 
 ;;An empty depth-first search.
 (def empty-DFS (init-search :fringe fr/depth-fringe))

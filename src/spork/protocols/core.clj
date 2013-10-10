@@ -88,6 +88,9 @@
 (defn empty-fringe? [fringe] (empty? (fringe-seq fringe)))
 (defn fringe? [x] (satisfies? IFringe x))
 
+(defprotocol IPathProvider 
+  (
+
 ;;Abstract protocol for operating on shortest path searches.
 (defprotocol IGraphSearch
   (new-path     [state source sink w])

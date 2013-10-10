@@ -9,10 +9,10 @@
            shape-bounds translate-2d scale-2d rotate-2d with-color 
            with-translation with-rotation with-transform with-alpha 
            with-scale bitmap-graphics]]         
-          [spork.cljgui.spatial.core :only [bbox scale-bounds translate-bounds 
-                                     rotate-bounds group-bounds get-bounding-box
-                                     bound-intersects? unbounded? assoc-bounds
-                                     dissoc-bounds get-bounds conj-bounds 
+         [spork.protocols.spatial :only [bbox scale-bounds translate-bounds 
+                                         rotate-bounds group-bounds get-bounding-box
+                                         bound-intersects? unbounded? assoc-bounds
+                                         dissoc-bounds get-bounds conj-bounds 
                                     ]])
   (:require [spork.util [toplist :as top]]
             [clojure [zip :as zip]]           
@@ -55,9 +55,6 @@
 ;  (get-node [ctx nd] "Fetch a node from the context."))
 (defprotocol IRenderOp
   (emit-instructions [elem ctx])) 
-
-
-
   
 (defn compile-scene
   "Given a scene, return a set of rendering instructions that describe how 
@@ -75,10 +72,6 @@
       (if (satisfies? IRenderOp x)
         (emit-instructions ctx nd)
         x)))) 
-  
-  
-  
-
 
 ;(defn scene?     [s] (satisfies? IScene s))
 ;(defn composite? [s] (and (scene? s) (> (count (child-scenes s)) 0)))

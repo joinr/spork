@@ -298,8 +298,8 @@
          roots (set (get-roots g)) ;;current roots in g 
          acc []]
      (if (seq roots)
-       (let [xs  (mapcat (partial top/sinks graph)  roots) ;only possible new roots.
-             next-graph  (top/drop-nodes graph roots)]
+       (let [xs  (mapcat (partial sinks graph)  roots) ;only possible new roots.
+             next-graph  (drop-nodes graph roots)]
          (recur next-graph (set (get-roots next-graph xs))  (conj acc roots)))
        (if (= (reduce + (map count acc)) 
               (count (top/nodes g)))
@@ -311,6 +311,95 @@
   [g]
   (persistent! 
     (reduce (fn [acc xs] (reduce conj! acc xs)) (transient []) (topsort g)))) 
+
+;;Searches
+;;========
+
+
+;;explicit searches, merely enforces a walk called with an actual destination
+;;node.
+
+(defn depth-first-search
+  "Starting from startnode, explores g using a depth-first strategy, looking for
+   endnode.  Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree.  Note: depth first search is 
+   not guaranteed to find the actual shortest path, thus the shortest path tree
+   may be invalid."
+  [g startnode endnode]
+  (search/dfs  g startnode endnode))
+
+(defn bread-first-search
+  "Starting from startnode, explores g using a breadth-first strategy, looking 
+   for endnode. Returns a search state, which contains the shortest path tree 
+   or precedence tree, the shortest distance tree.  Note: breadth first search 
+   is not guaranteed to find the actual shortest path, thus the shortest path 
+   tree may be invalid."
+  [g startnode endnode]
+  (search/bfs g startnode endnode))
+
+(defn priority-first-search
+  "Starting from startnode, explores g using a priority-first strategy, looking 
+   for endnode. Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
+   algorithm.  Note: Requires that arc weights are non-negative.  For negative 
+   arc weights, use Bellman-Ford, or condition the graph."
+  [g startnode endnode]
+  (search/pfs g startnode endnode))
+
+;;Single Source Shortest Paths
+;;============================
+(defn dijkstra
+  "Starting from startnode, explores g using dijkstra's algorithm, looking for
+   endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
+   If a relaxation provides a shorter path, the new path is recorded.  Returns a 
+   search state, which contains the shortest path tree or precedence tree, the 
+   shortest distance tree.  Note: Requires that arc weights are non-negative.  
+   For negative arc weights, use Bellman-Ford, or condition the graph."
+  [g startnode endnode] 
+  (search/priority-walk g startnode :endnode endnode))
+
+;;__TODO__ Check implementation of a-star, I think this is generally correct.
+(defn a-star
+  "Given a heuristic function, searches graph g for the shortest path from 
+   start node to end node.  Operates similarly to dijkstra or 
+   priority-first-search, but uses a custom weight function that applies the 
+   hueristic to the weight.  heuristic should be a function that takes a 
+   a source node and target node, and returns an estimated weight to be 
+   added to the actual weight.  Note, the estimated value must be non-negative."
+  [g heuristic-func startnode endnode]
+  (search/a* g heuristic-func startnode endnode))
+
+(defn bellman-ford
+  "The Bellman-Ford algorithm can be represented as a generic search similar
+   to the relaxation steps from dijkstra's algorithm.  The difference is that
+   we allow negative edge weights, and non-negative cycles.  The search uses 
+   a queue for the fringe, rather than a priority queue.  Other than that, 
+   the search steps are almost identical."
+  [g startnode endnode & {:keys [weightf neighborf]
+                          :or   {weightf   arc-weight
+                                 neighborf sinks}}]
+  (search/bellman-ford g startnode endnode :weightf weightf 
+                                           :neighborf neighborf))
+
+(defn bellman-ford-DAG 
+  "If we know that graph g is a Directed Acyclic Graph before hand, we can 
+   topologically sort the graph, find the dependent nodes between startnode
+   and endnode, and bellman-ford just those nodes.  This is faster, as it can 
+   eliminate many vertices, and only performs one pass through the vertices to 
+   compute the shortest path tree."
+  [g startnode endnode & {:keys [weightf neighborf]
+                          :or   {weightf   arc-weight
+                                 neighborf sinks}}]
+  (if-let [ordered-nodes (->> (topological-order g)
+                              (drop-while #(not= % startnode))
+                              (take-while #(not= % endnode)))]
+      (let [node-filter (hash-set ordered-nodes)
+            filtered-neighbors (fn [g nd state] 
+                                 (filter node-filter (neighborf g nd state)))]
+        (bellman-ford g startnode endnode :weightf weightf 
+                                          :neighborf filtered-neighbors))
+      ;startnode does not precede endnode in the topological order.
+      nil))
 
 ;;Testing/Examples
 (comment 
