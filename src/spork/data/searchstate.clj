@@ -69,11 +69,11 @@
    searches to be customized by varying the start, target, and the type of 
    fringe used prosecute the search."
   [& {:keys [startnode targetnode fringe] 
-      :or   {startnode nil targetnode nil fringe fr/depth-fringe}}]
+      :or   {startnode nil targetnode ::nullnode fringe fr/depth-fringe}}]
     (assert (and (not (nil? fringe)) (generic/fringe? fringe))
             (str "Invalid fringe: " fringe))
-      (merge empty-search {:startnode startnode 
-                           :targetnode (generic/maybe targetnode ::nullnode)
+      (merge empty-search {:startnode  startnode 
+                           :targetnode targetnode
                            :distance {startnode 0}
                            :shortest {startnode startnode}
                            :fringe fringe}))
@@ -83,38 +83,40 @@
    backtrack throught the shortest path tree to yield a pair of a path, and 
    all the branching subpaths encountered along the way."
   [preds startnode tail-path]
-  (loop [path          tail-path
-         pending-paths []]
-    (let [node (first path)] 
-      (if (= node startnode) [path pending-paths]
-          (let [prior  (get preds node)
-                prior-node   (if (coll? prior) (first coll) prior)
-                branch-paths (when (coll? prior) 
-                               (for [nd (rest prior)]
-                                 (cons nd path)))]
-                (recur (cons prior path) 
-                       (into pending-paths branch-paths)))))))
+  (when (seq tail-path)
+    (loop [path          tail-path
+           pending-paths []]
+      (let [node (first path)] 
+        (if (= node startnode) [path pending-paths]
+            (let [prior  (get preds node)
+                  prior-node   (if (coll? prior) (first prior) prior)
+                  branch-paths (when (coll? prior) 
+                                 (for [nd (rest prior)]
+                                   (cons nd path)))]
+              (recur (cons prior-node path) 
+                     (into pending-paths branch-paths))))))))
 
 (defn paths 
-  "Given a shortest-path-tree that encodes the predecessors of nodes 
-   from 
-   "
+  "Given a shortest-path-tree that encodes the predecessors of nodes"
   [preds startnode endnode]
   (->> (iterate (fn [[current-path pending-paths]]
-                  (let [[next-path new-subpaths] 
-                        (backtrack preds startnode 
-                                   (first (pending-paths)))]
-                    [next-path (into pending-paths new-subpaths)]))
+                  (when (not (empty? pending-paths))
+                    (let [[next-path new-subpaths] 
+                              (backtrack preds startnode 
+                                         (first pending-paths))]
+                      [next-path (into (rest pending-paths) new-subpaths)])))
                 (backtrack preds startnode (list endnode)))
-       (map first)
-       (take-while (complement nil?))))           
+         (take-while identity)
+         (map first)))                 
 
 (defn path? 
-  ([state targetnode] (best-known-distance state targetnode))
+  ([state target] (generic/best-known-distance state target))
   ([state] (path? state (:targetnode state))))
-(defn path-seq 
-  ([state targetnode] (best-known-distance state targetnode))
-  ([state] (path-seq state (:targetnode state))))
+
+(defn get-paths 
+  ([state target] (paths (:shortest state) (:startnode state) target))
+  ([state] (get-paths state (:targetnode state))))
+
 ;;An empty depth-first search.
 (def empty-DFS (init-search :fringe fr/depth-fringe))
 ;;An empty breadth-first search.
@@ -124,4 +126,19 @@
 ;;An empty random-first search.
 (def empty-RFS (init-search :fringe fr/random-fringe))
 
+;;testing
+(comment
+;; e e e
+;; d d b
+;; c a a 
+;; b
+;; a
+(def the-spt
+  {:a :a, :b :a, :c :b, :d [:c :a], :e [:d :b]})
+(def the-state 
+  (-> (init-search :startnode :a :targetnode :e)
+      (assoc :shortest the-spt)))
 
+;;=>(get-paths the-state)
+;;((:a :b :c :d :e) (:a :b :e) (:a :d :e))         
+)
