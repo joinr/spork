@@ -28,15 +28,15 @@
   clojure.lang.PersistentList
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
   (next-fringe [fringe]     (first fringe))
-  (pop-fringe  [fringe]     (next fringe))
+  (pop-fringe  [fringe]     (pop fringe))
   clojure.lang.PersistentList$EmptyList
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
-  (next-fringe [fringe]     (first fringe))
-  (pop-fringe  [fringe]     (next fringe))
+  (next-fringe [fringe]     nil)
+  (pop-fringe  [fringe]     nil)
   clojure.lang.Cons 
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
   (next-fringe [fringe]     (first fringe))
-  (pop-fringe  [fringe]     (next fringe))
+  (pop-fringe  [fringe]     (pop fringe))
   spork.data.randq.randomq
   (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
   (next-fringe [fringe]     (peek fringe))
@@ -50,10 +50,12 @@
 (defrecord pfringe [priorities fringe]
   generic/IFringe
   (conj-fringe [pf n w]
-    (pfringe. (assoc priorities n w)
-              (if-let [wold (get priorities n)]
-                (pq/alter-value fringe n wold w)
-                (conj fringe [(generic/entry n w) w]))))
+    (let [w (or w 0)
+          _ (println w)]
+      (pfringe. (assoc priorities n w)
+                (if-let [wold (get priorities n)]
+                  (pq/alter-value fringe n wold w)
+                  (conj fringe [(generic/entry n w) w])))))
   (next-fringe [pf] (peek fringe))
   (pop-fringe  [pf] 
     (if (empty? priorities) fringe 
@@ -84,9 +86,9 @@
               [:c 10]
               [:d 11]
               [:e 0]])
-  (defn load-fringe [f] (reduce (fn [acc [n w]]
+  (defn load-fringe [f &{:keys [xs] :or {xs nodes}}] (reduce (fn [acc [n w]]
           (generic/conj-fringe acc n w))
-        f nodes))
+        f xs))
   (assert (= (generic/fringe-seq (load-fringe priority-fringe))
              '([:e 0] [:a 2] [:b 3] [:c 10] [:d 11])))
   (assert (= (generic/fringe-seq (load-fringe depth-fringe))

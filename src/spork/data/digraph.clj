@@ -27,10 +27,11 @@
                               (dissoc sinks k)  (-get-sources tg k))]
       (digraph. (dissoc nodes k) new-sources new-sinks)))
   (-has-node? [tg k]  (contains? nodes k))
-  (-conj-arc  [tg source sink w] 
-    (digraph. nodes 
-      (update-in sources [sink]   assoc source w)
-      (update-in sinks   [source] assoc sink   w)))
+  (-conj-arc  [tg source sink w]
+    (let [w (or w 0)] ;ensure arcs have numeric weight, not nil
+      (digraph. nodes 
+                (update-in sources [sink]   assoc source w)
+                (update-in sinks   [source] assoc sink   w))))
   (-disj-arc  [tg source sink]   
     (digraph. nodes 
       (assoc sources sink  (or (dissoc (get sources sink) source) 

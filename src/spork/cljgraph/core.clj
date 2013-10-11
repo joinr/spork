@@ -1,10 +1,9 @@
 (ns spork.cljgraph.core
   (:require [spork.protocols.core :refer :all]
             [spork.cljgraph [search :as search]]
-            [spork.data [digraph :as dig]]
+            [spork.data [digraph :as dig] [searchstate :as sstate]] 
             [spork.util     [topographic :as top]]))
  
-
 (def empty-graph dig/empty-digraph)
 
 ;;Graph-Backed Operations
@@ -49,7 +48,9 @@
   "Removes node k, and any arcs incident to node k are also removed."
   [g k] (-disj-node g k))
 
-(defn drop-nodes [g coll] (reduce disj-node g coll))
+(defn drop-nodes
+  "Disjoins all nodes in coll from the g, including incident arcs."
+  [g coll] (reduce disj-node g coll))
 
 (defn ensure-nodes [g ks] 
   (reduce (fn [acc k] (if (has-node? acc k) acc (conj-node acc k))) g ks))
@@ -86,15 +87,18 @@
   "Drops a sequence of arcs, of the form [from to], from the topograph."
   [g xs] (reduce #(disj-arc %1 (first %2) (second %2)) g xs))
 
-(defn arc-weight [g from to]
+(defn arc-weight
+  "The weight of an arc [from to] in g."
+  [g from to]
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
   (nth (-get-arc g from to) 2))
 
 ;;Neighborhood operations
 ;;=======================
-(defn sinks   [g k]    (-get-sinks g k))
-(defn sources [g k]    (-get-sources g k))
-(defn neighbors [g k]  (vec (distinct (mapcat #(% g k) [sources sinks]))))
+(defn sinks   "Nodes with arcs from k"  [g k]  (-get-sinks g k))
+(defn sources "Nodes with arcs to   k"  [g k]  (-get-sources g k))
+(defn neighbors "Nodes with arcs to or from k" [g k]  
+  (vec (distinct (mapcat #(% g k) [sources sinks]))))
 
 (defn- get-degree [g nd f]
   (if-let [itms (f g nd)]
@@ -166,9 +170,21 @@
         (add-arcs (map (fn [[from _ w]] [from new-label w]) 
                          (arcs-to g old-label)))))) 
 
+;;A simple lifting function for developing neighborhood functions for searches 
+;;and walks that are agnostic to the searchstate.
+(defn neighbor-by [f] (fn [g nd _] (f g nd)))
 
 ;;Simple Graph Walks
 ;;===========================
+
+;;Walks and searches are based on the notion of a generic traversal, which 
+;;uses a generic search state and retains detailed information.  As a result,
+;;walks and searches return the detailed search state, including the shortest
+;;path tree, the distance map, the order of visitation, the remaining fringe, 
+;;and more.   
+
+;;We build more mundane queries, like the depth-first ordering of nodes, out 
+;;of the walks, simply yielding the order of visitation.
 
 (defn depth-walk
   "A wrapper around the more thorough traversals defined in
@@ -176,7 +192,7 @@
    at startnode.  Used to define other higher order graph queries."
   [g startnode & {:keys [neighborf]}]
   (search/depth-walk g startnode :neighborf neighborf))
-
+ 
 (defn breadth-walk
   "A wrapper around the more thorough traversals defined in
    spork.cljgraph.search  .  Performs a breadth traversal of the graph, starting 
@@ -200,6 +216,47 @@
   [g startnode & {:keys [neighborf]}]
   (search/ordered-walk g startnode :neighborf neighborf))
 
+(defn undirected-walk
+  "Performs a depth-first traversal of the graph, treating the directed graph 
+   as an undirected graph.  Starts walking from  startnode."
+  [g startnode]
+  (search/depth-walk g startnode :neighborf (neighbor-by neighbors)))
+
+;;Node Orderings
+;;==============
+;;Node Orderings yield a vector of the nodes visited during traversal, including
+;;the startnode. 
+
+(defn depth-nodes
+  "Returns the nodes visited in a depth traversal of the graph, starting 
+   at startnode."  
+  [g startnode & {:keys [neighborf]}] 
+  (:visited (depth-walk g startnode :neighborf neighborf)))
+
+(defn breadth-nodes
+  "Returns the nodes visited in a breadth traversal of the graph, starting 
+   at startnode."  
+  [g startnode & {:keys [neighborf]}] 
+  (:visited (breadth-walk g startnode :neighborf neighborf)))
+
+(defn random-nodes
+  "Returns the nodes visited in a random traversal of the graph, starting 
+   at startnode."  
+  [g startnode & {:keys [neighborf]}] 
+  (:visited (random-walk g startnode :neighborf neighborf)))
+
+(defn ordered-nodes
+  "Returns the nodes visited in an ordered traversal of the graph, starting 
+   at startnode."  
+  [g startnode & {:keys [neighborf]}] 
+  (:visited (ordered-walk g startnode :neighborf neighborf)))
+
+(defn undirected-nodes
+  "Returns the nodes visited in a depth-first traversal of the graph, starting 
+   at startnode.  Treats graph g as undirected."  
+  [g startnode] 
+  (:visited (undirected-walk g startnode)))
+
 ;;Simple Connectivity Queries
 ;;===========================
 
@@ -210,16 +267,16 @@
 (defn succs
   "Returns the a set of all the nodes reachable starting from node k."
   [g k] 
-  (disj (set (:visited (depth-walk g k :neighborf (partial sinks g))) k)))
+  (disj (set (depth-nodes g k :neighborf (neighbor-by sinks)) k)))
 
 (defn preds
   "Returns the set of all the nodes that can reach node k."
   [g k] 
-  (disj (set (:visited (depth-walk g k :neighborf (partial sources g))) k)))
+  (disj (set (depth-nodes g k :neighborf (neighbor-by sources))) k))
 
 (defn component
   "Returns the set of nodes that can reach or can be reached through node k."  
-  [g k] (set (:visited (depth-walk g k :neighborf (partial neighbors g)))))
+  [g k] (set (depth-nodes g k :neighborf (neighbor-by neighbors))))
 
 (defn components
   "Finds all components in the topograh, returning a mapping of component size 
@@ -243,8 +300,8 @@
   "Fetch the roots for graph g, where roots are nodes that have no inbound or 
    source arcs.  Caller may provide a set of candidate node labels with a second
    arg, as xs."
-  ([g xs] (filter #(top/source-node? g %) xs))
-  ([g] (get-roots g (top/get-node-labels g))))
+  ([g xs] (filter #(source-node? g %) xs))
+  ([g] (get-roots g (get-node-labels g))))
         
 (defn drop-roots
   "Return the result of dropping the current set of root nodes from graph g. 
@@ -252,7 +309,7 @@
    will act akin to disj-node, and will eliminate incident arcs, possibly 
    creating new root nodes in the resulting graph."
   [g]
-  (reduce #(top/disj-node %1 %2) g (get-roots g)))
+  (reduce #(disj-node %1 %2) g (get-roots g)))
 
 ;;Graph Reduction and Decomposition
 ;;=================================
@@ -306,7 +363,7 @@
            acc
            nil))))
 
-(defn topological-order
+(defn topsort-nodes
   "Return an arbitrary valid topological ordering for graph g."
   [g]
   (persistent! 
@@ -315,9 +372,8 @@
 ;;Searches
 ;;========
 
-
-;;explicit searches, merely enforces a walk called with an actual destination
-;;node.
+;;Explicit searches, merely enforces a walk called with an actual destination
+;;node.  Return the common searchstate data that the walks utilize.
 
 (defn depth-first-search
   "Starting from startnode, explores g using a depth-first strategy, looking for
@@ -326,9 +382,9 @@
    not guaranteed to find the actual shortest path, thus the shortest path tree
    may be invalid."
   [g startnode endnode]
-  (search/dfs  g startnode endnode))
+  (search/dfs g startnode endnode))
 
-(defn bread-first-search
+(defn breadth-first-search
   "Starting from startnode, explores g using a breadth-first strategy, looking 
    for endnode. Returns a search state, which contains the shortest path tree 
    or precedence tree, the shortest distance tree.  Note: breadth first search 
@@ -345,6 +401,15 @@
    arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode]
   (search/pfs g startnode endnode))
+
+(defn random-search 
+  "Starting from startnode, explores g using random choices, looking 
+   for endnode. Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
+   algorithm.  Note: Requires that arc weights are non-negative.  For negative 
+   arc weights, use Bellman-Ford, or condition the graph."
+  [g startnode endnode]
+  (search/rfs g startnode endnode))
 
 ;;Single Source Shortest Paths
 ;;============================
@@ -377,7 +442,7 @@
    the search steps are almost identical."
   [g startnode endnode & {:keys [weightf neighborf]
                           :or   {weightf   arc-weight
-                                 neighborf sinks}}]
+                                 neighborf (neighbor-by sinks)}}]
   (search/bellman-ford g startnode endnode :weightf weightf 
                                            :neighborf neighborf))
 
@@ -389,8 +454,8 @@
    compute the shortest path tree."
   [g startnode endnode & {:keys [weightf neighborf]
                           :or   {weightf   arc-weight
-                                 neighborf sinks}}]
-  (if-let [ordered-nodes (->> (topological-order g)
+                                 neighborf (neighbor-by sinks)}}]
+  (if-let [ordered-nodes (->> (topsort-nodes g)
                               (drop-while #(not= % startnode))
                               (take-while #(not= % endnode)))]
       (let [node-filter (hash-set ordered-nodes)
@@ -400,6 +465,31 @@
                                           :neighborf filtered-neighbors))
       ;startnode does not precede endnode in the topological order.
       nil))
+
+;;Paths
+;;=====
+;;We can recover paths from walks, or searches, or any process that yields a 
+;;searchstate.  More general operations are found in __spork.data.searchstate__.
+(defn path?
+  "Given a search state and a target node, returns the path weight or nil if 
+   no path exists.  There may be multiple valid paths, this merely indicates one
+   exists.  If no target is provided, the intended end node is pulled from the 
+   search state."
+  ([state target] (sstate/path? state target))
+  ([state] (path? state (:targetnode state))))
+
+(defn get-paths 
+  "Given a search state and a target node, returns a lazy sequence of paths 
+   discovered during the search.  If no target is provided, the intended end 
+   node is pulled from the search state."
+  ([state target] (sstate/paths (:shortest state) (:startnode state) target))
+  ([state] (get-paths state (:targetnode state))))
+(defn get-weighted-paths 
+  "Given a search state and a target node, returns a lazy sequence of 
+   [path path-weight] pairs discovered during the search.  If no target is 
+   provided, the intended end node is pulled from the search state."
+  ([state target] (sstate/paths (:shortest state) (:startnode state) target))
+  ([state] (get-weighted-paths state (:targetnode state))))
 
 ;;Testing/Examples
 (comment 
@@ -422,18 +512,24 @@
                  (add-arcs (tree-arcs :q  
                              [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
  
- (assert (= (depth-walk the-tree :a)
+ (assert (= (depth-nodes the-tree :a)
              [:a :d :g :j :q :a3 :a2 :a1 :z :y :x :w :v :u :t :s :r :p :c :b 
               :f :i :o :n :m :e :h :l :k]))
- (assert (= (ordered-walk the-tree :a)
+ 
+ (assert (= (ordered-nodes the-tree :a)
             [:a :b :e :h :k :l :f :i :m :n :o :c :d :g :j :p :q :r :s :t :u :v 
              :w :x :y :z :a1 :a2 :a3]))
- (assert (= (breadth-walk the-tree :a)
+ 
+ (assert (= (breadth-nodes the-tree :a)
             [:a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p :q :r :s :t :u :v 
              :w :x :y :z :a1 :a2 :a3]))
- (assert (= (undirected-walk the-tree :a) 
+ 
+ (assert (= (undirected-nodes the-tree :a) 
            [:a :d :g :j :q :a3 :a2 :a1 :z :y :x :w :v :u :t :s :r :p :c :b :f 
             :i :o :n :m :e :h :l :k]))
+ (assert (= (topsort-nodes the-tree)
+            [:a :c :b :d :f :g :e :j :i :h :l :k :m :n :o :q 
+             :p :a3 :r :z :y :x :v :w :t :u :a2 :a1 :s]))
  
  ;a directed graph...
  ;    a -> b -> d

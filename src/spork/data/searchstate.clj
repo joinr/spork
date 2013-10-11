@@ -48,14 +48,16 @@
   
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.
-(defrecord searchstate [startnode targetnode shortest distance fringe estimator visited]
+(defrecord searchstate 
+  [startnode targetnode shortest distance fringe estimator visited]
   generic/IGraphSearch
 	  (new-path     [state source sink w] (new-path* source sink w state))           
 	  (shorter-path [state source sink wnew wpast]
 	    (shorter-path* source sink wnew wpast state))
 	  (equal-path   [state source sink] (equal-path* source sink state))
     (best-known-distance   [state nd] (get distance nd))
-    (conj-visited [state source] (conj visited source))
+    (conj-visited [state source] 
+      (assoc state :visited (conj visited source)))
   generic/IFringe 
 	  (conj-fringe [state n w] (assoc state :fringe 
                                    (generic/conj-fringe fringe n w)))
@@ -67,16 +69,16 @@
 (defn init-search
   "Populates an empty search state with an initial set of parameters.  Allows
    searches to be customized by varying the start, target, and the type of 
-   fringe used prosecute the search."
-  [& {:keys [startnode targetnode fringe] 
-      :or   {startnode nil targetnode ::nullnode fringe fr/depth-fringe}}]
+   fringe used to prosecute the search."
+  [startnode & {:keys [targetnode fringe] 
+                :or   {targetnode ::nullnode fringe fr/depth-fringe}}]
     (assert (and (not (nil? fringe)) (generic/fringe? fringe))
             (str "Invalid fringe: " fringe))
       (merge empty-search {:startnode  startnode 
                            :targetnode targetnode
                            :distance {startnode 0}
                            :shortest {startnode startnode}
-                           :fringe fringe}))
+                           :fringe   fringe}))
         
 (defn backtrack
   "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
@@ -97,7 +99,8 @@
                      (into pending-paths branch-paths))))))))
 
 (defn paths 
-  "Given a shortest-path-tree that encodes the predecessors of nodes"
+  "Given a shortest-path-tree that encodes the predecessors of nodes, yield a 
+   sequence of all the paths from start node to end node."
   [preds startnode endnode]
   (->> (iterate (fn [[current-path pending-paths]]
                   (when (not (empty? pending-paths))
@@ -118,13 +121,13 @@
   ([state] (get-paths state (:targetnode state))))
 
 ;;An empty depth-first search.
-(def empty-DFS (init-search :fringe fr/depth-fringe))
+(defn empty-DFS [startnode] (init-search startnode :fringe fr/depth-fringe))
 ;;An empty breadth-first search.
-(def empty-BFS (init-search :fringe fr/breadth-fringe))
+(defn empty-BFS [startnode] (init-search startnode :fringe fr/breadth-fringe))
 ;;An empty priority-first search.
-(def empty-PFS (init-search :fringe fr/priority-fringe))
+(defn empty-PFS [startnode] (init-search startnode :fringe fr/priority-fringe))
 ;;An empty random-first search.
-(def empty-RFS (init-search :fringe fr/random-fringe))
+(defn empty-RFS [startnode] (init-search startnode :fringe fr/random-fringe))
 
 ;;testing
 (comment

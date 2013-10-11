@@ -71,14 +71,6 @@
   (clojure.set/difference (set (get-node-labels g)) 
                           (set (keys (:spt state)))))
 
-;the normal mode for graph walking/searching.  
-(def walk-defaults {:halt? default-halt?
-                    :weightf   arc-weight
-                    :neighborf default-neighborf})
-
-(def limited-walk (assoc walk-defaults :neighborf visit-once))
-(def unit-walk    (assoc limited-walk :weightf unit-weight))
-
 (defn next-candidate
   "To support hueristics, we allow candidate nodes to be encoded as entries, 
    rather than just simple keywords.  If we detect the"
@@ -95,6 +87,9 @@
 (def walk-defaults 
   (merge search-defaults {:weightf unit-weight :neighborf visit-once}))
 
+(def limited-walk (assoc walk-defaults :neighborf visit-once))
+(def unit-walk    (assoc limited-walk  :weightf  unit-weight))
+
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
 
 (defn traverse
@@ -108,18 +103,21 @@
                                                weightf   arc-weight
                                                neighborf default-neighborf}}]
     (let [get-weight    (partial weightf   g)
-          get-neighbors (partial neighborf g)
-          relaxation    (fn [source s sink]
+          get-neighbors (partial neighborf g)         
+          relax-by      (fn [source s sink]
                           (generic/relax s get-weight source sink))]
-      (loop [state (generic/conj-fringe startstate startnode 0)]
+      (loop [state   (-> (assoc startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
         (if (generic/empty-fringe? state) state 
             (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
                   nd        (first candidate)]          ;next node to visit
               (if (halt? state nd)  state
-                  (recur (reduce (partial relaxation nd) 
-                                 (generic/pop-fringe state) 
+                  (recur (reduce (partial relax-by nd) 
+                                 (generic/visit-node state nd)  
                                  (get-neighbors nd state))))))))) 
 
+(defn drop-empty-options [m]
+  (reduce (fn [m k] (if (nil? (get m k)) (dissoc m k) m)) m (keys m)))
 
 (defmacro defwalk
   "Macro for helping us define various kinds of walks, built on top of 
@@ -127,13 +125,14 @@
    consumes a startnode and produces a search state, to produce different kinds 
    of searchs.  Returns a function that acts as a wrapper for traverse, 
    shuttling the supplied defaults to traverse, while allowing callers to
-   provide key arguments for neighborf, weightf, and halt? ."
+   provide key arguments for neighborf, weightf, and halt?."
   [name docstring state-ctor default-opts]
   `(defn ~name ~docstring [~'g ~'startnode 
                 & {:keys [~'endnode ~'halt? ~'neighborf ~'weightf] 
                    :as user-opts#}]
-     (let [{:keys [~'endnode ~'halt? ~'neighborf ~'weightf]}
-           (merge ~default-opts user-opts#)]
+     (let [clean-opts# (drop-empty-options user-opts#) 
+           {:keys [~'endnode ~'halt? ~'neighborf ~'weightf]}
+           (merge ~default-opts clean-opts#)]
        (traverse ~'g ~'startnode ~'endnode (~state-ctor ~'startnode)
                  :halt? ~'halt?                  
                  :neighborf ~'neighborf 
@@ -206,6 +205,13 @@
    arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode]
   (priority-walk g startnode :endnode endnode))
+
+(defn rfs
+  "Starting from startnode, explores g using random choice, looking for endnode. 
+   Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree."
+  [g startnode endnode]
+  (random-walk g startnode :endnode endnode))
 
 ;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
 ;;dijkstra's algorithm, but allows user to supply a heuristic function, and 

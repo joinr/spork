@@ -88,7 +88,6 @@
 (defn empty-fringe? [fringe] (empty? (fringe-seq fringe)))
 (defn fringe? [x] (satisfies? IFringe x))
 
-
 ;;Abstract protocol for operating on shortest path searches.
 (defprotocol IGraphSearch
   (new-path     [state source sink w])
@@ -96,6 +95,10 @@
   (equal-path   [state source sink])
   (conj-visited [state source])
   (best-known-distance [state x]))
+
+(defn visit-node
+  "Record the node as having been visited, and remove it from the fringe."
+  [s nd] (pop-fringe (conj-visited s nd)))
 
 (defn relax
   "Given a shortest path map, a distance map, a source node, sink node, 
@@ -115,7 +118,7 @@
       that we may ultimately end up with multiple shortest* paths."
      
   [state weight-func source sink]  
-    (let [relaxed (+ (best-known-distance state source) 
+    (let [relaxed (+ (best-known-distance state source)  
                      (weight-func source sink))]
       (if-let [known (best-known-distance state sink)]
 	      (cond 
@@ -123,7 +126,7 @@
 	        (= relaxed known) (equal-path state source sink)                         
 	        :else state)            
        ;if sink doesn't exist in distance, sink is new...
-       (new-path source sink relaxed state))))
+       (new-path state source sink relaxed))))
 
 ;;A protocol for defining various topologies using a graph-based API.  Most
 ;;of the types used in this library build of a topology encoded by a persistent
