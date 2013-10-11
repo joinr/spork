@@ -266,20 +266,24 @@
         startstate    (searchstate/empty-BFS startnode)
         bound         (dec (count (generic/-get-nodes g))) ;v - 1 
         get-weight    (partial weightf g)
-        get-neighbors (partial generic/-get-sources g)
+        get-neighbors (partial neighborf g)
         relaxation    (fn [source s sink] 
-                        (generic/relax s get-weight source sink))
+                        (do (println [:relaxing source sink])
+                            (generic/relax s get-weight source sink)))
         validate      (fn [s] (if (negative-cycles? g s get-weight)
                                   (assoc s :negative-cycles true)
                                   s))]
     (loop [state (generic/conj-fringe startstate startnode 0)
            idx   0]
-      (if (or (generic/empty-fringe? state) (= idx bound))
-          (validate state) 
+      (if (or  (= idx bound) (generic/empty-fringe? state))
+          state ;(validate state) 
           (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-                nd        (first candidate)]          ;next node to visit
+                nd        (first candidate)
+                _ (println {:search :bellman 
+                            :visiting nd
+                            :fringe (generic/fringe-seq state)})]    ;next node to visit
             (recur (reduce (partial relaxation nd) 
-                           (generic/pop-fringe state) 
+                           (generic/visit-node state nd) 
                            (get-neighbors nd state))
                    (unchecked-inc idx)))))))
 

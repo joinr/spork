@@ -1,3 +1,7 @@
+;;A suite of operations on persistent graph structures.  Operations 
+;;include creation and manipulation of directed graphs, topological
+;;queries, generic walks, searches, and single-source shortest path
+;;algorithms.  
 (ns spork.cljgraph.core
   (:require [spork.protocols.core :refer :all]
             [spork.cljgraph [search :as search]]
@@ -92,6 +96,11 @@
   [g from to]
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
   (nth (-get-arc g from to) 2))
+
+;;Graph Construction
+;;==================
+(defn arcs->graph [xs]
+  (-> empty-graph (add-arcs xs)))
 
 ;;Neighborhood operations
 ;;=======================
@@ -359,7 +368,7 @@
              next-graph  (drop-nodes graph roots)]
          (recur next-graph (set (get-roots next-graph xs))  (conj acc roots)))
        (if (= (reduce + (map count acc)) 
-              (count (top/nodes g)))
+              (count (nodes g)))
            acc
            nil))))
 
@@ -488,7 +497,10 @@
   "Given a search state and a target node, returns a lazy sequence of 
    [path path-weight] pairs discovered during the search.  If no target is 
    provided, the intended end node is pulled from the search state."
-  ([state target] (sstate/paths (:shortest state) (:startnode state) target))
+  ([state target] 
+     (let [distance (get state :distance)]
+       (->> (sstate/paths (:shortest state) (:startnode state) target)
+            (map (fn [p] [(get distance target) p]))))) 
   ([state] (get-weighted-paths state (:targetnode state))))
 
 ;;Testing/Examples
