@@ -50,8 +50,7 @@
 (defrecord pfringe [priorities fringe]
   generic/IFringe
   (conj-fringe [pf n w]
-    (let [w (or w 0)
-          _ (println w)]
+    (let [w (or w 0)]
       (pfringe. (assoc priorities n w)
                 (if-let [wold (get priorities n)]
                   (pq/alter-value fringe n wold w)

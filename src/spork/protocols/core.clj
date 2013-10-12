@@ -172,3 +172,14 @@
 (defprotocol ILinked 
   (attach [l parent child] "Attach child to parent")
   (detach [l parent child] "Remove child from parent"))
+
+;;We'll find it convenient to represent grids of things quite often.
+;;THe original use case is to represent 2D grids, such as plots, or 
+;;maps, boards.  Really, any uniform spatial division that can be 
+;;represented by n-dimensional coordinates.
+(defprotocol IGrid
+  (grid-neighbors       [g coord])
+  (grid-assoc           [g coord v])
+  (grid-dissoc          [g coord])
+  (grid-coords          [g])
+  (grid-dimensions      [g]))

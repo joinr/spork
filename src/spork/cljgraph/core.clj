@@ -430,7 +430,7 @@
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode] 
-  (search/priority-walk g startnode :endnode endnode))
+  (search/dijkstra g startnode endnode))
 
 ;;__TODO__ Check implementation of a-star, I think this is generally correct.
 (defn a-star
@@ -491,15 +491,16 @@
   "Given a search state and a target node, returns a lazy sequence of paths 
    discovered during the search.  If no target is provided, the intended end 
    node is pulled from the search state."
-  ([state target] (sstate/paths (:shortest state) (:startnode state) target))
+  ([state target] (sstate/get-paths state target))
   ([state] (get-paths state (:targetnode state))))
+
 (defn get-weighted-paths 
   "Given a search state and a target node, returns a lazy sequence of 
    [path path-weight] pairs discovered during the search.  If no target is 
    provided, the intended end node is pulled from the search state."
   ([state target] 
-     (let [distance (get state :distance)]
-       (->> (sstate/paths (:shortest state) (:startnode state) target)
+     (let [distance (get state :distance)]       
+       (->> (get-paths state target)
             (map (fn [p] [(get distance target) p]))))) 
   ([state] (get-weighted-paths state (:targetnode state))))
 

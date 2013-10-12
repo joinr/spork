@@ -91,7 +91,6 @@
 (def unit-walk    (assoc limited-walk  :weightf  unit-weight))
 
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
-
 (defn traverse
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
    the searchstate, the halting criteria, the weight-generating 
@@ -110,10 +109,11 @@
                          (generic/conj-fringe startnode 0))]
         (if (generic/empty-fringe? state) state 
             (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-                  nd        (first candidate)]          ;next node to visit
-              (if (halt? state nd)  state
+                  nd        (first candidate)           ;next node to visit
+                  visited   (generic/visit-node state nd) ] ;record visit.
+              (if (halt? state nd) visited                     
                   (recur (reduce (partial relax-by nd) 
-                                 (generic/visit-node state nd)  
+                                 visited
                                  (get-neighbors nd state))))))))) 
 
 (defn drop-empty-options [m]
@@ -225,7 +225,14 @@
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode] 
-  (priority-walk g startnode :endnode endnode))
+  (priority-walk g startnode :endnode endnode
+   :weightf  (memoize (fn [g source sink]
+                        (let [w (arc-weight g source sink)]
+                          (if (>= w 0)  w ;positive only
+                            (throw 
+                              (Exception. 
+                                (str "Negative Arc Weight Detected in Dijkstra: " 
+                                     [source sink w])))))))))                                            
 
 ;;__TODO__ Check implementation of a-star, I think this is generally correct.
 (defn a*
@@ -247,10 +254,12 @@
   [g final-search-state get-weight]
   (let [distance  (:distance final-search-state)
         ;we violate the triangle inequality if we can improve any distance.
-        improvement? (fn [[u v]] (< (+ (get distance u) (get-weight u v)) 
-                                 (get distance v)))
+        improvement? (fn [arc]
+                       (let [[u v] arc]
+                         (when (< (+ (get distance u) (get-weight u v)) 
+                                  (get distance v))    u)))
         nodes (keys (generic/-get-nodes g))]
-    (some improvement? (for [u nodes
+    (filter improvement? (for [u nodes
                              v (generic/-get-sinks g u)]  [u v]))))
 
 (defn bellman-ford
@@ -262,28 +271,24 @@
   [g startnode endnode & {:keys [weightf neighborf] 
                           :or   {weightf   arc-weight
                                  neighborf default-neighborf}}]
-  (let [halt?         default-halt?
-        startstate    (searchstate/empty-BFS startnode)
+  (let [startstate    (assoc (searchstate/empty-BFS startnode) 
+                             :targetnode endnode)
         bound         (dec (count (generic/-get-nodes g))) ;v - 1 
         get-weight    (partial weightf g)
         get-neighbors (partial neighborf g)
         relaxation    (fn [source s sink] 
-                        (do (println [:relaxing source sink])
-                            (generic/relax s get-weight source sink)))
-        validate      (fn [s] (if (negative-cycles? g s get-weight)
-                                  (assoc s :negative-cycles true)
+                        (generic/relax s get-weight source sink))
+        validate      (fn [s] (if-let [res (first 
+                                             (negative-cycles? g s get-weight))]
+                                (assoc s :negative-cycles res)
                                   s))]
     (loop [state (generic/conj-fringe startstate startnode 0)
            idx   0]
-      (if (or  (= idx bound) (generic/empty-fringe? state))
-          state ;(validate state) 
+        (if (or  (= idx bound) (generic/empty-fringe? state))
+          (validate state) 
           (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-                nd        (first candidate)
-                _ (println {:search :bellman 
-                            :visiting nd
-                            :fringe (generic/fringe-seq state)})]    ;next node to visit
+                nd        (first candidate)]  ;next node to visit   
             (recur (reduce (partial relaxation nd) 
                            (generic/visit-node state nd) 
                            (get-neighbors nd state))
                    (unchecked-inc idx)))))))
-
