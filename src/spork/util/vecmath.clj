@@ -27,6 +27,24 @@
 ;;convert a vector into a unit vector via normalization.
 (defn v-unit [v] (v-scale (/ 1.0 ^double (v-norm v)) v)) 
 
+;;returns the euclidean distance between two vectors
+(defn ^double euclidean [v1 v2]
+  (loop [idx 0
+         acc 0.0]
+    (if (= idx (dimension v1)) (Math/sqrt acc)
+      (let [delta (- (vec-nth v1 idx) (vec-nth v2 idx))] 
+        (recur (unchecked-inc idx)
+               (+ acc (* delta delta)))))))
+
+;;returns the manhattan distance between two vectors.
+(defn ^double manhattan [v1 v2]
+  (loop [idx 0
+         acc 0.0]
+    (if (= idx (dimension v1)) (Math/sqrt acc)
+      (let [delta (- (vec-nth v1 idx) (vec-nth v2 idx))] 
+        (recur (unchecked-inc idx)
+               (+ acc (* delta delta)))))))
+
 ;;3D operations (and 2D pseudo ops)
 
 ;;computes the cross product of v1 and v2, where v1 and v2 are 3-dimensional 

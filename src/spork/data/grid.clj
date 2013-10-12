@@ -1,116 +1,79 @@
 (ns spork.data.grid
-  (:require [spork.protocols.core :refer :all]))
+  (:require [spork.protocols.core :refer :all]
+            [spork.util [vectors :as v]
+                        [vecmath :as vmath]]))
 (defn set-grid 
   [m k & [v]]
   (if (contains? m k) m (assoc m k v)))
 
-;;This is way inefficient.  We want a numerical indexed way to do 
-;;this, not using vector pairs.
 
-(defn up2 [x y] [x (inc y)])
-(defn up-right2 [x y] [(inc x) (inc y)])
-(defn right2 [x y] [(inc x) y])
-(defn down-right2 [x y] [(inc x) (dec y)])
-(defn down2 [x y] [x (dec y)])
-(defn down-left2 [x y] [(dec x) (dec y)])
-(defn left2 [x y] [(dec x) y])
-(defn up-left2 [x y] [(dec x) (inc y)])
+(defn shift [coord idx offset]
+  (v/set-vec coord idx (long (+ offset (v/vec-nth coord idx)))))
 
-(defn omni2 [[x y]] 
-  (map (fn [f] (f x y))  
-       [up2 up-right2 right2 down-right2 down2 down-left2 left2 up-left2]))
+(defn corner-nebs 
+  [x-idx y-idx up right down left]  
+  [(shift up x-idx 1) ;up-right
+   (shift up x-idx -1) ;up-left 
+   (shift down x-idx 1) ;down-right
+   (shift down x-idx -1) ;down-left
+   ])
 
-(defn manhattan2 [[x y]] 
-  (map (fn [f] (f x y)) [up2 right2 down2 left2]))
+(defn nebs2 
+  [coord & {:keys [x-idx y-idx omni?] 
+            :or {x-idx 0 y-idx 1 omni? true}}]
+  (let [x (long (v/vec-nth coord x-idx))
+        y (long (v/vec-nth coord y-idx))
+        up    (v/set-vec coord y-idx (inc y))
+        right (v/set-vec coord x-idx (inc x))
+        down  (v/set-vec coord y-idx (dec y))
+        left  (v/set-vec coord x-idx (dec x))]
+    (into [up right down left]
+          (when omni? 
+              (corner-nebs x-idx y-idx up right down left)))))
 
-(defn in-bounds2d [width height]
-  (fn [[x y]]
-    (and (and (>= x 0) (<= x width))
-         (and (>= y 0) (<= y height)))))
+(defn nebs [coord & {:keys [omni?] :or {omni? true}}]
+  (let [bound (v/dimension coord)]
+    (if (= bound 2)
+        (nebs2 coord :x-idx 0 :y-idx 1 :omni? omni?)
+        (let [base-nebs (nebs2 coord :x-idx 0 :y-idx 1 :omni? omni?)] 
+          (loop [dim 2 
+                 acc base-nebs]
+            (if (= dim bound)   acc
+              ;;grow the next dimension by expanding our accumulated 
+              ;;dimension
+              (recur (unchecked-inc dim)
+                     (into acc
+                           (concat (map #(shift % dim 1) acc)                    
+                                   (map #(shift % dim -1) acc))))))))))
 
-(defn neighbors2 
-  ([coord] (reduce conj #{} (omni2 coord)))
-  ([f coord] (reduce conj #{} (filter f (omni2 coord)))))
+(defn in-bounds2d [width height & {:keys [left bottom] 
+                                   :or {left 0 bottom 0}}]
+  (let [right (+ left width)
+        top   (+ bottom height)]
+    (fn [coord]
+      (let [x (v/vec-nth coord 0)
+            y (v/vec-nth coord 1)]
+        (and (and (>= x left) (<= x right))
+             (and (>= y bottom) (<= y top)))))))
+    
+(defn neighbors 
+  ([coord] (reduce conj #{} (nebs coord)))
+  ([f coord] (reduce conj #{} (filter f (nebs coord)))))
 
-(defn up3 [x y z] [x (inc y) z])
-(defn up-right3 [x y z] [(inc x) (inc y) z])
-(defn right3 [x y z] [(inc x) y z])
-(defn down-right3 [x y z] [(inc x) (dec y) z])
-(defn down3 [x y z] [x (dec y) z])
-(defn down-left3 [x y z] [(dec x) (dec y) z])
-(defn left3 [x y z] [(dec x) y z])
-(defn up-left3 [x y z] [(dec x) (inc y) z])
+(defn in-bounds3d 
+  [width height depth 
+   & {:keys [left bottom distance]  :or {left 0 bottom 0 distance 0}}]
+  (let [right (+ left width)
+        top   (+ bottom height)
+        near  (+ depth distance)]
+    (fn [coord]
+      (let [x (v/vec-nth coord 0)
+            y (v/vec-nth coord 1)
+            z (v/vec-nth coord 2)]
+        (and (and (>= x left) (<= x right))
+             (and (>= y bottom) (<= y top))
+             (and (>= z distance) (<= z near)))))))
 
-(defn forward-up3 [x y z] [x (inc y) (inc z)])
-(defn forward-up-right3 [x y z] [(inc x) (inc y) (inc z)])
-(defn forward-right3 [x y z] [(inc x) y (inc z)])
-(defn forward-down-right3 [x y z] [(inc x) (dec y) (inc z)])
-(defn forward-down3 [x y z] [x (dec y) (inc z)])
-(defn forward-down-left3 [x y z] [(dec x) (dec y) (inc z)])
-(defn forward-left3 [x y z] [(dec x) y (inc z)])
-(defn forward-up-left3 [x y z] [(dec x) (inc y) (inc z)])
-
-(defn backward-up3 [x y z] [x (inc y) (dec z)])
-(defn backward-up-right3 [x y z] [(inc x) (inc y) (dec z)])
-(defn backward-right3 [x y z] [(inc x) y (dec z)])
-(defn backward-down-right3 [x y z] [(inc x) (dec y) (dec z)])
-(defn backward-down3 [x y z] [x (dec y) (dec z)])
-(defn backward-down-left3 [x y z] [(dec x) (dec y) (dec z)])
-(defn backward-left3 [x y z] [(dec x) y (dec z)])
-(defn backward-up-left3 [x y z] [(dec x) (inc y) (dec z)])
-
-
-(defn omni3 [[x y z]] 
-  (map (fn [f] (f x y z)) (defn up3 [x y z] [x (inc y) z])
-       [up3 
-        up-right3
-        right3 
-        down-right3 
-        down3 
-        down-left3 
-        left3 
-        up-left3
-        forward-up3 
-        forward-up-right3
-        forward-right3 
-        forward-down-right3 
-        forward-down3 
-        forward-down-left3
-        forward-left3 
-        forward-up-left3 
-        backward-up3 
-        backward-up-right3 
-        backward-right3 
-        backward-down-right3 
-        backward-down3 
-        backward-down-left3 
-        backward-left3 
-        backward-up-left3])) 
-
-(defn manhattan3 [[x y z]] 
-  (map (fn [f] (f x y z)) (defn up3 [x y z] [x (inc y) z])
-       [up3 
-        right3 
-        down3 
-        left3 
-        forward-up3 
-        forward-right3 
-        forward-down3 
-        forward-left3 
-        backward-up3 
-        backward-right3 
-        backward-down3 
-        backward-left3])) 
-
-(defn neighbors3 
-  ([coord] (reduce conj #{} (omni3 coord)))
-  ([f coord] (reduce conj #{} (filter f (omni3 coord)))))
-
-(defn in-bounds3d [width height depth]
-  (fn [[x y z]]
-    (and (and (>= x 0) (<= x width))
-         (and (>= y 0) (<= y height))
-         (and (>= z 0) (<= z height)))))
 
 ;;in the grid, connectedness is implied. 
 ;;To keep the arc storage down, we compute connectedness, and 
@@ -156,18 +119,16 @@
          (contains? (coord->neighbors source) sink)))
   (-get-arc   [tg source sink] 
     (when (-has-arc? tg source sink) [source sink 1]))
-  (-get-sources [tg k] 
-    (when (not (contains? sink-drops k))
-      (->> (coord->neighbors k)
-           (filter (fn [v] (not (contains? source-drops v)))))))
+  (-get-sources [tg k]   
+    (->> (coord->neighbors k)
+      (filter (fn [v] (not (contains? source-drops v))))))
   (-get-sinks [tg k]  
-    (when (not (contains? source-drops k))
-      (->> (coord->neighbors k)
-           (filter (fn [v] (not (contains? sink-drops v))))))))
+    (->> (coord->neighbors k)
+      (filter (fn [v] (not (contains? sink-drops v)))))))
 
 (defn ->grid2d [width height]         
-  (sparse-grid. {} #{} #{} (partial neighbors2 (in-bounds2d width height)) 2))
+  (sparse-grid. {} #{} #{} (partial neighbors (in-bounds2d width height)) 2))
 (defn ->grid3d [width height depth]   
-  (sparse-grid. {} #{} #{} (partial neighbors3 (in-bounds3d width height depth)) 3))
+  (sparse-grid. {} #{} #{} (partial neighbors (in-bounds3d width height depth)) 3))
 
 (def the-grid (->grid2d 10 10))
