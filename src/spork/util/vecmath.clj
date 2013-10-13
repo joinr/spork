@@ -40,10 +40,10 @@
 (defn ^double manhattan [v1 v2]
   (loop [idx 0
          acc 0.0]
-    (if (= idx (dimension v1)) (Math/sqrt acc)
+    (if (= idx (dimension v1)) acc
       (let [delta (- (vec-nth v1 idx) (vec-nth v2 idx))] 
         (recur (unchecked-inc idx)
-               (+ acc (* delta delta)))))))
+               (+ acc (Math/abs delta)))))))
 
 ;;3D operations (and 2D pseudo ops)
 

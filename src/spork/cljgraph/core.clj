@@ -276,7 +276,7 @@
 (defn succs
   "Returns the a set of all the nodes reachable starting from node k."
   [g k] 
-  (disj (set (depth-nodes g k :neighborf (neighbor-by sinks)) k)))
+  (disj (set (depth-nodes g k :neighborf (neighbor-by sinks))) k))
 
 (defn preds
   "Returns the set of all the nodes that can reach node k."

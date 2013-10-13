@@ -1,3 +1,6 @@
+;;Grids come up a lot in gaph algorithms, game development, and data structures.
+;;You have some abstract notion of a set of containers, indexed by a coordinate,
+;;that are fully connected to surrounding containers.
 (ns spork.data.grid
   (:require [spork.protocols.core :refer :all]
             [spork.util [vectors :as v]
@@ -130,5 +133,9 @@
   (sparse-grid. {} #{} #{} (partial neighbors (in-bounds2d width height)) 2))
 (defn ->grid3d [width height depth]   
   (sparse-grid. {} #{} #{} (partial neighbors (in-bounds3d width height depth)) 3))
+;;Note -> we could probably put in handy constructors for torroidal grids, since 
+;;it's only a modification of the coord->neighbors input functions.
 
+
+;;testing 
 (def the-grid (->grid2d 10 10))
