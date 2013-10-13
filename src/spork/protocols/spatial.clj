@@ -1,8 +1,23 @@
 ;Tom Spoon 16 June 2012 -> A clojure library for spatial data structures
 
+;;Generally, we'll be dealing with a class of data structures that have the 
+;;ability to partition an n-dimensional space, contain information about items
+;;in the space, and to support several forms of spatial queries about items
+;;in the space.  
+
+;;In general, space is of arbitrary dimensionality.  How a spatial container 
+;;subdivides space is irrelevant.  All that is relevant is that the spatial 
+;;container knows how to conjoin items.
+
+;;Going to generalize here..
+;;We typically have a notion of bounds as they pertain to 2 or 3 dimensions.
+;;Certain data structures, like KD trees an
+
+
 ;Starting with QuadTrees.
 ;Then bounding volume hierarchies.
-(ns spork.protocols.spatial)
+(ns spork.protocols.spatial
+  (:require [spork.util [vectors :as v]]))
 
 (defprotocol IBoundingBox
   (get-bounding-box [bv] "Return an appropriate bounding volume."))
@@ -10,10 +25,14 @@
 (defprotocol IBounded
   (get-width [b])
   (get-height [b])
+;  (get-depth  [b])
   (get-left [b])
   (get-right [b])
   (get-top [b])
-  (get-bottom [b]))
+  (get-bottom [b])
+;  (get-front [b])
+;  (get-back [b])
+)
 
 ;One way to store bounding information.
 ;We use meta data attached to symbols to store bounding information.
@@ -35,6 +54,8 @@
 ;a 3 dimensional vector, or a 3D point... 
 ;(defrecord vec3 [x y z])
 ;(defn ->vec2 [x y] (->vec3 x y 0))
+;;we can use vectors as simple bounds...
+
 
 ;(defn bounding-cuboid [x1 y1 x2 y2 x3 y3])
 
@@ -270,5 +291,101 @@
         new-bounds (group-bounds [old-bounds bounds])]
     (assoc-bounds space obj new-bounds)))
 
+;;re-write..
+(comment 
+;;General bounds will be represented using vectors and meta data about the 
+;;bound.  We'll use an arbitrary-length vector to communicate the extents of 
+;;the bounded region.  
 
+(defprotocol IBounds 
+  (bounds-dimension [b] "Return the dimensionality of the bounds")  
+  (bounds-extreme-points [b] 
+     "Return dimension pairs of points, representing the min and max.")
+  ;(bounds-vector [b] "Return a compatible vector of bound information")
+;  (bounds-encloses? [b other] "Determine one bounds encloses another.")
+;  (bounds-aligned [b axis] "Return bounds relative to an arbitrary axis.")
+  )
+
+(defprotocol IFastBounds 
+  (-bounds-type    [b]       "Returns the type of bounds...duh") 
+  (-compare-bounds [b other] 
+     "Exploits information  to avoid comparison via extrema."))
+
+(extend-protocol IBounds 
+  clojure.lang.PersistentArrayMap
+  (bounds-dimension [b] (get-in b [:bounds :dimension]))
+  (bounds-extreme-points [b] (get-in b [:bounds :extreme-points])))
+
+;;standard extreme points for bounds rooted at the origin.
+(def unit-extrema  [[0 1] [0 1] [0 1]])
+(defn between? [x l r] (and (> x l) (< x r)))
+
+(defn compare-segment [xs ys]
+  (let [x1 (v/vec-nth xs 0)
+        x2 (v/vec-nth xs 1)
+        y1 (v/vec-nth ys 0)
+        y2 (v/vec-nth ys 1)]
+    (cond (or (= x1 y1) (= x2 y2)) :intersected
+          (between? x1 y1 y2) (if (between? x2 y1 y2) :enclosed :intersected)
+          (between? y1 x1 x2) (if (between? y2 x1 x2) :encloses :intersected)
+          :otherwise :separated)))
+
+;;Tests for later 
+(deftest segment-comparisons
+  (is (= (compare-segment [-1 4] [-1 45]) :intersected))
+  (is (= (compare-segment [-1 4] [-1 2])  :intersected))
+  (is (= (compare-segment [-1 4] [-2 2])  :intersected)) 
+  (is (= (compare-segment [-1 4] [0 2])   :encloses))
+  (is (= (compare-segment [-1 4] [-2 5])  :enclosed)))
+
+(defn compare-extrema
+  "Compare two sets of extreme points.  This is the slow, but guaranteed way
+   to compare any two spatial objects.  If we have sets of extremes in each 
+   dimension, we can walk the points, starting in the first dimension, and 
+   do a simple line-segment containment test.  Fails as soon as a non-containing
+   case is found.  If we run out of points, i.e. xs is of lower dimension than
+   ys, we stop. Yields :encloses if xs encloses ys, :enclosed if ys encloses xs,
+   :intersected if xs intersects with ys anywhere, :separated"
+  [xs ys]
+  (let [comps (map compare-segment xs ys)]
+    (loop [acc         (first comps)
+           comparisons (rest comps)]
+      (if (empty? comparisons) acc
+        (let [res (first comparisons)]
+          (if (or (not= res acc) (= res :intersected)) :intersected
+            (recur res (rest comparisons)))))))) 
+
+(deftest extrema-testing 
+  (is (= (compare-extrema [[0   1]] 
+                          [[-10 10]]) :enclosed))
+  (is (= (compare-extrema [[0 1]] 
+                          [[0 10]]) :intersected))
+  (is (= (compare-extrema [[0    1] [0 2]]
+                          [[-10 10] [0 2]]) :intersected))
+  (is (= (compare-extrema [[0 1]    [1 3]] 
+                          [[-10 10] [0 5]])) :enclosed)
+  (is (= (compare-extrema [[0 1]    [1 3]] 
+                          [[-10 10] [0 5] [-100 100]])) :enclosed)
+  (is (= (compare-extrema [[-10 10] [0 5] [-100 100]]
+                          [[0 1]    [1 3]]))  :encloses))
+
+(defn ->sphere-bounds [radius center]
+  (let [x   (v/vec-nth center 0) 
+        y   (v/vec-nth center 1)
+        z   (v/vec-nth center 2)
+        extrema [(v/->vec2 (- x radius) (+ x radius))
+                 (v/->vec2 (- y radius) (+ y radius))
+                 (v/->vec2 (- z radius) (+ z radius))]]             
+  IBounds 
+  (bounds-dimension [b] 3)
+  (bounds-extreme-points [b] extrema)))
+  ;(bounds-vector [b]     [0 (Math)
+  ;(bounds-encloses? [b other] )
+  ;(bounds-aligned [b axis] b)
+  
+;  (bounds-transform [b t]    "Apply a transform to the bounds"))
+
+
+
+)
 

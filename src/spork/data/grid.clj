@@ -9,7 +9,6 @@
   [m k & [v]]
   (if (contains? m k) m (assoc m k v)))
 
-
 (defn shift [coord idx offset]
   (v/set-vec coord idx (long (+ offset (v/vec-nth coord idx)))))
 
@@ -130,12 +129,16 @@
       (filter (fn [v] (not (contains? sink-drops v)))))))
 
 (defn ->grid2d [width height]         
-  (sparse-grid. {} #{} #{} (partial neighbors (in-bounds2d width height)) 2))
+  (sparse-grid. {} #{} #{} 
+    (partial neighbors (in-bounds2d width height)) 2))
 (defn ->grid3d [width height depth]   
-  (sparse-grid. {} #{} #{} (partial neighbors (in-bounds3d width height depth)) 3))
+  (sparse-grid. {} #{} #{} 
+    (partial neighbors (in-bounds3d width height depth)) 3))
 ;;Note -> we could probably put in handy constructors for torroidal grids, since 
 ;;it's only a modification of the coord->neighbors input functions.
 
 
 ;;testing 
+(comment 
 (def the-grid (->grid2d 10 10))
+)
