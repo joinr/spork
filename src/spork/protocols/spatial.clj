@@ -17,7 +17,8 @@
 ;Starting with QuadTrees.
 ;Then bounding volume hierarchies.
 (ns spork.protocols.spatial
-  (:require [spork.util [vectors :as v]]))
+  (:require [spork.util [vectors :as v]
+                        [vecmath :as vmath]]))
 
 (defprotocol IBoundingBox
   (get-bounding-box [bv] "Return an appropriate bounding volume."))
@@ -298,13 +299,19 @@
 ;;the bounded region.  
 
 (defprotocol IBounds 
-  (bounds-dimension [b] "Return the dimensionality of the bounds")  
+  (bounds-dimension [b] "Return the dimensionality of the bounds")
+  (bounds-center [b] "Return the center of the bounds")  
   (bounds-extreme-points [b] 
      "Return dimension pairs of points, representing the min and max.")
   ;(bounds-vector [b] "Return a compatible vector of bound information")
 ;  (bounds-encloses? [b other] "Determine one bounds encloses another.")
 ;  (bounds-aligned [b axis] "Return bounds relative to an arbitrary axis.")
   )
+(defprotocol IRadialBounds
+  (bounds-radius [b] "Return the radius of the bounds"))
+
+(defprotocol IBoxBounds
+  (bounds-corner [b] "Return the corner of the bounding box"))
 
 (defprotocol IFastBounds 
   (-bounds-type    [b]       "Returns the type of bounds...duh") 
@@ -320,15 +327,14 @@
 (def unit-extrema  [[0 1] [0 1] [0 1]])
 (defn between? [x l r] (and (> x l) (< x r)))
 
-(defn compare-segment [xs ys]
-  (let [x1 (v/vec-nth xs 0)
-        x2 (v/vec-nth xs 1)
-        y1 (v/vec-nth ys 0)
-        y2 (v/vec-nth ys 1)]
-    (cond (or (= x1 y1) (= x2 y2)) :intersected
-          (between? x1 y1 y2) (if (between? x2 y1 y2) :enclosed :intersected)
-          (between? y1 x1 x2) (if (between? y2 x1 x2) :encloses :intersected)
-          :otherwise :separated)))
+(defn compare-segment 
+  ([x1 x2 y1 y2]
+      (cond (or (= x1 y1) (= x2 y2)) :intersected
+            (between? x1 y1 y2) (if (between? x2 y1 y2) :enclosed :intersected)
+            (between? y1 x1 x2) (if (between? y2 x1 x2) :encloses :intersected)
+            :otherwise :separated))
+  ([xvec yvec] (compare-segment (v/vec-nth xvec 0) (v/vec-nth xvec 1) 
+                                (v/vec-nth yvec 0) (v/vec-nth yvec 1))))
 
 ;;Tests for later 
 (deftest segment-comparisons
@@ -369,16 +375,111 @@
   (is (= (compare-extrema [[-10 10] [0 5] [-100 100]]
                           [[0 1]    [1 3]]))  :encloses))
 
-(defn ->sphere-bounds [radius center]
+(defn as-3d [v] 
+  (if (= (v/dimension v) 2) (v/->vec3 (v/vec-nth v 0) (v/vec-nth v 1) 0)
+    v))
+                    
+(defn sphere-compare [l r & {:keys [test] :or {test :intersection}}]
+  (let [cl (bounds-center l)
+        cr (bounds-center r)
+        center-line (vmath/v- cr cl)
+        sq-distance (vmath/v-norm-squared center-line) ;dist^2 between spheres
+        rl     (bounds-radius l) 
+        sq-rl  (* rl  rl) ;radius^2 of left
+        rr     (bounds-radius r)
+        sq-rr  (* rr  rr) ;radius^2 right 
+        ]
+    (if (> sq-distance (+ sq-rl sq-rr)) :separated
+        ;;otherwise we use our line-segment test.
+        (if (= test :containment) (compare-segment 0 rl 0 rr)
+            :intersected ))))
+
+
+(defn box-compare [l r & {:keys [test] :or {test :intersection}}]
+  (let [cl (bounds-center l)
+        cr (bounds-center r)
+        center-line (vmath/v- cr cl)
+        sq-distance (vmath/v-norm-squared center-line) ;dist^2 between spheres
+        rl     (bounds-radius l) 
+        sq-rl  (* rl  rl) ;radius^2 of left
+        rr     (bounds-radius r)
+        sq-rr  (* rr  rr) ;radius^2 right 
+        ])
+
+(defn ->sphere-bounds [center radius]
   (let [x   (v/vec-nth center 0) 
         y   (v/vec-nth center 1)
         z   (v/vec-nth center 2)
         extrema [(v/->vec2 (- x radius) (+ x radius))
                  (v/->vec2 (- y radius) (+ y radius))
-                 (v/->vec2 (- z radius) (+ z radius))]]             
+                 (v/->vec2 (- z radius) (+ z radius))]]
+    (reify
+      IBounds 
+      (bounds-dimension [b] 3)
+      (bounds-center    [b] center)
+      (bounds-extreme-points [b] extrema)
+      IRadialBounds
+      (bounds-radius [b] radius)
+      IFastBounds 
+      (-bounds-type [b] :sphere)
+      (-compare-bounds [b other] 
+        (when (= (-bounds-type other) :sphere)
+           (sphere-compare b other))))))
+
+(defn ->circle-bounds [center radius]
+  (let [center (as-3d center)
+        x   (v/vec-nth center 0) 
+        y   (v/vec-nth center 1)
+        z   (v/vec-nth center 2)
+        extrema [(v/->vec2 (- x radius) (+ x radius))
+                 (v/->vec2 (- y radius) (+ y radius))]]             
+  IBounds 
+  (bounds-dimension [b] 2)
+  (bounds-center [b] center)  
+  (bounds-extreme-points [b] extrema)
+  IRadialBounds 
+  (bounds-radius [b] radius)
+  IFastBounds 
+  (-bounds-type [b] :sphere)
+  (-compare-bounds [b other] 
+     (when (= (-bounds-type other) :circle)
+       (sphere-compare b other)))))
+
+(defn ->box-bounds [center width height depth]
+  (let [center (as-3d center)        
+        x      (v/vec-nth corner 0) 
+        y      (v/vec-nth corner 1)
+        z      (v/vec-nth corner 2)
+        half-width (/ width 2.0)
+        half-height  (/ height 2.0)
+        half-depth  (/ depth 2.0)
+        corner (v/->vec3 (- x half-width)
+                         (- y half-height)
+                         (- z half-depth))                           
+        extrema [(v/->vec2 x (+ x width))
+                 (v/->vec2 y (+ y height))
+                 (v/->vec2 z (+ z depth))]]             
   IBounds 
   (bounds-dimension [b] 3)
-  (bounds-extreme-points [b] extrema)))
+  (bounds-center    [b] center)  
+  (bounds-extreme-points [b] extrema)
+  IFastBounds 
+  (-bounds-type [b] :box)
+  (-compare-bounds [b other] 
+     (when (= (-bounds-type other) :box)
+       (sphere-compare b other))))))
+  
+(defn ->rect-bounds [corner width height]
+  (let [corner (as-3d corner)
+        x   (v/vec-nth corner 0) 
+        y   (v/vec-nth corner 1)
+        z   (v/vec-nth corner 2)        
+        extrema [(v/->vec2 x (+ x width))
+                 (v/->vec2 y (+ y height))]]             
+  IBounds 
+  (bounds-dimension [b] 2)
+  (bounds-extreme-points [b] extrema)))  
+
   ;(bounds-vector [b]     [0 (Math)
   ;(bounds-encloses? [b other] )
   ;(bounds-aligned [b axis] b)
