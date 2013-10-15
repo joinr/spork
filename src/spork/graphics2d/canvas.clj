@@ -24,10 +24,10 @@
   (get-a [c] a))
 
 (defn- get-byte [n idx] (bit-and (bit-shift-right n (* idx 8)) 255))
-(defn get-rgba [c] (+ (get-rgb c) (bit-shift-left (get-a c) 24))) 
+(defn get-rgba     [c] (+ (get-rgb c) (bit-shift-left (get-a c) 24))) 
 (defn color->alpha [c] (float (/ (get-a c) 255)))
-(defn color->rgb [c]   (juxt [get-r get-g get-b]))
-(defn color->rgba [c]  (juxt [get-r get-g get-b get-a]))
+(defn color->rgb   [c]   (juxt [get-r get-g get-b]))
+(defn color->rgba  [c]  (juxt [get-r get-g get-b get-a]))
 (defn color->rgb-alpha [c]  (juxt [get-r get-g get-b color->alpha]))
 (defn rgba->color-rgba [rgba]
   (let [byte-at (partial get-byte rgba)] 
@@ -222,11 +222,11 @@
 (defn text-width
   "Currently a stub.
    Returns the width, in pixels, of some text."  
-  ^long [canvas txt] 0)
+  ^long [canvas txt] (count txt))
 (defn text-height
   "Currently a stub.
-   Returns the height, in pixels, of some text."  
-  ^long [canvas txt] 0)
+   Returns the height, in pixels, of some text."
+  ^long [canvas txt] 1)
 
 ;these are fancy rendering options.  We prefer them if supported.
 ;if the device supports them, then we'll use them.  Otherwise, we use the 

@@ -29,7 +29,7 @@
   (->rectangle color x y w w))
 
 (defshape text [color font txt x y]
-  (spatial/bbox x y (c/text-width txt) (c/text-height txt))
+  (spatial/bbox x y (c/text-width font txt) (c/text-height font txt))
   (c/draw-string c color font txt x y))
 
 (defn ->plain-text [color s x y] (->text color :default s x y))

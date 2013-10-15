@@ -315,10 +315,7 @@
   (bounds-extreme-points [b] 
     "Return dimension pairs of points, representing the min and max.")  
   )
-  ;(bounds-vector [b] "Return a compatible vector of bound information")
-;  (bounds-encloses? [b other] "Determine one bounds encloses another.")
-;  (bounds-aligned [b axis] "Return bounds relative to an arbitrary axis.")
-  
+
 (defn half-width  
     "Return the half-width of the bounds along the y axis"
     [b] (v/vec-nth (bounds-half-vector b) 0))
@@ -329,7 +326,6 @@
 (defn half-depth  
     "Return the half-width of the bounds along the z axis."
     [b] (v/vec-nth (bounds-half-vector b) 2))
-
 
 (defprotocol IRadialBounds
   (bounds-radius [b] "Return the radius of the bounds"))
@@ -451,7 +447,7 @@
         ]
     (if (axis-separated? bounds-radius l r sq-distance) :separated
         ;;otherwise we use our line-segment test.
-        (if (= test :containment) (compare-segment 0 rl 0 rr)
+        (if (= test :containment) (compare-widths rl rr)
             :intersected ))))
 
 (defn box-compare [l r {:keys [test] :or {test :intersection}}]
@@ -460,14 +456,14 @@
         center-line (vmath/v- cr cl)
         sq-distance (vmath/v-norm-squared center-line) ;dist^2 between bounds
         ]
-    (if (or (axis-separated? bounds-width  l r) ;rejection test, fail fast.
-            (axis-separated? bounds-height l r)
-            (axis-separated? bounds-depth  l r)) :separated
+    (if (or (axis-separated? half-width  l r) ;rejection test, fail fast.
+            (axis-separated? half-height l r)
+            (axis-separated? half-depth  l r)) :separated
         ;;otherwise we use our line-segment test.
         (if (= test :containment) 
-            (or (compare-widths bounds-width  l r)
-                (compare-widths bounds-height l r)
-                (compare-widths bounds-depth  l r)) 
+            (or (compare-widths half-width  l r)
+                (compare-widths half-height l r)
+                (compare-widths half-depth  l r)) 
             :intersected ))))
 
 (defn ->sphere-bounds [center radius]
@@ -482,7 +478,7 @@
       (bounds-dimension [b] 3)
       (bounds-center    [b] center)
       (bounds-extreme-points [b] extrema)
-      (bounds-half-widths [b] radius)
+      (bounds-half-vector [b] (v/->vec1 radius))
       IRadialBounds
       (bounds-radius [b] radius)
       IFastBounds 
@@ -491,70 +487,34 @@
         (when (= (-bounds-type other) :sphere)
            (sphere-compare b other))))))
 
-(defn ->circle-bounds [center radius]
-  (let [center (as-3d center)
-        x   (v/vec-nth center 0) 
-        y   (v/vec-nth center 1)
-        z   (v/vec-nth center 2)
-        extrema [(v/->vec2 (- x radius) (+ x radius))
-                 (v/->vec2 (- y radius) (+ y radius))]]             
-  IBounds 
-  (bounds-dimension [b] 2)
-  (bounds-center [b] center)  
-  (bounds-extreme-points [b] extrema)
-  IRadialBounds 
-  (bounds-radius [b] radius)
-  IFastBounds 
-  (-bounds-type [b] :sphere)
-  (-compare-bounds [b other] 
-     (when (= (-bounds-type other) :circle)
-       (sphere-compare b other)))))
-
 (defn ->box-bounds [center width height depth]
   (let [center (as-3d center)        
-        x      (v/vec-nth corner 0) 
-        y      (v/vec-nth corner 1)
-        z      (v/vec-nth corner 2)
-        half-width (/ width 2.0)
+        x      (v/vec-nth center 0) 
+        y      (v/vec-nth center 1)
+        z      (v/vec-nth center 2)
+        half-width   (/ width 2.0)
         half-height  (/ height 2.0)
-        half-depth  (/ depth 2.0)
-        corner (v/->vec3 (- x half-width)
-                         (- y half-height)
-                         (- z half-depth))                           
-        extrema [(v/->vec2 x (+ x width))
+        half-depth   (/ depth 2.0)                            
+        extrema [(v/->vec2 (- x width) (+ x width))
                  (v/->vec2 y (+ y height))
                  (v/->vec2 z (+ z depth))]
-        hws [half-width half-height half-depth]]             
-  IBounds 
-  (bounds-dimension [b] 3)
-  (bounds-center    [b] center)  
-  (bounds-extreme-points [b] extrema)
-  IBoxBounds
-  (bounds-half-widths [b] hws)
-  IFastBounds 
-  (-bounds-type [b] :box)
-  (-compare-bounds [b other] 
-     (when (= (-bounds-type other) :box)
-       (sphere-compare b other)))))
+        halves (v/->vec3 half-width half-height half-depth)]
+    (reify 
+      IBounds 
+      (bounds-dimension [b] 3)
+      (bounds-center    [b] center)  
+      (bounds-half-vector [b] halves)
+      (bounds-extreme-points [b] extrema)
+      IBoxBounds
+      (bounds-corner [b] (v/->vec3 (- x half-width)
+                         (- y half-height)
+                         (- z half-depth)))
+      IFastBounds 
+      (-bounds-type [b] :box)
+      (-compare-bounds [b other] 
+        (when (= (-bounds-type other) :box)
+          (box-compare b other))))))
   
-(defn ->rect-bounds [corner width height]
-  (let [corner (as-3d corner)
-        x   (v/vec-nth corner 0) 
-        y   (v/vec-nth corner 1)
-        z   (v/vec-nth corner 2)        
-        extrema [(v/->vec2 x (+ x width))
-                 (v/->vec2 y (+ y height))]]             
-  IBounds 
-  (bounds-dimension [b] 2)
-  (bounds-extreme-points [b] extrema)))  
-
-  ;(bounds-vector [b]     [0 (Math)
-  ;(bounds-encloses? [b other] )
-  ;(bounds-aligned [b axis] b)
-  
-;  (bounds-transform [b t]    "Apply a transform to the bounds"))
-
-
 
 )
 
