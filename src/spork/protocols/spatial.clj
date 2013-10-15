@@ -294,6 +294,15 @@
 
 ;;re-write..
 (comment 
+
+;;Some geometric primitives.  I'll probably port these to a more general lib, 
+;;but they live here for now.
+
+;;A ray is a vector, originating at a point, that extends infinitely in the 
+;;direction defined by another point.  Direction should be a unit-vector.
+(defn ->ray [origin dir] {:origin origin :dir (vmath/v-unit dir)})
+  
+  
 ;;General bounds will be represented using vectors and meta data about the 
 ;;bound.  We'll use an arbitrary-length vector to communicate the extents of 
 ;;the bounded region.  
@@ -378,7 +387,22 @@
 (defn as-3d [v] 
   (if (= (v/dimension v) 2) (v/->vec3 (v/vec-nth v 0) (v/vec-nth v 1) 0)
     v))
-                    
+
+
+;;pending...
+;(defn ray-sphere-feasible? [ray sphere]
+;  (let [origin (:origin ray)
+;        dir    (:dir ray)
+;        center (bounds-center sphere)
+;        rad (bounds-radius sphere)
+;        v (vecmath/v- o c)
+;        res (vecmath/dot v dir) ;project the difference vector onto the ray dir.
+;        ]
+;    (when (> res 0) {:v v :center center :origin origin 
+     
+    
+    
+
 (defn sphere-compare [l r & {:keys [test] :or {test :intersection}}]
   (let [cl (bounds-center l)
         cr (bounds-center r)
@@ -467,7 +491,7 @@
   (-bounds-type [b] :box)
   (-compare-bounds [b other] 
      (when (= (-bounds-type other) :box)
-       (sphere-compare b other))))))
+       (sphere-compare b other)))))
   
 (defn ->rect-bounds [corner width height]
   (let [corner (as-3d corner)

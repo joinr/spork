@@ -18,14 +18,32 @@
           (recur (unchecked-inc idx) 
                  (+ acc (* (vec-nth v1 idx) (vec-nth v2 idx)))))))
 
+
+;;quick meta to determine if we need to scale a vector.  Many times, we'll 
+;;have unit-vectors already generated, so we don't want to waste time scaling
+;;and rescaling (since there's a sqrt involved).  I'm exploiting meta data here
+;;to carry the 'unitness' of a vector.  Transformative ops automatically change
+;;the unit tags as necessary.
+(defn unit-vector? [v]   (contains? (meta v :unit-vector)))
+(defn tag-unit     [v]   (with-meta v (assoc (meta v) :unit-vector true)))
+(defn untag-unit   [v]   (with-meta v (dissoc (meta v) :unit-vector)))
+(defn unit-if [pred v]   (if pred (tag-unit v) v))
+(defn inherit-unit [u v] (if (unit-vector? u) (tag-unit v) (untag-unit v)))
+
 ;;computes the squared normal (length) of v
 (defn ^double v-norm-squared [v]    (dot v v))
 ;;computes the normal (length) of v.
 (defn ^double v-norm [v] (Math/sqrt (v-norm-squared v)))
 ;;scale a vector, i.e. multiply a vector by a scalar
-(defn v-scale [^double scalar v]  (map-vec v (fn [^double k] (* k scalar))))
-;;convert a vector into a unit vector via normalization.
-(defn v-unit [v] (v-scale (/ 1.0 ^double (v-norm v)) v)) 
+(defn v-scale [^double scalar v] 
+  (untag-unit (map-vec v (fn [^double k] (* k scalar)))))
+
+;;convert a vector into a unit vector via normalization.  I tag vectors with a 
+;;unit vector attribute.  If we've already computed them, then we don't have to
+;;do it again.
+(defn v-unit [v] 
+  (if (unit-vector? v) v    
+    (tag-unit (v-scale (/ 1.0 ^double (v-norm v)) v))))
 
 ;;returns the euclidean distance between two vectors
 (defn ^double euclidean [v1 v2]
@@ -59,18 +77,20 @@
 (defn  cross [u v]
   (let [u1 (vec-nth u 0) u2 (vec-nth u 1) u3 (vec-nth u 2)
         v1 (vec-nth v 0) v2 (vec-nth v 1) v3 (vec-nth v 2)]
-    (->vec3 (- (* u2 v3)  (* u3 v2))
-            (- (* u3 v1)  (* u1 v3))
-            (- (* u1 v2)  (* u2 v1)))))
+    (unit-if (and (unit-vector? u1) (unit-vector? v1))
+       (->vec3 (- (* u2 v3)  (* u3 v2))
+               (- (* u3 v1)  (* u1 v3))
+               (- (* u1 v2)  (* u2 v1))))))
 ;;compute the pseudovector result of the cross product 
 ;;of vector u and v.  Treats u and v as if they have no third 
 ;;component, compatible with vectors of 2 components.
 (defn  cross2 [u v]
   (let [u1 (vec-nth u 0) u2 (vec-nth u 1) u3 0.0
         v1 (vec-nth v 0) v2 (vec-nth v 1) v3 0.0]
-    (->vec3 0.0 ;(- (* u2 v3)  (* u3 v2))
-            0.0 ;(- (* u3 v1)  (* u1 v3))
-            (- (* u1 v2) (* u2 v1)))))
+    (unit-if (and (unit-vector? u1) (unit-vector? v1))
+       (->vec3 0.0 ;(- (* u2 v3)  (* u3 v2))
+               0.0 ;(- (* u3 v1)  (* u1 v3))
+               (- (* u1 v2) (* u2 v1))))))
 
 ;;yield the norm of the psuedovector resulting from a 2d cross product. 
 (defn ^double pseudo-cross [u v]
