@@ -121,7 +121,7 @@
 (defn shape->img
   "Takes any IShape s, and draws it to a buffered image sized according to its 
    bounds."
-  ([s transparency] 
+  ([transparency s] 
      (let [{:keys [x y width height]} (shape-bounds s)
            b (make-imgbuffer (inc width) (inc height) (get-transparency 
                                                        transparency))]
@@ -130,4 +130,4 @@
                                 (translate-2d (bitmap-graphics b) 
                                               (* -1 x) (* -1 y)))  b)
                 (inc width) (inc height) transparency)))
-  ([s] (shape->img s :opaque)))
+  ([s] (shape->img :translucent s)))
