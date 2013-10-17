@@ -60,7 +60,19 @@
 (defn rotate [theta shp]
  (reify IShape 
    (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
-   (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))  
+   (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
+
+;;work in progress.
+;(defn at-center [shp]
+;  (let [bounds (shape-bounds shp)
+;        centerx (/ (:width bounds) 2.0)
+;        centery (/ (:heigh bounds) 2.0)]    
+;  (reify IShape 
+;    (shape-bounds [s] bounds)
+;    (draw-shape   [s c] (with-translation centerx centery c
+;                          (partial draw-shape shp))))))
+                          
+  
 
 (defn stack [shapes] (reduce above  shapes))
 (defn shelf [shapes] (reduce beside shapes))
@@ -101,7 +113,7 @@
         label      (scale scalex 1.0 (->label txt centerx centery :color label-color))]
     (reify IShape 
       (shape-bounds [s]   (shape-bounds r))
-      (draw-shape   [s c] (draw-shape [r labe] c)))))
+      (draw-shape   [s c] (draw-shape [r label] c)))))
   
 (defn ->activity 
   [{:keys [start duration name quantity]} & {:keys [color-map label-color] 
@@ -110,13 +122,23 @@
     [b
      (->wire-rectangle :black start 0 duration (* quantity 10))]))
 
-(defn ->timeline [min max step-width]
-  (let [tick (let [l (image/shape->img (->line :black 0 0 0 10))]
-                  (fn [x] (translate x 0 l)))]        
-  (translate 0 *font-height*     
-             (image/shape->img 
-              [(->line :black min 0 max 0)
-               (image/shape->img (into [] (map tick (range min (inc max) step-width))))]))))
+(defn cartesian [shp]
+  (let [bounds (shape-bounds shp)
+        reflected (scale 1.0 -1.0 shp)]
+    (reify IShape 
+      (shape-bounds [s] bounds)
+      (draw-shape [s c] 
+        (with-translation 0 (:height bounds) c 
+          (partial draw-shape reflected))))))
+
+(def ->vline (image/shape->img (->line :black 0 0 0 10)))
+(defn ->axis [min max step-width]
+  (let [tick   (fn [x] (translate x 0 ->vline))]        
+    (translate 0 *font-height*     
+     (image/shape->img 
+       [(->line :black min 0 max 0)
+        (image/shape->img 
+          (into [] (map tick (range min (inc max) step-width))))]))))
 
 ;;should render us a track of each event, with a track-name to the
 ;;left of the track.  Events in the track are rendered on top of each other.

@@ -831,8 +831,8 @@
                 :modelview s
                 :shape (let [{:keys [x y width height]} (j2d/shape-bounds s)]
                          (make-modelview s 
-                           (paintpanel (inc (+ x width x)) 
-                                       (inc (+ y height y))
+                           (paintpanel (inc (+ x width)) ;;check this...for duplicate.
+                                       (inc (+ y height))
                                             #(j2d/draw-shape s %)) {}))
                 :component (make-modelview s s {}))]                
       [(display frm s)  mvc]))
