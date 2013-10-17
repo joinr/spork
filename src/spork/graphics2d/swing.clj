@@ -239,7 +239,7 @@
   (set-transform  [ctx t] (do (set-transform* ctx t) ctx))
   
   (translate-2d   [ctx x y] (doto ctx (.translate (int x) (int y))))
-  (scale-2d       [ctx x y] (doto ctx (.scale (int x) (int y))))
+  (scale-2d       [ctx x y] (doto ctx (.scale  x  y)))
   (rotate-2d      [ctx theta] (doto ctx (.rotate (float theta))))
   
   (set-state      [ctx state] ctx)
@@ -265,8 +265,8 @@
                               (doto g (.translate (int x) (int y)))
                               options))
   (scale-2d       [ctx x y] (swing-graphics. 
-                              (doto g (.scale (int x) (int y))) 
-                              options))                 
+                              (doto g (.scale  x  y)) 
+                              options))                
   (rotate-2d      [ctx theta] (swing-graphics. 
                                 (doto g (.rotate (float theta)))
                                options))  

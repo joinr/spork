@@ -100,7 +100,7 @@
 
 (defn scale [xscale yscale shp]
   (reify IShape 
-    (shape-bounds [s] (space/scale-bounds xscale yscale (shape-bounds shp)))    
+    (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
     (draw-shape   [s c] (with-scale xscale yscale c (partial draw-shape shp)))))
 
 (defn ->labeled-box  [txt label-color color x y w h]
@@ -150,7 +150,8 @@
         sorted (sort-by (juxt :start :duration) records)
         [elevated hmax] (reduce (fn [[xs height] x] 
                            (let [act (->activity x)]
-                             [(conj xs (translate 0.0 height act)) (+ height (:height (shape-bounds act)))]))
+                             [(conj xs (translate 0.0 height act)) 
+                              (+ height (:height (shape-bounds act)))]))
                                 [[] 0] sorted)
         hscale 1.0] ;(/ track-height hmax)]        
     (beside label (scale 1.0 hscale elevated))))  
