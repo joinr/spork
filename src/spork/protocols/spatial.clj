@@ -201,8 +201,8 @@
   "Defines a bounding box, rooted at (x,y), width wide, height high,
    and rotated by theta radians.  If theta is zero, then no rotation is
    performed."
-  ([x y width height theta] (->boundingbox x y width height theta))
-  ([x y width height] (->boundingbox x y width height 0)))
+  ([x y width height theta] (->boundingbox x y (Math/abs width) (Math/abs height) theta))
+  ([x y width height] (->boundingbox x y (Math/abs width) (Math/abs height) 0)))
 
 (defn bbox-around 
   "Defines a bounding box centered at coordinates x,y, with perimeter extending 
@@ -215,8 +215,10 @@
   "Convert IBounded b to a set of absolute coordinates, using protocol 
    functions."
   [b]
-  (let [[x y] [(get-left b) (get-bottom b)]
-        [w h] [(+ x (get-width b)) (+ y (get-height b))]]
+  (let [x  (get-left b) 
+        y  (get-bottom b)
+        w  (+ x (get-width b)) 
+        h  (+ y (get-height b))]
     [x y w h]))
 
 (defn coords->bounds
@@ -239,15 +241,19 @@
   [t {:keys [x y width height theta]}]
   (bbox x y width height (+ t theta)))
 
+;;This is erroneously labeled; w and h are actually x and y coords, 
+;;extrema, not widths.
 (defn merge-bounds
   "Merge the extreme points from IBounded b1 and b2 into a single bounding box."
   [b1 b2]
   (let [[x0 y0 w0 h0] (bounds->coords b1)
         [x1 y1 w1 h1] (bounds->coords b2)]
-    (bbox (min x0 x1)
-          (min y0 y1)
-          (max (+ w0 x0) (+ w1  x1))
-          (max (+ h0 y0) (+ h1 y1)))))
+    (let [xnew (min x0 x1)
+          ynew (min y0 y1)]
+      (bbox xnew 
+            ynew          
+            (- (max w0  w1) xnew) 
+            (- (max h0 h1) ynew)))))
 
 (defn group-bounds
   "Merge multiple bounds into a single bounding box."
