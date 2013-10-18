@@ -92,11 +92,16 @@
 
 ;;These are brittle, but work until I found a better way around the problem.
 (def ^:dynamic *font-height* 14)
-(def ^:dynamic *font-width*  5.15)
+(def ^:dynamic *font-width*  5.5)
 (defn ->label [txt x y & {:keys [color] :or {color :black}}]
   (reify IShape
     (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
     (draw-shape   [s c] (draw-string c color :default txt x (+ y (- *font-height* 2))))))
+
+(defn outline [s & {:keys [color] :or {color :black}}]
+  (let [bounds (shape-bounds s)]
+    [s
+     (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
 
 (defn scale [xscale yscale shp]
   (reify IShape 
@@ -118,12 +123,12 @@
 (defn ->activity 
   [{:keys [start duration name quantity]} & {:keys [color-map label-color] 
                                              :or {color-map {} label-color :white}}]
-  (let [b  (->labeled-box name label-color (get color-map name :blue) start 0 duration (* quantity 10))]
-    [b
-     (->wire-rectangle :black start 0 duration (* quantity 10))]))
+  (let [h  10 ;(* quantity 10)
+        b  (->labeled-box name label-color (get color-map name :blue) start 0 duration h)]
+    (outline b)))
 
 (defn cartesian [shp]
-  (let [bounds (shape-bounds shp)
+  (let [bounds    (shape-bounds shp)
         reflected (scale 1.0 -1.0 shp)]
     (reify IShape 
       (shape-bounds [s] bounds)
@@ -131,7 +136,7 @@
         (with-translation 0 (:height bounds) c 
           (partial draw-shape reflected))))))
 
-(def ->vline (image/shape->img (->line :black 0 0 0 10)))
+(def  ->vline (image/shape->img (->line :black 0 0 0 10)))
 (defn ->axis [min max step-width]
   (let [tick   (fn [x] (translate x 0 ->vline))]        
     (translate 0 *font-height*     
@@ -147,11 +152,25 @@
                                  track-height 10 
                                  track-width  800}}]
   (let [label  (->label track-name 0 0)
+        lwidth (:width (shape-bounds label))
         sorted (sort-by (juxt :start :duration) records)
         [elevated hmax] (reduce (fn [[xs height] x] 
                            (let [act (->activity x)]
                              [(conj xs (translate 0.0 height act)) 
                               (+ height (:height (shape-bounds act)))]))
                                 [[] 0] sorted)
-        hscale 1.0] ;(/ track-height hmax)]        
-    (beside label (scale 1.0 hscale elevated))))  
+        hscale 0.5
+        pad    (when (> (:start (first sorted)) 0)
+                  (->rectangle :white 0 0 (:start (first sorted)) track-height))               
+        ] ;(/ track-height hmax)]        
+    (outline (beside [(->rectangle :lightgray 0 0 lwidth (/ hmax 2.0))
+                      label] 
+                     (scale 1.0 hscale (cartesian 
+                                         (into (conj [] pad) elevated)))))))  
+
+(defn ->tracks [track-seq]
+  (->> (for [[name records] track-seq]
+         (->track records :track-name name))
+       (vec)
+       (stack)))
+
