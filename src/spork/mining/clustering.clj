@@ -411,7 +411,7 @@
 (def desired-data (read-item-data (zebo-data)))
 (defn compute-cluster [f & [database]] (f (:data (or database db))))
 
-(def clust (compute-cluster hierarchical-cluster))
+(def clust      (compute-cluster hierarchical-cluster))
 (def zebo-clust (compute-cluster hierarchical-cluster desired-data)) 
 ;;This guy takes a while...
 (def word-clust  
