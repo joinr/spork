@@ -12,6 +12,10 @@
             [spork.geometry.shapes :refer :all]
             [spork.cljgui.components [swing :as gui]]))
 
+;;These are brittle, but work until I found a better way around the problem.
+(def ^:dynamic *font-height* 14)
+(def ^:dynamic *font-width*  5.5)
+
 (def ^:dynamic *current-sketch* nil)
       
 (defn sketch-image [the-shapes]
@@ -58,9 +62,39 @@
     (draw-shape   [s c] (with-alpha  alpha 
                           c (partial draw-shape shp)))))
 (defn rotate [theta shp]
- (reify IShape 
-   (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
-   (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
+  (reify IShape 
+    (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
+    (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
+
+(defn spin [theta shp]
+  (let [bounds (shape-bounds shp)
+        centerx (:x 
+  (reify IShape 
+    (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
+    (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
+
+
+(defn scale [xscale yscale shp]
+  (reify IShape 
+    (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
+    (draw-shape   [s c] (with-scale xscale yscale c (partial draw-shape shp)))))
+
+(defn cartesian [shp]
+  (let [bounds    (shape-bounds shp)
+        reflected (scale 1.0 -1.0 shp)]
+    (reify IShape 
+      (shape-bounds [s] bounds)
+      (draw-shape [s c] 
+        (with-translation 0 (:height bounds) c 
+          (partial draw-shape reflected))))))
+
+(defn outline [s & {:keys [color] :or {color :black}}]
+  (let [bounds (shape-bounds s)]
+    [s
+     (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
+
+(defn stack [shapes] (reduce above  shapes))
+(defn shelf [shapes] (reduce beside shapes))
 
 ;;work in progress.
 ;(defn at-center [shp]
@@ -71,15 +105,14 @@
 ;    (shape-bounds [s] bounds)
 ;    (draw-shape   [s c] (with-translation centerx centery c
 ;                          (partial draw-shape shp))))))
-                          
-  
 
-(defn stack [shapes] (reduce above  shapes))
-(defn shelf [shapes] (reduce beside shapes))
+(defn ->label [txt x y & {:keys [color] :or {color :black}}]
+  (reify IShape
+    (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
+    (draw-shape   [s c] (draw-string c color :default txt x (+ y (- *font-height* 2))))))
 
-;; IShape 
-;; (shape-bounds [s]   (spatial/bbox 0 0 width height))
-;; (draw-shape   [s c] (draw-image c data transparency 0 0))
+;;Drawing events and tracks.
+
 (def simple-activity {:start 0 :duration 100 :name "The Activity!" :quantity 10})
 (def simple-track
   [{:start 15 :duration 25   :name "A" :quantity 10}
@@ -89,24 +122,6 @@
 (def random-track 
   (vec  (map (fn [idx] {:start (inc (rand-int 600)) :duration (inc (rand-int 100)) :name (str "event_" idx) :quantity (inc (rand-int 30))})
              (range 100))))
-
-;;These are brittle, but work until I found a better way around the problem.
-(def ^:dynamic *font-height* 14)
-(def ^:dynamic *font-width*  5.5)
-(defn ->label [txt x y & {:keys [color] :or {color :black}}]
-  (reify IShape
-    (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
-    (draw-shape   [s c] (draw-string c color :default txt x (+ y (- *font-height* 2))))))
-
-(defn outline [s & {:keys [color] :or {color :black}}]
-  (let [bounds (shape-bounds s)]
-    [s
-     (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
-
-(defn scale [xscale yscale shp]
-  (reify IShape 
-    (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
-    (draw-shape   [s c] (with-scale xscale yscale c (partial draw-shape shp)))))
 
 (defn ->labeled-box  [txt label-color color x y w h]
   (let [r          (->rectangle  color x y w h)
@@ -126,15 +141,6 @@
   (let [h  10 ;(* quantity 10)
         b  (->labeled-box name label-color (get color-map name :blue) start 0 duration h)]
     (outline b)))
-
-(defn cartesian [shp]
-  (let [bounds    (shape-bounds shp)
-        reflected (scale 1.0 -1.0 shp)]
-    (reify IShape 
-      (shape-bounds [s] bounds)
-      (draw-shape [s c] 
-        (with-translation 0 (:height bounds) c 
-          (partial draw-shape reflected))))))
 
 (def  ->vline (image/shape->img (->line :black 0 0 0 10)))
 (defn ->axis [min max step-width]
@@ -173,4 +179,3 @@
          (->track records :track-name name))
        (vec)
        (stack)))
-

@@ -46,3 +46,9 @@
 ;transList []     = []
 ;transList (p:ps) = trans p : transList ps
 ;
+
+
+;;A ray is a vector, originating at a point, that extends infinitely in the 
+;;direction defined by another point.  Direction should be a unit-vector.
+(defn ->ray [origin dir] {:origin origin :dir (vmath/v-unit dir)}) 
+  

@@ -20,45 +20,217 @@
   (:require [spork.util [vectors :as v]
                         [vecmath :as vmath]]))
 
+
+
+;;Some geometric primitives.  I'll probably port these to a more general lib, 
+;;but they live here for now.
+
+
+;;General bounds will be represented using vectors and meta data about the 
+;;bound.  We'll use an arbitrary-length vector to communicate the extents of 
+;;the bounded region.  
+
+(defprotocol IBounds 
+  (bounds-dimension [b] "Return the dimensionality of the bounds")
+  (bounds-center [b] "Return the center of the bounds")
+  (bounds-half-vector  [b] 
+    "Return the half-widths of the bounds, ordered by x,y,z.")
+  (bounds-extreme-points [b] 
+    "Return dimension pairs of points, representing the min and max.")  
+  )
+
+(defn half-width  
+    "Return the half-width of the bounds along the y axis"
+    [b] (v/vec-nth (bounds-half-vector b) 0))
+
+(defn half-height  
+    "Return the half-width of the bounds along the y axis"
+    [b] (v/vec-nth (bounds-half-vector b) 1))
+
+(defn half-depth  
+    "Return the half-width of the bounds along the z axis."
+    [b] (v/vec-nth (bounds-half-vector b) 2))
+
+(defprotocol IRadialBounds
+  (bounds-radius [b] "Return the radius of the bounds"))
+
+(defprotocol IBoxBounds
+  (bounds-corner [b] "Return the corner of the bounding box")
+  )
+
+(defprotocol IFastBounds 
+  (-bounds-type    [b]       "Returns the type of bounds...duh") 
+  (-compare-bounds [b other] 
+     "Exploits information  to avoid comparison via extrema."))
+
+(extend-protocol IBounds 
+  clojure.lang.PersistentArrayMap
+  (bounds-dimension [b] (get-in b [:bounds :dimension]))
+  (bounds-extreme-points [b] (get-in b [:bounds :extreme-points])))
+
+;;standard extreme points for bounds rooted at the origin.
+(def unit-extrema  [[0 1] [0 1] [0 1]])
+(defn between? [x l r] (and (> x l) (< x r)))
+
+;;It looks like we have a generic set of rejection tests for any two
+;;bounding volumes.  It typically boils down to comparing the vector 
+;;defined by the vector subtraction of the each volume's center point 
+;;to the maximum half-width in each dimension.  From there, we can
+;;step through dimensions to see if any axes overlap.
+
+(defn compare-segment 
+  ([x1 x2 y1 y2]
+      (cond (or (= x1 y1) (= x2 y2)) :intersected
+            (between? x1 y1 y2) (if (between? x2 y1 y2) :enclosed :intersected)
+            (between? y1 x1 x2) (if (between? y2 x1 x2) :encloses :intersected)
+            :otherwise :separated))
+  ([xvec yvec] (compare-segment (v/vec-nth xvec 0) (v/vec-nth xvec 1) 
+                                (v/vec-nth yvec 0) (v/vec-nth yvec 1))))
+
+
+(defn compare-extrema
+  "Compare two sets of extreme points.  This is the slow, but guaranteed way
+   to compare any two spatial objects.  If we have sets of extremes in each 
+   dimension, we can walk the points, starting in the first dimension, and 
+   do a simple line-segment containment test.  Fails as soon as a non-containing
+   case is found.  If we run out of points, i.e. xs is of lower dimension than
+   ys, we stop. Yields :encloses if xs encloses ys, :enclosed if ys encloses xs,
+   :intersected if xs intersects with ys anywhere, :separated"
+  [xs ys]
+  (let [comps (map compare-segment xs ys)]
+    (loop [acc         (first comps)
+           comparisons (rest comps)]
+      (if (empty? comparisons) acc
+        (let [res (first comparisons)]
+          (if (or (not= res acc) (= res :intersected)) :intersected
+            (recur res (rest comparisons)))))))) 
+
+
+(defn as-3d [v] 
+  (if (= (v/dimension v) 2) (v/->vec3 (v/vec-nth v 0) (v/vec-nth v 1) 0)
+    v))
+
+
+;;pending...
+;(defn ray-sphere-feasible? [ray sphere]
+;  (let [origin (:origin ray)
+;        dir    (:dir ray)
+;        center (bounds-center sphere)
+;        rad (bounds-radius sphere)
+;        v (vecmath/v- o c)
+;        res (vecmath/dot v dir) ;project the difference vector onto the ray dir.
+;        ]
+;    (when (> res 0) {:v v :center center :origin origin 
+    
+
+;;Given function f, which applied to l and r yields a half-width 
+;;along the same dimension, compares the squared result to a squared 
+;;distance to determine if the axis separates l and r.
+(defn axis-separated? [f l r sq-distance]
+  (let [left-width  (f l)
+        right-width (f r)]
+    (> sq-distance 
+       (+ (* left-width left-width) (* right-width right-width)))))
+
+(defn compare-widths 
+  ([left-width right-width]
+     (compare-segment 0 left-width 0 right-width))
+  ([f l r] (compare-segment 0 (f l) 0 (f r))))
+
+;;We develop a quick rejection test for bounds checking using a 
+;;fast variant of the Separating Axis theorem (more to follow on SAT).
+(defn sphere-compare [l r & {:keys [test] :or {test :intersection}}]
+  (let [cl (bounds-center l)
+        cr (bounds-center r)
+        center-line (vmath/v- cr cl)
+        sq-distance (vmath/v-norm-squared center-line) ;dist^2 between spheres
+        rl     (bounds-radius l) 
+        rr     (bounds-radius r)
+        ]
+    (if (axis-separated? bounds-radius l r sq-distance) :separated
+        ;;otherwise we use our line-segment test.
+        (if (= test :containment) (compare-widths rl rr)
+            :intersected ))))
+
+(defn box-compare [l r {:keys [test] :or {test :intersection}}]
+  (let [cl (bounds-center l)
+        cr (bounds-center r)
+        center-line (vmath/v- cr cl)
+        sq-distance (vmath/v-norm-squared center-line) ;dist^2 between bounds
+        ]
+    (if (or (axis-separated? half-width  l r) ;rejection test, fail fast.
+            (axis-separated? half-height l r)
+            (axis-separated? half-depth  l r)) :separated
+        ;;otherwise we use our line-segment test.
+        (if (= test :containment) 
+            (or (compare-widths half-width  l r)
+                (compare-widths half-height l r)
+                (compare-widths half-depth  l r)) 
+            :intersected ))))
+
+(defn ->sphere-bounds [center radius]
+  (let [x   (v/vec-nth center 0) 
+        y   (v/vec-nth center 1)
+        z   (v/vec-nth center 2)
+        extrema [(v/->vec2 (- x radius) (+ x radius))
+                 (v/->vec2 (- y radius) (+ y radius))
+                 (v/->vec2 (- z radius) (+ z radius))]]
+    (reify
+      IBounds 
+      (bounds-dimension [b] 3)
+      (bounds-center    [b] center)
+      (bounds-extreme-points [b] extrema)
+      (bounds-half-vector [b] (v/->vec1 radius))
+      IRadialBounds
+      (bounds-radius [b] radius)
+      IFastBounds 
+      (-bounds-type [b] :sphere)
+      (-compare-bounds [b other] 
+        (when (= (-bounds-type other) :sphere)
+           (sphere-compare b other))))))
+
+(defn ->box-bounds [center width height depth]
+  (let [center (as-3d center)        
+        x      (v/vec-nth center 0) 
+        y      (v/vec-nth center 1)
+        z      (v/vec-nth center 2)
+        half-width   (/ width 2.0)
+        half-height  (/ height 2.0)
+        half-depth   (/ depth 2.0)                            
+        extrema [(v/->vec2 (- x width) (+ x width))
+                 (v/->vec2 y (+ y height))
+                 (v/->vec2 z (+ z depth))]
+        halves (v/->vec3 half-width half-height half-depth)]
+    (reify 
+      IBounds 
+      (bounds-dimension [b] 3)
+      (bounds-center    [b] center)  
+      (bounds-half-vector [b] halves)
+      (bounds-extreme-points [b] extrema)
+      IBoxBounds
+      (bounds-corner [b] (v/->vec3 (- x half-width)
+                         (- y half-height)
+                         (- z half-depth)))
+      IFastBounds 
+      (-bounds-type [b] :box)
+      (-compare-bounds [b other] 
+        (when (= (-bounds-type other) :box)
+          (box-compare b other))))))
+
 (defprotocol IBoundingBox
   (get-bounding-box [bv] "Return an appropriate bounding volume."))
   
 (defprotocol IBounded
-  (get-width [b])
+  (get-width  [b])
   (get-height [b])
 ;  (get-depth  [b])
-  (get-left [b])
-  (get-right [b])
-  (get-top [b])
+  (get-left   [b])
+  (get-right  [b])
+  (get-top    [b])
   (get-bottom [b])
 ;  (get-front [b])
 ;  (get-back [b])
 )
-
-;One way to store bounding information.
-;We use meta data attached to symbols to store bounding information.
-;(defn set-bounds [obj bounds] 
-;  (with-meta obj (assoc (meta obj) :bounds bounds)))
-;(defn get-bounds [obj] (get (meta (:data nd)) :bounds nil))
-;(defn unbounded? [obj] (nil? (get-bounds obj))
-;(defn conj-bounds
-;  "Adds a bounds to the spatial data associated with the node."
-;  [obj bounds] 
-;  (let [old-bounds (get-node-bounds nd)
-;        new-bounds (group-bounds [old-bounds bounds])]
-;    (with-meta obj (assoc (meta obj) :bounds new-bounds))))
-
-;(get-depth [b])
-  ;(get-front [b])
-  ;(get-back [b])
-
-;a 3 dimensional vector, or a 3D point... 
-;(defrecord vec3 [x y z])
-;(defn ->vec2 [x y] (->vec3 x y 0))
-;;we can use vectors as simple bounds...
-
-
-;(defn bounding-cuboid [x1 y1 x2 y2 x3 y3])
 
 ;protocol-derived functionality.
 (defn get-center
@@ -138,15 +310,7 @@
         (zero? (mod theta (* 2 Math/PI))) false
         :else true))
 
-;Define a protocol for spatial structures.
-;Ideally we can define a mulititude of spaces here....i.e. multiple 
-;dimensions.  Bounds is a general notion....
-(defprotocol ISpatialIndex 
-  (assoc-bounds [space obj bounds] "Add new bounds for obj to the index.")
-  (dissoc-bounds [space obj] "Drop bounds associated with obj from the index.")
-  (get-bounds [space obj] "Return the bounds associated with obj.")
-  (get-collisions [space bounds] "Return a set of indices that intersect bounds.")  
-  (spatial-bounds [space] "Return the bounds associated with the space."))
+
 
 ;;Some implementations
 ;;These need to be rethought...Too much mixing data with protocol.
@@ -287,6 +451,23 @@
 (defn box->bounds [qbox] ((juxt get-left get-right get-top get-bottom) qbox))
 (defn bound-intersects? [b1 b2] (not (nil? (intersect-bounds b1 b2))))
 
+
+
+
+
+;;spatial index....work on this later.
+
+;Define a protocol for spatial structures.
+;Ideally we can define a mulititude of spaces here....i.e. multiple 
+;dimensions.  Bounds is a general notion....
+(defprotocol ISpatialIndex 
+  (assoc-bounds [space obj bounds] "Add new bounds for obj to the index.")
+  (dissoc-bounds [space obj] "Drop bounds associated with obj from the index.")
+  (get-bounds [space obj] "Return the bounds associated with obj.")
+  (get-collisions [space bounds] "Return a set of indices that intersect bounds.")  
+  (spatial-bounds [space] "Return the bounds associated with the space."))
+
+
 ;protocol derived functions.
 (defn unbounded? [space obj]  (nil? (get-bounds space obj)))
 (defn conj-bounds
@@ -301,74 +482,6 @@
 ;;re-write..
 (comment 
 
-;;Some geometric primitives.  I'll probably port these to a more general lib, 
-;;but they live here for now.
-
-;;A ray is a vector, originating at a point, that extends infinitely in the 
-;;direction defined by another point.  Direction should be a unit-vector.
-(defn ->ray [origin dir] {:origin origin :dir (vmath/v-unit dir)})
-  
-  
-;;General bounds will be represented using vectors and meta data about the 
-;;bound.  We'll use an arbitrary-length vector to communicate the extents of 
-;;the bounded region.  
-
-(defprotocol IBounds 
-  (bounds-dimension [b] "Return the dimensionality of the bounds")
-  (bounds-center [b] "Return the center of the bounds")
-  (bounds-half-vector  [b] 
-    "Return the half-widths of the bounds, ordered by x,y,z.")
-  (bounds-extreme-points [b] 
-    "Return dimension pairs of points, representing the min and max.")  
-  )
-
-(defn half-width  
-    "Return the half-width of the bounds along the y axis"
-    [b] (v/vec-nth (bounds-half-vector b) 0))
-(defn half-height  
-    "Return the half-width of the bounds along the y axis"
-    [b] (v/vec-nth (bounds-half-vector b) 1))
-
-(defn half-depth  
-    "Return the half-width of the bounds along the z axis."
-    [b] (v/vec-nth (bounds-half-vector b) 2))
-
-(defprotocol IRadialBounds
-  (bounds-radius [b] "Return the radius of the bounds"))
-
-(defprotocol IBoxBounds
-  (bounds-corner [b] "Return the corner of the bounding box")
-  )
-
-(defprotocol IFastBounds 
-  (-bounds-type    [b]       "Returns the type of bounds...duh") 
-  (-compare-bounds [b other] 
-     "Exploits information  to avoid comparison via extrema."))
-
-(extend-protocol IBounds 
-  clojure.lang.PersistentArrayMap
-  (bounds-dimension [b] (get-in b [:bounds :dimension]))
-  (bounds-extreme-points [b] (get-in b [:bounds :extreme-points])))
-
-;;standard extreme points for bounds rooted at the origin.
-(def unit-extrema  [[0 1] [0 1] [0 1]])
-(defn between? [x l r] (and (> x l) (< x r)))
-
-;;It looks like we have a generic set of rejection tests for any two
-;;bounding volumes.  It typically boils down to comparing the vector 
-;;defined by the vector subtraction of the each volume's center point 
-;;to the maximum half-width in each dimension.  From there, we can
-;;step through dimensions to see if any axes overlap.
-
-(defn compare-segment 
-  ([x1 x2 y1 y2]
-      (cond (or (= x1 y1) (= x2 y2)) :intersected
-            (between? x1 y1 y2) (if (between? x2 y1 y2) :enclosed :intersected)
-            (between? y1 x1 x2) (if (between? y2 x1 x2) :encloses :intersected)
-            :otherwise :separated))
-  ([xvec yvec] (compare-segment (v/vec-nth xvec 0) (v/vec-nth xvec 1) 
-                                (v/vec-nth yvec 0) (v/vec-nth yvec 1))))
-
 ;;Tests for later 
 (deftest segment-comparisons
   (is (= (compare-segment [-1 4] [-1 45]) :intersected))
@@ -377,22 +490,6 @@
   (is (= (compare-segment [-1 4] [0 2])   :encloses))
   (is (= (compare-segment [-1 4] [-2 5])  :enclosed)))
 
-(defn compare-extrema
-  "Compare two sets of extreme points.  This is the slow, but guaranteed way
-   to compare any two spatial objects.  If we have sets of extremes in each 
-   dimension, we can walk the points, starting in the first dimension, and 
-   do a simple line-segment containment test.  Fails as soon as a non-containing
-   case is found.  If we run out of points, i.e. xs is of lower dimension than
-   ys, we stop. Yields :encloses if xs encloses ys, :enclosed if ys encloses xs,
-   :intersected if xs intersects with ys anywhere, :separated"
-  [xs ys]
-  (let [comps (map compare-segment xs ys)]
-    (loop [acc         (first comps)
-           comparisons (rest comps)]
-      (if (empty? comparisons) acc
-        (let [res (first comparisons)]
-          (if (or (not= res acc) (= res :intersected)) :intersected
-            (recur res (rest comparisons)))))))) 
 
 (deftest extrema-testing 
   (is (= (compare-extrema [[0   1]] 
@@ -407,120 +504,6 @@
                           [[-10 10] [0 5] [-100 100]])) :enclosed)
   (is (= (compare-extrema [[-10 10] [0 5] [-100 100]]
                           [[0 1]    [1 3]]))  :encloses))
-
-(defn as-3d [v] 
-  (if (= (v/dimension v) 2) (v/->vec3 (v/vec-nth v 0) (v/vec-nth v 1) 0)
-    v))
-
-
-;;pending...
-;(defn ray-sphere-feasible? [ray sphere]
-;  (let [origin (:origin ray)
-;        dir    (:dir ray)
-;        center (bounds-center sphere)
-;        rad (bounds-radius sphere)
-;        v (vecmath/v- o c)
-;        res (vecmath/dot v dir) ;project the difference vector onto the ray dir.
-;        ]
-;    (when (> res 0) {:v v :center center :origin origin 
-    
-
-;;Given function f, which applied to l and r yields a half-width 
-;;along the same dimension, compares the squared result to a squared 
-;;distance to determine if the axis separates l and r.
-(defn axis-separated? [f l r sq-distance]
-  (let [left-width  (f l)
-        right-width (f r)]
-    (> sq-distance 
-       (+ (* left-width left-width) (* right-width right-width)))))
-
-(defn compare-widths 
-  ([left-width right-width]
-     (compare-segment 0 left-width 0 right-width))
-  ([f l r] (compare-segment 0 (f l) 0 (f r))))
-
-;;We develop a quick rejection test for bounds checking using a 
-;;fast variant of the Separating Axis theorem (more to follow on SAT).
-(defn sphere-compare [l r & {:keys [test] :or {test :intersection}}]
-  (let [cl (bounds-center l)
-        cr (bounds-center r)
-        center-line (vmath/v- cr cl)
-        sq-distance (vmath/v-norm-squared center-line) ;dist^2 between spheres
-        rl     (bounds-radius l) 
-        sq-rl  (* rl  rl) ;radius^2 of left
-        rr     (bounds-radius r)
-        sq-rr  (* rr  rr) ;radius^2 right 
-        ]
-    (if (axis-separated? bounds-radius l r sq-distance) :separated
-        ;;otherwise we use our line-segment test.
-        (if (= test :containment) (compare-widths rl rr)
-            :intersected ))))
-
-(defn box-compare [l r {:keys [test] :or {test :intersection}}]
-  (let [cl (bounds-center l)
-        cr (bounds-center r)
-        center-line (vmath/v- cr cl)
-        sq-distance (vmath/v-norm-squared center-line) ;dist^2 between bounds
-        ]
-    (if (or (axis-separated? half-width  l r) ;rejection test, fail fast.
-            (axis-separated? half-height l r)
-            (axis-separated? half-depth  l r)) :separated
-        ;;otherwise we use our line-segment test.
-        (if (= test :containment) 
-            (or (compare-widths half-width  l r)
-                (compare-widths half-height l r)
-                (compare-widths half-depth  l r)) 
-            :intersected ))))
-
-(defn ->sphere-bounds [center radius]
-  (let [x   (v/vec-nth center 0) 
-        y   (v/vec-nth center 1)
-        z   (v/vec-nth center 2)
-        extrema [(v/->vec2 (- x radius) (+ x radius))
-                 (v/->vec2 (- y radius) (+ y radius))
-                 (v/->vec2 (- z radius) (+ z radius))]]
-    (reify
-      IBounds 
-      (bounds-dimension [b] 3)
-      (bounds-center    [b] center)
-      (bounds-extreme-points [b] extrema)
-      (bounds-half-vector [b] (v/->vec1 radius))
-      IRadialBounds
-      (bounds-radius [b] radius)
-      IFastBounds 
-      (-bounds-type [b] :sphere)
-      (-compare-bounds [b other] 
-        (when (= (-bounds-type other) :sphere)
-           (sphere-compare b other))))))
-
-(defn ->box-bounds [center width height depth]
-  (let [center (as-3d center)        
-        x      (v/vec-nth center 0) 
-        y      (v/vec-nth center 1)
-        z      (v/vec-nth center 2)
-        half-width   (/ width 2.0)
-        half-height  (/ height 2.0)
-        half-depth   (/ depth 2.0)                            
-        extrema [(v/->vec2 (- x width) (+ x width))
-                 (v/->vec2 y (+ y height))
-                 (v/->vec2 z (+ z depth))]
-        halves (v/->vec3 half-width half-height half-depth)]
-    (reify 
-      IBounds 
-      (bounds-dimension [b] 3)
-      (bounds-center    [b] center)  
-      (bounds-half-vector [b] halves)
-      (bounds-extreme-points [b] extrema)
-      IBoxBounds
-      (bounds-corner [b] (v/->vec3 (- x half-width)
-                         (- y half-height)
-                         (- z half-depth)))
-      IFastBounds 
-      (-bounds-type [b] :box)
-      (-compare-bounds [b other] 
-        (when (= (-bounds-type other) :box)
-          (box-compare b other))))))
-  
 
 )
 
