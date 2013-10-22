@@ -36,17 +36,18 @@
 (defn has-node? [g nd] (-has-node? g nd))
 (defn has-arc?  [g source sink] (-has-arc? g source sink))
 
-(defn conj-node 
-  ([g k v] (-conj-node g k v))
-  ([g k]   (conj-node g k (count (-get-nodes g)))))
-
-
 ;;This could be a bit destructive.  It allows changing existing nodes.
 (defn set-node
   "Allows the data mapped to an existing node to be replaced."
   [g k v]
   (assert (has-node? g k) (str "Cannot set a non-existent node: " k))
   (-set-nodes g (assoc (-get-nodes g) k v)))
+
+;;Fixed to prevent losing neighborhoods.  When nodes are conjoined, if they 
+;;already exist, the neighborhood is maintained, only the value is conjoined.
+(defn conj-node 
+  ([g k v]   (if (-has-node? g k) (set-node g k v) (-conj-node g k v)))
+  ([g k]     (conj-node g k (count (-get-nodes g)))))
 
 (defn disj-node
   "Removes node k, and any arcs incident to node k are also removed."

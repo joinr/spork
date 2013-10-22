@@ -155,6 +155,14 @@
 
 (defn graphable? [x] (satisfies? IGraphable x))
 
+
+;;A protocol for supporting various network flow algorithms.
+;(defprotocol INetwork
+;  (get-capacity [net from to])
+;  (get-flow     [net from to])
+;  (add-flow     [net path]))
+  
+
 ;;We often times have great need for tree-like structures, which are GREAT in 
 ;;functional programming, as long as you don't need bi-directionality or 
 ;;the ability to traverse from an arbitrary node to a parent.  The IIndexedTree
