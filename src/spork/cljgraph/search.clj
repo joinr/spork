@@ -7,7 +7,7 @@
 ;;minor duplication here, due to some copying around.
 (defn arc-weight [tg from to]
   (assert (generic/-has-arc? tg from to) (str "Arc does not exist " [from to]))
-  (nth (generic/-get-arc tg from to) 2))
+  (generic/-arc-weight tg from to))
 
 (defn get-node-labels  [tg] (keys (generic/-get-nodes tg)))
 
@@ -108,8 +108,9 @@
       (loop [state   (-> (assoc startstate :targetnode targetnode)
                          (generic/conj-fringe startnode 0))]
         (if (generic/empty-fringe? state) state 
-            (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-                  nd        (first candidate)           ;next node to visit
+            (let [;candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
+                  ;nd        (first candidate)           ;next node to visit
+                  nd        (generic/next-fringe state)
                   visited   (generic/visit-node state nd) ] ;record visit.
               (if (halt? state nd) visited                     
                   (recur (reduce (partial relax-by nd) 
@@ -286,8 +287,7 @@
            idx   0]
         (if (or  (= idx bound) (generic/empty-fringe? state))
           (validate state) 
-          (let [candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-                nd        (first candidate)]  ;next node to visit   
+          (let [nd        (generic/next-fringe state)]  ;next node to visit   
             (recur (reduce (partial relaxation nd) 
                            (generic/visit-node state nd) 
                            (get-neighbors nd state))

@@ -167,25 +167,25 @@
 
 ;;Operations that act on priority queues.
 
-(defn get-basemap [pq] (.basemap pq))
-(defn conj-basemap [new-basemap pq]
+(defn get-basemap [^pqueue pq] (.basemap pq))
+(defn ^pqueue conj-basemap [new-basemap ^pqueue pq]
   (pqueue. (.dir pq) new-basemap (.entry-count pq) (._meta pq)))
 
-(defn find-entry [pq n] 
+(defn find-entry [^pqueue pq n] 
   (some (fn [x] (when (= (val x) n) x)) (priority-entries (get-basemap pq))))
   
-(defn alter-value
+(defn ^pqueue alter-value
   "Returns the result of disjoining node n, with weight wprev, and conjoining 
    node n with weight wnew, relative to the initial priorityq q.  Caller may 
    also supply an optional transformation to apply to the altered node, allowing
    for efficient changes to both weight and the values stored in the priority 
    queue."  
-  ([pq n wnew] (if-let [e (find-entry pq n)]
+  ([^pqueue pq n wnew] (if-let [e (find-entry pq n)]
                  (alter-value pq n (key e) wnew)
                  (throw (Exception. 
                           (str "Attempting to alter an entry that doesn't exist."
                                n)))))
-  ([pq n wprev wnew]  
+  ([^pqueue pq n wprev wnew]  
     (if (= wprev wnew) pq        
 	      (let [basemap (get-basemap pq)
               nodes (drop-entry (get basemap wprev) n)]
@@ -193,7 +193,7 @@
 	                                (assoc basemap wprev nodes))
 	              (conj-node n wnew)
                 (conj-basemap pq)))))
-  ([pq n wprev wnew transform]
+  ([^pqueue pq n wprev wnew transform]
     (let [basemap (get-basemap pq)]
       (if (= wprev wnew) (conj-basemap 
                            (assoc basemap wprev 
@@ -206,6 +206,9 @@
               (conj-node (transform n) wnew)
               (conj-basemap pq)))))))
 
+;;a hack to avoid intermediate array-creation.
+(defn ^pqueue push-node [^pqueue pq n v]
+   (pqueue. (.dir pq) (conj-node (get-basemap pq) n v) (inc (.entry-count pq)) (._meta pq)))
 ;;__TODO__ Maybe implement a reader literal for the priority queue.
 
 ;;testing

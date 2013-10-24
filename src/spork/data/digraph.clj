@@ -39,6 +39,8 @@
       (assoc sinks   source (or (dissoc (get sinks source) sink) 
                                 om/empty-ordered-map))))
   (-has-arc?  [tg source sink] (contains?   (get sources sink) source))
+  (-arc-weight [tg source sink] (when-let [snks (get sinks source)]
+                                  (get snks sink)))
   (-get-arc   [tg source sink] [source sink (get-in sinks [source sink])])
   (-get-sources [tg k] (vec (keys (get sources k))))
   (-get-sinks [tg k]   (vec (keys (get sinks k)))))

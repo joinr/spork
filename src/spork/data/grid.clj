@@ -119,8 +119,9 @@
     (and (not (and (contains? source-drops source) 
                    (contains? sink-drops sink))) 
          (contains? (coord->neighbors source) sink)))
-  (-get-arc   [tg source sink] 
+  (-get-arc   [tg source sink]  
     (when (-has-arc? tg source sink) [source sink 1]))
+  (-arc-weight [tg source sink] (when (-has-arc? tg source sink) 1))
   (-get-sources [tg k]   
     (->> (coord->neighbors k)
       (filter (fn [v] (not (contains? source-drops v))))))

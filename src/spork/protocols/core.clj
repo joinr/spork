@@ -143,6 +143,7 @@
   (-disj-arc  [tg source sink] "Dissociates the arc from source to sink.")
   (-has-arc?  [tg source sink] "Determines is an arc from source to sink exists.")
   (-get-arc   [tg source sink] "Fetches the weight of the arc from source to sink.")
+  (-arc-weight [tg source sink] "Returns the weight of the arc from source to sink.")
   (-get-sources [tg k] "Returns a sequence of nodes that have arcs to node k.")
   (-get-sinks [tg k] "Returns a sequence of nodes that k has an arc to."))
 
@@ -155,13 +156,11 @@
 
 (defn graphable? [x] (satisfies? IGraphable x))
 
-
 ;;A protocol for supporting various network flow algorithms.
 ;(defprotocol INetwork
 ;  (get-capacity [net from to])
 ;  (get-flow     [net from to])
 ;  (add-flow     [net path]))
-  
 
 ;;We often times have great need for tree-like structures, which are GREAT in 
 ;;functional programming, as long as you don't need bi-directionality or 

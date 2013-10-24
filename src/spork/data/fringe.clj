@@ -18,27 +18,27 @@
 ;;fringes.
 (extend-protocol generic/IFringe 
   nil 
-  (conj-fringe [fringe n w] (conj '() (generic/entry n w)))
+  (conj-fringe [fringe n w] (conj '() n))
   (next-fringe [fringe]  nil)
   (pop-fringe  [fringe]  nil) 
   clojure.lang.PersistentQueue
-  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (conj-fringe [fringe n w] (conj  fringe n))
   (next-fringe [fringe]     (first fringe))
-  (pop-fringe  [fringe]     (pop fringe))
+  (pop-fringe  [fringe]     (pop   fringe))
   clojure.lang.PersistentList
-  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     (first fringe))
   (pop-fringe  [fringe]     (pop fringe))
   clojure.lang.PersistentList$EmptyList
-  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     nil)
   (pop-fringe  [fringe]     nil)
   clojure.lang.Cons 
-  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     (first fringe))
   (pop-fringe  [fringe]     (pop fringe))
   spork.data.randq.randomq
-  (conj-fringe [fringe n w] (conj fringe (generic/entry n w)))
+  (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     (peek fringe))
   (pop-fringe  [fringe]     (pop fringe)))
 
@@ -47,15 +47,15 @@
 ;;on the fringe at any time.  Could be supplanted by a priority map, or a 
 ;;cheaplist, or a stock priority queue that doesn't bother to eliminate stale
 ;;values when re-weighing.
-(defrecord pfringe [priorities fringe]
+(defrecord pfringe [priorities ^spork.data.priorityq.pqueue fringe]
   generic/IFringe
   (conj-fringe [pf n w]
     (let [w (or w 0)]
       (pfringe. (assoc priorities n w)
                 (if-let [wold (get priorities n)]                  
-                  (pq/alter-value  ;update the entry in the priorityq.
-                    fringe (generic/entry n wold) wold w #(assoc % 1 w))
-                  (conj fringe [(generic/entry n w) w])))))
+                  ;update the entry in the priorityq.
+                  (pq/alter-value fringe n wold w)
+                  (pq/push-node fringe n w)))))
   (next-fringe [pf] (peek fringe))
   (pop-fringe  [pf] 
     (if (empty? priorities) fringe 

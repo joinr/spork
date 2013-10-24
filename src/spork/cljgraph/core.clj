@@ -96,7 +96,7 @@
   "The weight of an arc [from to] in g."
   [g from to]
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
-  (nth (-get-arc g from to) 2))
+  (-arc-weight g from to))
 
 ;;Graph Construction
 ;;==================

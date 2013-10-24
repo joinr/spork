@@ -20,6 +20,8 @@
 ;;in a spork.data.digraph record.
 
 (def empty-network (assoc graph/empty-graph :flow-info {}))
+;(defrecord edge-info [from to capacity flow])
+
 (defn ->edge-info 
   [from to & {:keys [capacity flow] :or {capacity posinf flow 0}}]
   {:from from :to to :capacity capacity :flow flow})
