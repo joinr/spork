@@ -8,6 +8,10 @@
             [spork.data      [priorityq :as pq]
                              [fringe :as fr]]))
 
+;;These allows us to use complex keys in our spt.
+(defn branch? [v] (and (coll? v) (contains? (meta v) :branch)))
+(defn ->branch [& xs]  (with-meta (into [] xs) {:branch true}))
+  
 ;;__TODO__ Use transient operations for updating the search state.
 (defn update-search [state shortest distance fringe]
   (merge state {:shortest shortest 
@@ -34,15 +38,15 @@
    SPT, distance, and add the sink back to the fringe based on the new path."   
   [source sink wnew wpast {:keys [shortest distance fringe] :as state}]
     (update-search state (assoc shortest sink source) ;new spt
-                   (assoc distance sink wnew)  ;shorter distance
-                   (conj-fringe* state sink wnew)))
+                         (assoc distance sink wnew)  ;shorter distance
+                         (conj-fringe* state sink wnew)))
 
 (defn- equal-path* 
   "When we discover equivalent paths, we conj them onto the shortest path tree.
    Note, if a better path is found, the other paths will be eliminated."
   [source sink {:keys [shortest distance fringe] :as state}]
     (let [current (get shortest sink)
-		      context (if (vector? current) current [current])
+		      context (if (branch? current) current (->branch current))
 		      newspt  (assoc shortest sink (conj context source))]                 
 		     (update-search state newspt distance fringe)))
   
@@ -91,8 +95,8 @@
       (let [node (first path)] 
         (if (= node startnode) [path pending-paths]
             (let [prior  (get preds node)
-                  prior-node   (if (coll? prior) (first prior) prior)
-                  branch-paths (when (coll? prior) 
+                  prior-node   (if (branch? prior) (first prior) prior)
+                  branch-paths (when (branch? prior) 
                                  (for [nd (rest prior)]
                                    (cons nd path)))]
               (recur (cons prior-node path) 

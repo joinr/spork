@@ -25,7 +25,7 @@
   (loop [acc empty-entries
          xs  q]
     (if (empty? xs) acc    
-      (if (= x (first x))
+      (if (= x (first xs))
           (into acc (pop xs))
           (recur (conj acc (first xs)) (pop xs))))))
 
@@ -75,36 +75,12 @@
 (defn priority-entries [pq]
   (for [[k q] (seq pq)
         v     q]
-    [k v]))   
+    (entry k v)))   
    
 (defn priority-vals
   "Return a sequence of popped values from priorityq q."
   [pq]
   (map second (priority-entries pq)))
-
-;;__TODO__ I think using the set as a filter is actually slow, from some forum
-;;posts.  Look at optimizing that call in alter-weight to something else. 
-
-(defn alter-value
-  "Returns the result of disjoining node n, with weight wprev, and conjoining 
-   node n with weight wnew, relative to the initial priorityq q.  Caller may 
-   also supply an optional transformation to apply to the altered node, allowing
-   for efficient changes to both weight and the values stored in the priority 
-   queue."  
-  ([pq n wprev wnew]  
-    (if (= wprev wnew) pq
-	      (let [nodes (drop-entry (get pq wprev) n)]
-	         (-> (if (empty? nodes) (dissoc pq wprev)
-	                             (assoc pq wprev nodes))
-	            (conj-node n wnew)))))
-  ([pq n wprev wnew transform]
-    (if (= wprev wnew)
-      (assoc pq wprev (swap-entry (get pq wprev) n (transform n))))
-	    (let [nodes (drop-entry (get pq wprev) n)]
-       (-> (if (empty? nodes)
-               (dissoc pq wprev)
-               (assoc  pq wprev nodes))
-           (conj-node (transform n) wnew)))))
   
 (defn- get-map [dir] (if (= dir :min) (sorted-map) (sorted-map-by >)))
 
@@ -146,7 +122,7 @@
   clojure.lang.IPersistentVector
   (cons [this a]
     ; called by conj
-    (loop [k (first a)
+    (let [k (first a)
            v (second a)]
       (pqueue. dir (conj-node basemap k v) (inc entry-count) _meta)))
   (length [this]  (.count this))
@@ -178,9 +154,57 @@
   java.io.Serializable ;Serialization comes for free with the other stuff.
   )
 
+
+
 (def minq (pqueue. :min (get-map :min) 0 {}))
 (def maxq (pqueue. :max (get-map :max) 0 {}))
 (def emptyq minq)
+
+
+;;__TODO__ I think using the set as a filter is actually slow, from some forum
+;;posts.  Look at optimizing that call in alter-weight to something else. 
+
+
+;;Operations that act on priority queues.
+
+(defn get-basemap [pq] (.basemap pq))
+(defn conj-basemap [new-basemap pq]
+  (pqueue. (.dir pq) new-basemap (.entry-count pq) (._meta pq)))
+
+(defn find-entry [pq n] 
+  (some (fn [x] (when (= (val x) n) x)) (priority-entries (get-basemap pq))))
+  
+(defn alter-value
+  "Returns the result of disjoining node n, with weight wprev, and conjoining 
+   node n with weight wnew, relative to the initial priorityq q.  Caller may 
+   also supply an optional transformation to apply to the altered node, allowing
+   for efficient changes to both weight and the values stored in the priority 
+   queue."  
+  ([pq n wnew] (if-let [e (find-entry pq n)]
+                 (alter-value pq n (key e) wnew)
+                 (throw (Exception. 
+                          (str "Attempting to alter an entry that doesn't exist."
+                               n)))))
+  ([pq n wprev wnew]  
+    (if (= wprev wnew) pq        
+	      (let [basemap (get-basemap pq)
+              nodes (drop-entry (get basemap wprev) n)]
+	         (-> (if (empty? nodes) (dissoc basemap wprev)
+	                                (assoc basemap wprev nodes))
+	              (conj-node n wnew)
+                (conj-basemap pq)))))
+  ([pq n wprev wnew transform]
+    (let [basemap (get-basemap pq)]
+      (if (= wprev wnew) (conj-basemap 
+                           (assoc basemap wprev 
+                                  (swap-entry (get basemap wprev) n 
+                                              (transform n)))  
+                           pq)
+        (let [nodes (drop-entry (get basemap wprev) n)]
+          (-> (if (empty? nodes) (dissoc basemap wprev)
+                                 (assoc  basemap wprev nodes))
+              (conj-node (transform n) wnew)
+              (conj-basemap pq)))))))
 
 ;;__TODO__ Maybe implement a reader literal for the priority queue.
 
