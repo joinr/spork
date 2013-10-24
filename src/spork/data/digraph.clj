@@ -46,6 +46,3 @@
   (-get-sinks [tg k]   (vec (keys (get sinks k)))))
 
 (def empty-digraph (->digraph {} {} {})) 
-
-
-  

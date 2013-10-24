@@ -4,6 +4,20 @@
   (:require [spork.protocols [core :as generic]]
             [spork.data      [searchstate :as searchstate]]))
 
+;;It's useful to define ways to represent the same graph, via simple 
+;;transformations, so that we can use arbitrary weight functions and 
+;;neighborhood functions to extend or simplify traversal.
+
+;;We'll formalize the concept of graph transforms by defining 
+;;the two fundamental transforms: distance (weighting) and
+;;connectivity (neighbors).  
+
+(with-graph-transform [g the-graph] 
+  {:weightf    (fn [g from to]    1)
+   :neighborf (fn [g nd state] (graph/sinks g nd))}
+  (search g :s :t))
+
+
 ;;minor duplication here, due to some copying around.
 (defn arc-weight [tg from to]
   (assert (generic/-has-arc? tg from to) (str "Arc does not exist " [from to]))
@@ -71,13 +85,6 @@
   (clojure.set/difference (set (get-node-labels g)) 
                           (set (keys (:spt state)))))
 
-(defn next-candidate
-  "To support hueristics, we allow candidate nodes to be encoded as entries, 
-   rather than just simple keywords.  If we detect the"
-  [fringe]
-  (generic/next-fringe fringe))    
-
-
 (def search-defaults {:endnode  ::nullnode
                       :halt?     default-halt? 
                       :weightf   arc-weight 
@@ -108,9 +115,7 @@
       (loop [state   (-> (assoc startstate :targetnode targetnode)
                          (generic/conj-fringe startnode 0))]
         (if (generic/empty-fringe? state) state 
-            (let [;candidate (generic/next-fringe state) ;returns an entry, with a possibly estimated weight.
-                  ;nd        (first candidate)           ;next node to visit
-                  nd        (generic/next-fringe state)
+            (let [nd        (generic/next-fringe state) ;next node to visit
                   visited   (generic/visit-node state nd) ] ;record visit.
               (if (halt? state nd) visited                     
                   (recur (reduce (partial relax-by nd) 
@@ -225,10 +230,12 @@
    search state, which contains the shortest path tree or precedence tree, the 
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode] 
+  [g startnode endnode & {:keys [weightf neighborf] 
+                          :or   {weightf arc-weight 
+                                 neighborf default-neighborf]}]
   (priority-walk g startnode :endnode endnode
    :weightf  (memoize (fn [g source sink]
-                        (let [w (arc-weight g source sink)]
+                        (let [w (weightf g source sink)]
                           (if (>= w 0)  w ;positive only
                             (throw 
                               (Exception. 
@@ -292,3 +299,23 @@
                            (generic/visit-node state nd) 
                            (get-neighbors nd state))
                    (unchecked-inc idx)))))))
+
+;;BackBurner 
+
+;; (defmacro with-graph-transform 
+;;   "User provides a map of {weight f, neighbors f} to be merged 
+;;    with the graph's meta with the intent of temporarily altering
+;;    searches and walks.  Searches will check the graph's meta for 
+;;    these and use them if provided.  Graph-binding, of the form 
+;;    [symbol the-graph], will bind the input graph, the-graph, 
+;;    with its altered meta, to symbol.  The resulting body is then 
+;;    evaluated with the modified graph information."
+;;   [graph-binding weight+neighbors & body]
+;;   (let [[sym the-graph] (first (partition 2 graph-binding))]
+;;     `(let [graph# (with-meta ~the-graph 
+;;                     (merge (meta ~the-graph) ~weight+neighbors))
+;;            ~sym graph#]
+;;        ~@body)))
+
+;;(defn get-weightf [g] (get (meta g) :weightf (:weightf search-defaults)))
+;;(defn get-neighborf [g] (get (meta g) :neighborf (:neighborf search-defaults)))

@@ -1,7 +1,8 @@
 ;;A testing suite for all things graph related.
 (ns spork.cljgraph.tests
   (:require [clojure.test :refer :all]
-            [spork.cljgraph.core :refer :all]))
+            [spork.cljgraph.core :refer :all]
+            [spork.cljgraph.flow :refer :all]))
 
 ;;helper macro for some error catching I want to ensure.
 (defmacro get-error [expr]
@@ -137,7 +138,7 @@
 
 (deftest decomposition-test
   (is (= (map nodes (decompose class-graph))
-         ({"A" 0, "B" 1, "C" 2, "D" 3, "E" 4, "F" 6, "G" 5} 
+         '({"A" 0, "B" 1, "C" 2, "D" 3, "E" 4, "F" 6, "G" 5} 
            {"N" 11, "M" 10} 
            {"P" 12} 
            {"Z" 8, "Y" 7, "X" 9}))
@@ -300,6 +301,55 @@
   (-> empty-graph
       (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e]])))
  
+
+
+;;Network Flow Testing
+;;====================
+(def net-data 
+ [[:s   :chi  0 300]
+  [:s   :dc   0 300]
+  [:dc  :hou  4 280]
+  [:dc  :bos  6 350]
+  [:chi :bos  6 200]
+  [:chi :hou  7 200]
+  [:hou :t    0 300]
+  [:bos :t    0 300]])
+(def the-net 
+  (-> empty-network 
+    (conj-cap-arcs net-data)))
+
+(def flow-results (mincost-flow the-net :s :t))
+(def cost-net (:net flow-results))
+
+(deftest mincostflow-test 
+  (is (= ((juxt :active (comp :flow-info :net)) flow-results)
+         [{[:s :chi] 300,
+           [:s :dc] 300,
+           [:dc :hou] 200,
+           [:dc :bos] 100,
+           [:chi :bos] 200,
+           [:chi :hou] 100,
+           [:hou :t] 300,
+           [:bos :t] 300}
+           {[:bos :t] {:from :bos, :to :t, :capacity 0, :flow 300},
+            [:hou :t] {:from :hou, :to :t, :capacity 0, :flow 300},
+            [:chi :hou] {:from :chi, :to :hou, :capacity 100, :flow 100},
+            [:chi :bos] {:from :chi, :to :bos, :capacity 0, :flow 200},
+            [:dc :bos] {:from :dc, :to :bos, :capacity 250, :flow 100},
+            [:dc :hou] {:from :dc, :to :hou, :capacity 80, :flow 200},
+            [:s :dc] {:from :s, :to :dc, :capacity 0, :flow 300},
+            [:s :chi] {:from :s, :to :chi, :capacity 0, :flow 300}}] ))
+  (is (= (total-flow cost-net) 600)
+      "There should be 600 units of flow")
+  (is (= (total-cost cost-net (:active flow-results)) 3300)
+      "Shipping costs 3300 units."))
+
+(def max-results (maxflow the-net :s :t))
+(def max-net (:net max-results))
+
+(deftest maxflow-test 
+  (is (= (total-flow max-net) (total-flow cost-net))
+      "Both maxflow and mincost networks produce the same flow."))
 ;;old test in migration
 (comment 
   (def dlist (->double-list :a :e the-list))  
