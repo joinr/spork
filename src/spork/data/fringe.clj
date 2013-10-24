@@ -54,7 +54,7 @@
       (pfringe. (assoc priorities n w)
                 (if-let [wold (get priorities n)]                  
                   (pq/alter-value  ;update the entry in the priorityq.
-                    fringe (generic/entry n wold) w #(assoc % 1 w))
+                    fringe (generic/entry n wold) wold w #(assoc % 1 w))
                   (conj fringe [(generic/entry n w) w])))))
   (next-fringe [pf] (peek fringe))
   (pop-fringe  [pf] 
