@@ -4,18 +4,7 @@
   (:require [spork.protocols [core :as generic]]
             [spork.data      [searchstate :as searchstate]]))
 
-;;It's useful to define ways to represent the same graph, via simple 
-;;transformations, so that we can use arbitrary weight functions and 
-;;neighborhood functions to extend or simplify traversal.
 
-;;We'll formalize the concept of graph transforms by defining 
-;;the two fundamental transforms: distance (weighting) and
-;;connectivity (neighbors).  
-
-(with-graph-transform [g the-graph] 
-  {:weightf    (fn [g from to]    1)
-   :neighborf (fn [g nd state] (graph/sinks g nd))}
-  (search g :s :t))
 
 
 ;;minor duplication here, due to some copying around.
@@ -301,6 +290,19 @@
                    (unchecked-inc idx)))))))
 
 ;;BackBurner 
+
+;;It's useful to define ways to represent the same graph, via simple 
+;;transformations, so that we can use arbitrary weight functions and 
+;;neighborhood functions to extend or simplify traversal.
+
+;;We'll formalize the concept of graph transforms by defining 
+;;the two fundamental transforms: distance (weighting) and
+;;connectivity (neighbors).  
+
+;; (with-graph-transform [g the-graph] 
+;;   {:weightf    (fn [g from to]    1)
+;;    :neighborf (fn [g nd state] (graph/sinks g nd))}
+;;   (search g :s :t))
 
 ;; (defmacro with-graph-transform 
 ;;   "User provides a map of {weight f, neighbors f} to be merged 
