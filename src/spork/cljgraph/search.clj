@@ -221,7 +221,7 @@
    For negative arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode & {:keys [weightf neighborf] 
                           :or   {weightf arc-weight 
-                                 neighborf default-neighborf]}]
+                                 neighborf default-neighborf}}]
   (priority-walk g startnode :endnode endnode
    :weightf  (memoize (fn [g source sink]
                         (let [w (weightf g source sink)]
