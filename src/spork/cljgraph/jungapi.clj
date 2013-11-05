@@ -4,6 +4,7 @@
   "A simple API to wrap a few useful Java Universal Network Graph classes 
    inside of a functional graph interface."
   (:use [spork.cljgraph.core])
+  (:require [spork.cljgui.components [swing :as gui]])
   (:import [javax.swing JFrame JPanel]
            [java.awt BorderLayout Container]
            [edu.uci.ics.jung.graph Graph SparseMultigraph]
@@ -88,7 +89,6 @@
 (def radialtree #(RadialTreeLayout. %))
 (def tree #(TreeLayout. %))
 (def balloon #(BalloonLayout.  %))
-
 
 (def layouts {:spring spring
               :fr fr
@@ -196,11 +196,15 @@
 
 ;gm.setMode(ModalGraphMouse.Mode.TRANSFORMING);
 ;vv.setGraphMouse(gm);
-
-
+  
 (defn get-view [g & layout]
   (let [l (if (first layout) (first layout) @*current-layout*)]
     (future (view-graph g l))))
+
+(defmethod gui/view spork.data.digraph.digraph [g & {:keys [layout] :or {layout :fr}}]
+  (if-let [layf (get layouts layout)]
+    (get-view g layf)
+    (throw (Exception. (str "Layout not recognized, please use of one " (keys layouts))))))
  
 
 (defn kill [graphframe]
@@ -248,7 +252,6 @@
 (defn clear-graph 
   ([server] (server ::clear))
   ([] (graphbot ::clear)))
-      
 
 (defn- check-file [pth]
   (let [f (clojure.java.io/as-file pth)]
