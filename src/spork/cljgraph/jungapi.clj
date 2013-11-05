@@ -3,7 +3,7 @@
 (ns spork.cljgraph.jungapi
   "A simple API to wrap a few useful Java Universal Network Graph classes 
    inside of a functional graph interface."
-  (:use [cljgraph.graph])
+  (:use [spork.cljgraph.core])
   (:import [javax.swing JFrame JPanel]
            [java.awt BorderLayout Container]
            [edu.uci.ics.jung.graph Graph SparseMultigraph]
@@ -18,7 +18,6 @@
            [edu.uci.ics.jung.visualization.control ModalGraphMouse 
                                                    DefaultModalGraphMouse]))
 
-(in-ns 'cljgraph.jungapi)
 
 (def smg edu.uci.ics.jung.graph.SparseMultigraph)
 
@@ -55,8 +54,10 @@
 (def jdirected (EdgeType/DIRECTED))
 (def jundirected (EdgeType/UNDIRECTED))
 
-(defn arc->jedge [arc] [(arc-label arc) (jpair (:from arc) (:to arc))])
-(defn node->jvertex [n] (node-label n))
+;;adapted to work with cljgraph.
+(defn arc->jedge    [[from to w]]  [w (jpair from to)])
+;;adapted to work with cljgraph.
+(defn node->jvertex [[n data]] n)
 
 (defn jadd-vertex [g vtx] 
  (doto g (.addVertex vtx)) g)
@@ -68,19 +69,11 @@
 
 (defn graph->jgraph [g]
   (let [newg (jgraph)]
-    (doseq [jvert (map node->jvertex (get-nodes g)) 
-            jedge (map arc->jedge (get-arcs g))] 
-      (jadd-edge newg jedge)
-      (jadd-vertex newg jvert))
+    (doseq [node  (get-node-labels g)
+            arc   (arcs-from g  node)] 
+      (jadd-edge   newg  (arc->jedge arc))
+      (jadd-vertex newg  node))
     newg))   
-
-(defn graph->jgraph2 [g] 
-  (let [newg (jgraph)]
-    (doseq [jvert (map node->jvertex (get-nodes g)) 
-            jedge (map arc->jedge (get-arcs g))] 
-      (jadd-edge newg jedge)
-      (jadd-vertex newg jvert))
-    newg))
 
 ;Handle graph layouts using JUNG classes...
 (defn- layoutf [jg f] (f jg))
@@ -169,8 +162,7 @@
 (defn get-labellers [g]
   {:node-labeller (make-trans (fn [nodelabel] (str nodelabel)))
    :edge-labeller (make-trans 
-                    (fn [arclabel] (roundn (arc-weight 
-                                                    (get-arc g arclabel)) 2)))})
+                    (fn [arclabel] (roundn arclabel 2)))})
 
 (def deflabels  {:node-labeller string-labeller :edge-labeller string-labeller})
 (defn make-view [jg layoutf {:keys [node-labeller edge-labeller]}]

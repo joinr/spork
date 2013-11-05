@@ -5,7 +5,7 @@
 (ns spork.cljgraph.core
   (:require [spork.protocols.core :refer :all]
             [spork.cljgraph [search :as search]]
-            [spork.data [digraph :as dig] [searchstate :as sstate]] 
+            [spork.data     [digraph :as dig] [searchstate :as sstate]] 
             [spork.util     [topographic :as top]]))
  
 (def empty-graph dig/empty-digraph)
