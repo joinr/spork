@@ -4,9 +4,6 @@
   (:require [spork.protocols [core :as generic]]
             [spork.data      [searchstate :as searchstate]]))
 
-
-
-
 ;;minor duplication here, due to some copying around.
 (defn arc-weight [tg from to]
   (assert (generic/-has-arc? tg from to) (str "Arc does not exist " [from to]))
@@ -86,6 +83,26 @@
 (def limited-walk (assoc walk-defaults :neighborf visit-once))
 (def unit-walk    (assoc limited-walk  :weightf  unit-weight))
 
+
+
+;;BackBurner 
+
+;;It's useful to define ways to represent the same graph, via simple 
+;;transformations, so that we can use arbitrary weight functions and 
+;;neighborhood functions to extend or simplify traversal.
+
+;;We'll formalize the concept of graph transforms by defining 
+;;the two fundamental transforms: distance (weighting) and
+;;connectivity (neighbors).  
+
+(defn get-weightf   [g]   
+  (or (get (meta g) :weightf   arc-weight)
+      (throw (Exception. "No weight function defined!"))))
+
+(defn get-neighborf [g]   
+  (or (get (meta g) :neighborf (:neighborf search-defaults))
+      (throw (Exception. "No neighborhood function defined!"))))
+
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
 (defn traverse
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
@@ -95,8 +112,8 @@
    multiple kinds of walks, depending on the searchstate's fringe structure."
   [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
                                          :or  {halt?     default-halt?
-                                               weightf   arc-weight
-                                               neighborf default-neighborf}}]
+                                               weightf   (get-weightf g)
+                                               neighborf (get-neighborf g)}}]
     (let [get-weight    (partial weightf   g)
           get-neighbors (partial neighborf g)         
           relax-by      (fn [source s sink]
@@ -220,8 +237,8 @@
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode & {:keys [weightf neighborf] 
-                          :or   {weightf arc-weight 
-                                 neighborf default-neighborf}}]
+                          :or   {weightf   (get-weightf g) 
+                                 neighborf (get-neighborf g)}}]
   (priority-walk g startnode :endnode endnode
    :weightf  (memoize (fn [g source sink]
                         (let [w (weightf g source sink)]
@@ -266,8 +283,8 @@
    a queue for the fringe, rather than a priority queue.  Other than that, 
    the search steps are almost identical."
   [g startnode endnode & {:keys [weightf neighborf] 
-                          :or   {weightf   arc-weight
-                                 neighborf default-neighborf}}]
+                          :or   {weightf   (get-weightf g) 
+                                 neighborf (get-neighborf g)}}]
   (let [startstate    (assoc (searchstate/empty-BFS startnode) 
                              :targetnode endnode)
         bound         (dec (count (generic/-get-nodes g))) ;v - 1 
@@ -289,35 +306,11 @@
                            (get-neighbors nd state))
                    (unchecked-inc idx)))))))
 
-;;BackBurner 
 
-;;It's useful to define ways to represent the same graph, via simple 
-;;transformations, so that we can use arbitrary weight functions and 
-;;neighborhood functions to extend or simplify traversal.
 
-;;We'll formalize the concept of graph transforms by defining 
-;;the two fundamental transforms: distance (weighting) and
-;;connectivity (neighbors).  
 
-;; (with-graph-transform [g the-graph] 
-;;   {:weightf    (fn [g from to]    1)
-;;    :neighborf (fn [g nd state] (graph/sinks g nd))}
-;;   (search g :s :t))
 
-;; (defmacro with-graph-transform 
-;;   "User provides a map of {weight f, neighbors f} to be merged 
-;;    with the graph's meta with the intent of temporarily altering
-;;    searches and walks.  Searches will check the graph's meta for 
-;;    these and use them if provided.  Graph-binding, of the form 
-;;    [symbol the-graph], will bind the input graph, the-graph, 
-;;    with its altered meta, to symbol.  The resulting body is then 
-;;    evaluated with the modified graph information."
-;;   [graph-binding weight+neighbors & body]
-;;   (let [[sym the-graph] (first (partition 2 graph-binding))]
-;;     `(let [graph# (with-meta ~the-graph 
-;;                     (merge (meta ~the-graph) ~weight+neighbors))
-;;            ~sym graph#]
-;;        ~@body)))
-
-;;(defn get-weightf [g] (get (meta g) :weightf (:weightf search-defaults)))
-;;(defn get-neighborf [g] (get (meta g) :neighborf (:neighborf search-defaults)))
+;;with-dropped-edges 
+;;with-dropped-nodes 
+;;with-added-edges 
+;;with-added-nodes 

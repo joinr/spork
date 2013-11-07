@@ -505,6 +505,38 @@
             (map (fn [p] [(get distance target) p]))))) 
   ([state] (get-weighted-paths state (:targetnode state))))
 
+
+;;Graph Transformations
+;;=====================
+
+(defn transform-graph 
+  "Caller provides a map of options that are merged with the graph's metadata,
+   which subsequent graph libraries will pick up on."
+  [g opts]  (with-meta g (merge (meta g) opts)))
+
+;; (with-graph-transform [g the-graph] 
+;;   {:weightf    (fn [g from to]    1)
+;;    :neighborf (fn [g nd state] (graph/sinks g nd))}
+;;   (search g :s :t))
+
+(defmacro with-graph-transform 
+  "User provides a map of {weightf f, neighborf f} to be merged 
+   with the graph's meta with the intent of temporarily altering
+   searches and walks.  Searches will check the graph's meta for 
+   these and use them if provided.  Graph-binding, of the form 
+   [symbol the-graph], will bind the input graph, the-graph, 
+   with its altered meta, to symbol.  The resulting body is then 
+   evaluated with the modified graph information."
+  [graph-binding weight+neighbors & body]
+  (let [[sym the-graph] (first (partition 2 graph-binding))]
+    `(let [graph# (transform-graph ~the-graph  ~weight+neighbors)
+           ~sym graph#]
+       ~@body)))
+
+(defn ignore-nodes [g the-nodes] 
+  (transform-graph g {:neighborf (fn [g from] )}))
+  
+
 ;;Testing/Examples
 (comment 
 
