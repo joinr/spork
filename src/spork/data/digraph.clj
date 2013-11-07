@@ -45,4 +45,5 @@
   (-get-sources [tg k] (vec (keys (get sources k))))
   (-get-sinks [tg k]   (vec (keys (get sinks k)))))
 
-(def empty-digraph (->digraph {} {} {})) 
+(def  empty-digraph     (->digraph {} {} {}))
+(defn invert-graph [g]  (->digraph (:nodes g) (:sinks g) (:sources g)))

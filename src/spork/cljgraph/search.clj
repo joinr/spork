@@ -83,9 +83,8 @@
 (def limited-walk (assoc walk-defaults :neighborf visit-once))
 (def unit-walk    (assoc limited-walk  :weightf  unit-weight))
 
-
-
-;;BackBurner 
+;;Weight and Neighborhood Filters
+;;===============================
 
 ;;It's useful to define ways to represent the same graph, via simple 
 ;;transformations, so that we can use arbitrary weight functions and 
@@ -95,6 +94,8 @@
 ;;the two fundamental transforms: distance (weighting) and
 ;;connectivity (neighbors).  
 
+;;__TODO__ Think about relocating these from meta to the search
+;;state....might be a better place..
 (defn get-weightf   [g]   
   (or (get (meta g) :weightf   arc-weight)
       (throw (Exception. "No weight function defined!"))))
@@ -102,6 +103,9 @@
 (defn get-neighborf [g]   
   (or (get (meta g) :neighborf (:neighborf search-defaults))
       (throw (Exception. "No neighborhood function defined!"))))
+
+;;Allows us to add a hook for node filtering during search.
+(defn get-nodefilter [g]  (get (meta g) :nodefilter nil))
 
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
 (defn traverse
@@ -115,14 +119,16 @@
                                                weightf   (get-weightf g)
                                                neighborf (get-neighborf g)}}]
     (let [get-weight    (partial weightf   g)
-          get-neighbors (partial neighborf g)         
+          get-neighbors (if-let [nodefilter (get-nodefilter g)]
+                           (fn [nd s] (nodefilter (neighborf g nd s)))
+                           (partial neighborf g))
           relax-by      (fn [source s sink]
                           (generic/relax s get-weight source sink))]
       (loop [state   (-> (assoc startstate :targetnode targetnode)
                          (generic/conj-fringe startnode 0))]
         (if (generic/empty-fringe? state) state 
             (let [nd        (generic/next-fringe state) ;next node to visit
-                  visited   (generic/visit-node state nd) ] ;record visit.
+                  visited   (generic/visit-node state nd)] ;record visit.
               (if (halt? state nd) visited                     
                   (recur (reduce (partial relax-by nd) 
                                  visited
@@ -246,7 +252,8 @@
                             (throw 
                               (Exception. 
                                 (str "Negative Arc Weight Detected in Dijkstra: " 
-                                     [source sink w])))))))))                                            
+                                     [source sink w])))))))
+   :neighborf neighborf))                                            
 
 ;;__TODO__ Check implementation of a-star, I think this is generally correct.
 (defn a*

@@ -98,6 +98,11 @@
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
   (-arc-weight g from to))
 
+(defn arc-seq 
+  "Return a sequence of directed arcs the consitute the graph."
+  [g] (mapcat #(arcs-from g %) (get-node-labels g)))
+    
+
 ;;Graph Construction
 ;;==================
 (defn arcs->graph [xs]
@@ -149,9 +154,9 @@
   "Provides a lens, or a focus, of all the graph data for a particular node."
   [g k] 
   (when (has-node? g k) {:node k 
-                          :data (get (nodes g) k)
-                          :sources (sources g k)
-                          :sinks   (sinks g k)}))
+                         :data (get (nodes g) k)
+                         :sources (sources g k)
+                         :sinks   (sinks g k)}))
 (defn graph-seq
   "Views the topograph as a sequence of node contexts."
   [g] 
@@ -169,7 +174,7 @@
   (vec (map #(-get-arc g % nd) (sources g nd))))
     
 (defn relabel-node
-  "Allows effecient relabeling of a node key.  Automatically updates related 
+  "Allows efficient relabeling of a node key.  Automatically updates related 
    arc data."
   [g old-label new-label]
   (let [{:keys [node data sources sinks]} (node-context g old-label)]
@@ -514,6 +519,22 @@
    which subsequent graph libraries will pick up on."
   [g opts]  (with-meta g (merge (meta g) opts)))
 
+(defn with-weights   
+  "Returns a graph with an alternate default weight function in its meta.  
+   This weight function will be the default used by graph searches."
+  [g weightf]     (transform-graph g {:weightf weightf}))
+
+(defn with-neighbors 
+  "Returns a graph with an alternate default neighbor function in its meta.  
+   This neighbor function will be the default used by graph searches."
+  [g neighborf] (transform-graph g {:neighborf neighborf}))
+
+(defn with-nodefilter 
+  "Uses nodefilter, a predicate that dispatches based on a node label, 
+   to filter the results of neighbor queries during graph searches."
+  [g pred]
+  (transform-graph g {:nodefilter #(filter pred %)}))
+
 ;; (with-graph-transform [g the-graph] 
 ;;   {:weightf    (fn [g from to]    1)
 ;;    :neighborf (fn [g nd state] (graph/sinks g nd))}
@@ -532,10 +553,6 @@
     `(let [graph# (transform-graph ~the-graph  ~weight+neighbors)
            ~sym graph#]
        ~@body)))
-
-(defn ignore-nodes [g the-nodes] 
-  (transform-graph g {:neighborf (fn [g from] )}))
-  
 
 ;;Testing/Examples
 (comment 
