@@ -97,10 +97,6 @@
   [g from to]
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
   (-arc-weight g from to))
-
-(defn arc-seq 
-  "Return a sequence of directed arcs the consitute the graph."
-  [g] (mapcat #(arcs-from g %) (get-node-labels g)))
     
 
 ;;Graph Construction
@@ -172,7 +168,11 @@
   "Returns a vector of arcs terminated by nd, of the form [from nd weight]."
   [g nd]  
   (vec (map #(-get-arc g % nd) (sources g nd))))
-    
+
+(defn arc-seq 
+  "Return a sequence of directed arcs the consitute the graph."
+  [g] (mapcat #(arcs-from g %) (get-node-labels g)))
+
 (defn relabel-node
   "Allows efficient relabeling of a node key.  Automatically updates related 
    arc data."
