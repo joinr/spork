@@ -4,7 +4,7 @@
 (ns spork.util.table
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]
-            [spork.util [clipboard :as board]]
+            [spork.util [clipboard :as board] [parsing :as parse]]
             [spork.cljgui.components [swing :as gui]])
   (:use [spork.util.vector]
         [spork.util.record  :only [serial-field-comparer key-function]]
@@ -424,7 +424,7 @@
   (map-field-indexed field (fn [_ x] (f x)) tbl))
 
 
-(defn negate [n] (* n -1))
+(defn negate [n] (- n))
 
 (defn order-with 
     "Returns a new table, where the rows of tbl have been ordered according to  
@@ -547,8 +547,7 @@
 ;        (vector? x) (let [[fld v &rest] x]
 ;                      {fld (computed-field v)})
 ;        :else (throw (Exception. (str "Unsupported type in 'as query" x)))))
-;(defmacro with-computed-fields [fieldmap & body]
-  
+;(defmacro with-computed-fields [fieldmap & body] 
 
 (defn- select- 
   "A small adaptation of Peter Seibel's excellent mini SQL language from 
@@ -580,83 +579,16 @@
 ;;parse string.  Parse-string is the biggest bottleneck at the 
 ;;moment.
 
-
-
-;;Note -> this isn't quite so hot, but it's a general failsafe.
-;;It's much much better to use a standard parser for each field, if the 
-;;field is a known type.
-
-(defn parse-string 
-	"Parses a string, trying various number formats.  Note, scientific numbers,
-	 or strings with digits sandwiching an E or an e will be parsed as numbers,
-	 possibly as Double/POSITIVE_INFINITY, i.e. Infinity."
-	[^String value]	
-  (try (Integer/parseInt value)
-    (catch NumberFormatException _
-      (try (Double/parseDouble value)
-        (catch NumberFormatException _ value)))))
-
-(def scientific-reg 
-	"A regular expression gleefully borrowed from Stack Overflow.  Matches 
-	 strings that correspond to scientific numbers."
-	#"-?\d*\.?\d+[Ee][+-]?\d+")
-	 
-(defn parse-string-nonscientific 
-	"Parses a string, trying various number formats.  Scientific numbers,
-	 or strings with digits sandwiching an E or an e will be kept as strings.  
-	 Helpful in contexts where there are alphanumeric string values."
-	[^String value]
-	(if-let [res (re-find scientific-reg value)]
-		value
-		(parse-string value)))
-
-;;a schema is just a map of field names to either keys or custom parse
-;;functions.
-
-;(def the-schema {:field1 :long :field2 :long :field3 :long :field4
-;:double}
-
-(defn get-key-or-string [m k default]
-  (get m k
-       (get m (if (keyword? k)
-                (field->string k)
-                (keyword k)) default)))
-
-;;string parsers
-(def parse-defaults 
-  {:string identity
-   :text   identity
-   :number (fn [^String x] (try (Integer/parseInt x)
-                                 (catch NumberFormatException _
-                                   (Double/parseDouble x))))
-   :float  (^double fn [^String x] (Double/parseDouble x))
-   :int    (^int fn [^String x]   (Integer/parseInt x))
-   :long   (^int fn [^String x]   (Long/parseLong x))
-   :date   (^java.util.Date fn [^String x] (java.util.Date. x))})
-
-(defn parsing-scheme [field-parser & {:keys [default-parser] 
-                                      :or {default-parser parse-string}}]
-  (let [get-parser (memoize (fn [field] 
-                              (if-let [pfunc (get-key-or-string field-parser field default-parser)]
-                                (cond (keyword? pfunc) (get parse-defaults pfunc default-parser) 
-                                      (fn? pfunc) pfunc)
-                                parse-string)))]
-    (fn [field ^String v] ((get-parser field) v))))
-
-(defn nested-parser [schemes & {:keys [default-parser] 
-                                :or {default-parser parse-string}}]
-  (let [revschemes (reverse schemes)]
-    (reduce (fn [r l]
-              (parsing-scheme l :default-parser r))
-            (parsing-scheme (first revschemes) :default-parser default-parser)
-            (rest revschemes))))
-
-
 (defn pair [a b] [a b])
 (def re-tab (re-pattern (str \tab))) 
 (def split-by-tab #(strlib/split % re-tab))
 
-(defn record-parser [fields field->value]
+(defn record-parser 
+  "Given a set if fields, and a function that maps a field name to 
+   a parser::string->'a, returns a function that consumes a sequence
+   of strings, and parses fields with the corresponding 
+   positional parser."
+  [fields field->value]
   (let [xs->values (vec (map #(partial field->value %) fields))]
     (fn [xs]
       (loop [acc (transient [])
@@ -664,8 +596,6 @@
         (if (= idx (count xs->values)) (persistent! acc)
             (recur (conj! acc ((nth xs->values idx) (nth xs idx)))
                    (inc idx)))))))
-;; [
-;; [{:blah :text} :else :text]
 
 ;older table abstraction, based on maps and records...
  
@@ -679,20 +609,20 @@
          :or   {parsemode :scientific
                 keywordize-fields? true
                 schema {}}}] 
-  (let [lines (strlib/split-lines s )
-        tbl (->column-table 
-              (vec (map (if keywordize-fields?  
-                          keyword 
-                          identity) (split-by-tab (first lines)))) 
-              [])
-        parsef (parsing-scheme schema :default-parser  
-                 (if (= parsemode :scientific) parse-string
-                     parse-string-nonscientific))
+  (let [lines (strlib/split-lines s)
+        tbl   (->column-table 
+                 (vec (map (if keywordize-fields?  
+                             keyword 
+                             identity) (split-by-tab (first lines)))) 
+                 [])
+        parsef (parse/parsing-scheme schema :default-parser  
+                 (if (= parsemode :scientific) parse/parse-string
+                     parse/parse-string-nonscientific))
         fields (table-fields tbl)      
         parse-rec (comp (record-parser fields parsef) split-by-tab)]
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 
                       (map parse-rec (rest lines)))
-        (assoc tbl :columns)))) 
+           (assoc tbl :columns)))) 
 
 (defn record-seq  
 	"Returns a sequence of records from the underlying table representation. 
@@ -711,17 +641,6 @@
 (defn record-count [t] (count-rows t))
 (defn get-fields [t] (table-fields t))
 (defn last-record [t] (get-record t (dec (record-count t))))
-
-;(defn table->tabdelimited  
-;  "Render a table into a tab delimited representation.
-;   Rerouted to use the new API." 
-;  [tbl & {:keys [stringify-fields?] 
-;          :or {stringify-fields? true}}] 
-;  (reduce  
-;    (fn [acc rec] (str (apply str acc (interleave rec (repeat \tab))) \newline)) 
-;    "" (concat (if stringify-fields?  
-;                 [(vec (map field->string (table-fields tbl)))]  
-;                 [(table-fields tbl)]) (table-rows tbl))))
 
 (defn row->string 
   ([separator r] (strlib/join separator r))
