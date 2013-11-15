@@ -408,7 +408,6 @@
    values."
   (records->table (filter f (table-records tbl))))
 
-
 (defn map-field-indexed 
   "Maps function f to field values drawn from tbl.  f takes arguments akin to  
    map-indexed, [i v], treating the mapping as an indexed traversal over the  
@@ -583,20 +582,6 @@
 (def re-tab (re-pattern (str \tab))) 
 (def split-by-tab #(strlib/split % re-tab))
 
-(defn record-parser 
-  "Given a set if fields, and a function that maps a field name to 
-   a parser::string->'a, returns a function that consumes a sequence
-   of strings, and parses fields with the corresponding 
-   positional parser."
-  [fields field->value]
-  (let [xs->values (vec (map #(partial field->value %) fields))]
-    (fn [xs]
-      (loop [acc (transient [])
-             idx 0]
-        (if (= idx (count xs->values)) (persistent! acc)
-            (recur (conj! acc ((nth xs->values idx) (nth xs idx)))
-                   (inc idx)))))))
-
 ;older table abstraction, based on maps and records...
  
 (defn tabdelimited->table 
@@ -619,7 +604,7 @@
                  (if (= parsemode :scientific) parse/parse-string
                      parse/parse-string-nonscientific))
         fields (table-fields tbl)      
-        parse-rec (comp (record-parser fields parsef) split-by-tab)]
+        parse-rec (comp (parse/vec-parser fields parsef) split-by-tab)]
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 
                       (map parse-rec (rest lines)))
            (assoc tbl :columns)))) 
@@ -845,8 +830,33 @@
                              :upper-name 
                              :profession 
                              :instrument])))) 
+  ;performance testing...
+  (def small-table-path "C:\\Users\\tom\\Documents\\datasets\\DJ3019852003.txt")
+  ;;Read in some pre-baked data
+  (def the-string (clojure.string/replace (slurp small-table-path) \; \tab))
+  ;Some data is encoded as "32,35" etc.
+  (defn comma-numbers [^String x] (read-string (str  "[" x "]")))
+  (def parseinfo (partition 2 [:id      :int
+                               :date    :string ;:date
+                               :open    comma-numbers
+                               :am      comma-numbers
+                               :pm      comma-numbers
+                               :close   comma-numbers
+                               :total   :number
+                               :average comma-numbers
+                               :stock   :string]))
+  
+  (def fields (mapv first  parseinfo))
+  (def types  (mapv second parseinfo))
+  
+  (def dj-schema (zipmap fields types))
 
-;  (defn select-as []
+  ;;not working as expected.  Binding isn't updating like I expected.
+  (parse/with-parsers {:comma-numbers comma-numbers} 
+    (def rec-parser  (parse/record-parser  dj-schema))
+    (def line-parser (parse/vec-parser fields (parse/parsing-scheme dj-schema))))
+  
+  ;  (defn select-as []
 ;    (let [names ["Able" "Baker" "Charlie"] 
 ;          professions {:name names 
 ;                       :profession [:soldier :farmer :baker]} 
@@ -858,9 +868,8 @@
 ;                       :profession 
 ;                       [:age   (fn [i rec] (* 10 i))]
 ;                       [:index (fn [i rec] i)]]               
-;              :from (join-tables [:name] [professions instruments ages]))))   
-                                   
-)
+;              :from (join-tables [:name] [professions instruments ages]))))
+  )
   
 
 ;it'd be nice to have simple sql-like operators....

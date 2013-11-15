@@ -1,5 +1,6 @@
 (ns spork.util.parsing)
 
+
 ;;Note -> this isn't quite so hot, but it's a general failsafe.
 ;;It's much much better to use a standard parser for each field, if the 
 ;;field is a known type.
@@ -51,9 +52,19 @@
                                  (catch NumberFormatException _
                                    (Double/parseDouble x))))
    :float  (^double fn [^String x] (Double/parseDouble x))
-   :int    (^int fn [^String x]   (Integer/parseInt x))
-   :long   (^int fn [^String x]   (Long/parseLong x))
-   :date   (^java.util.Date fn [^String x] (java.util.Date. x))})
+   :int    (^int fn [^String x]    (Integer/parseInt x))
+   :long   (^int fn [^String x]    (Long/parseLong x))
+   :date   (^java.util.Date fn [^String x] (java.util.Date. x))
+   :clojure clojure.edn/read-string
+   :literal clojure.edn/read-string
+   :code    read-string})
+
+(def ^:dynamic *parsers* parse-defaults)
+
+(defmacro with-parsers [parsemap & body]
+  `(let [parsers# (merge *parsers* ~parsemap)]
+     (binding [ *parsers* parsers#]
+       ~@body)))
 
 
 (defn parsing-scheme 
@@ -67,7 +78,7 @@
                                       :or   {default-parser parse-string}}]
   (let [get-parser (memoize (fn [field] 
                               (if-let [pfunc (get-key-or-string field-parser field default-parser)]
-                                (cond (keyword? pfunc) (get parse-defaults pfunc default-parser) 
+                                (cond (keyword? pfunc) (get *parsers* pfunc default-parser) 
                                       (fn? pfunc) pfunc)
                                 parse-string)))]
     (fn [field ^String v] ((get-parser field) v))))
@@ -85,10 +96,41 @@
             (parsing-scheme (first revschemes) :default-parser default-parser)
             (rest revschemes))))
 
+(defn vec-parser 
+  "Given a set of fields, and a function that maps a field name to 
+   a parser::string->'a, returns a function that consumes a sequence
+   of strings, and parses fields with the corresponding 
+   positional parser."
+  [fields field->value]
+  (let [xs->values (vec (map #(partial field->value %) fields))]
+    (fn [xs]
+      (loop [acc (transient [])
+             idx 0]
+        (if (= idx (count xs->values)) (persistent! acc)
+            (recur (conj! acc ((nth xs->values idx) (nth xs idx)))
+                   (inc idx)))))))
+
+(defn record-parser 
+  "Given an implied schema as indicated by the map, returns a function that
+   parses maps with identical fields using the parser."
+  [m & {:keys [default-parser] :or {default-parser parse-string}}]
+  (let [field->value (parsing-scheme m :default-parser default-parser)
+        fields       (vec  (keys m))]
+    (fn [r]
+      (->> fields
+           (reduce (fn [acc k] (assoc! acc k (field->value k (get r k)))) (transient r))
+           (persistent!)))))
+
 ;;testing
 (comment 
+  (time (dotimes [i  1000] (parse-string "2")))  
+  (def the-parser  (record-parser {:name :string :age  :number}))
+  (def generic-parser (record-parser {}))
+  (def simple-records [ {:name "Leonidas" :age "40"}
+                        {:name "Bart Simpson" :age "12"}
+                        {:name "Bill Shatner" :age "68"}])
+
+  (time  (dotimes [i 1000]   (map the-parser simple-records)))
 
 
-
-
-)
+  )
