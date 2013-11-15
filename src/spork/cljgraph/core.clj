@@ -522,17 +522,17 @@
 (defn with-weights   
   "Returns a graph with an alternate default weight function in its meta.  
    This weight function will be the default used by graph searches."
-  [g weightf]     (transform-graph g {:weightf weightf}))
+  [weightf g]     (transform-graph g {:weightf weightf}))
 
 (defn with-neighbors 
   "Returns a graph with an alternate default neighbor function in its meta.  
    This neighbor function will be the default used by graph searches."
-  [g neighborf] (transform-graph g {:neighborf neighborf}))
+  [neighborf g] (transform-graph g {:neighborf neighborf}))
 
 (defn with-nodefilter 
   "Uses nodefilter, a predicate that dispatches based on a node label, 
    to filter the results of neighbor queries during graph searches."
-  [g pred]
+  [pred g]
   (transform-graph g {:nodefilter #(filter pred %)}))
 
 ;; (with-graph-transform [g the-graph] 

@@ -1,4 +1,5 @@
-(ns spork.util.parsing)
+(ns spork.util.parsing
+  (:require [clojure.edn]))
 
 
 ;;Note -> this isn't quite so hot, but it's a general failsafe.
@@ -59,13 +60,17 @@
    :literal clojure.edn/read-string
    :code    read-string})
 
-(def ^:dynamic *parsers* parse-defaults)
+(def ^:dynamic *parsers* parse-defaults) 
 
 (defmacro with-parsers [parsemap & body]
   `(let [parsers# (merge *parsers* ~parsemap)]
      (binding [ *parsers* parsers#]
        ~@body)))
 
+(defn lookup-parser [pfunc & [default]]
+  (cond (keyword? pfunc) (get *parsers* pfunc) 
+        (fn? pfunc) pfunc
+        :otherwise default))
 
 (defn parsing-scheme 
   "A parsing scheme is designed to associate a set of parsers with possibly 
@@ -75,11 +80,10 @@
    parse any input as an int, or a float, or a string.  This is slow, but 
    general."
   [field-parser & {:keys [default-parser] 
-                                      :or   {default-parser parse-string}}]
+                   :or   {default-parser parse-string}}]
   (let [get-parser (memoize (fn [field] 
                               (if-let [pfunc (get-key-or-string field-parser field default-parser)]
-                                (cond (keyword? pfunc) (get *parsers* pfunc default-parser) 
-                                      (fn? pfunc) pfunc)
+                                (lookup-parser pfunc default-parser) 
                                 parse-string)))]
     (fn [field ^String v] ((get-parser field) v))))
 
@@ -96,20 +100,52 @@
             (parsing-scheme (first revschemes) :default-parser default-parser)
             (rest revschemes))))
 
+(comment
 (defn vec-parser 
   "Given a set of fields, and a function that maps a field name to 
    a parser::string->'a, returns a function that consumes a sequence
    of strings, and parses fields with the corresponding 
-   positional parser."
-  [fields field->value]
-  (let [xs->values (vec (map #(partial field->value %) fields))]
-    (fn [xs]
-      (loop [acc (transient [])
-             idx 0]
-        (if (= idx (count xs->values)) (persistent! acc)
-            (recur (conj! acc ((nth xs->values idx) (nth xs idx)))
-                   (inc idx)))))))
+   positional parser.  Alternately, caller may supply a parser as a 
+   single argument, to be applied to a vector of strings."
+  ([fields field->value]
+     (let [xs->values (vec (map #(partial field->value %) fields))]
+       (fn [xs]
+         (loop [acc (transient [])
+                idx 0]
+           (if (= idx (count xs->values)) (persistent! acc)
+               (recur (conj! acc ((nth xs->values idx) (nth xs idx)))
+                      (inc idx)))))))
+  ([f] 
+     (let [parsefunc (lookup-parser f identity)]
+       (fn [xs]         
+         (persistent! 
+          (reduce (fn [acc x] 
+                    (conj! acc (parsefunc x))) (transient []) 
+                    xs))))))
+)
 
+;;This is actually marginally faster than using transients.
+;;Go figure.
+(defn vec-parser 
+  "Given a set of fields, and a function that maps a field name to 
+   a parser::string->'a, returns a function that consumes a sequence
+   of strings, and parses fields with the corresponding 
+   positional parser.  Alternately, caller may supply a parser as a 
+   single argument, to be applied to a vector of strings."
+  ([fields field->value]
+     (let [xs->values (vec (map #(partial field->value %) fields))]
+       (fn [xs]
+         (loop [acc []
+                idx 0]
+           (if (= idx (count xs->values)) acc
+               (recur (conj acc ((nth xs->values idx) (nth xs idx)))
+                      (inc idx)))))))
+  ([f] 
+     (let [parsefunc (lookup-parser f identity)]
+       (fn [xs]         
+          (reduce (fn [acc x] 
+                    (conj acc (parsefunc x)))  []
+                    xs)))))
 (defn record-parser 
   "Given an implied schema as indicated by the map, returns a function that
    parses maps with identical fields using the parser."
@@ -131,6 +167,4 @@
                         {:name "Bill Shatner" :age "68"}])
 
   (time  (dotimes [i 1000]   (map the-parser simple-records)))
-
-
   )
