@@ -311,7 +311,6 @@
 (defn field->string [f] (cond (string? f) f 
                               (keyword? f) (str (subs (str f) 1)) 
                               :else (str f)))
-
 (defn keywordize-field-names
   "Flips the fields to be keywords instead of strings."
   [t] 
@@ -624,8 +623,8 @@
  (nth-record tbl n))
 
 (defn record-count [t] (count-rows t))
-(defn get-fields [t] (table-fields t))
-(defn last-record [t] (get-record t (dec (record-count t))))
+(defn get-fields   [t] (table-fields t))
+(defn last-record  [t] (get-record t (dec (record-count t))))
 
 (defn row->string 
   ([separator r] (strlib/join separator r))
@@ -831,11 +830,16 @@
                              :profession 
                              :instrument])))) 
   ;performance testing...
-  (def small-table-path "C:\\Users\\tom\\Documents\\datasets\\DJ3019852003.txt")
+  (def small-table-path "C:\\Users\\thomas.spoon.NAE\\Documents\\sampledata\\djdata.txt")
   ;;Read in some pre-baked data
   (def the-string (clojure.string/replace (slurp small-table-path) \; \tab))
   ;Some data is encoded as "32,35" etc.
-  (defn comma-numbers [^String x] (read-string (str  "[" x "]")))
+  (defn drop-quotes [x] (subs  x 1 (dec (count x))))
+  (defn comma-numbers [^String x] x )
+  ;; (defn comma-numbers [^String x] 
+  ;;   ((parse/vec-parser :int) 
+  ;;    (clojure.string/split (drop-quotes x) #",")))
+
   (def parseinfo (partition 2 [:id      :int
                                :date    :string ;:date
                                :open    comma-numbers

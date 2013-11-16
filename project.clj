@@ -1,4 +1,4 @@
-(defproject spork "0.1.7.0-SNAPSHOT"
+(defproject spork "0.1.7.5-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and are suppoorted as stand-alone dependencies.
@@ -21,6 +21,5 @@
                  [net.sf.jung/jung-algorithms "2.0.1"]
                  [net.sf.jung/jung-visualization "2.0.1"]
                  [net.sf.jung/jung-io "2.0.1"]
-                 [dk.ative/docjure    "1.6.0-SNAPSHOT"]])
-
-x
+                 [dk.ative/docjure    "1.6.0-SNAPSHOT"]
+                 ])

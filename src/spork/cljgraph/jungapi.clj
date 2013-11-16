@@ -69,12 +69,16 @@
   ([g [lbl edgepair]] (jadd-edge g lbl edgepair)))
 
 (defn graph->jgraph [g]
-  (let [newg (jgraph)]
+  (let [newg (jgraph)
+        labels (atom {})]
     (doseq [node  (get-node-labels g)
-            arc   (arcs-from g  node)] 
-      (jadd-edge   newg  (arc->jedge arc))
-      (jadd-vertex newg  node))
-    newg))   
+            arc   (arcs-from g  node)]
+      (let [[w jedge] (arc->jedge arc)
+            idx (count @labels)]
+        (do (jadd-edge newg idx jedge)
+            (jadd-vertex newg node)
+            (swap! labels assoc idx w))))
+    [newg @labels]))   
 
 ;Handle graph layouts using JUNG classes...
 (defn- layoutf [jg f] (f jg))
@@ -159,10 +163,10 @@
     (format (str \% \. n \f) (float x)))) 
     
 
-(defn get-labellers [g]
+(defn get-labellers [m]
   {:node-labeller (make-trans (fn [nodelabel] (str nodelabel)))
    :edge-labeller (make-trans 
-                    (fn [arclabel] (roundn arclabel 2)))})
+                    (fn [arclabel] (roundn (get m arclabel) 2)))})
 
 (def deflabels  {:node-labeller string-labeller :edge-labeller string-labeller})
 (defn make-view [jg layoutf {:keys [node-labeller edge-labeller]}]
@@ -186,19 +190,17 @@
 
 (defmulti view-graph (fn [g layoutf & fs] (type g)))
 (defmethod view-graph :default [g layoutf & fs]
-  (let [jg (graph->jgraph g)
-        labels (get-labellers g)
+  (let [[jg edge-weights] (graph->jgraph g)
+        labels (get-labellers edge-weights)
         visuals (map #(make-view jg % labels) (cons layoutf fs))
         frm (empty-frame)]
     (make-visible (add-views frm visuals))))
-
-
 
 ;gm.setMode(ModalGraphMouse.Mode.TRANSFORMING);
 ;vv.setGraphMouse(gm);
   
 (defn get-view [g & layout]
-  (let [l (if (first layout) (first layout) @*current-layout*)]
+  (let [l (if (first layout) (get layouts (first  layout)) @*current-layout*)]
     (future (view-graph g l))))
 
 (defmethod gui/view spork.data.digraph.digraph [g & {:keys [layout] :or {layout :fr}}]

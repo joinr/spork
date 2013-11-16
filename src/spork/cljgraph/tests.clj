@@ -144,6 +144,14 @@
            {"Z" 8, "Y" 7, "X" 9}))
       "class-graph should decompose into 4 smaller graphs."))
 
+(deftest filter-test 
+  (is (=  (get-paths (dijkstra class-graph "A" "F"))
+          '(("A" "C" "E" "F") ("A" "B" "D" "G" "F")))
+      "class-graph should have 2 equivalent shortest paths")
+  (is (=  (get-paths (dijkstra (with-nodefilter (complement #{"D"}) class-graph) "A" "F"))
+          '(("A" "C" "E" "F"))) 
+      "class-graph with node D dropped should only have one shortest path"))
+
  ;sample-dag: a weighted directed acyclic graph with 
  ;            1 component
  ;
@@ -338,7 +346,7 @@
             [:dc :bos] {:from :dc, :to :bos, :capacity 250, :flow 100},
             [:dc :hou] {:from :dc, :to :hou, :capacity 80, :flow 200},
             [:s :dc] {:from :s, :to :dc, :capacity 0, :flow 300},
-            [:s :chi] {:from :s, :to :chi, :capacity 0, :flow 300}}] ))
+            [:s :chi] {:from :s, :to :chi, :capacity 0, :flow 300}}]))
   (is (= (total-flow cost-net) 600)
       "There should be 600 units of flow")
   (is (= (total-cost cost-net (:active flow-results)) 3300)
