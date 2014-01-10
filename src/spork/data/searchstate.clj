@@ -14,9 +14,10 @@
   
 ;;__TODO__ Use transient operations for updating the search state.
 (defn update-search [state shortest distance fringe]
-  (merge state {:shortest shortest 
-                :distance distance 
-                :fringe fringe}))
+  (-> state
+      (assoc :shortest shortest)
+      (assoc :distance distance)
+      (assoc :fringe fringe)))
 
 (defn- estimating-conj [estimator fringe sink w target]
   (generic/conj-fringe fringe sink (+ w (estimator sink target))))

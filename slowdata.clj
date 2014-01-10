@@ -70,3 +70,7 @@
 ;;facilitate the search.  Since we want searches to be as fast as
 ;;possible, we probably want to use mutable structures for the
 ;;fringes. That should be an assload faster. 
+
+
+;;ArraySeq is the biggest bottleneck at the moment, even for the
+;;comparatively simple depth-first-search.
