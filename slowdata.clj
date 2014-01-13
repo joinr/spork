@@ -98,25 +98,30 @@
 
 
 ;;Looking at using fast, mutable structures for search fringes.
+(defn ^ArrayList make-array-list [] (ArrayList.))
 (defn ^ArrayList array-list [xs] 
-  (reduce (fn [^ArrayList acc x] (doto acc (.add x))) (ArrayList.) xs))
+  (reduce (fn [^ArrayList acc x] (doto acc (.add x))) (make-array-list) xs))
+
+(defn ^ArrayDeque make-queue [] (ArrayDeque.))
 (defn ^ArrayDeque queue [xs] 
-  (reduce (fn [^ArrayDeque acc x] (doto acc (.add x))) (ArrayDeque.) xs))
+  (reduce (fn [^ArrayDeque acc x] (doto acc (.add x))) (make-queue) xs))
+
 (defn entry-comparer [l r] 
   (let [pl (generic/entry-priority l)
         pr (generic/entry-priority r)]
     (cond (< pl pr) -1 
           (> pl pr) 1
           :else 0)))   
-  
+
+(defn ^ArrayList  add-list   [^ArrayList l obj]  (doto l  (.add obj)))
+(defn ^ArrayDeque add-q      [^ArrayDeque q obj]  (doto q (.add obj)))
+
+
 (defn ^PriorityQueue make-pq [] (PriorityQueue. 11 entry-comparer))
 (defn ^PriorityQueue pq [xs] 
   (reduce (fn [^PriorityQueue acc x]   
             (doto acc (.add x))) (make-pq) xs))
             
-
-(defn ^ArrayList  add-list   [^ArrayList l obj]  (doto l (.add obj)))
-(defn ^ArrayDeque add-q      [^ArrayDeque q obj]  (doto q (.add obj)))
 (defn ^PriorityQueue add-pq  [^PriorityQueue q obj]  (doto q (.add obj)))
 (defn ^PriorityQueue pop-pq  [^PriorityQueue q    ]  (do (.poll q) q))
 
@@ -129,20 +134,27 @@
   java.util.ArrayDeque
   (conj-fringe [fringe n w] (add-q fringe n))
   (next-fringe [fringe]     (.peek fringe))
-  (pop-fringe  [fringe]     (do (pop fringe) fringe))
+  (pop-fringe  [fringe]     (do (.pop fringe) fringe))
   java.util.PriorityQueue
-  (conj-fringe [fringe n w] (add-pq (generic/entry w n)))
-  (next-fringe [fringe]     (when-let [e (.peek ^PriorityQueue fringe)]
-                              (val e)))
+  (conj-fringe [fringe n w] (add-pq fringe (generic/entry w n)))
+  (next-fringe [fringe]     (when-let [e (.peek ^PriorityQueue fringe)] (val e)))
   (pop-fringe [fringe]      (pop-pq fringe)))
 
 
+(defn empty-PFS [startnode] (spork.data.searchstate/init-search startnode :fringe (make-pq)))
 ;;testing
 
 (comment 
-(def the-nodes (map generic/entry (repeatedly (fn [] (rand))) (range 100000)))
+(def the-nodes (map generic/entry (repeatedly (fn [] (rand))) (range 10000)))
+(defmacro qtime [expr] `(time (do ~expr nil)))
+(defn round-trip [fr] 
+  (loop [acc (generic/conj-fringe-all fr the-nodes)]
+    (when (generic/next-fringe acc)
+      (recur (generic/pop-fringe acc)))))
+  
+(qtime (dotimes [i 1000] (search/traverse g 'Total :filled (empty-PFS 'Total))))
+(qtime (dotimes [i 1000] (graph/priority-first-search g 'Total :filled)))
 
-(defn into-fringe [fr entries] 
-  (reduce (fn [acc entry] (generic/conj-fringe acc (key entry) (val entry))) fr entries))
+
 
 )
