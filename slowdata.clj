@@ -142,18 +142,58 @@
 
 
 (defn empty-PFS [startnode] (spork.data.searchstate/init-search startnode :fringe (make-pq)))
+(defn empty-DFS [startnode] (spork.data.searchstate/init-search startnode :fringe (make-array-list)))
+(defn empty-BFS [startnode] (spork.data.searchstate/init-search startnode :fringe (make-queue)))
 ;;testing
 
 (comment 
 (def the-nodes (map generic/entry (repeatedly (fn [] (rand))) (range 10000)))
-(defmacro qtime [expr] `(time (do ~expr nil)))
+(defmacro qtime  [expr] `(time (do ~expr nil)))
 (defn round-trip [fr] 
   (loop [acc (generic/conj-fringe-all fr the-nodes)]
     (when (generic/next-fringe acc)
       (recur (generic/pop-fringe acc)))))
-  
+
+
+;Searches...  
+(println "mutable searches:")
 (qtime (dotimes [i 1000] (search/traverse g 'Total :filled (empty-PFS 'Total))))
-(qtime (dotimes [i 1000] (graph/priority-first-search g 'Total :filled)))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :filled (empty-DFS 'Total))))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :filled (empty-BFS 'Total))))
+(println "persistent  searches:")
+(qtime (dotimes [i 1000] (search/traverse g 'Total :filled (searchstate/empty-PFS 'Total))))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :filled (searchstate/empty-DFS 'Total))))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :filled (searchstate/empty-BFS 'Total))))
+
+;Walks
+(println "mutable walks:")
+(qtime (dotimes [i 1000] (search/traverse g 'Total :blah (empty-PFS 'Total))))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :blah (empty-DFS 'Total))))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :blah (empty-BFS 'Total))))
+(println "persistent  walks:")
+(qtime (dotimes [i 1000] (search/traverse g 'Total :blah (searchstate/empty-PFS 'Total))))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :blah (searchstate/empty-DFS 'Total))))
+(qtime (dotimes [i 1000] (search/traverse g 'Total :blah (searchstate/empty-BFS 'Total))))
+
+;;Testing to ensure our path finding is the same with the new stuff...
+(defn same-res? [s1 s2] 
+  (= (graph/get-weighted-paths s1) 
+     (graph/get-weighted-paths s2)))
+
+(assert (same-res? (search/traverse g 'Total :filled (empty-PFS 'Total))
+                   (graph/priority-first-search g 'Total :filled)))
+(assert (same-res?  (search/traverse g 'Total :filled (empty-DFS 'Total))
+                    (search/traverse g 'Total :filled (searchstate/empty-DFS 'Total))))
+(assert (same-res?  (search/traverse g 'Total :filled (empty-BFS 'Total))
+                    (search/traverse g 'Total :filled (searchstate/empty-BFS 'Total))))
+
+
+(assert (same-res?  (search/traverse g 'Total :blah (empty-PFS 'Total))
+                    (graph/priority-first-search g 'Total :blah)))
+(assert (same-res?  (search/traverse g 'Total :blah (empty-DFS 'Total))
+                    (search/traverse g 'Total :blah (searchstate/empty-DFS 'Total))))
+(assert (same-res?  (search/traverse g 'Total :blah (empty-BFS 'Total))
+                    (search/traverse g 'Total :blah (searchstate/empty-BFS 'Total))))
 
 
 

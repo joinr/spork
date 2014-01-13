@@ -85,7 +85,7 @@
   [fringe]
   (if-let [kv (next-fringe fringe)]
     (lazy-seq (cons kv (fringe-seq (pop-fringe fringe))))))
-(defn empty-fringe? [fringe] (empty? (fringe-seq fringe)))
+(defn empty-fringe? [fringe] (nil? (next-fringe fringe)))
 (defn fringe? [x] (satisfies? IFringe x))
 
 ;;Abstract protocol for operating on shortest path searches.

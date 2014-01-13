@@ -57,9 +57,10 @@
   [g nd {:keys [shortest] :as state}] 
   (filter #(not (contains? shortest %)) (neighbors* g nd)))
 
+;;Removed empty-fringe? from check, since we already cover it in the
+;;traversal loop.
 (defn- default-halt?  [state nextnode]
-  (or (= (:targetnode state) nextnode) 
-          (generic/empty-fringe? (:fringe state))))
+  (= (:targetnode state) nextnode))
 
 ;;_POSSIBLE OPTIMIZATION__ Maintain the open set explicitly in the search state
 ;;vs explicitly computing __unexplored__ .
