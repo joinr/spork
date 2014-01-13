@@ -52,12 +52,17 @@
 
 ;;We can get a significant performance boost (x 5) by eliminating the call
 ;;to vec in the implementation of -get-sinks and -get-sources for
-;;spork.data.digraph.digraph - just return 
+;;spork.data.digraph.digraph - just return the resulting list.
+;;[done]
 
 ;;Also, I use ordered maps for the digraph.
 ;;These are about 2x as slow for seq instancing as normal maps...
 ;;Another optimization is to eliminate ordered maps and just use {} 
-;;That lets us use array maps where possible (dictated by the runtime).
+;;That lets us use array maps where possible (dictated by the
+;;runtime).
+
+;;Note -> did a quick test without the ordered-map backing the graph, 
+;;and runtime savings were slight for walks.
 
 ;;We only really need ordered traversal for tree operations...
 ;;Thus, I don't think the ordered graph should be the default.

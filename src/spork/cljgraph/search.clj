@@ -48,7 +48,7 @@
    this will visit the nodes in the order the incident arcs were appended to the 
    graph, if the underlying the graph supports it."
   [g nd {:keys [shortest] :as state}] 
-  (filter #(not (contains? shortest %)) (rseq (generic/-get-sinks g nd))))
+  (filter #(not (contains? shortest %)) (reverse (generic/-get-sinks g nd))))
 
 (defn- visit-neighbors-once
   "Treats the graph as if it's undirected.  Screen nodes that have already been 
