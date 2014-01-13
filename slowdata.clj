@@ -1,6 +1,8 @@
 (ns testgraph
   (:require [spork.cljgraph [flow :as flow] 
-                            [core :as graph]]))
+                            [core :as graph]]
+            [spork.protocols [core :as generic]])
+  (:import [java.util ArrayList PriorityQueue ArrayDeque]))
 
 ;;This is a chunk of data that exposes some flaws in the graph algos.
 ;;Good test data for netflow stuff.
@@ -62,7 +64,9 @@
 ;;runtime).
 
 ;;Note -> did a quick test without the ordered-map backing the graph, 
-;;and runtime savings were slight for walks.
+;;and runtime savings were slight for walks.  Since walks are a worst
+;;case scenario, I assume the ordered map in not currently a
+;;significant hotspot.
 
 ;;We only really need ordered traversal for tree operations...
 ;;Thus, I don't think the ordered graph should be the default.
@@ -70,6 +74,18 @@
 
 ;;Another likely performance killer is the priorityq implementation
 ;;for the search fringes. 
+
+;;For our pq, I built an alter value function that allows us to
+;;reweight the node on the priority queue.  This is potentially a
+;;performance bottleneck, since I find a persistent queue associated
+;;with the priority, then traverse that queue to filter out the old
+;;node.  This could take o(n) time worst case, where n is the length
+;;of the queue...For PFS or Dijkstra, we really don't use the PQ in
+;;isolation; i.e. we have a distance map that we're maintaining.  So,
+;;we can avoid removing items from the queue as a consequence of
+;;re-weighing; we'll automatically ignore them if they show up on the
+;;fringe again with a higher distance.  We can basically just add them
+;;to the fringe and not worry about removing AND updating.
 
 ;;Fringes, in general, will be transient in nature: They only exist to
 ;;facilitate the search.  Since we want searches to be as fast as
@@ -79,3 +95,54 @@
 
 ;;ArraySeq is the biggest bottleneck at the moment, even for the
 ;;comparatively simple depth-first-search.
+
+
+;;Looking at using fast, mutable structures for search fringes.
+(defn ^ArrayList array-list [xs] 
+  (reduce (fn [^ArrayList acc x] (doto acc (.add x))) (ArrayList.) xs))
+(defn ^ArrayDeque queue [xs] 
+  (reduce (fn [^ArrayDeque acc x] (doto acc (.add x))) (ArrayDeque.) xs))
+(defn entry-comparer [l r] 
+  (let [pl (generic/entry-priority l)
+        pr (generic/entry-priority r)]
+    (cond (< pl pr) -1 
+          (> pl pr) 1
+          :else 0)))   
+  
+(defn ^PriorityQueue make-pq [] (PriorityQueue. 11 entry-comparer))
+(defn ^PriorityQueue pq [xs] 
+  (reduce (fn [^PriorityQueue acc x]   
+            (doto acc (.add x))) (make-pq) xs))
+            
+
+(defn ^ArrayList  add-list   [^ArrayList l obj]  (doto l (.add obj)))
+(defn ^ArrayDeque add-q      [^ArrayDeque q obj]  (doto q (.add obj)))
+(defn ^PriorityQueue add-pq  [^PriorityQueue q obj]  (doto q (.add obj)))
+(defn ^PriorityQueue pop-pq  [^PriorityQueue q    ]  (do (.poll q) q))
+
+
+(extend-protocol generic/IFringe 
+  java.util.ArrayList
+  (conj-fringe [fringe n w] (add-list fringe n))
+  (next-fringe [fringe]     (when (> (count fringe) 0) (nth fringe (dec (count fringe)))))
+  (pop-fringe  [fringe]     (doto fringe (.remove (dec (count fringe)))))
+  java.util.ArrayDeque
+  (conj-fringe [fringe n w] (add-q fringe n))
+  (next-fringe [fringe]     (.peek fringe))
+  (pop-fringe  [fringe]     (do (pop fringe) fringe))
+  java.util.PriorityQueue
+  (conj-fringe [fringe n w] (add-pq (generic/entry w n)))
+  (next-fringe [fringe]     (when-let [e (.peek ^PriorityQueue fringe)]
+                              (val e)))
+  (pop-fringe [fringe]      (pop-pq fringe)))
+
+
+;;testing
+
+(comment 
+(def the-nodes (map generic/entry (repeatedly (fn [] (rand))) (range 100000)))
+
+(defn into-fringe [fr entries] 
+  (reduce (fn [acc entry] (generic/conj-fringe acc (key entry) (val entry))) fr entries))
+
+)

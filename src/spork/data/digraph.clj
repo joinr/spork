@@ -90,6 +90,54 @@
   (-get-sources [tg k]   (keys (get sources k)))
   (-get-sinks   [tg k]   (keys (get sinks   k))))
 
+;;An adjacency list representation of a graph.
+;;Identical to the map-based representation, but uses vectors instead.
+;;Preserves insertion order as well.
+
+;; (defn adj-conj [adj to w] (-> adj  (conj to) (conj w)))
+;; (defn adj-disj [adj to] 
+;;   (reduce (fn [acc x] 
+  
+
+;; (defrecord digraphlist [nodes sources sinks]
+;;   ITopograph
+;;   (-get-nodes [tg] nodes)
+;;   (-set-nodes [tg m] (assoc tg :nodes m))
+;;   (-conj-node [tg k v] 
+;;     (-> tg
+;;         (assoc :nodes   (assoc nodes k v))
+;;         (assoc :sources (-> sources (conj k) (conj [])))
+;;         (assoc :sinks   (-> sinks   (conj k( (conj [])))))))
+;;   (-disj-node [tg k]
+;;     (assert (contains? nodes k) (str "Node " k " does not exist!")) 
+;;     (let [new-sources (reduce #(update-in %1 [%2] dissoc k)
+;;                               (dissoc sources k)  (-get-sinks tg k))
+;;           new-sinks   (reduce #(update-in %1 [%2] dissoc k)
+;;                               (dissoc sinks k)  (-get-sources tg k))]
+;;       (-> tg 
+;;           (assoc :nodes   (dissoc nodes k))
+;;           (assoc :sources new-sources)
+;;           (assoc :sinks   new-sinks))))
+;;   (-has-node? [tg k]  (contains? nodes k))
+;;   (-conj-arc  [tg source sink w]
+;;     (let [w (or w 0)] ;ensure arcs have numeric weight, not nil
+;;       (-> tg 
+;;           (assoc :sources (update-in sources [sink]   assoc source w))
+;;           (assoc :sinks   (update-in sinks   [source] assoc sink   w)))))
+;;   (-disj-arc  [tg source sink]   
+;;     (-> tg 
+;;         (assoc :sources
+;;           (assoc sources sink  (or (dissoc (get sources sink) source) {})))
+;;         (assoc :sinks
+;;           (assoc sinks   source (or (dissoc (get sinks source) sink)  {})))))
+;;   (-has-arc?    [tg source sink] (contains?   (get sources sink) source))
+;;   (-arc-weight  [tg source sink] (when-let [snks (get sinks source)]
+;;                                   (get snks sink)))
+;;   (-get-arc     [tg source sink] [source sink (get-in sinks [source sink])])
+;;   (-get-sources [tg k]   (keys (get sources k)))
+;;   (-get-sinks   [tg k]   (keys (get sinks   k))))
+
+
 ;;The old Digraph
 ;;===============
 ;; (defrecord digraph [nodes sources sinks]
