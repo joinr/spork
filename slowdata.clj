@@ -194,7 +194,4 @@
                     (search/traverse g 'Total :blah (searchstate/empty-DFS 'Total))))
 (assert (same-res?  (search/traverse g 'Total :blah (empty-BFS 'Total))
                     (search/traverse g 'Total :blah (searchstate/empty-BFS 'Total))))
-
-
-
 )
