@@ -57,15 +57,15 @@
 
 (defn dec-flow 
   ([g info flow]
-    (update-edge g (:from info) (:to info) 
+    (update-edge g  (:from info) (:to info) 
                  (- (:flow info) flow) (+ (:capacity info) flow)))
   ([g from to flow] (dec-flow g (edge-info g from to) flow)))
 
 (defn flows [g] 
   (for [[k v] (:flow-info g)] [k (select-keys v [:capacity :flow])]))
 (defn active-flows [g] 
-  (reduce (fn [acc [k info]](if (> (:flow info) 0)
-                              (assoc acc k (:flow info)) acc)) 
+  (reduce (fn [acc [k info]] (if (> (:flow info) 0)
+                               (assoc acc k (:flow info)) acc)) 
           {} (:flow-info g)))
 (defn total-flow 
   ([g active-edges] 
@@ -109,20 +109,34 @@
              [g {:flow-info finfo}])
         (apply merge))))
 
+;;Original version of flow neighbors.  Trying to trim costs for
+;;neighbor lookup.
+;; (defn flow-neighbors0 
+;;   [g v & args]
+;;   (let [info (partial edge-info g)
+;;         capacity (fn [to]   (:capacity (info v to)))
+;;         flow     (fn [from] (:flow (info from v)))]
+;;     (concat 
+;;       (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v)) ;forward
+;;       (filter (fn [from] (> (flow from)   0)) (graph/sources g v)))))
+
 ;;bi-directional flow neighbors.  We allow all forward neighbors with untapped 
 ;;capacity, and allow any backward neighbors with flow.
 (defn flow-neighbors 
-  [g v & args]
-  (let [info (partial edge-info g)
-        capacity (fn [to]   (:capacity (info v to)))
-        flow     (fn [from] (:flow (info from v)))]
-    (concat 
-      (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v)) ;forward
-      (filter (fn [from] (> (flow from)   0)) (graph/sources g v)))))
+  [g v _]
+  (let [xs (atom (transient []))]
+    (do (doseq [to (graph/sinks g v)]
+          (when (> (:capacity (edge-info g v to)) 0) 
+            (reset! xs (conj! @xs to) )))
+        (doseq [from (graph/sources g v)]
+          (when (> (:flow (edge-info g from v)) 0)
+            (reset! xs (conj! @xs from))))
+        (persistent! @xs))))
+
 ;;this is a special walk for helping us with greedy flows, where we don't 
 ;;try to find an augmenting flow.
 (defn forward-only-flow-neighbors 
-  [g v & args]
+  [g v _]
   (let [info (partial edge-info g)
         capacity (fn [to] (:capacity (info v to)))]
     (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v))))
@@ -171,7 +185,7 @@
           next-flow (min flow new-flow)]
       (if (empty? xs) next-flow
           (recur (first xs) (rest xs) next-flow)))))
-;;apply an amount of flow along the paht, dropping and nodes that 
+;;apply an amount of flow along the path, dropping and nodes that 
 ;;become incapacitated.
 (defn apply-flow [g edges flow]
   (reduce (fn [gr info]

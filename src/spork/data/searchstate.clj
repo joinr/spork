@@ -9,47 +9,92 @@
                              [fringe :as fr]]))
 
 ;;These allows us to use complex keys in our spt.
-(defn branch? [v] (and (coll? v) (contains? (meta v) :branch)))
+(defn branch?  [v] (and (coll? v) (contains? (meta v) :branch)))
 (defn ->branch [& xs]  (with-meta (into [] xs) {:branch true}))
   
 ;;__TODO__ Use transient operations for updating the search state.
-(defn update-search [state shortest distance fringe]
-  (-> state
-      (assoc :shortest shortest)
-      (assoc :distance distance)
-      (assoc :fringe fringe)))
+;; (defn update-search [state shortest distance fringe]
+;;   (-> state
+;;       (assoc :shortest shortest)
+;;       (assoc :distance distance)
+;;       (assoc :fringe fringe)))
 
-(defn- estimating-conj [estimator fringe sink w target]
-  (generic/conj-fringe fringe sink (+ w (estimator sink target))))
+(definline update-search [state shortest distance fringe]
+  `(-> ~state
+       (assoc :shortest ~shortest)
+       (assoc :distance ~distance)
+       (assoc :fringe ~fringe)))
 
-(defn- conj-fringe*    [state sink w] 
-  (if-let [e (:estimator state)]
-    (estimating-conj e   (:fringe state) sink w (:target state))
-    (generic/conj-fringe (:fringe state) sink w)))
 
-(defn- new-path*   
-  "When we discover a new path via from source to sink, we add sink to the 
-   shortest path tree, register the distance, and add sink to the fringe."
-  [source sink w {:keys [shortest distance fringe] :as state}]
-    (update-search state (assoc shortest sink source)
-                         (assoc distance sink w)
-                         (conj-fringe* state sink w)))
-(defn- shorter-path*
-  "When a shorter path is found to a node already on the fringe, we update the 
-   SPT, distance, and add the sink back to the fringe based on the new path."   
-  [source sink wnew wpast {:keys [shortest distance fringe] :as state}]
-    (update-search state (assoc shortest sink source) ;new spt
-                         (assoc distance sink wnew)  ;shorter distance
-                         (conj-fringe* state sink wnew)))
+(definline estimating-conj [estimator fringe sink w target]
+  `(generic/conj-fringe ~fringe ~sink (+ ~w (~estimator ~sink ~target))))
 
-(defn- equal-path* 
-  "When we discover equivalent paths, we conj them onto the shortest path tree.
-   Note, if a better path is found, the other paths will be eliminated."
-  [source sink {:keys [shortest distance fringe] :as state}]
-    (let [current (get shortest sink)
-		      context (if (branch? current) current (->branch current))
-		      newspt  (assoc shortest sink (conj context source))]                 
-		     (update-search state newspt distance fringe)))
+;; (defn- estimating-conj [estimator fringe sink w target]
+;;   (generic/conj-fringe fringe sink (+ w (estimator sink target))))
+
+
+;;Experimental performance enhancements...
+
+(definline conj-fringe* [state sink w] 
+  `(if-let [e# (:estimator ~state)]
+    (estimating-conj e#   (:fringe ~state) ~sink ~w (:target ~state))
+    (generic/conj-fringe (:fringe ~state) ~sink ~w)))
+
+
+;; (defn- conj-fringe*    [state sink w] 
+;;   (if-let [e (:estimator state)]
+;;     (estimating-conj e   (:fringe state) sink w (:target state))
+;;     (generic/conj-fringe (:fringe state) sink w)))
+
+;;When we discover a new path via from source to sink, we add sink to the 
+;;shortest path tree, register the distance, and add sink to the fringe.
+(definline new-path*   
+  [source sink w state] 
+  `(update-search ~state 
+                  (assoc (:shortest ~state) ~sink ~source)
+                  (assoc (:distance ~state) ~sink ~w)
+                  (conj-fringe* ~state ~sink ~w)))
+
+;; (defn- new-path*   
+;;   "When we discover a new path via from source to sink, we add sink to the 
+;;    shortest path tree, register the distance, and add sink to the fringe."
+;;   [source sink w {:keys [shortest distance fringe] :as state}]
+;;     (update-search state (assoc shortest sink source)
+;;                          (assoc distance sink w)
+;;                          (conj-fringe* state sink w)))
+
+
+(definline shorter-path* 
+  [source sink wnew wpast state]
+  `(update-search ~state (assoc (:shortest ~state) ~sink ~source) ;new spt
+                  (assoc (:distance ~state) ~sink ~wnew)  ;shorter distance
+                  (conj-fringe* ~state ~sink ~wnew)))
+
+;; (defn- shorter-path*
+;;   "When a shorter path is found to a node already on the fringe, we update the 
+;;    SPT, distance, and add the sink back to the fringe based on the new path."   
+;;   [source sink wnew wpast {:keys [shortest distance fringe] :as state}]
+;;     (update-search state (assoc shortest sink source) ;new spt
+;;                          (assoc distance sink wnew)  ;shorter distance
+;;                          (conj-fringe* state sink wnew)))
+
+(definline equal-path* 
+  [source sink state]
+  `(let [shortest# (:shortest ~state)
+         current#  (get shortest# ~sink)
+         newspt#   (assoc shortest# ~sink 
+                     (-> (if (branch? current#) current# (->branch current#))
+                         (conj ~source)))]                 
+     (update-search ~state newspt# (:distance ~state) (:fringe ~state))))
+
+;; (defn- equal-path* 
+;;   "When we discover equivalent paths, we conj them onto the shortest path tree.
+;;    Note, if a better path is found, the other paths will be eliminated."
+;;   [source sink {:keys [shortest distance fringe] :as state}]
+;;     (let [current (get shortest sink)
+;; 		      context (if (branch? current) current (->branch current))
+;; 		      newspt  (assoc shortest sink (conj context source))]                 
+;; 		     (update-search state newspt distance fringe)))
   
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.

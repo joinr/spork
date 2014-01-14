@@ -1,6 +1,8 @@
 (ns testgraph
   (:require [spork.cljgraph [flow :as flow] 
-                            [core :as graph]]
+                            [core :as graph]
+                            [search :as search]]
+            [spork.data [searchstate :as searchstate]]
             [spork.protocols [core :as generic]])
   (:import [java.util ArrayList PriorityQueue ArrayDeque]))
 
@@ -194,4 +196,28 @@
                     (search/traverse g 'Total :blah (searchstate/empty-DFS 'Total))))
 (assert (same-res?  (search/traverse g 'Total :blah (empty-BFS 'Total))
                     (search/traverse g 'Total :blah (searchstate/empty-BFS 'Total))))
+
+(defn traverse
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate]
+    (let [get-weight    (partial graph/arc-weight g)
+          get-neighbors (fn [nd s] (graph/sinks g nd))
+          relax-by      (fn [source s sink]
+                          (generic/relax s get-weight source sink))]
+      (loop [state   (-> (assoc startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
+        (if (generic/empty-fringe? state) state 
+            (let [nd        (generic/next-fringe state) ;next node to visit
+                  visited   (generic/visit-node state nd)] ;record visit.
+              (if (= nd targetnode) visited                     
+                  (recur (reduce (fn [acc to] 
+                                   (let [res (relax-by nd acc to)]
+                                     res))
+                                 visited
+                                 (get-neighbors nd state))))))))) 
+
 )
