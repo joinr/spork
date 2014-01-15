@@ -169,7 +169,7 @@
 (defn path->edge-info [g p]
   (map (fn [fromto]
          (let [from (first fromto)
-               to (second fromto)]
+               to   (second fromto)]
            (if (forward? g from to)
              (assoc (edge-info g from to) :dir :increment)
              (assoc (edge-info g to from) :dir :decrement))))

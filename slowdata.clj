@@ -232,4 +232,52 @@
                           visited
                           (get-neighbors source state))))))))) 
 
+
+(defn default-hault [state nd] (= nd (:targetnode state)))
+
+(defn traverse2
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
+                                         :or  {halt?     default-hault
+                                               weightf   (search/get-weightf g)
+                                               neighborf (search/get-neighborf g)}}]
+    (let [get-neighbors (if-let [nodefilter (search/get-nodefilter g)]
+                          (fn [nd s] (nodefilter (neighborf g nd s)))
+                          (partial neighborf g))]
+      (loop [state   (-> (assoc startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
+        (if (generic/empty-fringe? state) state 
+            (let [source    (generic/next-fringe state) ;next node to visit
+                  visited   (generic/visit-node state source)] ;record visit.
+              (if (halt? state source) visited                     
+                  (recur (loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                      visited
+                                      (get-neighbors source state))))))))) 
+
+(defn traverse3
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
+                                         :or  {halt?     default-hault
+                                               weightf   (search/get-weightf g)
+                                               neighborf (search/get-neighborf g)}}]
+    (let [get-neighbors (if-let [nodefilter (search/get-nodefilter g)]
+                          (fn [nd s] (nodefilter (neighborf g nd s)))
+                          (partial neighborf g))]
+      (loop [state   (-> (assoc startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
+        (if (generic/empty-fringe? state) state 
+            (let [source    (generic/next-fringe state) ;next node to visit
+                  visited   (generic/visit-node state source)] ;record visit.
+              (if (halt? state source) visited                     
+                  (recur (loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                      visited
+                                      (get-neighbors source state))))))))) 
 )

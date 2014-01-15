@@ -3,9 +3,30 @@
    inspired by Bob Sedgewick's Graph Algorithms in C."
    (:require [spork.data      [priorityq :as pq] 
                               [randq :as rq]]
-             [spork.protocols [core :as generic]]))
+             [spork.protocols [core :as generic]])
+   (:import [java.util.PriorityQueue]))
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
+
+
+
+;;Now using mutable priority queues for search fringe.  This ends up 
+;;being faster than my persistent priorityqueue implementation.
+(defn entry-comparer [l r] 
+  (let [pl (generic/entry-priority l)
+        pr (generic/entry-priority r)]
+    (cond (< pl pr) -1 
+          (> pl pr) 1
+          :else 0))) 
+
+(defn ^PriorityQueue make-pq [] (PriorityQueue. 11 entry-comparer))
+(defn ^PriorityQueue pq [xs] 
+  (reduce (fn [^PriorityQueue acc x]   
+            (doto acc (.add x))) (make-pq) xs))
+            
+(defn ^PriorityQueue add-pq  [^PriorityQueue q obj]  (doto q (.add obj)))
+(defn ^PriorityQueue pop-pq  [^PriorityQueue q    ]  (do (.poll q) q))
+
 
 ;;__TODO__ re-evaluate the use of entries as a standard api choice.
 ;;Do we really need access to the node weights?  Can't we just look them up?
@@ -40,13 +61,18 @@
   spork.data.randq.randomq
   (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     (peek fringe))
-  (pop-fringe  [fringe]     (pop fringe)))
+  (pop-fringe  [fringe]     (pop fringe))
+  java.util.PriorityQueue
+  (conj-fringe [fringe n w] (add-pq fringe (generic/entry w n)))
+  (next-fringe [fringe]     (when-let [e (.peek ^PriorityQueue fringe)] (val e)))
+  (pop-fringe  [fringe]     (pop-pq fringe)))
 
 ;;we wrap a priorityq with a map to get a priority fringe.
 ;;Acts as an associative fringe, i.e. keeps exactly one instance of a value 
 ;;on the fringe at any time.  Could be supplanted by a priority map, or a 
 ;;cheaplist, or a stock priority queue that doesn't bother to eliminate stale
 ;;values when re-weighing.
+;;OBSOLETE
 (defrecord pfringe [priorities ^spork.data.priorityq.pqueue fringe]
   generic/IFringe
   (conj-fringe [pf n w]
@@ -66,6 +92,9 @@
   "Builds a fringe that stores [node weight] entries in first-in-first-out 
    FIFO order.  Backed by a persistent queue"
     emptyq)
+;;Currently not used, in favor of mutable priority queue.  May find
+;;use again, if I can profile it and make it competitive.  It's not
+;;terrible, but the implementation is weak compared to the mutable pq.
 (def priority-fringe
   "Builds a fringe that stores [node weight] entries in priority order, 
    according to minimal weight.  Backed by a sorted map."

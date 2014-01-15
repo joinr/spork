@@ -176,11 +176,14 @@
 ;;An empty depth-first search.
 (def empty-DFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
 ;;An empty breadth-first search.
-(def empty-BFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
-;;An empty priority-first search.
-(def empty-PFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
+(def empty-BFS (memoize (fn [startnode] (init-search startnode :fringe fr/breadth-fringe))))
+;;An empty priority-first search.  Note: THis uses a mutable priority
+;;queue behind the scenes.
+(let [init-fringe (memoize (fn [startnode] (init-search startnode)))]
+  (defn empty-PFS [startnode] (assoc (init-fringe startnode) :fringe (fr/make-pq))))
+
 ;;An empty random-first search.
-(def empty-RFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
+(def empty-RFS (memoize (fn [startnode] (init-search startnode :fringe fr/random-fringe))))
 
 ;;testing
 (comment

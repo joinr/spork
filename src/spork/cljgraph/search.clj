@@ -108,14 +108,37 @@
 ;;Allows us to add a hook for node filtering during search.
 (defn get-nodefilter [g]  (get (meta g) :nodefilter nil))
 
-;;Unrolling a reduce from traverse.
-(definline redloop [f init coll]
-  `(loop [acc# ~init 
-          xs#  ~coll]
-     (if (empty? xs#) acc#
-         (recur (~f acc# (first xs#)) (rest xs#)))))
 
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
+;; (defn traverse
+;;   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+;;    the searchstate, the halting criteria, the weight-generating 
+;;    function, or criteria for filtering candidates.  Returns a searchstate 
+;;    of the walk, which contains the shortest path trees, distances, etc. for 
+;;    multiple kinds of walks, depending on the searchstate's fringe structure."
+;;   [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
+;;                                          :or  {halt?     default-halt?
+;;                                                weightf   (get-weightf g)
+;;                                                neighborf (get-neighborf g)}}]
+;;     (let [get-weight    (partial weightf   g)
+;;           get-neighbors (if-let [nodefilter (get-nodefilter g)]
+;;                            (fn [nd s] (nodefilter (neighborf g nd s)))
+;;                            (partial neighborf g))
+;;           relax-by      (fn [source s sink]
+;;                           (generic/relax s (get-weight source sink) source sink))]
+;;       (loop [state   (-> (assoc startstate :targetnode targetnode)
+;;                          (generic/conj-fringe startnode 0))]
+;;         (if (generic/empty-fringe? state) state 
+;;             (let [nd        (generic/next-fringe state) ;next node to visit
+;;                   visited   (generic/visit-node state nd)] ;record visit.
+;;               (if (halt? state nd) visited                     
+;;                   (recur (reduce (partial relax-by nd) 
+;;                                  visited
+;;                                  (get-neighbors nd state))))))))) 
+
+;;This should be an altogether faster version of traverse.  Most of
+;;the speed improvements are achieved from agressive inlining of
+;;functions for relaxation, and better implementations of conj-fringe.
 (defn traverse
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
    the searchstate, the halting criteria, the weight-generating 
@@ -123,24 +146,21 @@
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
   [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
-                                         :or  {halt?     default-halt?
+                                         :or  {halt?     default-hault
                                                weightf   (get-weightf g)
                                                neighborf (get-neighborf g)}}]
-    (let [get-weight    (partial weightf   g)
-          get-neighbors (if-let [nodefilter (get-nodefilter g)]
-                           (fn [nd s] (nodefilter (neighborf g nd s)))
-                           (partial neighborf g))
-          relax-by      (fn [source s sink]
-                          (generic/relax s get-weight source sink))]
+    (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
+                          (fn [nd s] (nodefilter (neighborf g nd s)))
+                          (partial neighborf g))]
       (loop [state   (-> (assoc startstate :targetnode targetnode)
                          (generic/conj-fringe startnode 0))]
-        (if (generic/empty-fringe? state) state 
-            (let [nd        (generic/next-fringe state) ;next node to visit
-                  visited   (generic/visit-node state nd)] ;record visit.
-              (if (halt? state nd) visited                     
-                  (recur (reduce (partial relax-by nd) 
-                                 visited
-                                 (get-neighbors nd state))))))))) 
+        (if-let [source    (generic/next-fringe state)] ;next node to visit
+          (let  [visited   (generic/visit-node state source)] ;record visit.
+            (if (halt? state source) visited                     
+                (recur (loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                    visited
+                                    (get-neighbors source state)))))
+          state))))
 
 (defn drop-empty-options [m]
   (reduce (fn [m k] (if (nil? (get m k)) (dissoc m k) m)) m (keys m)))
