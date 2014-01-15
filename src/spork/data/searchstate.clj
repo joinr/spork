@@ -178,7 +178,7 @@
 ;;An empty breadth-first search.
 (def empty-BFS (memoize (fn [startnode] (init-search startnode :fringe fr/breadth-fringe))))
 ;;An empty priority-first search.  Note: THis uses a mutable priority
-;;queue behind the scenes.
+;;queue 
 (let [init-fringe (memoize (fn [startnode] (init-search startnode)))]
   (defn empty-PFS [startnode] (assoc (init-fringe startnode) :fringe (fr/make-pq))))
 
