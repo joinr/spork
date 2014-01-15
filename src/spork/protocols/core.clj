@@ -100,7 +100,7 @@
   "Record the node as having been visited, and remove it from the fringe."
   [s nd] (pop-fringe (conj-visited s nd)))
 
-(defn relax
+(definline relax
   "Given a shortest path map, a distance map, a source node, sink node, 
    and weight(source,sink) = w, update the search state.
 
@@ -117,16 +117,73 @@
       an unnamed startnode.  We want to record this equivalence, which means 
       that we may ultimately end up with multiple shortest* paths."
      
-  [state weight-func source sink]  
-    (let [relaxed (+ (best-known-distance state source)  
-                     (weight-func source sink))]
-      (if-let [known (best-known-distance state sink)]
-	      (cond 
-	        (< relaxed known) (shorter-path state source sink relaxed known)            
-	        (= relaxed known) (equal-path state source sink)                         
-	        :else state)            
-       ;if sink doesn't exist in distance, sink is new...
-       (new-path state source sink relaxed))))
+  [state w source sink]  
+    `(let [relaxed# (+ (best-known-distance ~state ~source) ~w)]
+       (if-let [known# (best-known-distance ~state ~sink)]
+         (cond 
+          (< relaxed# known#) (shorter-path ~state ~source ~sink relaxed# known#)            
+          (= relaxed# known#) (equal-path ~state ~source ~sink)                         
+          :else ~state)            
+         ;if sink doesn't exist in distance, sink is new...
+         (new-path ~state ~source ~sink relaxed#))))
+
+;; (definline relax
+;;   "Given a shortest path map, a distance map, a source node, sink node, 
+;;    and weight(source,sink) = w, update the search state.
+
+;;    Upon visitation, sources are conjoined to the discovered vector.    
+
+;;    The implication of a relaxation on sink, relative to source, is that 
+;;    source no longer exists in the fringe (it's permanently labeled).  
+;;    So a relaxation can mean one of three things: 
+;;    1: sink is a newly discovered-node (as a consequence of visiting source);
+;;    2: sink was visited earlier (from a different source), but this visit exposes
+;;       a shorter path to sink, so it should be elevated in consideration in 
+;;       the search fringe.
+;;    3: sink is a node of equal length to the currently shortest-known path from 
+;;       an unnamed startnode.  We want to record this equivalence, which means 
+;;       that we may ultimately end up with multiple shortest* paths."
+     
+;;   [state weight-func source sink]  
+;;     `(let [relaxed# (+ (best-known-distance ~state ~source)  
+;;                        (~weight-func ~source ~sink))]
+;;        (if-let [known# (best-known-distance ~state ~sink)]
+;;          (cond 
+;;           (< relaxed# known#) (shorter-path ~state ~source ~sink relaxed# known#)            
+;;           (= relaxed# known#) (equal-path ~state ~source ~sink)                         
+;;           :else ~state)            
+;;          ;if sink doesn't exist in distance, sink is new...
+;;          (new-path ~state ~source ~sink relaxed#))))
+
+
+;; (defn relax
+;;   "Given a shortest path map, a distance map, a source node, sink node, 
+;;    and weight(source,sink) = w, update the search state.
+
+;;    Upon visitation, sources are conjoined to the discovered vector.    
+
+;;    The implication of a relaxation on sink, relative to source, is that 
+;;    source no longer exists in the fringe (it's permanently labeled).  
+;;    So a relaxation can mean one of three things: 
+;;    1: sink is a newly discovered-node (as a consequence of visiting source);
+;;    2: sink was visited earlier (from a different source), but this visit exposes
+;;       a shorter path to sink, so it should be elevated in consideration in 
+;;       the search fringe.
+;;    3: sink is a node of equal length to the currently shortest-known path from 
+;;       an unnamed startnode.  We want to record this equivalence, which means 
+;;       that we may ultimately end up with multiple shortest* paths."
+     
+;;   [state weight-func source sink]  
+;;     (let [relaxed (+ (best-known-distance state source)  
+;;                      (weight-func source sink))]
+;;       (if-let [known (best-known-distance state sink)]
+;; 	      (cond 
+;; 	        (< relaxed known) (shorter-path state source sink relaxed known)            
+;; 	        (= relaxed known) (equal-path state source sink)                         
+;; 	        :else state)            
+;;        ;if sink doesn't exist in distance, sink is new...
+;;        (new-path state source sink relaxed))))
+
 
 ;;A protocol for defining various topologies using a graph-based API.  Most
 ;;of the types used in this library build of a topology encoded by a persistent

@@ -108,6 +108,13 @@
 ;;Allows us to add a hook for node filtering during search.
 (defn get-nodefilter [g]  (get (meta g) :nodefilter nil))
 
+;;Unrolling a reduce from traverse.
+(definline redloop [f init coll]
+  `(loop [acc# ~init 
+          xs#  ~coll]
+     (if (empty? xs#) acc#
+         (recur (~f acc# (first xs#)) (rest xs#)))))
+
 ;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
 (defn traverse
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 

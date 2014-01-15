@@ -197,6 +197,20 @@
 (assert (same-res?  (search/traverse g 'Total :blah (empty-BFS 'Total))
                     (search/traverse g 'Total :blah (searchstate/empty-BFS 'Total))))
 
+;;Unrolling a reduce from traverse.
+(definline loop-reduce [f init coll]
+  `(loop [acc# ~init 
+          xs#  ~coll]
+     (if (empty? xs#) acc#
+         (recur (~f acc# (first xs#)) (rest xs#)))))
+
+(definline get-weights [g from to]
+   `(graph/arc-weight ~g ~from ~to))
+(definline get-nebs [g nd s] 
+  `(graph/sinks ~g ~nd))
+(definline rel-by [node->weight source s sink]
+  `(generic/relax ~s ~node->weight ~source ~sink))
+
 (defn traverse
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
    the searchstate, the halting criteria, the weight-generating 
@@ -204,20 +218,18 @@
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
   [g startnode targetnode startstate]
-    (let [get-weight    (partial graph/arc-weight g)
-          get-neighbors (fn [nd s] (graph/sinks g nd))
+    (let [get-neighbors (fn [nd s] (graph/sinks g nd))
           relax-by      (fn [source s sink]
-                          (generic/relax s get-weight source sink))]
+                          (generic/relax s (graph/arc-weight g source sink) source sink))]
       (loop [state   (-> (assoc startstate :targetnode targetnode)
                          (generic/conj-fringe startnode 0))]
         (if (generic/empty-fringe? state) state 
-            (let [nd        (generic/next-fringe state) ;next node to visit
-                  visited   (generic/visit-node state nd)] ;record visit.
-              (if (= nd targetnode) visited                     
-                  (recur (reduce (fn [acc to] 
-                                   (let [res (relax-by nd acc to)]
-                                     res))
-                                 visited
-                                 (get-neighbors nd state))))))))) 
+            (let [source    (generic/next-fringe state) ;next node to visit
+                  visited   (generic/visit-node state source)] ;record visit.
+              (if (= source targetnode) visited                     
+                  (recur (loop-reduce 
+                          (fn [acc sink] (generic/relax acc (graph/arc-weight g source sink) source sink))
+                          visited
+                          (get-neighbors source state))))))))) 
 
 )

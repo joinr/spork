@@ -172,14 +172,15 @@
       (paths (:shortest state) (:startnode state) target)))
   ([state] (get-paths state (:targetnode state))))
 
+
 ;;An empty depth-first search.
-(defn empty-DFS [startnode] (init-search startnode :fringe fr/depth-fringe))
+(def empty-DFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
 ;;An empty breadth-first search.
-(defn empty-BFS [startnode] (init-search startnode :fringe fr/breadth-fringe))
+(def empty-BFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
 ;;An empty priority-first search.
-(defn empty-PFS [startnode] (init-search startnode :fringe fr/priority-fringe))
+(def empty-PFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
 ;;An empty random-first search.
-(defn empty-RFS [startnode] (init-search startnode :fringe fr/random-fringe))
+(def empty-RFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
 
 ;;testing
 (comment
