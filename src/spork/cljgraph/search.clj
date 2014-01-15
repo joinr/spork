@@ -146,7 +146,7 @@
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
   [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
-                                         :or  {halt?     default-hault
+                                         :or  {halt?     default-halt?
                                                weightf   (get-weightf g)
                                                neighborf (get-neighborf g)}}]
     (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
@@ -157,9 +157,9 @@
         (if-let [source    (generic/next-fringe state)] ;next node to visit
           (let  [visited   (generic/visit-node state source)] ;record visit.
             (if (halt? state source) visited                     
-                (recur (loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
-                                    visited
-                                    (get-neighbors source state)))))
+                (recur (generic/loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                            visited
+                                            (get-neighbors source state)))))
           state))))
 
 (defn drop-empty-options [m]
@@ -300,12 +300,12 @@
 (defn negative-cycles?
   "Predicate for determining if the spt in the search state resulted in negative
    cycles."
-  [g final-search-state get-weight]
+  [g final-search-state weightf]
   (let [distance  (:distance final-search-state)
         ;we violate the triangle inequality if we can improve any distance.
         improvement? (fn [arc]
                        (let [[u v] arc]
-                         (when (< (+ (get distance u) (get-weight u v)) 
+                         (when (< (+ (get distance u) (weightf g u v)) 
                                   (get distance v))    u)))
         nodes (keys (generic/-get-nodes g))]
     (filter improvement? (for [u nodes
@@ -323,27 +323,22 @@
   (let [startstate    (assoc (searchstate/empty-BFS startnode) 
                              :targetnode endnode)
         bound         (dec (count (generic/-get-nodes g))) ;v - 1 
-        get-weight    (partial weightf g)
         get-neighbors (partial neighborf g)
-        relaxation    (fn [source s sink] 
-                        (generic/relax s get-weight source sink))
         validate      (fn [s] (if-let [res (first 
-                                             (negative-cycles? g s get-weight))]
+                                             (negative-cycles? g s weightf))]
                                 (assoc s :negative-cycles res)
                                   s))]
     (loop [state (generic/conj-fringe startstate startnode 0)
            idx   0]
         (if (or  (= idx bound) (generic/empty-fringe? state))
           (validate state) 
-          (let [nd        (generic/next-fringe state)]  ;next node to visit   
-            (recur (reduce (partial relaxation nd) 
-                           (generic/visit-node state nd) 
-                           (get-neighbors nd state))
+          (let [source     (generic/next-fringe state)]  ;next node to visit   
+            (recur (generic/loop-reduce 
+                       (fn [acc sink] 
+                         (generic/relax acc (weightf g source sink) source sink))
+                       (generic/visit-node state source) 
+                       (get-neighbors source state))
                    (unchecked-inc idx)))))))
-
-
-
-
 
 ;;with-dropped-edges 
 ;;with-dropped-nodes 

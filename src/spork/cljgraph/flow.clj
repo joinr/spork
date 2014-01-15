@@ -4,7 +4,9 @@
 ;;as mincost flow algorithms are included.
 (ns spork.cljgraph.flow
   (:require [spork.cljgraph [core :as graph]
-                            [search :as search]]))
+                            [search :as search]]
+            [spork.data [searchstate :as searchstate]]
+            [spork.protocols [core :as generic]]))
 
 (def posinf Long/MAX_VALUE)
 
@@ -63,6 +65,7 @@
 
 (defn flows [g] 
   (for [[k v] (:flow-info g)] [k (select-keys v [:capacity :flow])]))
+
 (defn active-flows [g] 
   (reduce (fn [acc [k info]] (if (> (:flow info) 0)
                                (assoc acc k (:flow info)) acc)) 
@@ -74,6 +77,7 @@
       (map second)
       (reduce + 0)))
   ([g] (total-flow g (active-flows g))))
+
 (defn flow-provider-type [g nd]
   (if (not (graph/island? g nd))
       (cond (graph/terminal-node? g nd) :sinks
@@ -85,12 +89,25 @@
   (group-by (partial flow-provider-type g)
             (graph/succs g start-node)))
 
+;;refactored to eliminate reduce and destructuring.
 (defn total-cost 
   ([g active-edges]
-    (reduce (fn [acc [[from to] flow]]
-              (+ acc (* flow (graph/arc-weight g from to))))
+    (generic/loop-reduce 
+     (fn [acc info]
+       (let [flow (second info)
+             from (first (first info))
+             to   (second (first info))]
+         (+ acc (* flow (graph/arc-weight g from to)))))
             0 active-edges))
   ([g] (total-cost g (active-flows g))))
+
+;; (defn total-cost 
+;;   ([g active-edges]
+;;     (generic/loop-reduce 
+;;      (fn [acc [[from to] flow]]       
+;;        (+ acc (* flow (graph/arc-weight g from to))))
+;;             0 active-edges))
+;;   ([g] (total-cost g (active-flows g))))
 
 ;add a capacitated arc to the graph
 (defn conj-cap-arc [g from to w cap]
@@ -98,6 +115,11 @@
     (-> (graph/conj-arc g from to w)
         (assoc :flow-info finfo)
         (update-edge from to 0 cap))))
+
+;;Probable hotspot in at least one use case.  We add arcs to the
+;;network repeatedly...calls to merge and reduce and destructuring 
+;;will slow us down.
+
 ;;this is a hacked way to go
 ;;add multiple capacitated arcs to the network.
 (defn conj-cap-arcs [g arcs]
@@ -163,8 +185,23 @@
   (first (graph/get-paths (pushflow-walk g from to))))
 (defn maxflow-aug-path [g from to]
   (first (graph/get-paths (edmonds-karp-walk g from to))))
-(defn mincost-aug-path [g from to]
-  (first (graph/get-paths (flow-walk g from to))))
+
+;;Changed from using flow-walk, due to overhead from function
+;;invocation.  This guy gets called a lot.  Function overhead adds up.
+;;Also, defwalk forms use merge internally...so runtime costs are
+;;incurred in tight loops (i.e. lots of flow calcs).
+(definline mincost-aug-path [g from to]
+  `(first (graph/get-paths 
+           (search/traverse ~g ~from ~to (searchstate/empty-PFS ~from)
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+;; (defn mincost-aug-path [g from to]
+;;   (first (graph/get-paths 
+;;           (search/traverse g from to (searchstate/empty-PFS from)
+;;                            :weightf flow-weight :neighborf flow-neighbors))))
+
+
+
 ;convert a path into a list of edge-info 
 (defn path->edge-info [g p]
   (map (fn [fromto]
@@ -174,6 +211,7 @@
              (assoc (edge-info g from to) :dir :increment)
              (assoc (edge-info g to from) :dir :decrement))))
        (partition 2 1 p)))
+
 ;;find the maximum flow that the path can support 
 (defn maximum-flow [g infos]
   (loop [info (first infos)
@@ -185,14 +223,18 @@
           next-flow (min flow new-flow)]
       (if (empty? xs) next-flow
           (recur (first xs) (rest xs) next-flow)))))
+
+;;Eliminate reduce.
 ;;apply an amount of flow along the path, dropping and nodes that 
 ;;become incapacitated.
 (defn apply-flow [g edges flow]
-  (reduce (fn [gr info]
-            (if (= :increment (:dir info))
-                (inc-flow gr info flow)
-                (dec-flow gr info flow)))
-          g edges))
+  (generic/loop-reduce 
+      (fn [gr info]
+        (if (= :increment (:dir info))
+          (inc-flow gr info flow)
+          (dec-flow gr info flow)))
+      g edges))
+
 ;;helper function to apply flow.
 (defn augment-flow [g p]
   (let [edges (path->edge-info g p)]

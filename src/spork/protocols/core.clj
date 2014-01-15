@@ -17,6 +17,13 @@
 (defn entry? [e] (= (type e) clojure.lang.MapEntry))
 (defn nested-entry? [^clojure.lang.MapEntry e] (entry? (val e)))
 
+;;Unrolling a reduce.
+(definline loop-reduce [f init coll]
+  `(loop [acc# ~init 
+          xs#  ~coll]
+     (if (empty? xs#) acc#
+         (recur (~f acc# (first xs#)) (rest xs#)))))
+
 ;;It will be useful to store entries, which normally represent a weight, node
 ;;pairing, behind an estimated weight.  We will use nested entries to embed 
 ;;the actual [weight node] pair inside an [estimate [weight node]] pair.

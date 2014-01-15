@@ -273,11 +273,18 @@
                           (partial neighborf g))]
       (loop [state   (-> (assoc startstate :targetnode targetnode)
                          (generic/conj-fringe startnode 0))]
-        (if (generic/empty-fringe? state) state 
-            (let [source    (generic/next-fringe state) ;next node to visit
-                  visited   (generic/visit-node state source)] ;record visit.
-              (if (halt? state source) visited                     
-                  (recur (loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
-                                      visited
-                                      (get-neighbors source state))))))))) 
+        (if-let [source    (generic/next-fringe state)] ;next node to visit
+          (let [visited   (generic/visit-node state source)] ;record visit.
+            (if (halt? state source) visited                     
+                (recur (loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                    visited
+                                    (get-neighbors source state)))))
+          state)))) 
+
+(defn simulate-flow []
+  (let [p (flow/mincost-aug-path g 'Total :filled)
+        gnext (flow/augment-flow g p)
+        _  (flow/mincost-aug-path gnext 'Total :filled)]
+    gnext))
+
 )
