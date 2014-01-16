@@ -11,9 +11,9 @@
 (def posinf Long/MAX_VALUE)
 
 
-(defprotocol IFlowNetwork
-  (-inc-flow [net from to amt])
-  (-dec-flow [net from to amt]))
+;; (defprotocol IFlowNetwork
+;;   (-inc-flow [net from to amt])
+;;   (-dec-flow [net from to amt]))
 
 ;;Flows and Augmenting Paths
 ;;==========================
@@ -29,26 +29,58 @@
 (def empty-network (assoc graph/empty-graph :flow-info {}))
 ;(defrecord edge-info [from to capacity flow])
 
+(defrecord einfo [from to capacity flow dir])
+
+;;Optimizing represenation.  Vectors are way faster.
 (defn ->edge-info 
   [from to & {:keys [capacity flow] :or {capacity posinf flow 0}}]
-  {:from from :to to :capacity capacity :flow flow})
+  (einfo. from  to capacity flow :increment))
 
-(defn edge-info [g from to]
-  (get-in g [:flow-info [from to]] (->edge-info from to)))
+;; (defn ->edge-info 
+;;   [from to & {:keys [capacity flow] :or {capacity posinf flow 0}}]
+;;   {:from from :to to :capacity capacity :flow flow})
 
+(definline edge-info [g from to]
+  `(get (:flow-info ~g) [~from ~to] (->edge-info ~from ~to)))
+
+;;OPTIMIZE
+;; (defn edge-info [g from to]
+;;   (get-in g [:flow-info [from to]] (->edge-info from to)))
+
+;; (defn edge-info [g from to]
+;;   (get-in g [:flow-info [from to]] (->edge-info from to)))
+
+
+(definline update-edge*  
+  [g from to flow cap]
+  `(assoc ~g :flow-info                  
+     (assoc 
+         (get ~g :flow-info {})
+       [~from ~to] (einfo. ~from ~to ~cap ~flow :increment))))
+
+;;->edge-info is called a lot here.
 (defn update-edge 
   ([g from to flow cap]
-    (assoc-in g [:flow-info [from to]] 
-              (->edge-info from to :capacity cap :flow flow)))
+     (assoc g :flow-info                  
+       (assoc 
+         (get g :flow-info {})
+           [from to] (einfo. from to cap flow :increment))))
   ([g from to m] 
     (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
+
+;; (defn update-edge 
+;;   ([g from to flow cap]
+;;     (assoc-in g [:flow-info [from to]] 
+;;               (->edge-info from to :capacity cap :flow flow)))
+;;   ([g from to m] 
+;;     (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
 
 (defn current-capacity 
   ([info] (- (:capacity info) (:flow info)))
   ([g from to] (current-capacity (edge-info g from to))))
 
 (defn set-capacity [g from to cap] (update-edge g from to {:capacity cap}))
-(defn set-flow [g from to flow] (update-edge g from to {:flow flow}))
+(defn set-flow [g from to flow]    (update-edge g from to {:flow flow}))
 
 ;;Hold off on this...implementation may be faulty.
 (defn swap-capacities [net l c r] net)
@@ -56,15 +88,17 @@
   ([g from to] (contains? (get (:sinks g) from) to))
   ([g info] (forward? g (:from info) (:to info))))
 
+;optimized
 (defn inc-flow 
   ([g info flow]
-    (update-edge g (:from info) (:to info) 
+    (update-edge* g (:from info) (:to info) 
                  (+ (:flow info) flow) (- (:capacity info) flow)))
   ([g from to flow] (inc-flow g (edge-info g from to) flow)))
 
+;optimized
 (defn dec-flow 
   ([g info flow]
-    (update-edge g  (:from info) (:to info) 
+    (update-edge* g  (:from info) (:to info) 
                  (- (:flow info) flow) (+ (:capacity info) flow)))
   ([g from to flow] (dec-flow g (edge-info g from to) flow)))
 
@@ -208,14 +242,36 @@
 
 
 ;convert a path into a list of edge-info 
+;; (defn path->edge-info [g p]
+;;   (map (fn [fromto]
+;;          (let [from (first fromto)
+;;                to   (second fromto)]
+;;            (if (forward? g from to)
+;;              (assoc (edge-info g from to) :dir :increment)
+;;              (assoc (edge-info g to from) :dir :decrement))))
+;;        (partition 2 1 p)))
+
+;;optimized?
 (defn path->edge-info [g p]
-  (map (fn [fromto]
-         (let [from (first fromto)
-               to   (second fromto)]
-           (if (forward? g from to)
-             (assoc (edge-info g from to) :dir :increment)
-             (assoc (edge-info g to from) :dir :decrement))))
-       (partition 2 1 p)))
+  (loop [acc []
+         xs  p]
+    (if (nil? (next xs)) acc
+        (let [from (first  xs)
+              to   (second xs)]
+          (recur (conj acc (if (forward? g from to)
+                             (assoc (edge-info g from to) :dir :increment)
+                             (assoc (edge-info g to from) :dir :decrement)))
+                 (next xs))))))
+      
+;; ;;slow, unoptimized
+;; (defn path->edge-info [g p]
+;;   (map (fn [fromto]
+;;          (let [from (first fromto)
+;;                to   (second fromto)]
+;;            (if (forward? g from to)
+;;              (assoc (edge-info g from to) :dir :increment)
+;;              (assoc (edge-info g to from) :dir :decrement))))
+;;        (partition 2 1 p)))
 
 ;;find the maximum flow that the path can support 
 (defn maximum-flow [g infos]
@@ -230,7 +286,7 @@
           (recur (first xs) (rest xs) next-flow)))))
 
 ;;Eliminate reduce.
-;;apply an amount of flow along the path, dropping and nodes that 
+;;apply an amount of flow along the path, dropping any nodes that 
 ;;become incapacitated.
 (defn apply-flow [g edges flow]
   (generic/loop-reduce 
