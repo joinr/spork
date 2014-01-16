@@ -35,10 +35,10 @@
          order [cls]
          bases (:bases (reflect/reflect cls))]
     (if (empty? bases) order
-        (let [base (first bases)]
+        (let [base (ns-resolve *ns* (first bases))]
           (if (visited base)
             (recur visited order (next bases))           
-            (recur (conj visited base) (conj order base) (into bases (remove visited (:bases (reflect/reflect base))))))))))
+            (recur (conj visited  base) (conj order  base) (into bases (remove visited (:bases (reflect/reflect base))))))))))
 
 (defn get-spec [cls]
   {:class cls :methods (map method->funcsig (:members (reflect/reflect cls)))})
@@ -55,7 +55,14 @@
     (map #(if-let [e (find smap %)] (val e) %) coll)))
 
 (defn derive-spec [cls]
-  (into om/empty-ordered-map 
-        (for [{:keys [class methods]} (map get-spec (flatten-bases cls))]
-          [class methods])))
+  (let [methods (atom #{})
+        new-method? (fn [m] (when-not (@methods m)
+                                (do (reset! methods (conj @methods m)) m)))                                
+        add-spec! (fn [cls] 
+                    (let [res (get-spec cls)]
+                      (assoc res :methods (filter new-method? (:methods res)))))]                      
+    (reduce (fn [acc [k xs]] (reduce conj (conj acc k) xs)) []  
+            (for [{:keys [class methods]} 
+                  (map get-spec (reverse (flatten-bases cls)))]
+              [class methods]))))
 

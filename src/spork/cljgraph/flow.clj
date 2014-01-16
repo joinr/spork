@@ -10,6 +10,11 @@
 
 (def posinf Long/MAX_VALUE)
 
+
+(defprotocol IFlowNetwork
+  (-inc-flow [net from to amt])
+  (-dec-flow [net from to amt]))
+
 ;;Flows and Augmenting Paths
 ;;==========================
 
