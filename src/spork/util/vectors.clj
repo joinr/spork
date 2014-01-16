@@ -20,7 +20,7 @@
   (set-vec [v idx x])
   (map-vec  [v1 f] [v1 v2 f]))
 
-(defn vec-mult [v1 v2] (map-vec v1 v2 *))
+(defn vec-mult [v1 v2]  (map-vec v1 v2 *))
 (defn vec-add  [v1 v2]  (map-vec v1 v2 +))
 (defn vec-update [v1 kvps]
   (if (and (map? v1) (map? kvps))
