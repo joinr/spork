@@ -358,9 +358,85 @@
 (deftest maxflow-test 
   (is (= (total-flow max-net) (total-flow cost-net))
       "Both maxflow and mincost networks produce the same flow."))
+
+
 ;;old test in migration
 (comment 
   (def dlist (->double-list :a :e the-list))  
   (def the-root-tree  (-> empty-graph (conj-node :root)))
   (def the-other-tree (-> empty-graph (add-arcs (tree-arcs :a [:b :c]))))
   )
+
+
+;;spork.cljgraph.tests> (run-tests)
+
+;;Testing spork.cljgraph.tests
+
+;;FAIL in (mincostflow-test) (NO_SOURCE_FILE:2)
+;;expected: 
+;; (=
+;;  ((juxt :active (comp :flow-info :net)) flow-results)
+;;  [{[:s :chi] 300,
+;;    [:s :dc] 300,
+;;    [:dc :hou] 200,
+;;    [:dc :bos] 100,
+;;    [:chi :bos] 200,
+;;    [:chi :hou] 100,
+;;    [:hou :t] 300,
+;;    [:bos :t] 300}
+;;   {[:bos :t] {:from :bos, :to :t, :capacity 0, :flow 300},
+;;    [:hou :t] {:from :hou, :to :t, :capacity 0, :flow 300},
+;;    [:chi :hou] {:from :chi, :to :hou, :capacity 100, :flow 100},
+;;    [:chi :bos] {:from :chi, :to :bos, :capacity 0, :flow 200},
+;;    [:dc :bos] {:from :dc, :to :bos, :capacity 250, :flow 100},
+;;    [:dc :hou] {:from :dc, :to :hou, :capacity 80, :flow 200},
+;;    [:s :dc] {:from :s, :to :dc, :capacity 0, :flow 300},
+;;    [:s :chi] {:from :s, :to :chi, :capacity 0, :flow 300}}])
+;;   actual: 
+;; (not
+;;  (=
+;;   [{[:s :chi] 300,
+;;     [:s :dc] 300,
+;;     [:dc :hou] 200,
+;;     [:dc :bos] 100,
+;;     [:chi :bos] 200,
+;;     [:chi :hou] 100,
+;;     [:hou :t] 300,
+;;     [:bos :t] 300}
+;;    {[:bos :t]
+;;     {:from :bos, :to :t, :capacity 0, :flow 300, :dir :increment},
+;;     [:hou :t]
+;;     {:from :hou, :to :t, :capacity 0, :flow 300, :dir :increment},
+;;     [:chi :hou]
+;;     {:from :chi, :to :hou, :capacity 100, :flow 100, :dir :increment},
+;;     [:chi :bos]
+;;     {:from :chi, :to :bos, :capacity 0, :flow 200, :dir :increment},
+;;     [:dc :bos]
+;;     {:from :dc, :to :bos, :capacity 250, :flow 100, :dir :increment},
+;;     [:dc :hou]
+;;     {:from :dc, :to :hou, :capacity 80, :flow 200, :dir :increment},
+;;     [:s :dc]
+;;     {:from :s, :to :dc, :capacity 0, :flow 300, :dir :increment},
+;;     [:s :chi]
+;;     {:from :s, :to :chi, :capacity 0, :flow 300, :dir :increment}}]
+;;   [{[:s :chi] 300,
+;;     [:hou :t] 300,
+;;     [:s :dc] 300,
+;;     [:dc :bos] 100,
+;;     [:chi :bos] 200,
+;;     [:bos :t] 300,
+;;     [:dc :hou] 200,
+;;     [:chi :hou] 100}
+   
+;;     {[:s :chi] {:from :s, :flow 300, :to :chi, :capacity 0},
+;;     [:hou :t] {:from :hou, :flow 300, :to :t, :capacity 0},
+;;     [:s :dc] {:from :s, :flow 300, :to :dc, :capacity 0},
+;;     [:dc :bos] {:from :dc, :flow 100, :to :bos, :capacity 250},
+;;     [:chi :bos] {:from :chi, :flow 200, :to :bos, :capacity 0},
+;;     [:bos :t] {:from :bos, :flow 300, :to :t, :capacity 0},
+;;     [:dc :hou] {:from :dc, :flow 200, :to :hou, :capacity 80},
+;;     [:chi :hou] {:from :chi, :flow 100, :to :hou, :capacity 100}}]))
+
+;; Ran 11 tests containing 36 assertions.
+;; 1 failures, 0 errors.
+;; {:type :summary, :pass 35, :test 11, :error 0, :fail 1}

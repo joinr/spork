@@ -12,12 +12,77 @@
             [spork.protocols [core :as generic]]
             [spork.util [array :as arr]]))
 
+(def sample 
+  '{["55530LJ00" :filled]
+    {:from "55530LJ00", :to :filled, :capacity 31.0, :flow 0},
+    [RCAD "55530LJ00"]
+    {:from RCAD, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
+    [AC "5530LJ00"]
+    {:from AC, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
+    [RC RCAD-BIG] {:from RC, :to RCAD-BIG, :capacity 25000, :flow 0},
+    [RC RCAD] {:from RC, :to RCAD, :capacity 25000, :flow 0},
+    [Supply RC] {:from Supply, :to RC, :capacity 530000, :flow 0},
+    [Supply AC] {:from Supply, :to AC, :capacity 450000, :flow 0},
+    [Total Supply] {:from Total, :to Supply, :capacity 980000, :flow 0}})
+
+
+(defn net->node-map [edges]
+  (let [add-node (fn [m nd] (if (contains? m nd) m (assoc m nd (count m))))]
+    (loop [acc {} 
+           es     edges]
+      (if (empty? es) acc
+          (let [e (first es)]
+            (recur (-> acc (add-node (:from e)) (add-node (:to e)))
+                   (rest es)))))))
+     
+(defprotocol IMutableFlow 
+  (inc-flow!      [m from to ^long amt])
+  (set-flow!      [m from to ^long x])
+  (get-flow!      [m from to]))
+
+(defrecord netinfo [nodes ^objects flows ^objects capacities])
+
+(defn get-flow!   [m from to]     
+  (let [flows (:flows m)
+        nodes (:nodes m)
+        i (get nodes from)
+        j (get nodes to)]
+    (arr/deep-aget longs flows i j)))
+
+(defn set-flow!   [m from to x]
+  (let [flows (:flows m)
+        nodes (:nodes m)
+        i (get nodes from)
+        j (get nodes to)]
+    (arr/deep-aset longs flows i j x)))
+
+(defn  inc-flow!      [m from to amt] 
+  (let [nodes (:nodes m)
+        flows (:flows m)
+        i (get nodes from)
+        j (get nodes to)]
+    (do (arr/deep-aset longs flows i j (+ amt (arr/deep-aget longs flows i j))) 
+        m)))
+
+(defn ^netinfo edges->netinfo [edges]
+  (let [nm (net->node-map edges)
+        flows      (arr/longs-2d (count nm) (count nm))
+        capacities (arr/longs-2d (count nm) (count nm))]
+    (doseq [e edges]
+      (let [from (:from e)
+            to   (:to   e)
+            cap  (:capacity e)
+            flow (:flow e)
+            i (get nm from)
+            j (get nm to)]
+        (do (arr/deep-aset longs flows i j (long flow))
+            (arr/deep-aset longs capacities i j (long cap)))))
+    (->netinfo nm flows capacities)))
+      
+(def info (edges->netinfo (vals sample)))      
+
+
 (def posinf Long/MAX_VALUE)
-
-
-;; (defprotocol IFlowNetwork
-;;   (-inc-flow [net from to amt])
-;;   (-dec-flow [net from to amt]))
 
 ;;Flows and Augmenting Paths
 ;;==========================
@@ -360,74 +425,8 @@
   (-> empty-network 
     (conj-cap-arcs net-data)))
 
-(def sample 
-{["55530LJ00" :filled]
- {:from "55530LJ00", :to :filled, :capacity 31.0, :flow 0},
- [RCAD "55530LJ00"]
- {:from RCAD, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
- [AC "5530LJ00"]
- {:from AC, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
- [RC RCAD-BIG] {:from RC, :to RCAD-BIG, :capacity 25000, :flow 0},
- [RC RCAD] {:from RC, :to RCAD, :capacity 25000, :flow 0},
- [Supply RC] {:from Supply, :to RC, :capacity 530000, :flow 0},
- [Supply AC] {:from Supply, :to AC, :capacity 450000, :flow 0},
- [Total Supply] {:from Total, :to Supply, :capacity 980000, :flow 0}})
-)
 
-(defn net->node-map [edges]
-  (let [add-node (fn [m nd] (if (contains? m nd) m (assoc m nd (count m))))]
-    (loop [acc {} 
-           es     edges]
-      (if (empty? es) acc
-          (let [e (first es)]
-            (recur (-> acc (add-node (:from e)) (add-node (:to e)))
-                   (rest es)))))))
-     
-(defprotocol IMutableFlow 
-  (inc-flow!      [m from to ^long amt])
-  (set-flow!      [m from to ^long x])
-  (get-flow!      [m from to]))
 
-(defrecord netinfo [nodes ^objects flows ^objects capacities])
-
-(defn get-flow!   [m from to]     
-  (let [flows (:flows m)
-        nodes (:nodes m)
-        i (get nodes from)
-        j (get nodes to)]
-    (arr/deep-aget longs flows i j)))
-
-(defn set-flow!   [m from to x]
-  (let [flows (:flows m)
-        nodes (:nodes m)
-        i (get nodes from)
-        j (get nodes to)]
-    (arr/deep-aset longs flows i j x)))
-
-(defn  inc-flow!      [m from to amt] 
-  (let [nodes (:nodes m)
-        flows (:flows m)
-        i (get nodes from)
-        j (get nodes to)]
-    (do (arr/deep-aset longs flows i j (+ amt (arr/deep-aget longs flows i j))) 
-        m)))
-
-(defn ^netinfo edges->netinfo [edges]
-  (let [nm (net->node-map edges)
-        flows      (arr/longs-2d (count nm) (count nm))
-        capacities (arr/longs-2d (count nm) (count nm))]
-    (doseq [e edges]
-      (let [from (:from e)
-            to   (:to   e)
-            cap  (:capacity e)
-            flow (:flow e)
-            i (get nm from)
-            j (get nm to)]
-        (do (arr/deep-aset longs flows i j (long flow))
-            (arr/deep-aset longs capacities i j (long cap)))))
-    (->netinfo nm flows capacities)))
-      
-(def info (edges->netinfo (vals sample)))      
         
         
         
