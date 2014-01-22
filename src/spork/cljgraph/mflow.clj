@@ -40,8 +40,9 @@
   (set-flow!      [m from to ^long x])
   (get-flow!      [m from to]))
 
-(defrecord netinfo [nodes ^objects flows ^objects capacities])
+(defrecord netinfo [nodes ^objects flows ^objects capacities mapping])
 
+  
 (defn get-flow!   [m from to]     
   (let [flows (:flows m)
         nodes (:nodes m)
@@ -63,6 +64,7 @@
         j (get nodes to)]
     (do (arr/deep-aset longs flows i j (+ amt (arr/deep-aget longs flows i j))) 
         m)))
+
 
 (defn ^netinfo edges->netinfo [edges]
   (let [nm (net->node-map edges)
@@ -424,6 +426,8 @@
 (def the-net 
   (-> empty-network 
     (conj-cap-arcs net-data)))
+
+)
 
 
 

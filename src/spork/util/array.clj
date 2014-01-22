@@ -34,3 +34,36 @@
       `(let [~a-sym ~nested-array]
          (aset ~a-sym ~idx ~v))))  
 
+
+;;Functions for providing effecient keyed access to 
+;;arrays.  Came up in the context of graph algos...
+;;We want the speed of random access lookup, the storage
+;;contiguity of arrays, etc, but the flexibility of interfacing with
+;;nodes that are mapped to nice literal values (like keywords) rather
+;;than simple indices.
+(defn bindings->case [l rs inner]
+  `(~l  ~(seq (into '[case r] (reduce (fn [acc r] 
+                                   (-> acc (conj r) (conj (inner l r)) )) [] rs)))))
+(defn case-map [m inner] 
+  (let [xs (set (keys m))]
+   (concat '(case l) 
+     (reduce (fn [acc l] 
+               (let [binds (bindings->case l (disj xs l) inner)]
+                 (-> acc (conj (first binds)) (conj (second binds))))) [] xs))))
+
+(defmacro keyed-array-getter [keymap hint] 
+  (let [hints '{longs   long 
+                doubles double}
+        inner (fn [l r] `(arr/deep-aget ~hint ~'arr ~(get keymap l) ~(get keymap r)))
+        m (case-map keymap inner)]
+    `(~(with-meta 'fn {:tag (get hints hint)}) [~(with-meta 'arr {:tag hint}) ~'l ~'r]
+          ~m)))
+
+(defmacro keyed-array-setter [keymap hint] 
+  (let [hints '{longs   long 
+                doubles double}
+        inner (fn [l r] `(arr/deep-aset ~hint ~'arr ~(get keymap l) ~(get keymap r) ~'v))
+        m (case-map keymap inner)]
+    `(~(with-meta 'fn {:tag (get hints hint)}) 
+      [~(with-meta 'arr {:tag hint}) ~'l ~'r ~(with-meta 'v {:tag (get hints hint)})]
+          ~m)))  
