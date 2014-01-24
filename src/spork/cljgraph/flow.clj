@@ -355,5 +355,22 @@
 (def the-net 
   (-> empty-network 
     (conj-cap-arcs net-data)))
+
+(def sample 
+  '{["55530LJ00" :filled]
+    {:from "55530LJ00", :to :filled, :capacity 31.0, :flow 0},
+    [RCAD "55530LJ00"]
+    {:from RCAD, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
+    [AC "5530LJ00"]
+    {:from AC, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
+    [RC RCAD-BIG] {:from RC, :to RCAD-BIG, :capacity 25000, :flow 0},
+    [RC RCAD] {:from RC, :to RCAD, :capacity 25000, :flow 0},
+    [Supply RC] {:from Supply, :to RC, :capacity 530000, :flow 0},
+    [Supply AC] {:from Supply, :to AC, :capacity 450000, :flow 0},
+    [Total Supply] {:from Total, :to Supply, :capacity 980000, :flow 0}})
+(def sample-net (->> (for [{:keys [from to capacity flow]} (vals sample)]
+                      [from to capacity flow])
+                    (conj-cap-arcs empty-network)))
+                    
 )
 

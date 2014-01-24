@@ -35,36 +35,38 @@
             (recur (-> acc (add-node (:from e)) (add-node (:to e)))
                    (rest es)))))))
      
-(defprotocol IMutableFlow 
-  (inc-flow!      [m from to ^long amt])
-  (set-flow!      [m from to ^long x])
-  (get-flow!      [m from to]))
+(definterface IMFlow 
+  (^long getFlow      [from to])
+  (^long getCapacity  [from to])
+  (incFlow      [from to ^long amt])
+  (setFlow      [from to ^long x])
+  (setCapacity  [from to ^long cap]))
 
-(defrecord netinfo [nodes ^objects flows ^objects capacities mapping])
-
+(defrecord netinfo [nodes ^objects flows ^objects capacities]
+  IMFlow
+  (^long getFlow   [m from to]     
+    (let [i (get nodes from)
+          j (get nodes to)]
+      (arr/deep-aget longs flows i j)))
   
-(defn get-flow!   [m from to]     
-  (let [flows (:flows m)
-        nodes (:nodes m)
-        i (get nodes from)
-        j (get nodes to)]
-    (arr/deep-aget longs flows i j)))
-
-(defn set-flow!   [m from to x]
-  (let [flows (:flows m)
-        nodes (:nodes m)
-        i (get nodes from)
-        j (get nodes to)]
-    (arr/deep-aset longs flows i j x)))
-
-(defn  inc-flow!      [m from to amt] 
-  (let [nodes (:nodes m)
-        flows (:flows m)
-        i (get nodes from)
-        j (get nodes to)]
+  (setFlow   [m from to ^long x]
+    (let [i (get nodes from)
+          j (get nodes to)]
+      (arr/deep-aset longs flows i j x)))
+  
+  (incFlow      [m from to ^long amt] 
+    (let [i (get nodes from)
+          j (get nodes to)]
     (do (arr/deep-aset longs flows i j (+ amt (arr/deep-aget longs flows i j))) 
-        m)))
-
+        m)))  
+  (^long getCapacity [m from to]
+    (let [i (get nodes from)
+          j (get nodes to)]
+      (arr/deep-aget longs capacities i j)))  
+  (setCapacity [m from to ^long cap]
+    (let [i (get nodes from)
+          j (get nodes to)]
+      (arr/deep-aset longs capacities i j cap))))
 
 (defn ^netinfo edges->netinfo [edges]
   (let [nm (net->node-map edges)
