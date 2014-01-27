@@ -11,21 +11,21 @@
                             [flow    :as flow]]
             [spork.data [searchstate :as searchstate]]
             [spork.protocols [core :as generic]]
-            [spork.util [array :as arr]]))
+            [spork.util [array :as arr]])
+  (:import [clojure.lang ITransientMap MapEntry]))
 
 (def sample 
-  '{["55530LJ00" :filled]
-    {:from "55530LJ00", :to :filled, :capacity 31.0, :flow 0},
-    [RCAD "55530LJ00"]
-    {:from RCAD, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
-    [AC "5530LJ00"]
-    {:from AC, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
-    [RC RCAD-BIG] {:from RC, :to RCAD-BIG, :capacity 25000, :flow 0},
-    [RC RCAD] {:from RC, :to RCAD, :capacity 25000, :flow 0},
-    [Supply RC] {:from Supply, :to RC, :capacity 530000, :flow 0},
-    [Supply AC] {:from Supply, :to AC, :capacity 450000, :flow 0},
+  '{["55530LJ00" :filled]
+    {:from "55530LJ00", :to :filled, :capacity 31.0, :flow 0},
+    [RCAD "55530LJ00"]
+    {:from RCAD, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
+    [AC "5530LJ00"]
+    {:from AC, :to "55530LJ00", :capacity 9223372036854775807, :flow 0},
+    [RC RCAD-BIG] {:from RC, :to RCAD-BIG, :capacity 25000, :flow 0},
+    [RC RCAD] {:from RC, :to RCAD, :capacity 25000, :flow 0},
+    [Supply RC] {:from Supply, :to RC, :capacity 530000, :flow 0},
+    [Supply AC] {:from Supply, :to AC, :capacity 450000, :flow 0},
     [Total Supply] {:from Total, :to Supply, :capacity 980000, :flow 0}})
-
 
 (defn net->node-map [edges]
   (let [add-node (fn [m nd] (if (contains? m nd) m (assoc m nd (count m))))]
@@ -51,20 +51,20 @@
   (^long getCapacity  [from to])
   (incFlow            [from to ^long amt])
   (setFlow            [from to ^long x])
-  (setCapacity        [from to ^long cap]))
+  (setCapacity        [from to ^long cap])
+  (setEdge            [from to ^long flow ^long cap]))
 
 (defrecord netinfo [nodes ^objects flows ^objects capacities]
   IMFlow
   (^long getFlow   [m from to]     
     (let [i (get nodes from)
           j (get nodes to)]
-      (arr/deep-aget longs flows i j)))
-  
+      (arr/deep-aget longs flows i j)))  
   (setFlow   [m from to ^long x]
     (let [i (get nodes from)
           j (get nodes to)]
-      (arr/deep-aset longs flows i j x)))
-  
+      (do (arr/deep-aset longs flows i j x)
+          m)))  
   (incFlow      [m from to ^long amt] 
     (let [i (get nodes from)
           j (get nodes to)]
@@ -77,7 +77,114 @@
   (setCapacity [m from to ^long cap]
     (let [i (get nodes from)
           j (get nodes to)]
-      (arr/deep-aset longs capacities i j cap))))
+      (do (arr/deep-aset longs capacities i j cap)
+          m)))
+  (setEdge [m from to ^long amt ^long cap]
+    (let [i (get nodes from)
+          j (get nodes to)]
+      (do (arr/deep-aset longs flows i j amt)
+          (arr/deep-aset longs capacities i j cap)
+          m))))
+
+;;So another option is to have mutable edge lists, store them in a
+;;map.
+
+;;This is about as performant as a deftype declaration.
+(defn ^longs ->edge [^long from ^long to ^long flow ^long cap]
+  (let [arr (long-array 4)]
+    (do  (aset arr 0 from)
+         (aset arr 1 to)
+         (aset arr 2 flow)
+         (aset arr 3 cap)
+         arr)))
+
+;;Another option for a representation is to have an array of linfos...
+;;and to use unsynched, mutable fields for the flow and cap.
+(deftype linfo [^{:unsynchronized-mutable true}  from 
+                ^{:unsynchronized-mutable true}  to
+                ^{:unsynchronized-mutable true :tag long}  flow 
+                ^{:unsynchronized-mutable true :tag long}  capacity]
+  clojure.lang.ILookup
+  ; valAt gives (get pm key) and (get pm key not-found) behavior
+  (valAt [this k] (case k 
+                    :from from 
+                    :to to
+                    :flow flow
+                    :capacity capacity 
+                    (throw (Error. (str "Invalid field: " k)))))
+  (valAt [this k not-found] 
+    (case k 
+      :from from 
+      :to to
+      :flow flow
+      :capacity capacity 
+      (throw (Error. (str "Invalid field: " k)))))
+  IMFlow
+  (^long getFlow      [m from to] flow)
+  (^long getCapacity  [m from to] capacity)
+  (incFlow            [m from to ^long amt] (do (set! flow (+ flow amt)) m))
+  (setFlow            [m from to ^long x]   (do (set! flow x) m))
+  (setCapacity        [m from to ^long cap] (do (set! capacity cap) m))
+  (setEdge            [m from to ^long amt ^long cap] (do (set! flow amt) (set! capacity cap) m)))
+
+  ;; clojure.lang.ILookup
+  ;; ; valAt gives (get pm key) and (get pm key not-found) behavior
+  ;; (valAt [this k] (get edges k (throw (Error. (str "Invalid field: " k)))))
+  ;; (valAt [this k not-found]  (get edges k not-found))
+
+(deftype flownet [^{:unsynchronized-mutable true, :tag ITransientMap} edges]
+  IMFlow
+  (^long getFlow      [m from to] (get ^linfo (get edges [from to]) :flow))
+  (^long getCapacity  [m from to] (get ^linfo (get edges [from to]) :capacity))
+  (incFlow            [m from to ^long amt] (.incFlow ^linfo (get edges [from to]) from to amt))
+  (setFlow            [m from to ^long x]   (.setFlow ^linfo (get edges [from to]) from to x))
+  (setCapacity        [m from to ^long cap] (.setCapacity ^linfo (get edges [from to]) from to cap))
+  (setEdge            [m from to ^long amt ^long cap] (.setEdge ^linfo (get edges [from to]) from to amt cap))
+   
+  ITransientMap  
+  (valAt [this k] (.valAt this k nil))  
+  (valAt [this k not-found]    
+    (if-let [^clojure.lang.MapEntry e (.valAt edges k)]      
+      (.val e)      not-found))  
+  (assoc [this k v] (do (assoc! edges k v)      this))  
+  (conj  [this e]    (let [[k v] e]      (.assoc this k v)))  
+  (without [this k]  (do (dissoc! edges k)  this))
+  (persistent [this]    (.persistent edges)))
+
+
+ ;; clojure.lang.IPersistentMap
+ ;;  (count [this] (count edges))
+ ;;  (assoc [this k v]     ;;revisit        
+ ;;    (flownet. (assoc! edges k v)))
+ ;;  (empty [this] (flownet. (transient {})))
+ ;;  ;cons defines conj behavior
+ ;;  (cons [this e]   (.assoc this (first e) (second e)))
+ ;;  (equiv [this o]  (.equiv edges o))  
+ ;;  (hashCode [this] (.hashCode edges))
+ ;;  (equals [this o] (or (identical? this o) (.equals edges o)))
+  
+ ;;  ;containsKey implements (contains? pm k) behavior
+ ;;  (containsKey [this k] (contains? edges k))
+ ;;  (entryAt [this k]
+ ;;    (let [v (.valAt this k this)]
+ ;;      (when-not (identical? v this) ;might need to yank this guy.
+ ;;        (generic/entry k v))))
+ ;;  (seq [this] (if (empty? edges) (seq {})
+ ;;                (map (fn [k] (generic/entry k (get edges k))) 
+ ;;                     (vals idx->key))))  
+ ;;  ;without implements (dissoc pm k) behavior
+ ;;  (without [this k] 
+ ;;    (if (not (contains? edges k)) this
+ ;;        (ordered-map. n
+ ;;                      (dissoc edges k) 
+ ;;                      (dissoc idx->key (get key->idx k))
+ ;;                      (dissoc key->idx k)
+ ;;                      _meta))))
+
+(defn ^linfo map->linfo [{:keys [from to flow capacity]}]
+  (linfo. from to flow capacity))
+
+;;One option is to just mutate the linfos in place...
 
 (defn ^netinfo edges->netinfo [edges]
   (let [nm (net->node-map edges)
@@ -104,10 +211,13 @@
 ;;mutable array, rather than smashing on 
 
 (defn as-mutable-net [n]
-  ;append netinfo to.  So that operations for flows and augmenting
+  ;append netinfo to n.  So that operations for flows and augmenting
   ;paths use netinfo for computing flows.  Keeps the original
   ;persistent data around.  Performance optimization only.
-    ))
+  (let [edges (vals (:flow-info n))]
+    (-> n 
+        (assoc :net-info (edges->netinfo edges))
+        (assoc :mutable   true))))
 
 ;;Flows and Augmenting Paths
 ;;==========================
@@ -115,10 +225,9 @@
 ;;This is different....
 (definline update-edge*  
   [g from to flow cap]
-  `(assoc ~g :flow-info                  
-     (assoc 
-         (get ~g :flow-info {})
-       [~from ~to] (einfo. ~from ~to ~cap ~flow :increment))))
+  `(-> (:net-info ~g)
+       (setFlow from to flow)
+       (setCapacity from to cap)))
 
 ;;->edge-info is called a lot here.
 (defn update-edge 
@@ -377,17 +486,17 @@
 ;;testing 
 (comment 
 (def net-data 
- [[:s   :chi  0 300]
-  [:s   :dc   0 300]
-  [:dc  :hou  4 280]
-  [:dc  :bos  6 350]
-  [:chi :bos  6 200]
-  [:chi :hou  7 200]
-  [:hou :t    0 300]
-  [:bos :t    0 300]])
+  [[:s   :chi  0 300]
+   [:s   :dc   0 300]
+   [:dc  :hou  4 280]
+   [:dc  :bos  6 350]
+   [:chi :bos  6 200]
+   [:chi :hou  7 200]
+   [:hou :t    0 300]
+   [:bos :t    0 300]])
 (def the-net 
-  (-> empty-network 
-    (conj-cap-arcs net-data)))
+  (-> flow/empty-network 
+    (flow/conj-cap-arcs net-data)))
 
 )
 
