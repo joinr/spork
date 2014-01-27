@@ -21,5 +21,4 @@
                  [net.sf.jung/jung-algorithms "2.0.1"]
                  [net.sf.jung/jung-visualization "2.0.1"]
                  [net.sf.jung/jung-io "2.0.1"]
-                 [dk.ative/docjure    "1.6.0-SNAPSHOT"]
-                 ])
+                 [dk.ative/docjure    "1.6.0-SNAPSHOT"]])

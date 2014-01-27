@@ -7,7 +7,8 @@
 ;;the cost of updating flows.
 (ns spork.cljgraph.mflow
   (:require [spork.cljgraph [core :as graph]
-                            [search :as search]]
+                            [search :as search]
+                            [flow    :as flow]]
             [spork.data [searchstate :as searchstate]]
             [spork.protocols [core :as generic]]
             [spork.util [array :as arr]]))
@@ -35,12 +36,22 @@
             (recur (-> acc (add-node (:from e)) (add-node (:to e)))
                    (rest es)))))))
      
+;;definterface gets us more into java, but unlike defprotocol, allows
+;;us to define primitive types and return types on the args.  Note
+;;that also unlike defprotocol, the interface spec does NOT have an
+;;initial argument representing the argument.  Instead, it looks
+;;identical to a java interface.  When we go to implement the
+;;interface, as with deftype or defrecord, we have to add the initial
+;;argument for the object to the args list of the interface.  Other
+;;than that, it's identical to the interface spec.  Also note the
+;;restriction on names in the java interface.  We cannot use clojurian
+;;names, i.e. no '- in the symbol name.
 (definterface IMFlow 
   (^long getFlow      [from to])
   (^long getCapacity  [from to])
-  (incFlow      [from to ^long amt])
-  (setFlow      [from to ^long x])
-  (setCapacity  [from to ^long cap]))
+  (incFlow            [from to ^long amt])
+  (setFlow            [from to ^long x])
+  (setCapacity        [from to ^long cap]))
 
 (defrecord netinfo [nodes ^objects flows ^objects capacities]
   IMFlow
@@ -84,46 +95,24 @@
     (->netinfo nm flows capacities)))
       
 (def info (edges->netinfo (vals sample)))      
-
-
 (def posinf Long/MAX_VALUE)
+
+;;We define an operation to cast a persistent network into a mutable
+;;network.  Basically, we store the network info in our netinfo
+;;object, and define operations on that.  Things like apply-flow, and
+;;other stateful functions should benefit greatly from smashing on a
+;;mutable array, rather than smashing on 
+
+(defn as-mutable-net [n]
+  ;append netinfo to.  So that operations for flows and augmenting
+  ;paths use netinfo for computing flows.  Keeps the original
+  ;persistent data around.  Performance optimization only.
+    ))
 
 ;;Flows and Augmenting Paths
 ;;==========================
 
-;;Network Flow data is stored as extra data in a 
-;;digraph.  The API will be generalized behind a 
-;;protocol, but for now this suffices, and it 
-;;works on the existing digraph structure.
-
-;A simple set of helper functions that let us embed flow data
-;;in a spork.data.digraph record.
-
-(def empty-network (assoc graph/empty-graph :flow-info {}))
-;(defrecord edge-info [from to capacity flow])
-
-(defrecord einfo [from to capacity flow dir])
-
-;;Optimizing represenation.  Vectors are way faster.
-(defn ->edge-info 
-  [from to & {:keys [capacity flow] :or {capacity posinf flow 0}}]
-  (einfo. from  to capacity flow :increment))
-
-;; (defn ->edge-info 
-;;   [from to & {:keys [capacity flow] :or {capacity posinf flow 0}}]
-;;   {:from from :to to :capacity capacity :flow flow})
-
-(definline edge-info [g from to]
-  `(get (:flow-info ~g) [~from ~to] (->edge-info ~from ~to)))
-
-;;OPTIMIZE
-;; (defn edge-info [g from to]
-;;   (get-in g [:flow-info [from to]] (->edge-info from to)))
-
-;; (defn edge-info [g from to]
-;;   (get-in g [:flow-info [from to]] (->edge-info from to)))
-
-
+;;This is different....
 (definline update-edge*  
   [g from to flow cap]
   `(assoc ~g :flow-info                  
@@ -141,13 +130,6 @@
   ([g from to m] 
     (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
 
-;; (defn update-edge 
-;;   ([g from to flow cap]
-;;     (assoc-in g [:flow-info [from to]] 
-;;               (->edge-info from to :capacity cap :flow flow)))
-;;   ([g from to m] 
-;;     (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
-
 (defn current-capacity 
   ([info] (- (:capacity info) (:flow info)))
   ([g from to] (current-capacity (edge-info g from to))))
@@ -161,14 +143,12 @@
   ([g from to] (contains? (get (:sinks g) from) to))
   ([g info] (forward? g (:from info) (:to info))))
 
-;optimized
 (defn inc-flow 
   ([g info flow]
     (update-edge* g (:from info) (:to info) 
                  (+ (:flow info) flow) (- (:capacity info) flow)))
   ([g from to flow] (inc-flow g (edge-info g from to) flow)))
 
-;optimized
 (defn dec-flow 
   ([g info flow]
     (update-edge* g  (:from info) (:to info) 
@@ -182,6 +162,7 @@
   (reduce (fn [acc [k info]] (if (> (:flow info) 0)
                                (assoc acc k (:flow info)) acc)) 
           {} (:flow-info g)))
+
 (defn total-flow 
   ([g active-edges] 
     (->> active-edges 
@@ -213,47 +194,35 @@
             0 active-edges))
   ([g] (total-cost g (active-flows g))))
 
-;; (defn total-cost 
-;;   ([g active-edges]
-;;     (generic/loop-reduce 
-;;      (fn [acc [[from to] flow]]       
-;;        (+ acc (* flow (graph/arc-weight g from to))))
-;;             0 active-edges))
-;;   ([g] (total-cost g (active-flows g))))
 
-;add a capacitated arc to the graph
-(defn conj-cap-arc [g from to w cap]
-  (let [finfo (:flow-info g)]
-    (-> (graph/conj-arc g from to w)
-        (assoc :flow-info finfo)
-        (update-edge from to 0 cap))))
+;;Might disable this guy...
+
+;;Disable this for mutable flows...
+;;;add a capacitated arc to the graph
+;; (defn conj-cap-arc [g from to w cap]
+;;   (let [finfo (:flow-info g)]
+;;     (-> (graph/conj-arc g from to w)
+;;         (assoc :flow-info finfo)
+;;         (update-edge from to 0 cap))))
 
 ;;Probable hotspot in at least one use case.  We add arcs to the
 ;;network repeatedly...calls to merge and reduce and destructuring 
 ;;will slow us down.
 
+
+;;Disabled for mutable flows...
 ;;this is a hacked way to go
 ;;add multiple capacitated arcs to the network.
-(defn conj-cap-arcs [g arcs]
-  (let [finfo (:flow-info g)]
-    (->> arcs 
-        (reduce 
-          (fn [[gr flows] [from to w cap]]  [(graph/conj-arc gr from to w) 
-                                             (update-edge flows from to 0 cap)])
-             [g {:flow-info finfo}])
-        (apply merge))))
+;; (defn conj-cap-arcs [g arcs]
+;;   (let [finfo (:flow-info g)]
+;;     (->> arcs 
+;;         (reduce 
+;;           (fn [[gr flows] [from to w cap]]  [(graph/conj-arc gr from to w) 
+;;                                              (update-edge flows from to 0 cap)])
+;;              [g {:flow-info finfo}])
+;;         (apply merge))))
 
-;;Original version of flow neighbors.  Trying to trim costs for
-;;neighbor lookup.
-;; (defn flow-neighbors0 
-;;   [g v & args]
-;;   (let [info (partial edge-info g)
-;;         capacity (fn [to]   (:capacity (info v to)))
-;;         flow     (fn [from] (:flow (info from v)))]
-;;     (concat 
-;;       (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v)) ;forward
-;;       (filter (fn [from] (> (flow from)   0)) (graph/sources g v)))))
-
+;;Rewrite, may be faster using netinfo.
 ;;bi-directional flow neighbors.  We allow all forward neighbors with untapped 
 ;;capacity, and allow any backward neighbors with flow.
 (defn flow-neighbors 
@@ -307,45 +276,23 @@
            (search/traverse ~g ~from ~to (searchstate/empty-PFS ~from)
                             :weightf flow-weight :neighborf flow-neighbors))))
 
-;; (defn mincost-aug-path [g from to]
-;;   (first (graph/get-paths 
-;;           (search/traverse g from to (searchstate/empty-PFS from)
-;;                            :weightf flow-weight :neighborf flow-neighbors))))
-
-
-
-;convert a path into a list of edge-info 
-;; (defn path->edge-info [g p]
-;;   (map (fn [fromto]
-;;          (let [from (first fromto)
-;;                to   (second fromto)]
-;;            (if (forward? g from to)
-;;              (assoc (edge-info g from to) :dir :increment)
-;;              (assoc (edge-info g to from) :dir :decrement))))
-;;        (partition 2 1 p)))
+;;This may be unnecessary...We only need to augment along active
+;;flows.  Building edge-info is unnecessary, we just mutate the flow
+;;along the path.
 
 ;;optimized?
-(defn path->edge-info [g p]
-  (loop [acc []
-         xs  p]
-    (if (nil? (next xs)) acc
-        (let [from (first  xs)
-              to   (second xs)]
-          (recur (conj acc (if (forward? g from to)
-                             (assoc (edge-info g from to) :dir :increment)
-                             (assoc (edge-info g to from) :dir :decrement)))
-                 (next xs))))))
-      
-;; ;;slow, unoptimized
 ;; (defn path->edge-info [g p]
-;;   (map (fn [fromto]
-;;          (let [from (first fromto)
-;;                to   (second fromto)]
-;;            (if (forward? g from to)
-;;              (assoc (edge-info g from to) :dir :increment)
-;;              (assoc (edge-info g to from) :dir :decrement))))
-;;        (partition 2 1 p)))
-
+;;   (loop [acc []
+;;          xs  p]
+;;     (if (nil? (next xs)) acc
+;;         (let [from (first  xs)
+;;               to   (second xs)]
+;;           (recur (conj acc (if (forward? g from to)
+;;                              (assoc (edge-info g from to) :dir :increment)
+;;                              (assoc (edge-info g to from) :dir :decrement)))
+;;                  (next xs))))))
+      
+;;Also needs optimizing.  We now use netinfo instead of infos...
 ;;find the maximum flow that the path can support 
 (defn maximum-flow [g infos]
   (loop [info (first infos)
@@ -358,7 +305,10 @@
       (if (empty? xs) next-flow
           (recur (first xs) (rest xs) next-flow)))))
 
-;;Eliminate reduce.
+;;Apply flow should now be using netinfo.  Instead of edges, we just
+;;walk the path in order and inc flow or dec flow depending on whether
+;;the edges are forward or backward.  Should reduce allocation a lot.
+
 ;;apply an amount of flow along the path, dropping any nodes that 
 ;;become incapacitated.
 (defn apply-flow [g edges flow]
@@ -369,10 +319,20 @@
           (dec-flow gr info flow)))
       g edges))
 
+;;Replace edges with something else.  Given a path, we just traverse
+;;the path and mutate the flows as necessary.  Should be simplified
+;;now, no edge-info objects, no call to path->edge-info.
 ;;helper function to apply flow.
 (defn augment-flow [g p]
   (let [edges (path->edge-info g p)]
     (apply-flow g edges (maximum-flow g edges))))
+
+
+;;These guys are all the same.  The difference is, we inject a call to
+;;create a mutable netinfo, using as-mutable, and smash on that with
+;;our custom mutable operators.  The resulting graph is then converted
+;;to a persistent flow structure.  So, wrap the libs from
+;;cljgraph.flow.  
 
 ;;find the mincost flow, in graph, from -> to, where graph is a directed graph 
 ;;and contains a key :flow-info with compatible network flow information.

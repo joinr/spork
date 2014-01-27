@@ -47,7 +47,7 @@
   "Derived from clojure.core/replace"
   [smap coll]
   (if (vector? coll)
-    (reduce1 (fn [v i]
+    (reduce (fn [v i]
                (if-let [e (find smap (nth v i))]
                  (assoc v i (val e))
                  v))
