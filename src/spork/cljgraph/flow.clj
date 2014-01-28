@@ -159,6 +159,8 @@
 ;;network repeatedly...calls to merge and reduce and destructuring 
 ;;will slow us down.
 
+
+;;THIS IS BROKE!  
 ;;this is a hacked way to go
 ;;add multiple capacitated arcs to the network.
 (defn conj-cap-arcs [g arcs]

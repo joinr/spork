@@ -239,7 +239,7 @@
    Pulls out the value associated with :net-info in the map, 
    and binds it to a type-hinted local called *net*"
   [m expr]
-  `(let [~(with-meta '*net* {:tag netinfo} ) (:net-info ~m)]
+  `(let [~(with-meta '*net* {:tag 'netinfo} ) (:net-info ~m)]
      ~expr))
 
 (defmacro doto-net 
@@ -260,28 +260,26 @@
      (do (.setFlow     ~'n i# j#  ~(with-meta flow {:tag long}))
          (.setCapacity ~'n i# j#  ~(with-meta cap {:tag long})))))
   
-(defn update-edge*  
-  [g from to flow cap]
-  (let [^netinfo n  (:net-info g)]
-    (do (.setFlow n from to flow)
-        (.setCapacity n  from to cap))))
-
-(defmacro update-edge*  
-  [g from to flow cap]
-  (let [n (with-meta (gensym "net") {:tag netinfo})]
+(definline update-edge*  
+  [g from to flow cap]    
+  (let [n (with-meta (gensym "net") {:tag 'netinfo})]
     `(let [~n  (:net-info ~g)
            nodes# (:nodes ~n)
            i#  (get-index nodes# ~from)
-           j#  (get-index nodes# ~to)
-           ]
-       (do (arr/deep-aset ~'longs (:flows ~n) i# j# ~flow)
-           (arr/deep-aset ~'longs (:capacities ~n) i# j# ~cap)))))
+           j#  (get-index nodes# ~to)]
+       (do (.setFlow ~n i# j# ~flow)
+           (.setCapacity ~n  i# j# ~cap)
+           ~g))))
 
 (definline inc-edge*  
   [g from to amt]  
   `(with-net ~g 
-     (let [~(with-meta 'the-amt {:tag long}) ~amt]
-       (.incFlow ~'*net* ~from ~to ~'the-amt))))
+     (.incFlow ~'*net* ~from ~to ~amt)))
+
+(definline dec-edge*
+  [g from to amt]  
+  `(inc-edge* ~g ~from ~to (- ~amt)))
+
 
 ;;->edge-info is called a lot here.
 ;; (defn update-edge 
@@ -330,44 +328,45 @@
                  (- (:flow info) flow) (+ (:capacity info) flow)))
   ([g from to flow] (dec-flow g (edge-info g from to) flow)))
 
-(defn flows [g] 
-  (for [[k v] (:flow-info g)] [k (select-keys v [:capacity :flow])]))
+;;Doesn't work.
+;;(defn flows [g] 
+;;  (for [[k v] (:flow-info g)] [k (select-keys v [:capacity :flow])]))
 
-(defn active-flows [g] 
-  (reduce (fn [acc [k info]] (if (> (:flow info) 0)
-                               (assoc acc k (:flow info)) acc)) 
-          {} (:flow-info g)))
+;; (defn active-flows [g] 
+;;   (reduce (fn [acc [k info]] (if (> (:flow info) 0)
+;;                                (assoc acc k (:flow info)) acc)) 
+;;           {} (:flow-info g)))
 
-(defn total-flow 
-  ([g active-edges] 
-    (->> active-edges 
-      (filter (fn [[k v]] (graph/terminal-node? g (second k))))
-      (map second)
-      (reduce + 0)))
-  ([g] (total-flow g (active-flows g))))
+;; (defn total-flow 
+;;   ([g active-edges] 
+;;     (->> active-edges 
+;;       (filter (fn [[k v]] (graph/terminal-node? g (second k))))
+;;       (map second)
+;;       (reduce + 0)))
+;;   ([g] (total-flow g (active-flows g))))
 
-(defn flow-provider-type [g nd]
-  (if (not (graph/island? g nd))
-      (cond (graph/terminal-node? g nd) :sinks
-            (empty? (graph/sinks g nd))  :source
-            :else :trans)
-      :island))
+;; (defn flow-provider-type [g nd]
+;;   (if (not (graph/island? g nd))
+;;       (cond (graph/terminal-node? g nd) :sinks
+;;             (empty? (graph/sinks g nd))  :source
+;;             :else :trans)
+;;       :island))
 
-(defn flow-topology [g start-node]
-  (group-by (partial flow-provider-type g)
-            (graph/succs g start-node)))
+;; (defn flow-topology [g start-node]
+;;   (group-by (partial flow-provider-type g)
+;;             (graph/succs g start-node)))
 
 ;;refactored to eliminate reduce and destructuring.
-(defn total-cost 
-  ([g active-edges]
-    (generic/loop-reduce 
-     (fn [acc info]
-       (let [flow (second info)
-             from (first (first info))
-             to   (second (first info))]
-         (+ acc (* flow (graph/arc-weight g from to)))))
-            0 active-edges))
-  ([g] (total-cost g (active-flows g))))
+;; (defn total-cost 
+;;   ([g active-edges]
+;;     (generic/loop-reduce 
+;;      (fn [acc info]
+;;        (let [flow (second info)
+;;              from (first (first info))
+;;              to   (second (first info))]
+;;          (+ acc (* flow (graph/arc-weight g from to)))))
+;;             0 active-edges))
+;;   ([g] (total-cost g (active-flows g))))
 
 
 ;;Might disable this guy...
@@ -400,16 +399,18 @@
 ;;Rewrite, may be faster using netinfo.
 ;;bi-directional flow neighbors.  We allow all forward neighbors with untapped 
 ;;capacity, and allow any backward neighbors with flow.
-(defn flow-neighbors 
-  [g v _]
-  (let [xs (atom (transient []))]
-    (do (doseq [to (graph/sinks g v)]
-          (when (> (:capacity (edge-info g v to)) 0) 
-            (reset! xs (conj! @xs to) )))
-        (doseq [from (graph/sources g v)]
-          (when (> (:flow (edge-info g from v)) 0)
-            (reset! xs (conj! @xs from))))
-        (persistent! @xs))))
+;; (defn flow-neighbors 
+;;   [g v _]
+;;   (let [xs (atom (transient []))]
+;;     (do (doseq [to (graph/sinks g v)]
+;;           (when (> (:capacity (edge-info g v to)) 0) 
+;;             (reset! xs (conj! @xs to) )))
+;;         (doseq [from (graph/sources g v)]
+;;           (when (> (:flow (edge-info g from v)) 0)
+;;             (reset! xs (conj! @xs from))))
+;;         (persistent! @xs))))
+
+
 
 ;;this is a special walk for helping us with greedy flows, where we don't 
 ;;try to find an augmenting flow.
@@ -428,19 +429,6 @@
 (defn flow-walk [g startnode endnode]
   (search/priority-walk g startnode :endnode endnode 
                         :weightf flow-weight :neighborf flow-neighbors))
-
-(defn ford-fulkerson-walk [g startnode endnode]
-  (search/depth-walk g startnode :endnode endnode :neighborf flow-neighbors))
-
-(defn edmonds-karp-walk [g startnode endnode]
-  (search/breadth-walk g startnode :endnode endnode :neighborf flow-neighbors))
-(defn pushflow-walk [g startnode endnode]
-  (search/priority-walk g startnode 
-        :endnode endnode :neighborf forward-only-flow-neighbors))
-(defn pushflow-aug-path [g from to]
-  (first (graph/get-paths (pushflow-walk g from to))))
-(defn maxflow-aug-path [g from to]
-  (first (graph/get-paths (edmonds-karp-walk g from to))))
 
 ;;Changed from using flow-walk, due to overhead from function
 ;;invocation.  This guy gets called a lot.  Function overhead adds up.
