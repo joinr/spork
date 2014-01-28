@@ -12,7 +12,7 @@
             [spork.data [searchstate :as searchstate]]
             [spork.protocols [core :as generic]]
             [spork.util [array :as arr]])
-  (:import [clojure.lang ITransientMap MapEntry]))
+  (:import  [clojure.lang ITransientMap MapEntry]))
 
 (def sample 
   '{["55530LJ00" :filled]
@@ -54,8 +54,22 @@
   (setCapacity        [from to ^long cap])
   (setEdge            [from to ^long flow ^long cap]))
 
+(definline get-index [indices k]
+  `(if (number? ~k)  ~k
+       (get ~indices ~k)))
+  
+(defmacro with-indices [indices binds expr]
+  (let [isym (gensym "indices")]
+    `(let [~isym ~indices
+           ~@(reduce (fn [acc [k v]] (-> acc (conj k) (conj v))) []
+                     (for [[k v] (partition 2 binds)] [k (if (number? v) (long v) `(get-index ~isym ~v))]))]
+       ~expr)))
+
+  
+
 (defrecord netinfo [nodes ^objects flows ^objects capacities]
   IMFlow
+  (^long getIndex  [m nd]  (get nodes nd))
   (^long getFlow   [m from to]     
     (let [i (get nodes from)
           j (get nodes to)]
@@ -134,6 +148,7 @@
 
 (deftype flownet [^{:unsynchronized-mutable true, :tag ITransientMap} edges]
   IMFlow
+  (^long getIndex  [m nd]  0)
   (^long getFlow      [m from to] (get ^linfo (get edges [from to]) :flow))
   (^long getCapacity  [m from to] (get ^linfo (get edges [from to]) :capacity))
   (incFlow            [m from to ^long amt] (.incFlow ^linfo (get edges [from to]) from to amt))
@@ -150,7 +165,6 @@
   (conj  [this e]    (let [[k v] e]      (.assoc this k v)))  
   (without [this k]  (do (dissoc! edges k)  this))
   (persistent [this]    (.persistent edges)))
-
 
  ;; clojure.lang.IPersistentMap
  ;;  (count [this] (count edges))
@@ -197,7 +211,7 @@
             flow (:flow e)
             i (get nm from)
             j (get nm to)]
-        (do (arr/deep-aset longs flows i j (long flow))
+        (do (arr/deep-aset longs flows i j      (long flow))
             (arr/deep-aset longs capacities i j (long cap)))))
     (->netinfo nm flows capacities)))
       
@@ -222,41 +236,76 @@
 ;;Flows and Augmenting Paths
 ;;==========================
 
-;;This is different....
+
+(defmacro with-net 
+  "Macro for working with embedded net info in a map.
+   Pulls out the value associated with :net-info in the map, 
+   and binds it to a type-hinted local called *net*"
+  [m expr]
+  `(let [~(with-meta '*net* {:tag netinfo} ) (:net-info ~m)]
+     ~expr))
+
+(defmacro doto-net 
+  "Evals expr with *net* bound to a type-hinted ^netinfo *net*, 
+   pulled from the val associated with :net-info in m"
+  [m & exprs]
+  `(with-net ~m 
+     (do ~@exprs
+         ~m)))
+
+;;Reformed to use interface methods.  Should be mutable now.
 (definline update-edge*  
-  [g from to flow cap]
-  `(-> (:net-info ~g)
-       (setFlow from to flow)
-       (setCapacity from to cap)))
+  [g from to flow cap]  
+  `(doto-net ~g 
+     (.setFlow     ~'*net* ~from ~to ~flow)
+     (.setCapacity ~'*net* ~from ~to ~cap)))
+
+(definline inc-edge*  
+  [g from to amt]  
+  `(with-net ~g 
+     (let [~(with-meta 'the-amt {:tag long}) ~amt]
+       (.incFlow ~'*net* ~from ~to ~'the-amt))))
 
 ;;->edge-info is called a lot here.
-(defn update-edge 
-  ([g from to flow cap]
-     (assoc g :flow-info                  
-       (assoc 
-         (get g :flow-info {})
-           [from to] (einfo. from to cap flow :increment))))
-  ([g from to m] 
-    (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
+;; (defn update-edge 
+;;   ([g from to flow cap]
+;;      (assoc g :flow-info                  
+;;        (assoc 
+;;          (get g :flow-info {})
+;;            [from to] (einfo. from to cap flow :increment))))
+;;   ([g from to m] 
+;;     (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
 
+
+;;Doubtful this is in use....
 (defn current-capacity 
   ([info] (- (:capacity info) (:flow info)))
   ([g from to] (current-capacity (edge-info g from to))))
 
-(defn set-capacity [g from to cap] (update-edge g from to {:capacity cap}))
-(defn set-flow [g from to flow]    (update-edge g from to {:flow flow}))
+;;should remove these guys....
+;; (defn set-capacity [g from to cap] (update-edge g from to {:capacity cap}))
+;; (defn set-flow [g from to flow]    (update-edge g from to {:flow flow}))
 
 ;;Hold off on this...implementation may be faulty.
-(defn swap-capacities [net l c r] net)
-(defn forward? 
-  ([g from to] (contains? (get (:sinks g) from) to))
-  ([g info] (forward? g (:from info) (:to info))))
+;;(defn swap-capacities [net l c r] net)
 
+
+;;There's another definition of forward, given a flownet..
+;;We consult the nodemap to see whose index is less...we can memoize
+;;this...[CORRECTION] we can do that if an only if the node indices
+;;are placed in topological order....as it stands, the lookup cost is
+;;probably outweighed by the persistent updating cost.   This stays.
+(defn forward? 
+   ([g from to] (contains? (get (:sinks g) from) to))
+   ([g info] (forward? g (:from info) (:to info))))
+
+;;Removed the edge info case for now...
 (defn inc-flow 
   ([g info flow]
     (update-edge* g (:from info) (:to info) 
                  (+ (:flow info) flow) (- (:capacity info) flow)))
-  ([g from to flow] (inc-flow g (edge-info g from to) flow)))
+  ([g from to flow] 
+    (update-edge* g from to (+ (:flow info) flow) (- (:capacity info) flow))))
 
 (defn dec-flow 
   ([g info flow]
