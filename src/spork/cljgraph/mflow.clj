@@ -58,44 +58,42 @@
   `(if (number? ~k)  ~k
        (get ~indices ~k)))
   
-(defmacro with-indices [indices binds expr]
+(defmacro with-indices [indices binds & exprs]
   (let [isym (gensym "indices")]
     `(let [~isym ~indices
            ~@(reduce (fn [acc [k v]] (-> acc (conj k) (conj v))) []
                      (for [[k v] (partition 2 binds)] [k (if (number? v) (long v) `(get-index ~isym ~v))]))]
-       ~expr)))
+       ~@exprs)))
 
-  
 
 (defrecord netinfo [nodes ^objects flows ^objects capacities]
   IMFlow
-  (^long getIndex  [m nd]  (get nodes nd))
   (^long getFlow   [m from to]     
-    (let [i (get nodes from)
-          j (get nodes to)]
+    (let [i (get-index nodes from)
+          j (get-index nodes to)]
       (arr/deep-aget longs flows i j)))  
   (setFlow   [m from to ^long x]
-    (let [i (get nodes from)
-          j (get nodes to)]
+    (let [i (get-index nodes from)
+          j (get-index nodes to)]
       (do (arr/deep-aset longs flows i j x)
           m)))  
   (incFlow      [m from to ^long amt] 
-    (let [i (get nodes from)
-          j (get nodes to)]
+    (let [i (get-index nodes from)
+          j (get-index nodes to)]
     (do (arr/deep-aset longs flows i j (+ amt (arr/deep-aget longs flows i j))) 
         m)))  
   (^long getCapacity [m from to]
-    (let [i (get nodes from)
-          j (get nodes to)]
+    (let [i (get-index nodes from)
+          j (get-index nodes to)]
       (arr/deep-aget longs capacities i j)))  
   (setCapacity [m from to ^long cap]
-    (let [i (get nodes from)
-          j (get nodes to)]
+    (let [i (get-index nodes from)
+          j (get-index nodes to)]
       (do (arr/deep-aset longs capacities i j cap)
           m)))
   (setEdge [m from to ^long amt ^long cap]
-    (let [i (get nodes from)
-          j (get nodes to)]
+    (let [i (get-index nodes from)
+          j (get-index nodes to)]
       (do (arr/deep-aset longs flows i j amt)
           (arr/deep-aset longs capacities i j cap)
           m))))
@@ -148,7 +146,6 @@
 
 (deftype flownet [^{:unsynchronized-mutable true, :tag ITransientMap} edges]
   IMFlow
-  (^long getIndex  [m nd]  0)
   (^long getFlow      [m from to] (get ^linfo (get edges [from to]) :flow))
   (^long getCapacity  [m from to] (get ^linfo (get edges [from to]) :capacity))
   (incFlow            [m from to ^long amt] (.incFlow ^linfo (get edges [from to]) from to amt))
@@ -254,11 +251,31 @@
          ~m)))
 
 ;;Reformed to use interface methods.  Should be mutable now.
-(definline update-edge*  
-  [g from to flow cap]  
-  `(doto-net ~g 
-     (.setFlow     ~'*net* ~from ~to ~flow)
-     (.setCapacity ~'*net* ~from ~to ~cap)))
+(defne update-edge*  
+  [g from to flow cap]
+  `(let [~(with-meta 'n {:tag spork.cljgraph.mflow.netinfo}) (:net-info ~g)
+         indices# (:nodes ~'n)
+         i# (get-index indices# ~from)
+         j# (get-index indices# ~to)]
+     (do (.setFlow     ~'n i# j#  ~(with-meta flow {:tag long}))
+         (.setCapacity ~'n i# j#  ~(with-meta cap {:tag long})))))
+  
+(defn update-edge*  
+  [g from to flow cap]
+  (let [^netinfo n  (:net-info g)]
+    (do (.setFlow n from to flow)
+        (.setCapacity n  from to cap))))
+
+(defmacro update-edge*  
+  [g from to flow cap]
+  (let [n (with-meta (gensym "net") {:tag netinfo})]
+    `(let [~n  (:net-info ~g)
+           nodes# (:nodes ~n)
+           i#  (get-index nodes# ~from)
+           j#  (get-index nodes# ~to)
+           ]
+       (do (arr/deep-aset ~'longs (:flows ~n) i# j# ~flow)
+           (arr/deep-aset ~'longs (:capacities ~n) i# j# ~cap)))))
 
 (definline inc-edge*  
   [g from to amt]  
