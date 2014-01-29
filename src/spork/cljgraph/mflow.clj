@@ -233,7 +233,20 @@
 (defn flow-neighbors 
   [g v _]
   (with-net g     
-    (let [u  (get-index (:nodes g) v)
+    (let [u  (get-index (:nodes *net*) v)
+          xs (atom (transient []))]
+      (do (doseq [to (graph/sinks g v)]
+            (when (> (.getCapacity  *net* u to) 0) 
+              (reset! xs (conj! @xs to))))
+          (doseq [from (graph/sources g v)]
+            (when (> (.getFlow *net* from u) 0)
+              (reset! xs (conj! @xs from))))
+          (persistent! @xs)))))
+
+(defn flow-neighbors2 
+  [g v _]
+  (with-net g     
+    (let [u  (get-index (:nodes *net*) v)
           xs (atom (transient []))]
       (do (doseq [to (graph/sinks g v)]
             (when (> (.getCapacity  *net* u to) 0) 
@@ -249,37 +262,23 @@
 ;;incurred in tight loops (i.e. lots of flow calcs).
 (definline mincost-aug-path [g from to]
   `(first (graph/get-paths 
-           (search/traverse ~g ~from ~to (searchstate/empty-PFS ~from)
-                            :weightf flow/flow-weight :neighborf flow-neighbors))))
-
-;;This may be unnecessary...We only need to augment along active
-;;flows.  Building edge-info is unnecessary, we just mutate the flow
-;;along the path.
-
-;;optimized?
-;; (defn path->edge-info [g p]
-;;   (loop [acc []
-;;          xs  p]
-;;     (if (nil? (next xs)) acc
-;;         (let [from (first  xs)
-;;               to   (second xs)]
-;;           (recur (conj acc (if (forward? g from to)
-;;                              (assoc (edge-info g from to) :dir :increment)
-;;                              (assoc (edge-info g to from) :dir :decrement)))
-;;                  (next xs))))))
-      
+          (search/traverse ~g ~from ~to (searchstate/empty-PFS ~from)
+                           :weightf flow/flow-weight :neighborf flow/flow-neighbors))))
+     
 ;;Also needs optimizing.  We now use netinfo instead of infos...
 ;;find the maximum flow that the path can support 
-(defn maximum-flow [g infos]
-  (loop [info (first infos)
-         xs   (rest infos)
-         flow posinf]
-    (let [new-flow (if (= :increment (:dir info))
-                       (:capacity info)
-                       (:flow info))
-          next-flow (min flow new-flow)]
-      (if (empty? xs) next-flow
-          (recur (first xs) (rest xs) next-flow)))))
+(defn maximum-flow [g nodes]
+  (with-net g
+    (loop [from  (first nodes)
+           xs    (rest  nodes)
+           flow   posinf]
+      (if-let [to (first xs)]
+        (let [new-flow (if (forward? g from to)
+                         (.getCapacity *net* from to)
+                         (.getFlow *net* from to))
+              next-flow (min flow new-flow)]
+          (recur (first xs) (rest xs) next-flow))
+        flow))))
 
 ;;Apply flow should now be using netinfo.  Instead of edges, we just
 ;;walk the path in order and inc flow or dec flow depending on whether
@@ -369,7 +368,7 @@
 (def sample-net 
   (->> (for [{:keys [from to capacity flow]} (vals sample)]
          [from to 0 capacity])
-       (conj-cap-arcs empty-network)
+       (flow/conj-cap-arcs flow/empty-network)
        (as-mutable-net)))
 
 )
