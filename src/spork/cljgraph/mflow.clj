@@ -79,7 +79,8 @@
   (incFlow      [m from to ^long amt] 
     (let [i (get-index nodes from)
           j (get-index nodes to)]
-    (do (arr/deep-aset longs flows i j (+ amt (arr/deep-aget longs flows i j))) 
+    (do (arr/deep-aset longs flows i j (+ amt (arr/deep-aget longs flows i j)))
+        (arr/deep-aset longs capacities i j (+ amt (arr/deep-aget longs capacities i j)))
         m)))  
   (^long getCapacity [m from to]
     (let [i (get-index nodes from)
@@ -111,8 +112,7 @@
         (do (arr/deep-aset longs flows i j      (long flow))
             (arr/deep-aset longs capacities i j (long cap)))))
     (->netinfo nm flows capacities)))
-      
-(def info (edges->netinfo (vals sample)))      
+     
 (def posinf Long/MAX_VALUE)
 
 ;;We define an operation to cast a persistent network into a mutable
@@ -172,9 +172,9 @@
   `(inc-edge* ~g ~from ~to (- ~amt)))
 
 ;;Doubtful this is in use....
-(defn current-capacity 
-  ([info] (- (:capacity info) (:flow info)))
-  ([g from to] (current-capacity (edge-info g from to))))
+;; (defn current-capacity 
+;;   ([info] (- (:capacity info) (:flow info)))
+;;   ([g from to] (current-capacity (edge-info g from to))))
 
 ;;should remove these guys....
 ;; (defn set-capacity [g from to cap] (update-edge g from to {:capacity cap}))
@@ -191,21 +191,21 @@
 ;;probably outweighed by the persistent updating cost.   This stays.
 (defn forward? 
    ([g from to] (contains? (get (:sinks g) from) to))
-   ([g info] (forward? g (:from info) (:to info))))
+   ([g info]    (forward? g (:from info) (:to info))))
 
 ;;Removed the edge info case for now...
-(defn inc-flow 
-  ([g info flow]
-    (update-edge* g (:from info) (:to info) 
-                 (+ (:flow info) flow) (- (:capacity info) flow)))
-  ([g from to flow] 
-    (update-edge* g from to (+ (:flow info) flow) (- (:capacity info) flow))))
+;; (defn inc-flow 
+;;   ([g info flow]
+;;     (update-edge* g (:from info) (:to info) 
+;;                  (+ (:flow info) flow) (- (:capacity info) flow)))
+;;   ([g from to flow] 
+;;     (update-edge* g from to (+ (:flow info) flow) (- (:capacity info) flow))))
 
-(defn dec-flow 
-  ([g info flow]
-    (update-edge* g  (:from info) (:to info) 
-                 (- (:flow info) flow) (+ (:capacity info) flow)))
-  ([g from to flow] (dec-flow g (edge-info g from to) flow)))
+;; (defn dec-flow 
+;;   ([g info flow]
+;;     (update-edge* g  (:from info) (:to info) 
+;;                  (- (:flow info) flow) (+ (:capacity info) flow)))
+;;   ([g from to flow] (dec-flow g (edge-info g from to) flow)))
 
 ;;Doesn't work.
 ;;(defn flows [g] 
@@ -215,65 +215,6 @@
 ;;   (reduce (fn [acc [k info]] (if (> (:flow info) 0)
 ;;                                (assoc acc k (:flow info)) acc)) 
 ;;           {} (:flow-info g)))
-
-;; (defn total-flow 
-;;   ([g active-edges] 
-;;     (->> active-edges 
-;;       (filter (fn [[k v]] (graph/terminal-node? g (second k))))
-;;       (map second)
-;;       (reduce + 0)))
-;;   ([g] (total-flow g (active-flows g))))
-
-;; (defn flow-provider-type [g nd]
-;;   (if (not (graph/island? g nd))
-;;       (cond (graph/terminal-node? g nd) :sinks
-;;             (empty? (graph/sinks g nd))  :source
-;;             :else :trans)
-;;       :island))
-
-;; (defn flow-topology [g start-node]
-;;   (group-by (partial flow-provider-type g)
-;;             (graph/succs g start-node)))
-
-;;refactored to eliminate reduce and destructuring.
-;; (defn total-cost 
-;;   ([g active-edges]
-;;     (generic/loop-reduce 
-;;      (fn [acc info]
-;;        (let [flow (second info)
-;;              from (first (first info))
-;;              to   (second (first info))]
-;;          (+ acc (* flow (graph/arc-weight g from to)))))
-;;             0 active-edges))
-;;   ([g] (total-cost g (active-flows g))))
-
-
-;;Might disable this guy...
-
-;;Disable this for mutable flows...
-;;;add a capacitated arc to the graph
-;; (defn conj-cap-arc [g from to w cap]
-;;   (let [finfo (:flow-info g)]
-;;     (-> (graph/conj-arc g from to w)
-;;         (assoc :flow-info finfo)
-;;         (update-edge from to 0 cap))))
-
-;;Probable hotspot in at least one use case.  We add arcs to the
-;;network repeatedly...calls to merge and reduce and destructuring 
-;;will slow us down.
-
-
-;;Disabled for mutable flows...
-;;this is a hacked way to go
-;;add multiple capacitated arcs to the network.
-;; (defn conj-cap-arcs [g arcs]
-;;   (let [finfo (:flow-info g)]
-;;     (->> arcs 
-;;         (reduce 
-;;           (fn [[gr flows] [from to w cap]]  [(graph/conj-arc gr from to w) 
-;;                                              (update-edge flows from to 0 cap)])
-;;              [g {:flow-info finfo}])
-;;         (apply merge))))
 
 ;;Rewrite, may be faster using netinfo.
 ;;bi-directional flow neighbors.  We allow all forward neighbors with untapped 
@@ -289,25 +230,18 @@
 ;;             (reset! xs (conj! @xs from))))
 ;;         (persistent! @xs))))
 
-
-
-;;this is a special walk for helping us with greedy flows, where we don't 
-;;try to find an augmenting flow.
-(defn forward-only-flow-neighbors 
+(defn flow-neighbors 
   [g v _]
-  (let [info (partial edge-info g)
-        capacity (fn [to] (:capacity (info v to)))]
-    (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v))))
-
-;;the flow-cost for g from to.  Forward arcs are positive cost.
-;;Backward arcs are negative-cost.
-(defn flow-weight [g from to]
-  (if (forward? g from to) (graph/arc-weight g from to) ;forward arc
-      (- (graph/arc-weight g to from))))
-
-(defn flow-walk [g startnode endnode]
-  (search/priority-walk g startnode :endnode endnode 
-                        :weightf flow-weight :neighborf flow-neighbors))
+  (with-net g     
+    (let [u  (get-index (:nodes g) v)
+          xs (atom (transient []))]
+      (do (doseq [to (graph/sinks g v)]
+            (when (> (.getCapacity  *net* u to) 0) 
+              (reset! xs (conj! @xs to))))
+          (doseq [from (graph/sources g v)]
+            (when (> (.getFlow *net* from u) 0)
+              (reset! xs (conj! @xs from))))
+          (persistent! @xs)))))
 
 ;;Changed from using flow-walk, due to overhead from function
 ;;invocation.  This guy gets called a lot.  Function overhead adds up.
@@ -316,7 +250,7 @@
 (definline mincost-aug-path [g from to]
   `(first (graph/get-paths 
            (search/traverse ~g ~from ~to (searchstate/empty-PFS ~from)
-                            :weightf flow-weight :neighborf flow-neighbors))))
+                            :weightf flow/flow-weight :neighborf flow-neighbors))))
 
 ;;This may be unnecessary...We only need to augment along active
 ;;flows.  Building edge-info is unnecessary, we just mutate the flow
@@ -429,7 +363,14 @@
    [:bos :t    0 300]])
 (def the-net 
   (-> flow/empty-network 
-    (flow/conj-cap-arcs net-data)))
+      (flow/conj-cap-arcs net-data)))
+
+(def info       (edges->netinfo (vals sample)))      
+(def sample-net 
+  (->> (for [{:keys [from to capacity flow]} (vals sample)]
+         [from to 0 capacity])
+       (conj-cap-arcs empty-network)
+       (as-mutable-net)))
 
 )
 

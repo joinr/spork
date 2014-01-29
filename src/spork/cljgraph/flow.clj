@@ -310,9 +310,8 @@
 (defn flow-seq [g from to]
   (take-while :gr 
     (iterate (fn [{:keys [path gr]}] 
-               (when-let [p (mincost-aug-path gr from to)
-                          cost (] 
-                 (let [res {:path p :gr (augment-flow gr p)}]
+               (when-let [p (mincost-aug-path gr from to)] 
+                 (let [res   {:path p :gr (augment-flow gr p)}]
                    res)))
              {:path nil :gr g})))
 
