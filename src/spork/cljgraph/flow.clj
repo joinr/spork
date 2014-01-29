@@ -52,7 +52,7 @@
 
 
 (definline update-edge*  
-  [g from to flow cap]
+  [g from to cap flow]
   `(assoc ~g :flow-info                  
      (assoc 
          (get ~g :flow-info {})
@@ -60,7 +60,7 @@
 
 ;;->edge-info is called a lot here.
 (defn update-edge 
-  ([g from to flow cap]
+  ([g from to cap flow ]
      (assoc g :flow-info                  
        (assoc 
          (get g :flow-info {})
@@ -92,14 +92,14 @@
 (defn inc-flow 
   ([g info flow]
     (update-edge* g (:from info) (:to info) 
-                 (+ (:flow info) flow) (- (:capacity info) flow)))
+                  (- (:capacity info) flow) (+ (:flow info) flow)))
   ([g from to flow] (inc-flow g (edge-info g from to) flow)))
 
 ;optimized
 (defn dec-flow 
   ([g info flow]
     (update-edge* g  (:from info) (:to info) 
-                 (- (:flow info) flow) (+ (:capacity info) flow)))
+                  (+ (:capacity info) flow) (- (:flow info) flow)))
   ([g from to flow] (dec-flow g (edge-info g from to) flow)))
 
 (defn flows [g] 
@@ -153,7 +153,7 @@
   (let [finfo (:flow-info g)]
     (-> (graph/conj-arc g from to w)
         (assoc :flow-info finfo)
-        (update-edge from to 0 cap))))
+        (update-edge from to cap 0))))
 
 ;;Probable hotspot in at least one use case.  We add arcs to the
 ;;network repeatedly...calls to merge and reduce and destructuring 
@@ -163,24 +163,28 @@
 ;;THIS IS BROKE!  
 ;;this is a hacked way to go
 ;;add multiple capacitated arcs to the network.
+;; (defn conj-cap-arcs [g arcs]
+;;   (let [finfo (:flow-info g)]
+;;     (->> arcs 
+;;         (reduce 
+;;           (fn [[gr flows] [from to w cap]]  [(graph/conj-arc gr from to w) 
+;;                                              (update-edge flows from to 0 cap)])
+;;              [g {:flow-info finfo}])
+;;         (apply merge))))
+
 (defn conj-cap-arcs [g arcs]
-  (let [finfo (:flow-info g)]
-    (->> arcs 
-        (reduce 
-          (fn [[gr flows] [from to w cap]]  [(graph/conj-arc gr from to w) 
-                                             (update-edge flows from to 0 cap)])
-             [g {:flow-info finfo}])
-        (apply merge))))
+  (reduce (fn [gr [from to w cap]]  (conj-cap-arc  gr from to w cap)) g arcs))
+       
 
 ;;Original version of flow neighbors.  Trying to trim costs for
 ;;neighbor lookup.
-;; (defn flow-neighbors0 
+;; (defn flow-neighbors 
 ;;   [g v & args]
 ;;   (let [info (partial edge-info g)
 ;;         capacity (fn [to]   (:capacity (info v to)))
 ;;         flow     (fn [from] (:flow (info from v)))]
 ;;     (concat 
-;;       (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v)) ;forward
+;;       (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v)) forward
 ;;       (filter (fn [from] (> (flow from)   0)) (graph/sources g v)))))
 
 ;;bi-directional flow neighbors.  We allow all forward neighbors with untapped 
@@ -303,6 +307,15 @@
   (let [edges (path->edge-info g p)]
     (apply-flow g edges (maximum-flow g edges))))
 
+(defn flow-seq [g from to]
+  (take-while :gr 
+    (iterate (fn [{:keys [path gr]}] 
+               (when-let [p (mincost-aug-path gr from to)
+                          cost (] 
+                 (let [res {:path p :gr (augment-flow gr p)}]
+                   res)))
+             {:path nil :gr g})))
+
 ;;find the mincost flow, in graph, from -> to, where graph is a directed graph 
 ;;and contains a key :flow-info with compatible network flow information.
 (defn mincost-flow 
@@ -354,6 +367,7 @@
   [:chi :hou  7 200]
   [:hou :t    0 300]
   [:bos :t    0 300]])
+
 (def the-net 
   (-> empty-network 
     (conj-cap-arcs net-data)))
@@ -371,7 +385,7 @@
     [Supply AC] {:from Supply, :to AC, :capacity 450000, :flow 0},
     [Total Supply] {:from Total, :to Supply, :capacity 980000, :flow 0}})
 (def sample-net (->> (for [{:keys [from to capacity flow]} (vals sample)]
-                      [from to capacity flow])
+                      [from to 0 capacity])
                     (conj-cap-arcs empty-network)))
                     
 )
