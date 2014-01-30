@@ -24,6 +24,12 @@
      (if (empty? xs#) acc#
          (recur (~f acc# (first xs#)) (rest xs#)))))
 
+(definline loop-map [f coll]
+  `(loop [acc# []
+          xs#  ~coll]
+     (if (empty? xs#)  acc#
+         (recur (conj acc# (~f (first xs#))) (rest xs#)))))
+
 ;;It will be useful to store entries, which normally represent a weight, node
 ;;pairing, behind an estimated weight.  We will use nested entries to embed 
 ;;the actual [weight node] pair inside an [estimate [weight node]] pair.
