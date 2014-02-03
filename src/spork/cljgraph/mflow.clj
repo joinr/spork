@@ -9,9 +9,10 @@
   (:require [spork.cljgraph [core :as graph]
                             [search :as search]
                             [flow    :as flow]]
-            [spork.data [searchstate :as searchstate]]
+            [spork.data [searchstate :as searchstate] [mutable :as mut]]
             [spork.protocols [core :as generic]]
-            [spork.util [array :as arr]])
+            [spork.util [array :as arr]]
+            [clojure.core [reducers :as r]])
   (:import  [clojure.lang ITransientMap MapEntry]))
 
 (def sample 
@@ -36,6 +37,12 @@
             (recur (-> acc (add-node (:from e)) (add-node (:to e)))
                    (rest es)))))))
 
+
+(defmacro defhinted [name fields & specs]
+  (let [flds (mapv (fn [sym] (vary-meta sym merge {:unsynchronized-mutable true})) fields)]
+    `(~@flds)))
+
+
 (deftype einfo [^{:unsynchronized-mutable true  :tag long}  from 
                 ^{:unsynchronized-mutable true  :tag long}  to
                 ^{:unsynchronized-mutable true  :tag long}  dir]
@@ -52,6 +59,8 @@
       :to   to
       :dir  dir
       (throw (Error. (str "Invalid field: " k))))))
+(mut/defmutable einfo [^long from ^long to ^long dir])
+  
      
 ;;definterface gets us more into java, but unlike defprotocol, allows
 ;;us to define primitive types and return types on the args.  Note
@@ -277,6 +286,19 @@
               (reset! xs (conj! @xs from))))
           (persistent! @xs)))))
 
+(defn flow-neighbors3 
+  [g v _]
+  (with-net g     
+    (let [u  (get-index (:nodes *net*) v)
+          xs (atom (transient []))]
+      (do (doseq [to (graph/sinks g v)]
+            (when (> (.getCapacity  *net* u to) 0) 
+              (reset! xs (conj! @xs to))))
+          (doseq [from (graph/sources g v)]
+            (when (> (.getFlow *net* from u) 0)
+              (reset! xs (conj! @xs from))))
+          (persistent! @xs)))))
+
 ;;Changed from using flow-walk, due to overhead from function
 ;;invocation.  This guy gets called a lot.  Function overhead adds up.
 ;;Also, defwalk forms use merge internally...so runtime costs are
@@ -306,7 +328,31 @@
 
 (definline indexed-path [nodes p]
   `(map (fn [n#] (list n# (get-index ~nodes n#)))  ~p))
-   
+
+(definline indexed-path2 [nodes p]
+  `(vec (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
+
+(definline indexed-path3 [nodes p]
+  `(generic/loop-reduce (fn [acc# n#] (conj acc# (list n# (get-index ~nodes n#)))) []  ~p))
+
+(definline indexed-path4 [nodes p]
+  `(persistent! (generic/loop-reduce (fn [acc# n#] (conj! acc# (list n# (get-index ~nodes n#)))) (transient [])  ~p)))
+
+(definline indexed-path5 [nodes p]
+  `(into []  (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
+
+(definline indexed-path6 [nodes p]
+  `(doall (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
+
+
+
+(definline indexed-path7 [nodes p]
+  `(into [] (r/map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
+
+;; (defn indexed-path8
+;;   [nodes p]
+;;   (r/fold (fn ([] nil) ([l r] (conj 
+
 ;;Apply flow should now be using netinfo.  Instead of edges, we just
 ;;walk the path in order and inc flow or dec flow depending on whether
 ;;the edges are forward or backward.  Should reduce allocation a lot.
