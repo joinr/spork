@@ -85,7 +85,7 @@
     in an associative fashion, where existing values of n are effectively 
     overwritten with a new w, ala clojure.core/assoc")
   (next-fringe [fringe] "Get the next node on the fringe")
-  (pop-fringe [fringe] "Remove the next node from the fringe"))
+  (pop-fringe  [fringe] "Remove the next node from the fringe"))
 
 (defn conj-fringe-all
   "Add many [node weight] pairs onto the fringe."

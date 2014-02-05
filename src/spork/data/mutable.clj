@@ -4,7 +4,7 @@
 ;; Work in progress.
 (ns spork.data.mutable  
   (:require [spork.protocols [core :as generic]])
-  (:import [java.util ArrayList PriorityQueue ArrayDeque]))
+  (:import  [java.util ArrayList PriorityQueue ArrayDeque]))
 
 (defn ^ArrayList make-array-list [] (ArrayList.))
 (defn ^ArrayList array-list [xs] 

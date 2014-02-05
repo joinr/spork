@@ -36,31 +36,6 @@
           (let [e (first es)]
             (recur (-> acc (add-node (:from e)) (add-node (:to e)))
                    (rest es)))))))
-
-
-(defmacro defhinted [name fields & specs]
-  (let [flds (mapv (fn [sym] (vary-meta sym merge {:unsynchronized-mutable true})) fields)]
-    `(~@flds)))
-
-
-(deftype einfo [^{:unsynchronized-mutable true  :tag long}  from 
-                ^{:unsynchronized-mutable true  :tag long}  to
-                ^{:unsynchronized-mutable true  :tag long}  dir]
-  clojure.lang.ILookup
-  ; valAt gives (get pm key) and (get pm key not-found) behavior
-  (valAt [this k] (case k 
-                    :from from 
-                    :to to
-                    :dir dir 
-                    (throw (Error. (str "Invalid field: " k)))))
-  (valAt [this k not-found] 
-    (case k 
-      :from from 
-      :to   to
-      :dir  dir
-      (throw (Error. (str "Invalid field: " k))))))
-(mut/defmutable einfo [^long from ^long to ^long dir])
-  
      
 ;;definterface gets us more into java, but unlike defprotocol, allows
 ;;us to define primitive types and return types on the args.  Note
@@ -91,7 +66,7 @@
                      (for [[k v] (partition 2 binds)] [k (if (number? v) (long v) `(get-index ~isym ~v))]))]
        ~@exprs)))
 
-(defrecord netinfo [nodes ^objects flows ^objects capacities]
+(defrecord netinfo [nodes ^objects flows ^objects capacities ^objects directions]
   IMFlow
   (^long getFlow   [m from to]     
     (let [i (get-index nodes from)
@@ -127,7 +102,8 @@
 (defn ^netinfo edges->netinfo [edges]
   (let [nm (net->node-map edges)
         flows      (arr/longs-2d (count nm) (count nm))
-        capacities (arr/longs-2d (count nm) (count nm))]
+        capacities (arr/longs-2d (count nm) (count nm))
+        dir        (atom (transient {}))]
     (doseq [e edges]
       (let [from (:from e)
             to   (:to   e)
@@ -307,6 +283,10 @@
   `(first (graph/get-paths 
           (search/traverse ~g ~from ~to (searchstate/empty-PFS ~from)
                            :weightf flow/flow-weight :neighborf flow/flow-neighbors))))
+
+(definline mincost-aug-path2 [g from to]
+  `(search/traverse ~g ~from ~to (searchstate/empty-PFS ~from)
+                           :weightf flow/flow-weight :neighborf flow/flow-neighbors))
      
 ;;Optimized to work on a path of numeric indices...
 ;;Also needs optimizing.  We now use netinfo instead of infos...
@@ -326,28 +306,26 @@
         (recur (first xs) (rest xs) next-flow))
       flow)))
 
+;; (definline indexed-path [nodes p]
+;;   `(map (fn [n#] (list n# (get-index ~nodes n#)))  ~p))
+
+;; (definline indexed-path2 [nodes p]
+;;   `(mapv (fn [n#] (list n# (get-index ~nodes n#)))  ~p))
+
 (definline indexed-path [nodes p]
-  `(map (fn [n#] (list n# (get-index ~nodes n#)))  ~p))
-
-(definline indexed-path2 [nodes p]
-  `(vec (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
-
-(definline indexed-path3 [nodes p]
   `(generic/loop-reduce (fn [acc# n#] (conj acc# (list n# (get-index ~nodes n#)))) []  ~p))
 
-(definline indexed-path4 [nodes p]
-  `(persistent! (generic/loop-reduce (fn [acc# n#] (conj! acc# (list n# (get-index ~nodes n#)))) (transient [])  ~p)))
+;; (definline indexed-path4 [nodes p]
+;;   `(persistent! (generic/loop-reduce (fn [acc# n#] (conj! acc# (list n# (get-index ~nodes n#)))) (transient [])  ~p)))
 
-(definline indexed-path5 [nodes p]
-  `(into []  (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
+;; (definline indexed-path5 [nodes p]
+;;   `(into []  (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
 
-(definline indexed-path6 [nodes p]
-  `(doall (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
+;; (definline indexed-path6 [nodes p]
+;;   `(doall (map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
 
-
-
-(definline indexed-path7 [nodes p]
-  `(into [] (r/map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
+;; (definline indexed-path7 [nodes p]
+;;   `(into [] (r/map (fn [n#] (list n# (get-index ~nodes n#)))  ~p)))
 
 ;; (defn indexed-path8
 ;;   [nodes p]
@@ -372,63 +350,39 @@
 ;;now, no edge-info objects, no call to path->edge-info.
 ;;helper function to apply flow.
 (defn augmenting-flow [g p]  
-  (with-net g
-    (let [p     (object-array (indexed-path (:nodes *net*) p))
-          n     (alength p)]
-      (loop [from  (first p)
-             xs    (rest  p)
-             ^long flow   posinf
-             acc   '()]
-        (if-let [to (first xs)]
-          (let [;i (second from)
-                ;j (second to)
-;                dir        (direction? g (first from) (first to))                
-                dir        1
-                new-flow   (if (pos? dir)
-                             1
-                             1
-                             )
-                             ;(.getCapacity *net* i j)
-                             ;(.getFlow     *net* i j))
-                ;next-flow (min flow new-flow)
-                ]
-            (recur (first xs) 
-                   (rest xs)
-                   0
-                   ;next-flow 
-                   acc
-                  ;(conj acc (->einfo i j dir))
-                  ))
-          (list flow acc))))))
+  (with-net g    
+    (loop [from  (first p)
+           xs    (rest  p)
+           ^long flow   posinf
+           acc   '()]
+      (if-let [to (first xs)]
+        (let [dir        (direction? g from to)
+              new-flow   (if (== dir 1)
+                           (.getCapacity *net* from to)
+                           (.getFlow     *net* from to))]
+          (recur (first xs) 
+                 (rest xs)
+                 (min flow new-flow)
+                 (conj acc dir)))
+          (list flow acc)))))
 
-(defn augmenting-flow [g p]  
-  (with-net g
-    (let [p     (indexed-path (:nodes *net*) p)]
-      (loop [from  (first p)
-             xs    (rest  p)
-             ^long flow   posinf
-             acc   '()]
-        (if-let [to (first xs)]
-          (let [;i (second from)
-                ;j (second to)
-;                dir        (direction? g (first from) (first to))                
-                dir        1
-                new-flow   (if (pos? dir)
-                             1
-                             1
-                             )
-                             ;(.getCapacity *net* i j)
-                             ;(.getFlow     *net* i j))
-                ;next-flow (min flow new-flow)
-                ]
-            (recur (first xs) 
-                   (rest xs)
-                   0
-                   ;next-flow 
-                   acc
-                  ;(conj acc (->einfo i j dir))
-                  ))
-          (list flow acc))))))
+(defn ^objects augmenting-flow [g p]    
+  (let [p (vec p)
+        acc  (object-array (dec (count p)))]
+  (with-net g    
+    (loop [idx from  (first p)
+           xs    (rest  p)
+           ^long flow   posinf]
+      (if-let [to (first xs)]
+        (let [dir        (direction? g from to)
+              new-flow   (if (== dir 1)
+                           (.getCapacity *net* from to)
+                           (.getFlow     *net* from to))]
+          (recur (first xs) 
+                 (rest xs)
+                 (min flow new-flow)
+                 (conj acc dir)))
+          (list flow acc)))))
 
 ;;These guys are all the same.  The difference is, we inject a call to
 ;;create a mutable netinfo, using as-mutable, and smash on that with
@@ -509,6 +463,9 @@
 
   
 (comment 
+
+;;not used...yet.
+(mut/defmutable einfo [^long from ^long to ^long dir])  
 
 ;;Another option for a representation is to have an array of linfos...
 ;;and to use unsynched, mutable fields for the flow and cap.
