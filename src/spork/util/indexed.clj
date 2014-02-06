@@ -3,7 +3,6 @@
 (ns spork.util.indexed
   (:require [spork.data [mutable :as m]]))
 
-
 (def xs (vec (range 1000000)))
 
 ;;traversing a vector
@@ -42,6 +41,14 @@
            (let [v (aget ^objects arr idx)] 
              (if (pred v) (m/add-list l v) (m/add-list r v))))
          (list (to-array l) (to-array r)))))
+
+(defn contains! [^objects arr x]
+  (let [n   (count arr)]
+    (loop [idx  0]
+      (if (== idx n) nil
+          (let [v  (aget arr idx)]
+            (if (= x v) v
+                (recur (unchecked-inc idx))))))))
 
 (defn some! [f ^objects arr]
   (let [n   (count arr)]
@@ -94,6 +101,8 @@
          s state]
     (if (== idx 0) (f state (aget arr idx)))
         (recur (unchecked-inc idx) (f state (aget arr idx)))))
+
+
        
 ;;it would be nice...
 ;;to define a for-loop/recur...           
