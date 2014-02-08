@@ -265,7 +265,6 @@
       (paths (:shortest state) (:startnode state) target)))
   ([state] (get-paths state (:targetnode state))))
 
-
 ;;A mutable empty depth-first search...
 (def mempty-DFS (memoize (fn [startnode] (minit-search startnode :fringe fr/depth-fringe))))
 ;;An empty breadth-first search.
@@ -273,9 +272,7 @@
 ;;An empty priority-first search.  Note: THis uses a mutable priority
 ;;queue 
 (let [init-fringe (memoize (fn [startnode] (minit-search startnode)))]
-  (defn empty-PFS [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
-
-
+  (defn mempty-PFS [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
 
 ;;An empty depth-first search.
 (def empty-DFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))

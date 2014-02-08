@@ -468,4 +468,7 @@
                                             visited
                                             (get-neighbors source state)))))
           state))))
+
+(definline quick-dfs [g startnode targetnode]
+  `(traverse2a ~g ~startnode ~targetnode (searchstate/mempty-DFS ~startnode)))
 )

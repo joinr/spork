@@ -366,7 +366,7 @@
   (def the-other-tree (-> empty-graph (add-arcs (tree-arcs :a [:b :c]))))
 
   ;testing speed of graph ops.
-  (def enumerate-neighbors [g]
+  (defn enumerate-neighbors [g]
     (doseq [n (keys (nodes g))]
       (sinks g n)))
       

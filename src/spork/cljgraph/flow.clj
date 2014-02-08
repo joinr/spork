@@ -184,7 +184,7 @@
 ;;         capacity (fn [to]   (:capacity (info v to)))
 ;;         flow     (fn [from] (:flow (info from v)))]
 ;;     (concat 
-;;       (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v)) forward
+;;       (filter (fn [to]   (> (capacity to) 0)) (graph/sinks g v))
 ;;       (filter (fn [from] (> (flow from)   0)) (graph/sources g v)))))
 
 ;;bi-directional flow neighbors.  We allow all forward neighbors with untapped 
@@ -370,6 +370,11 @@
 (def the-net 
   (-> empty-network 
     (conj-cap-arcs net-data)))
+
+(definline mincost-aug-path [g from to]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS ~from)
+                            :weightf flow-weight :neighborf flow-neighbors))))
 
 (def sample 
   '{["55530LJ00" :filled]
