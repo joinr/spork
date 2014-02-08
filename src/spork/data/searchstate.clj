@@ -6,7 +6,8 @@
 (ns spork.data.searchstate
   (:require [spork.protocols [core :as generic]]
             [spork.data      [priorityq :as pq]
-                             [fringe :as fr]]))
+                             [fringe :as fr]
+                             [mutable :as m]]))
 
 ;;These allows us to use complex keys in our spt.
 (defn branch?  [v] (and (coll? v) (contains? (meta v) :branch)))
@@ -113,6 +114,82 @@
                                    (generic/conj-fringe fringe n w)))
 	  (next-fringe [state]  (generic/next-fringe fringe))
 	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
+                             
+;; (m/defmutable msearchstate 
+;;   [startnode targetnode shortest distance fringe estimator visited]
+;;   generic/IGraphSearch
+;;   (new-path     [state source sink w]
+;;     (do (set! shortest (assoc shortest sink source))
+;;         (set! distance (assoc distance sink w))
+;;         (set! fringe   
+;;               (if-let [e estimator]
+;;                 (estimating-conj e   fringe sink w targetnode)
+;;                 (generic/conj-fringe fringe sink w))) 
+;;         state))
+;;   (shorter-path [state source sink wnew wpast]
+;;      (do (set! shortest (assoc shortest sink source)) ;new spt
+;;          (set! distance (assoc distance sink wnew))   ;shorter distance
+;;          (set! fringe   
+;;                (if-let [e estimator]
+;;                  (estimating-conj e   fringe sink wnew targetnode)
+;;                  (generic/conj-fringe fringe sink wnew))) 
+;;          state))  
+;;   (equal-path   [state source sink] 
+;;      (let [current  (get shortest sink)]
+;;        (do (set! shortest (assoc shortest sink 
+;;                                   (-> (if (branch? current) current (->branch current))
+;;                                       (conj source)))) 
+;;            state)))
+;;   (best-known-distance   [state nd] (get distance nd))
+;;   (conj-visited [state source] 
+;;       (do (set! visited (conj visited source))
+;;           state))
+;;   generic/IFringe 
+;;   (conj-fringe [state n w] 
+;;                (do (set! fringe (generic/conj-fringe fringe n w)) 
+;;                    state))
+;;   (next-fringe [state]  (generic/next-fringe fringe))
+;;   (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))
+
+(m/defmutable msearchstate 
+  [startnode targetnode  
+   ^spork.data.mutable.mutmap shortest 
+   ^spork.data.mutable.mutmap distance 
+   fringe estimator visited]
+  generic/IGraphSearch
+  (new-path     [state source sink w]
+    (do (set! shortest (assoc! shortest sink source))
+        (set! distance (assoc! distance sink w))
+        (set! fringe   
+              (if-let [e estimator]
+                (estimating-conj e   fringe sink w targetnode)
+                (generic/conj-fringe fringe sink w))) 
+        state))
+  (shorter-path [state source sink wnew wpast]
+     (do (set! shortest (assoc! shortest sink source)) ;new spt
+         (set! distance (assoc! distance sink wnew))   ;shorter distance
+         (set! fringe   
+               (if-let [e estimator]
+                 (estimating-conj e   fringe sink wnew targetnode)
+                 (generic/conj-fringe fringe sink wnew))) 
+         state))  
+  (equal-path   [state source sink] 
+     (let [current  (get shortest sink)]
+       (do (set! shortest (assoc! shortest sink 
+                                  (-> (if (branch? current) current (->branch current))
+                                      (conj source)))) 
+           state)))
+  (best-known-distance   [state nd] (get distance nd))
+  (conj-visited [state source] 
+      (do (set! visited (conj visited source))
+          state))
+  generic/IFringe 
+  (conj-fringe [state n w] 
+               (do (set! fringe (generic/conj-fringe fringe n w)) 
+                   state))
+  (next-fringe [state]  (generic/next-fringe fringe))
+  (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))    
+
                                 
 (def empty-search (searchstate. nil nil {} {} nil nil []))
 
@@ -129,6 +206,22 @@
                            :distance {startnode 0}
                            :shortest {startnode startnode}
                            :fringe   fringe}))
+
+(defn minit-search
+  "Populates an empty search state with an initial set of parameters.  Allows
+   searches to be customized by varying the start, target, and the type of 
+   fringe used to prosecute the search."
+  [startnode & {:keys [targetnode fringe] 
+                :or   {targetnode ::nullnode fringe fr/depth-fringe}}]
+    (assert (and (not (nil? fringe)) (generic/fringe? fringe))
+            (str "Invalid fringe: " fringe))
+    (msearchstate.  startnode 
+                    targetnode
+                    (m/->mutmap [startnode startnode])
+                    (m/->mutmap [startnode 0])
+                    fringe
+                    nil
+                    []))
         
 (defn backtrack
   "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
@@ -171,6 +264,17 @@
     (when (path? state target)
       (paths (:shortest state) (:startnode state) target)))
   ([state] (get-paths state (:targetnode state))))
+
+
+;;A mutable empty depth-first search...
+(def mempty-DFS (memoize (fn [startnode] (minit-search startnode :fringe fr/depth-fringe))))
+;;An empty breadth-first search.
+(def mempty-BFS (memoize (fn [startnode] (minit-search startnode :fringe fr/breadth-fringe))))
+;;An empty priority-first search.  Note: THis uses a mutable priority
+;;queue 
+(let [init-fringe (memoize (fn [startnode] (minit-search startnode)))]
+  (defn empty-PFS [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
+
 
 
 ;;An empty depth-first search.

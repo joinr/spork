@@ -173,6 +173,10 @@
   "Return a sequence of directed arcs the consitute the graph."
   [g] (mapcat #(arcs-from g %) (get-node-labels g)))
 
+(defn copy-arcs  
+  "Copies arcs from one graph to another."
+  [from to]  (add-arcs to (arc-seq from)))
+
 (defn relabel-node
   "Allows efficient relabeling of a node key.  Automatically updates related 
    arc data."

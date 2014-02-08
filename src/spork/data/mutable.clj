@@ -4,7 +4,7 @@
 ;; Work in progress.
 (ns spork.data.mutable  
   (:require [spork.protocols [core :as generic]])
-  (:import  [java.util ArrayList PriorityQueue ArrayDeque]))
+  (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
 
 (defn ^ArrayList make-array-list [] (ArrayList.))
 (defn ^ArrayList array-list [xs] 
@@ -84,6 +84,21 @@
         ~fieldmap)
       clojure.lang.IDeref
       (~'deref [this#] ~fieldmap))))
+
+(deftype mutmap [^java.util.HashMap m] 
+  clojure.lang.ITransientMap  
+  (valAt [this k] (.get m k))
+  (valAt [this k not-found] (or (.get m k) not-found))
+  (assoc [this k v] (do  (.put m k v) this))
+  (conj  [this e]    
+    (let [[k v] e]      
+      (do (.put m k v) this)))
+  (without [this k]   (do (.remove m k) this))
+  (persistent [this] (into {} (seq m)))
+  clojure.lang.IDeref
+  (deref [this] m))
+(defn ^mutmap ->mutmap [& xs]  
+  (reduce (fn [m [k v]] (assoc! m k v)) (mutmap. (HashMap.)) xs))
 
 ;; (defmacro defarralias [name hint fields]
 ;;   (let [flds        (mapv (fn [sym] (vary-meta (symbol sym) merge {:tag hint})) fields)

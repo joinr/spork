@@ -344,3 +344,128 @@
 ;;with-dropped-nodes 
 ;;with-added-edges 
 ;;with-added-nodes 
+
+
+;;Trying alternative search techniques to avoid allocation and funcalls..
+(comment 
+(defn traverse2
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate]
+  (loop [state   (-> (assoc startstate :targetnode targetnode)
+                     (generic/conj-fringe startnode 0))]
+    (if-let [source    (generic/next-fringe state)] ;next node to visit
+      (let  [visited   (generic/visit-node state source)] ;record visit.
+        (recur (generic/loop-reduce (fn [acc sink] (generic/relax acc (generic/-arc-weight g source sink) source sink))
+                                    visited
+                                    (generic/-get-sinks g source))))
+    state)))
+
+(defn traverse3
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate]
+  (loop [state   (-> (assoc startstate :targetnode targetnode)
+                     (generic/conj-fringe startnode 0))]
+    (if-let [source    (generic/next-fringe state)] ;next node to visit
+      (let  [visited   (generic/visit-node state source)
+             nebs      (generic/-get-sinks g source)
+             n         (count nebs)] ;record visit.
+        (recur (loop [acc visited
+                      idx 0]
+                 (if (== idx n) acc
+                     (let [sink (nth nebs idx)]
+                       (recur (generic/relax acc (generic/-arc-weight g source sink) source sink)
+                              (unchecked-inc idx)))))))
+    state)))
+
+(defn traverse4
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate]
+  (loop [state   (-> (assoc startstate :targetnode targetnode)
+                     (generic/conj-fringe startnode 0))]
+    (if-let [source    (generic/next-fringe state)] ;next node to visit
+      (let  [visited   (generic/visit-node state source)
+             nebs      (object-array (generic/-get-sinks g source))
+             n         (alength nebs)] ;record visit.
+        (recur (loop [acc visited
+                      idx 0]
+                 (if (== idx n) acc
+                     (let [sink (aget ^objects nebs idx)]
+                       (recur (generic/relax acc (generic/-arc-weight g source sink) source sink)
+                              (unchecked-inc idx)))))))
+    state)))
+
+(defn traverse5
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate]
+  (loop [state   (-> (assoc startstate :targetnode targetnode)
+                     (generic/conj-fringe startnode 0))]
+    (if-let [source    (generic/next-fringe state)] ;next node to visit
+      (let  [visited   (generic/visit-node state source)
+             ^objects nebs      (get ncache source)] ;record visit.
+        (recur (loop [acc visited
+                      idx 0]
+                 (if (== idx (alength nebs)) acc
+                     (let [sink (aget ^objects nebs idx)]
+                       (recur (generic/relax acc (generic/-arc-weight g source sink) source sink)
+                              (unchecked-inc idx)))))))
+    state)))
+
+(defn traverse6
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate]
+  (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                     (generic/conj-fringe startnode 0))]
+    (if-let [source    (generic/next-fringe state)] ;next node to visit
+      (let  [visited   (generic/visit-node state source)
+             ^objects nebs      (get ncache source)] ;record visit.
+        (recur (loop [acc visited
+                      idx 0]
+                 (if (== idx (alength nebs)) acc
+                     (let [sink (aget ^objects nebs idx)]
+                       (recur (generic/relax acc (generic/-arc-weight g source sink) source sink)
+                              (unchecked-inc idx)))))))
+    state)))
+
+(defn traverse2a
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
+                                         :or  {halt?     default-halt?
+                                               weightf   (get-weightf g)
+                                               neighborf (get-neighborf g)}}]
+    (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
+                          (fn [nd s] (nodefilter (neighborf g nd s)))
+                          (partial neighborf g))]
+      (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
+        (if-let [source    (generic/next-fringe state)] ;next node to visit
+          (let  [visited   (generic/visit-node state source)] ;record visit.
+            (if (halt? state source) visited                     
+                (recur (generic/loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                            visited
+                                            (get-neighbors source state)))))
+          state))))
+)

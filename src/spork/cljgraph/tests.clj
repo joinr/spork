@@ -213,7 +213,6 @@
            [9 ("Start" "A" "X" "Y" "Shortcut!" "F" "Destination")]))
       "Bellman-Ford should produce 3 9-weight paths for sample-dag, albeit slower."))
 
-
 ;;positive-graph:
 ;;A----5---->B----10-->D---200--->E
 ;;|          ^         ^
@@ -365,6 +364,12 @@
   (def dlist (->double-list :a :e the-list))  
   (def the-root-tree  (-> empty-graph (conj-node :root)))
   (def the-other-tree (-> empty-graph (add-arcs (tree-arcs :a [:b :c]))))
+
+  ;testing speed of graph ops.
+  (def enumerate-neighbors [g]
+    (doseq [n (keys (nodes g))]
+      (sinks g n)))
+      
   )
 
 

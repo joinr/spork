@@ -24,6 +24,14 @@
      (if (empty? xs#) acc#
          (recur (~f acc# (first xs#)) (rest xs#)))))
 
+(definline loop-reducei [f init coll]
+  `(let [coll# ~coll
+         bound# (count coll#)]
+     (loop [acc# ~init 
+            idx#  0]
+       (if (== idx# bound#) acc#
+           (recur (~f acc# (nth coll# idx#)) (unchecked-inc idx#))))))
+
 (definline loop-map [f coll]
   `(loop [acc# []
           xs#  ~coll]
