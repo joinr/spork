@@ -114,42 +114,92 @@
                                    (generic/conj-fringe fringe n w)))
 	  (next-fringe [state]  (generic/next-fringe fringe))
 	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
+
+;;A macro to simplify update semantics using record construction.
+(defmacro update-searchstate 
+  [& {:keys [startnode targetnode shortest distance fringe estimator visited]
+      :or {startnode 'startnode shortest 'shortest distance 'distance fringe 'fringe estimator 'estimator visited 'visited}}]
+  `(searchstate. 
+       ~startnode 
+       ~targetnode 
+       ~shortest 
+       ~distance
+       ~fringe
+       ~estimator
+       ~visited))
+
+;;A persistent implementation of the searchstate.  Still probably
+;;slow, and will cause allocation...
+(defrecord searchstate2 
+  [startnode targetnode shortest distance fringe estimator visited]
+  generic/IGraphSearch
+  (new-path     [state source sink w]
+    (update-searchstate  
+     :shortest (assoc shortest sink source)
+     :distance (assoc distance sink w)
+     :fringe   (if-let [e estimator]
+                 (estimating-conj e   fringe sink w targetnode)
+                 (generic/conj-fringe fringe sink w))))
+  (shorter-path [state source sink wnew wpast]
+    (update-searchstate
+         :shortest (assoc shortest sink source) ;new spt
+         :distance (assoc distance sink wnew)   ;shorter distance
+         :fringe   (if-let [e estimator]
+                     (estimating-conj e   fringe sink wnew targetnode)
+                     (generic/conj-fringe fringe sink wnew))))        
+  (equal-path   [state source sink] 
+     (let [current  (get shortest sink)]
+       (update-searchstate 
+          :shortest (assoc! shortest sink 
+                        (-> (if (branch? current) current (->branch current))
+                            (conj source))))))
+  (best-known-distance   [state nd] (get distance nd))
+  (conj-visited [state source] 
+    (update-searchstate :visited (conj visited source)))
+  generic/IFringe 
+  (conj-fringe [state n w] 
+    (update-searchstate :fringe (generic/conj-fringe fringe n w)))
+  (next-fringe [state]  (generic/next-fringe fringe))
+  (pop-fringe  [state]  (update-searchstate :fringe (generic/pop-fringe fringe))))
+
+;;A persistent mutable implementation of searchstate using persistent
+;;data structures.  Updates are slower, but still in general pretty quick.
                              
-;; (m/defmutable msearchstate 
-;;   [startnode targetnode shortest distance fringe estimator visited]
-;;   generic/IGraphSearch
-;;   (new-path     [state source sink w]
-;;     (do (set! shortest (assoc shortest sink source))
-;;         (set! distance (assoc distance sink w))
-;;         (set! fringe   
-;;               (if-let [e estimator]
-;;                 (estimating-conj e   fringe sink w targetnode)
-;;                 (generic/conj-fringe fringe sink w))) 
-;;         state))
-;;   (shorter-path [state source sink wnew wpast]
-;;      (do (set! shortest (assoc shortest sink source)) ;new spt
-;;          (set! distance (assoc distance sink wnew))   ;shorter distance
-;;          (set! fringe   
-;;                (if-let [e estimator]
-;;                  (estimating-conj e   fringe sink wnew targetnode)
-;;                  (generic/conj-fringe fringe sink wnew))) 
-;;          state))  
-;;   (equal-path   [state source sink] 
-;;      (let [current  (get shortest sink)]
-;;        (do (set! shortest (assoc shortest sink 
-;;                                   (-> (if (branch? current) current (->branch current))
-;;                                       (conj source)))) 
-;;            state)))
-;;   (best-known-distance   [state nd] (get distance nd))
-;;   (conj-visited [state source] 
-;;       (do (set! visited (conj visited source))
-;;           state))
-;;   generic/IFringe 
-;;   (conj-fringe [state n w] 
-;;                (do (set! fringe (generic/conj-fringe fringe n w)) 
-;;                    state))
-;;   (next-fringe [state]  (generic/next-fringe fringe))
-;;   (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))
+(m/defmutable searchstate3
+  [startnode targetnode shortest distance fringe estimator visited]
+  generic/IGraphSearch
+  (new-path     [state source sink w]
+    (do (set! shortest (assoc shortest sink source))
+        (set! distance (assoc distance sink w))
+        (set! fringe   
+              (if-let [e estimator]
+                (estimating-conj e   fringe sink w targetnode)
+                (generic/conj-fringe fringe sink w))) 
+        state))
+  (shorter-path [state source sink wnew wpast]
+     (do (set! shortest (assoc shortest sink source)) ;new spt
+         (set! distance (assoc distance sink wnew))   ;shorter distance
+         (set! fringe   
+               (if-let [e estimator]
+                 (estimating-conj e   fringe sink wnew targetnode)
+                 (generic/conj-fringe fringe sink wnew))) 
+         state))  
+  (equal-path   [state source sink] 
+     (let [current  (get shortest sink)]
+       (do (set! shortest (assoc shortest sink 
+                                  (-> (if (branch? current) current (->branch current))
+                                      (conj source)))) 
+           state)))
+  (best-known-distance   [state nd] (get distance nd))
+  (conj-visited [state source] 
+      (do (set! visited (conj visited source))
+          state))
+  generic/IFringe 
+  (conj-fringe [state n w] 
+               (do (set! fringe (generic/conj-fringe fringe n w)) 
+                   state))
+  (next-fringe [state]  (generic/next-fringe fringe))
+  (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))
 
 (m/defmutable msearchstate 
   [startnode targetnode  
@@ -191,21 +241,38 @@
   (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))    
 
                                 
-(def empty-search (searchstate. nil nil {} {} nil nil []))
+(def empty-search  (searchstate. nil nil {} {} nil nil []))
+(def empty-search2 (searchstate2. nil nil {} {} nil nil []))
+(def empty-search3 (searchstate3. nil nil {} {} nil nil []))
 
 (defn init-search
   "Populates an empty search state with an initial set of parameters.  Allows
    searches to be customized by varying the start, target, and the type of 
    fringe used to prosecute the search."
-  [startnode & {:keys [targetnode fringe] 
-                :or   {targetnode ::nullnode fringe fr/depth-fringe}}]
+  [startnode & {:keys [targetnode fringe empty-state] 
+                :or   {targetnode ::nullnode fringe fr/depth-fringe empty-state empty-search}}]
     (assert (and (not (nil? fringe)) (generic/fringe? fringe))
             (str "Invalid fringe: " fringe))
-      (merge empty-search {:startnode  startnode 
-                           :targetnode targetnode
-                           :distance {startnode 0}
-                           :shortest {startnode startnode}
-                           :fringe   fringe}))
+      (merge empty-state {:startnode  startnode 
+                          :targetnode targetnode
+                          :distance {startnode 0}
+                          :shortest {startnode startnode}
+                          :fringe   fringe}))
+
+(defn init-search!
+  "Populates an empty search state with an initial set of parameters.  Allows
+   searches to be customized by varying the start, target, and the type of 
+   fringe used to prosecute the search."
+  [startnode & {:keys [targetnode fringe empty-state] 
+                :or   {targetnode ::nullnode fringe fr/depth-fringe empty-state empty-search3}}]
+    (assert (and (not (nil? fringe)) (generic/fringe? fringe))
+            (str "Invalid fringe: " fringe))
+      (reduce conj! empty-state 
+              {:startnode  startnode 
+               :targetnode targetnode
+               :distance {startnode 0}
+               :shortest {startnode startnode}
+               :fringe   fringe}))
 
 (defn minit-search
   "Populates an empty search state with an initial set of parameters.  Allows
@@ -285,6 +352,19 @@
 
 ;;An empty random-first search.
 (def empty-RFS (memoize (fn [startnode] (init-search startnode :fringe fr/random-fringe))))
+
+
+
+
+(let [init-fringe (memoize (fn [startnode] (init-search startnode :empty-state empty-search2)))]
+  (defn empty-PFS2 [startnode] (assoc (init-fringe startnode) :fringe (fr/make-pq))))
+
+(let [init-fringe (memoize (fn [startnode] (init-search! startnode :empty-state empty-search3)))]
+  (defn empty-PFS3 [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
+
+(def empty-DFS2 (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe :empty-state empty-search2))))
+(def empty-DFS3 (memoize (fn [startnode] (init-search! startnode :fringe fr/depth-fringe :empty-state empty-search3))))
+
 
 ;;testing
 (comment

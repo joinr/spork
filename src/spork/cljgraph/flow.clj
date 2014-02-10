@@ -371,7 +371,19 @@
   (-> empty-network 
     (conj-cap-arcs net-data)))
 
-(definline mincost-aug-path [g from to]
+(definline mincost-aug-path2 [g from to]
+  `(first (graph/get-paths 
+           (search/traverse ~g ~from ~to (searchstate/empty-PFS2 ~from)
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+
+;;Empty-pfs3 is actually pretty good...
+(definline mincost-aug-path3 [g from to]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to (searchstate/empty-PFS3 ~from)
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+(definline mincost-aug-pathm [g from to]
   `(first (graph/get-paths 
            (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS ~from)
                             :weightf flow-weight :neighborf flow-neighbors))))
@@ -388,6 +400,7 @@
     [Supply RC] {:from Supply, :to RC, :capacity 530000, :flow 0},
     [Supply AC] {:from Supply, :to AC, :capacity 450000, :flow 0},
     [Total Supply] {:from Total, :to Supply, :capacity 980000, :flow 0}})
+
 (def sample-net (->> (for [{:keys [from to capacity flow]} (vals sample)]
                       [from to 0 capacity])
                     (conj-cap-arcs empty-network)))
