@@ -367,26 +367,113 @@
   [:hou :t    0 300]
   [:bos :t    0 300]])
 
-(def the-net 
-  (-> empty-network 
-    (conj-cap-arcs net-data)))
+;;Neighbor Caching
+(def the-net2 
+  (-> (assoc (spork.data.digraph/->cached-graph) :flow-info {})
+      (conj-cap-arcs net-data)))
+
 
 (definline mincost-aug-path2 [g from to]
   `(first (graph/get-paths 
            (search/traverse ~g ~from ~to (searchstate/empty-PFS2 ~from)
                             :weightf flow-weight :neighborf flow-neighbors))))
 
-
 ;;Empty-pfs3 is actually pretty good...
 (definline mincost-aug-path3 [g from to]
   `(first (graph/get-paths 
            (search/traverse2a ~g ~from ~to (searchstate/empty-PFS3 ~from)
-                            :weightf flow-weight :neighborf flow-neighbors))))
+                              :weightf flow-weight :neighborf flow-neighbors))))
+
+(definline mincost-aug-path3a [g from to]
+  `(search/traverse2a ~g ~from ~to (searchstate/empty-PFS3 ~from)
+                              :weightf flow-weight :neighborf flow-neighbors))
+
+(definline mincost-aug-path3b [g from to]
+  `(search/traverse2b ~g ~from ~to (searchstate/empty-PFS3 ~from)
+                              :weightf flow-weight :neighborf flow-neighbors))
+
+(definline mincost-aug-path4 [g from to]
+  `(first (graph/get-paths 
+           (search/traverse3a ~g ~from ~to (searchstate/empty-PFS3 ~from)
+                              :weightf flow-weight :neighborf flow-neighbors))))
 
 (definline mincost-aug-pathm [g from to]
   `(first (graph/get-paths 
            (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS ~from)
                             :weightf flow-weight :neighborf flow-neighbors))))
+
+(definline mincost-aug-pathm2 [g from to]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS2 ~from)
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+(definline mincost-aug-pathm3 [g from to state]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to ~state
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+(defn traverse2b
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate]
+  (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                     (generic/conj-fringe startnode 0))]
+    (if-let [source    (generic/next-fringe state)] ;next node to visit
+      (let  [visited   (generic/visit-node state source)] ;record visit.
+        (if (= targetnode source) visited                     
+            (recur (loop [acc visited
+                          xs (flow-neighbors g source state)]
+                     (if (empty? xs) acc                        
+                           (recur (generic/relax acc (flow-weight g source (first xs)) source (first xs))
+                                  (rest xs)))))))
+      state)))
+
+
+(defn mincost-flow2
+  ([graph from to]
+    (loop [g graph]
+      (if-let [p (mincost-aug-path3 g from to)]
+        (recur (augment-flow g p))
+        (let [active (active-flows g)]
+          {
+           ;:cost (total-cost graph active)
+           ;:flow (total-flow g active)
+           :active active
+           :net g}))))
+  ([flow-info graph from to]
+    (mincost-flow (assoc graph :flow-info flow-info) from to)))
+
+(defn mincost-flowm
+  ([graph from to]
+    (loop [g graph]
+      (if-let [p (mincost-aug-pathm g from to)]
+        (recur (augment-flow g p))
+        (let [active (active-flows g)]
+          {
+           ;:cost (total-cost graph active)
+           ;:flow (total-flow g active)
+           :active active
+           :net g}))))
+  ([flow-info graph from to]
+    (mincost-flow (assoc graph :flow-info flow-info) from to)))
+
+(defn mincost-flowm2
+  [graph from to]
+     (let [*the-state* (searchstate/mempty-PFS2 from)]
+       (loop [g graph]
+         (if-let [p (mincost-aug-pathm3 g from to *the-state*)]
+           (recur (do (generic/clear! *the-state*) 
+                      (augment-flow g p)))
+           (let [active (active-flows g)]
+             {
+                                        ;:cost (total-cost graph active)
+                                        ;:flow (total-flow g active)
+              :active active
+              :net g})))))
+ 
 
 (def sample 
   '{["55530LJ00" :filled]
@@ -404,6 +491,15 @@
 (def sample-net (->> (for [{:keys [from to capacity flow]} (vals sample)]
                       [from to 0 capacity])
                     (conj-cap-arcs empty-network)))
+
+;;Graph Caching speeds things up a bit.
+;;After this, however, I started blowing the heap somehow....
+;;Actually, after recovering paths I started blowing the heap...
+(def empty-network2 (assoc (spork.data.digraph/->cached-graph) :flow-info {}))
+(def sample-net2 
+  (->> (for [{:keys [from to capacity flow]} (vals sample)]
+         [from to 0 capacity])
+       (conj-cap-arcs empty-network2)))
                     
 )
 

@@ -95,6 +95,23 @@
   (next-fringe [fringe] "Get the next node on the fringe")
   (pop-fringe  [fringe] "Remove the next node from the fringe"))
 
+(defprotocol IClearable
+  (-clear [fringe]))  
+
+(defn clear! [x]
+  (if (satisfies? IClearable x )
+      (-clear x)
+      x))
+
+(defmacro with-clearable [bindings & body]
+  (cond
+   (= (count bindings) 0) `(do ~@body)
+   (symbol? (bindings 0)) `(let ~(subvec bindings 0 2)                   
+                             (do (with-clearable ~(subvec bindings 2) ~@body)
+                                 (clear! ~(bindings 0))))
+   :else (throw (IllegalArgumentException.
+                 "with-open only allows Symbols in bindings"))))
+
 (defn conj-fringe-all
   "Add many [node weight] pairs onto the fringe."
   [fringe nws]

@@ -7,7 +7,13 @@
   (:require [spork.protocols [core :as generic]]
             [spork.data      [priorityq :as pq]
                              [fringe :as fr]
-                             [mutable :as m]]))
+                             [mutable :as m]])
+  (:import  [java.util HashMap]))
+
+;;This is slow for recovering paths.
+;;We don't need to use persistent stuff to recover paths, it's a small 
+;;opportunity to mutably recover paths inside of a lazy computation. 
+
 
 ;;These allows us to use complex keys in our spt.
 (defn branch?  [v] (and (coll? v) (contains? (meta v) :branch)))
@@ -97,23 +103,25 @@
 ;; 		      newspt  (assoc shortest sink (conj context source))]                 
 ;; 		     (update-search state newspt distance fringe)))
   
+
+;;OLD an obsolete.
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.
-(defrecord searchstate 
-  [startnode targetnode shortest distance fringe estimator visited]
-  generic/IGraphSearch
-	  (new-path     [state source sink w] (new-path* source sink w state))           
-	  (shorter-path [state source sink wnew wpast]
-	    (shorter-path* source sink wnew wpast state))
-	  (equal-path   [state source sink] (equal-path* source sink state))
-    (best-known-distance   [state nd] (get distance nd))
-    (conj-visited [state source] 
-      (assoc state :visited (conj visited source)))
-  generic/IFringe 
-	  (conj-fringe [state n w] (assoc state :fringe 
-                                   (generic/conj-fringe fringe n w)))
-	  (next-fringe [state]  (generic/next-fringe fringe))
-	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
+;; (defrecord searchstate 
+;;   [startnode targetnode shortest distance fringe estimator visited]
+;;   generic/IGraphSearch
+;; 	  (new-path     [state source sink w] (new-path* source sink w state))           
+;; 	  (shorter-path [state source sink wnew wpast]
+;; 	    (shorter-path* source sink wnew wpast state))
+;; 	  (equal-path   [state source sink] (equal-path* source sink state))
+;;     (best-known-distance   [state nd] (get distance nd))
+;;     (conj-visited [state source] 
+;;       (assoc state :visited (conj visited source)))
+;;   generic/IFringe 
+;; 	  (conj-fringe [state n w] (assoc state :fringe 
+;;                                    (generic/conj-fringe fringe n w)))
+;; 	  (next-fringe [state]  (generic/next-fringe fringe))
+;; 	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
 
 ;;A macro to simplify update semantics using record construction.
 (defmacro update-searchstate 
@@ -240,10 +248,58 @@
   (next-fringe [state]  (generic/next-fringe fringe))
   (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))    
 
+(m/defmutable msearchstate2 
+  [startnode targetnode  
+   ^java.util.HashMap shortest 
+   ^java.util.HashMap distance 
+   fringe estimator visited]
+  generic/IGraphSearch
+  (new-path     [state source sink w]
+    (do (.put shortest sink source)
+        (.put distance sink w)
+        (set! fringe   
+              (if-let [e estimator]
+                (estimating-conj e   fringe sink w targetnode)
+                (generic/conj-fringe fringe sink w)))
+        state))
+  (shorter-path [state source sink wnew wpast]
+     (do (.put shortest sink source) ;new spt
+         (.put distance sink wnew)   ;shorter distance
+         (set! fringe   
+               (if-let [e estimator]
+                 (estimating-conj e   fringe sink wnew targetnode)
+                 (generic/conj-fringe fringe sink wnew))) 
+         state))  
+  (equal-path   [state source sink] 
+     (let [current  (get shortest sink)]
+       (do (.put shortest sink 
+                 (-> (if (branch? current) current (->branch current))
+                     (conj source)))) 
+           state))
+  (best-known-distance   [state nd] (get distance nd))
+  (conj-visited [state source] 
+      (do (set! visited (conj visited source))
+          state))
+  generic/IClearable
+  (-clear [state]  (do (doto shortest (.clear) (.put startnode startnode))
+                       (doto distance (.clear) (.put startnode 0))
+                       (set! fringe (generic/clear! fringe))
+                       state))                       
+  generic/IFringe 
+  (conj-fringe [state n w] 
+               (do (set! fringe (generic/conj-fringe fringe n w)) 
+                   state))
+  (next-fringe [state]  (generic/next-fringe fringe))
+  (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))    
                                 
 (def empty-search  (searchstate. nil nil {} {} nil nil []))
 (def empty-search2 (searchstate2. nil nil {} {} nil nil []))
 (def empty-search3 (searchstate3. nil nil {} {} nil nil []))
+(defn ^searchstate3 ->empty-search-state [] 
+  (searchstate3. nil nil {} {} nil nil []))
+
+(defn ^msearchstate2 ->empty-mutable-search-state [] 
+  (msearchstate2. nil nil (HashMap. ) (HashMap. ) nil nil []))
 
 (defn init-search
   "Populates an empty search state with an initial set of parameters.  Allows
@@ -251,13 +307,11 @@
    fringe used to prosecute the search."
   [startnode & {:keys [targetnode fringe empty-state] 
                 :or   {targetnode ::nullnode fringe fr/depth-fringe empty-state empty-search}}]
-    (assert (and (not (nil? fringe)) (generic/fringe? fringe))
-            (str "Invalid fringe: " fringe))
-      (merge empty-state {:startnode  startnode 
-                          :targetnode targetnode
-                          :distance {startnode 0}
-                          :shortest {startnode startnode}
-                          :fringe   fringe}))
+  (merge empty-state {:startnode  startnode 
+                      :targetnode targetnode
+                      :distance {startnode 0}
+                      :shortest {startnode startnode}
+                      :fringe   fringe}))
 
 (defn init-search!
   "Populates an empty search state with an initial set of parameters.  Allows
@@ -265,14 +319,12 @@
    fringe used to prosecute the search."
   [startnode & {:keys [targetnode fringe empty-state] 
                 :or   {targetnode ::nullnode fringe fr/depth-fringe empty-state empty-search3}}]
-    (assert (and (not (nil? fringe)) (generic/fringe? fringe))
-            (str "Invalid fringe: " fringe))
-      (reduce conj! empty-state 
-              {:startnode  startnode 
-               :targetnode targetnode
-               :distance {startnode 0}
-               :shortest {startnode startnode}
-               :fringe   fringe}))
+  (reduce conj! (->empty-search-state) 
+          {:startnode  startnode 
+           :targetnode targetnode
+           :distance {startnode 0}
+           :shortest {startnode startnode}
+           :fringe   fringe}))
 
 (defn minit-search
   "Populates an empty search state with an initial set of parameters.  Allows
@@ -280,15 +332,33 @@
    fringe used to prosecute the search."
   [startnode & {:keys [targetnode fringe] 
                 :or   {targetnode ::nullnode fringe fr/depth-fringe}}]
-    (assert (and (not (nil? fringe)) (generic/fringe? fringe))
-            (str "Invalid fringe: " fringe))
-    (msearchstate.  startnode 
-                    targetnode
-                    (m/->mutmap [startnode startnode])
-                    (m/->mutmap [startnode 0])
-                    fringe
-                    nil
-                    []))
+  (msearchstate.  startnode 
+                  targetnode
+                  (m/->mutmap [startnode startnode])
+                  (m/->mutmap [startnode 0])
+                  fringe
+                  nil
+                  []))
+
+(defn ^HashMap into-hash [xs]
+  (let [^HashMap res (HashMap. )]
+    (doseq [[k v] xs]
+      (.put res k v))
+    res))
+
+(defn minit-search2
+  "Populates an empty search state with an initial set of parameters.  Allows
+   searches to be customized by varying the start, target, and the type of 
+   fringe used to prosecute the search."
+  [startnode & {:keys [targetnode fringe] 
+                :or   {targetnode ::nullnode fringe fr/depth-fringe}}]
+  (msearchstate2.  startnode 
+                   targetnode
+                   (doto (HashMap. ) (.put startnode startnode))
+                   (doto (HashMap. ) (.put startnode 0))
+                   fringe
+                   nil
+                   []))
         
 (defn backtrack
   "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
@@ -333,13 +403,24 @@
   ([state] (get-paths state (:targetnode state))))
 
 ;;A mutable empty depth-first search...
-(def mempty-DFS (memoize (fn [startnode] (minit-search startnode :fringe fr/depth-fringe))))
+(def mempty-DFS  (fn [startnode] (minit-search startnode :fringe fr/depth-fringe)))
 ;;An empty breadth-first search.
-(def mempty-BFS (memoize (fn [startnode] (minit-search startnode :fringe fr/breadth-fringe))))
+(def mempty-BFS  (fn [startnode] (minit-search startnode :fringe fr/breadth-fringe)))
 ;;An empty priority-first search.  Note: THis uses a mutable priority
 ;;queue 
-(let [init-fringe (memoize (fn [startnode] (minit-search startnode)))]
+(let [init-fringe (fn [startnode] (minit-search startnode))]
   (defn mempty-PFS [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
+
+
+;;A mutable empty depth-first search, using hashmaps...
+(def mempty-DFS2  (fn [startnode] (minit-search2 startnode :fringe fr/depth-fringe)))
+;;An empty breadth-first search.
+(def mempty-BFS2  (fn [startnode] (minit-search2 startnode :fringe fr/breadth-fringe)))
+;;An empty priority-first search.  Note: THis uses a mutable priority
+;;queue 
+(let [init-fringe (fn [startnode] (minit-search2 startnode))]
+  (defn mempty-PFS2 [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
+
 
 ;;An empty depth-first search.
 (def empty-DFS (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe))))
@@ -353,17 +434,21 @@
 ;;An empty random-first search.
 (def empty-RFS (memoize (fn [startnode] (init-search startnode :fringe fr/random-fringe))))
 
-
-
-
 (let [init-fringe (memoize (fn [startnode] (init-search startnode :empty-state empty-search2)))]
   (defn empty-PFS2 [startnode] (assoc (init-fringe startnode) :fringe (fr/make-pq))))
 
-(let [init-fringe (memoize (fn [startnode] (init-search! startnode :empty-state empty-search3)))]
+(let [init-fringe  (fn [startnode] (init-search! startnode :empty-state empty-search3))]
   (defn empty-PFS3 [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
 
-(def empty-DFS2 (memoize (fn [startnode] (init-search startnode :fringe fr/depth-fringe :empty-state empty-search2))))
-(def empty-DFS3 (memoize (fn [startnode] (init-search! startnode :fringe fr/depth-fringe :empty-state empty-search3))))
+;;Work in progress.
+;;Inlined search.
+;; (definline empty-PFS3a [startnode]
+;;   (assoc! (init-search! startnode :empty-state empty-search3) :fringe (fr/make-pq)))
+
+(def empty-DFS2 (memoize (fn [startnode] (init-search! startnode :fringe fr/depth-fringe :empty-state empty-search2))))
+(def empty-DFS3 (fn [startnode] (init-search! startnode :fringe fr/depth-fringe :empty-state empty-search3)))
+
+
 
 
 ;;testing

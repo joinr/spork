@@ -8,8 +8,6 @@
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
 
-
-
 ;;Now using mutable priority queues for search fringe.  This ends up 
 ;;being faster than my persistent priorityqueue implementation.
 (defn entry-comparer [l r] 
@@ -66,6 +64,22 @@
   (conj-fringe [fringe n w] (add-pq fringe (generic/entry w n)))
   (next-fringe [fringe]     (when-let [e (.peek ^PriorityQueue fringe)] (val e)))
   (pop-fringe  [fringe]     (pop-pq fringe)))
+
+(extend-protocol generic/IClearable
+  nil 
+  (-clear [x] x)
+  clojure.lang.PersistentQueue
+  (-clear [x] emptyq)
+  clojure.lang.PersistentList
+  (-clear [x] '())
+  clojure.lang.PersistentList$EmptyList
+  (-clear [x] x)
+  clojure.lang.Cons 
+  (-clear [x] '())
+  spork.data.randq.randomq
+  (-clear [x]  rq/emptyrq)
+  java.util.PriorityQueue
+  (-clear [x]  (doto x (.clear))))
 
 ;;we wrap a priorityq with a map to get a priority fringe.
 ;;Acts as an associative fringe, i.e. keeps exactly one instance of a value 
