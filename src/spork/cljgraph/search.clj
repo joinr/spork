@@ -373,6 +373,30 @@
                                       (rest xs))))))))
           state))))
 
+(defn traverse2b
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate neighborf]
+    (let [halt?     default-halt?
+          weightf   (get-weightf g)
+;          neighborf (get-neighborf g)
+          ;; get-neighbors (if-let [nodefilter (get-nodefilter g)]
+          ;;                 (fn [nd s] (nodefilter (neighborf g nd s)))
+          ;;                 (partial neighborf g))
+          ]
+      (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
+        (if-let [source    (generic/next-fringe state)] ;next node to visit
+          (let  [visited   (generic/visit-node state source)] ;record visit.
+            (if (halt? state source) visited                     
+                (recur (generic/loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                            visited
+                                            (neighborf g source state)))))
+          state))))
+
 ;;Trying alternative search techniques to avoid allocation and funcalls..
 (comment 
 (defn traverse2

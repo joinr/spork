@@ -10,7 +10,6 @@
 
 (def posinf Long/MAX_VALUE)
 
-
 ;; (defprotocol IFlowNetwork
 ;;   (-inc-flow [net from to amt])
 ;;   (-dec-flow [net from to amt]))
@@ -31,17 +30,42 @@
 
 (defrecord einfo [from to capacity flow dir])
 
-;;Optimizing represenation.  Vectors are way faster.
-(defn ->edge-info 
-  [from to & {:keys [capacity flow] :or {capacity posinf flow 0}}]
-  (einfo. from  to capacity flow :increment))
-
+;;FYI, the varargs here are killing us.
 ;; (defn ->edge-info 
 ;;   [from to & {:keys [capacity flow] :or {capacity posinf flow 0}}]
-;;   {:from from :to to :capacity capacity :flow flow})
+;;   (einfo. from  to capacity  flow))
 
+
+;;These are each 10x faster.  
+(definline ->edge-info2 
+  [from to]
+  `(einfo. ~from  ~to posinf 0 :increment))
+
+(definline ->edge-info4 
+  [from to capacity flow]
+  `(einfo. ~from ~to ~capacity ~flow :increment))
+
+
+;;These should be exported to a lib.
+;;They are both faster for nested lookups and associations.
+(definline get2 [m from to default]
+  `(get (get ~m ~from) ~to ~default))
+
+(definline assoc2 [m from to v]
+  `(assoc ~m ~from (assoc (get ~m ~from {}) ~to ~v)))
+
+(definline assoc2! [m from to v]
+  `(assoc! ~m ~from (assoc! (get ~m ~from {}) ~to ~v)))
+
+;;Another performance killer; Using vector keys is cool and all, 
+;;but it kills our performance on lookups since we have to go for 
+;;a vector equiv.  It's more performant, for hashing, to have nested 
+;;vectors of single keys.
 (definline edge-info [g from to]
   `(get (:flow-info ~g) [~from ~to] (->edge-info ~from ~to)))
+
+(definline edge-info2 [g from to]
+  `(get2 (:flow-info ~g) ~from ~to (->edge-info2 ~from ~to)))
 
 ;;OPTIMIZE
 ;; (defn edge-info [g from to]
@@ -50,13 +74,21 @@
 ;; (defn edge-info [g from to]
 ;;   (get-in g [:flow-info [from to]] (->edge-info from to)))
 
-
 (definline update-edge*  
   [g from to cap flow]
   `(assoc ~g :flow-info                  
      (assoc 
          (get ~g :flow-info {})
        [~from ~to] (einfo. ~from ~to ~cap ~flow :increment))))
+
+;;This should be a bit faster.  We can get even faster if we 
+;;insert some kind of mutable record container.
+(definline update-edge2*  
+  [g from to cap flow]
+  `(assoc ~g :flow-info                  
+     (assoc2 (get ~g :flow-info {})
+       ~from ~to 
+       (einfo. ~from ~to ~cap ~flow :increment))))
 
 ;;->edge-info is called a lot here.
 (defn update-edge 
@@ -199,6 +231,60 @@
           (when (> (:flow (edge-info g from v)) 0)
             (reset! xs (conj! @xs from))))
         (persistent! @xs))))
+
+(defmacro flow-neighbors! 
+  [g v & rest]
+  `(let [xs# (atom (transient []))]
+     (do (doseq [to# (graph/sinks ~g ~v)]
+           (when (> (:capacity (edge-info ~g ~v to#)) 0) 
+             (reset! xs# (conj! @xs# to#) )))
+         (doseq [from# (graph/sources ~g ~v)]
+           (when (> (:flow (edge-info ~g from# ~v)) 0)
+             (reset! xs# (conj! @xs# from#))))
+         (persistent! @xs#))))
+
+;;Eliminated the varargs
+(definline flow-neighbors!! 
+  [g v]
+  `(concat 
+    (filter (fn [to#]   (> (:capacity (edge-info ~g ~v to#)) 0)) (graph/sinks ~g ~v))
+    (filter (fn [from#] (> (:flow (edge-info ~g from# ~v))   0)) (graph/sources ~g ~v))))
+
+
+
+(defn flow-neighbors!!! 
+  ^java.util.ArrayList [g v]     
+   (let [^java.util.ArrayList acc (java.util.ArrayList.)]
+     (loop [xs (graph/sinks g v)]
+       (if-let [to (first xs)]
+         (do (when (> (:capacity (edge-info g v to)) 0) (.add acc to))
+             (recur (rest xs)))))
+     (loop [xs (graph/sources g v)]
+       (if-let [from (first xs)]
+         (do (when (> (:flow (edge-info g from v))   0)  (.add acc from))
+             (recur (rest xs)))))
+     acc))
+
+;;slow...
+(definline flow-neighbors!!!!
+  ^java.util.ArrayList [g v] 
+  (let [acc (with-meta (gensym "acc") {:tag 'java.util.ArrayList})]
+    `(let [~acc (java.util.ArrayList.)]
+       (loop [xs# (graph/sinks ~g ~v)]
+         (if-let [to# (first xs#)]
+           (do (when (> (:capacity (edge-info ~g ~v to#)) 0) (.add ~acc to#))
+               (recur (rest xs#)))))
+       (loop [xs# (graph/sources ~g ~v)]
+         (if-let [from# (first xs#)]
+           (do (when (> (:flow (edge-info ~g from# ~v))   0)  (.add ~acc from#))
+               (recur (rest xs#)))))
+       ~acc)))
+            
+;; (definline flow-neighbors!! 
+;;   [g v & xs]
+;;   `(concat 
+;;     (filter (fn [to#]   (> (:capacity (edge-info ~g ~v to#)) 0)) (graph/sinks ~g ~v))
+;;     (filter (fn [from#] (> (:flow (edge-info ~g from# ~v))   0)) (graph/sources ~g ~v))))
 
 ;;this is a special walk for helping us with greedy flows, where we don't 
 ;;try to find an augmenting flow.
@@ -372,45 +458,16 @@
   (-> (assoc (spork.data.digraph/->cached-graph) :flow-info {})
       (conj-cap-arcs net-data)))
 
+(def the-net
+  (-> empty-network 
+      (conj-cap-arcs net-data)))
+
 
 (definline mincost-aug-path2 [g from to]
   `(first (graph/get-paths 
            (search/traverse ~g ~from ~to (searchstate/empty-PFS2 ~from)
                             :weightf flow-weight :neighborf flow-neighbors))))
 
-;;Empty-pfs3 is actually pretty good...
-(definline mincost-aug-path3 [g from to]
-  `(first (graph/get-paths 
-           (search/traverse2a ~g ~from ~to (searchstate/empty-PFS3 ~from)
-                              :weightf flow-weight :neighborf flow-neighbors))))
-
-(definline mincost-aug-path3a [g from to]
-  `(search/traverse2a ~g ~from ~to (searchstate/empty-PFS3 ~from)
-                              :weightf flow-weight :neighborf flow-neighbors))
-
-(definline mincost-aug-path3b [g from to]
-  `(search/traverse2b ~g ~from ~to (searchstate/empty-PFS3 ~from)
-                              :weightf flow-weight :neighborf flow-neighbors))
-
-(definline mincost-aug-path4 [g from to]
-  `(first (graph/get-paths 
-           (search/traverse3a ~g ~from ~to (searchstate/empty-PFS3 ~from)
-                              :weightf flow-weight :neighborf flow-neighbors))))
-
-(definline mincost-aug-pathm [g from to]
-  `(first (graph/get-paths 
-           (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS ~from)
-                            :weightf flow-weight :neighborf flow-neighbors))))
-
-(definline mincost-aug-pathm2 [g from to]
-  `(first (graph/get-paths 
-           (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS2 ~from)
-                            :weightf flow-weight :neighborf flow-neighbors))))
-
-(definline mincost-aug-pathm3 [g from to state]
-  `(first (graph/get-paths 
-           (search/traverse2a ~g ~from ~to ~state
-                            :weightf flow-weight :neighborf flow-neighbors))))
 
 (defn traverse2b
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
@@ -430,6 +487,36 @@
                            (recur (generic/relax acc (flow-weight g source (first xs)) source (first xs))
                                   (rest xs)))))))
       state)))
+
+;;Empty-pfs3 is actually pretty good...
+(definline mincost-aug-path3 [g from to]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to (searchstate/empty-PFS3 ~from)
+                              :weightf flow-weight :neighborf flow-neighbors))))
+
+(definline mincost-aug-path3a [g from to]
+  `(search/traverse2a ~g ~from ~to (searchstate/empty-PFS3 ~from)
+                              :weightf flow-weight :neighborf flow-neighbors))
+
+(definline mincost-aug-path3b [g from to]
+  `(traverse2b ~g ~from ~to (searchstate/empty-PFS3 ~from)))
+
+(definline mincost-aug-pathm [g from to]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS ~from)
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+(definline mincost-aug-pathm2 [g from to]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to (searchstate/mempty-PFS2 ~from)
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+(definline mincost-aug-pathm3 [g from to state]
+  `(first (graph/get-paths 
+           (search/traverse2a ~g ~from ~to ~state
+                            :weightf flow-weight :neighborf flow-neighbors))))
+
+
 
 
 (defn mincost-flow2

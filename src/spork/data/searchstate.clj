@@ -8,16 +8,19 @@
             [spork.data      [priorityq :as pq]
                              [fringe :as fr]
                              [mutable :as m]])
-  (:import  [java.util HashMap]))
+  (:import  [java.util HashMap ArrayList]))
 
 ;;This is slow for recovering paths.
 ;;We don't need to use persistent stuff to recover paths, it's a small 
 ;;opportunity to mutably recover paths inside of a lazy computation. 
 
 
+;(m/defmutable branch [items])
+  
 ;;These allows us to use complex keys in our spt.
-(defn branch?  [v] (and (coll? v) (contains? (meta v) :branch)))
-(defn ->branch [& xs]  (with-meta (into [] xs) {:branch true}))
+(definline ^ArrayList ->branch [^ArrayList x]  `(doto (ArrayList.) (.add ~x)))
+(definline branch? [x] (= (type x) java.util.ArrayList))
+(defn ^ArrayList push-branch [^ArrayList b x]  (doto b (.add x)))
   
 ;;__TODO__ Use transient operations for updating the search state.
 ;; (defn update-search [state shortest distance fringe]
@@ -31,7 +34,6 @@
        (assoc :shortest ~shortest)
        (assoc :distance ~distance)
        (assoc :fringe ~fringe)))
-
 
 (definline estimating-conj [estimator fringe sink w target]
   `(generic/conj-fringe ~fringe ~sink (+ ~w (~estimator ~sink ~target))))
@@ -91,7 +93,7 @@
          current#  (get shortest# ~sink)
          newspt#   (assoc shortest# ~sink 
                      (-> (if (branch? current#) current# (->branch current#))
-                         (conj ~source)))]                 
+                         (push-branch ~source)))]                 
      (update-search ~state newspt# (:distance ~state) (:fringe ~state))))
 
 ;; (defn- equal-path* 
@@ -107,27 +109,27 @@
 ;;OLD an obsolete.
 ;A general container for any abstract graph search.
 ;Might shift to a simple map here....not sure yet.
-;; (defrecord searchstate 
-;;   [startnode targetnode shortest distance fringe estimator visited]
-;;   generic/IGraphSearch
-;; 	  (new-path     [state source sink w] (new-path* source sink w state))           
-;; 	  (shorter-path [state source sink wnew wpast]
-;; 	    (shorter-path* source sink wnew wpast state))
-;; 	  (equal-path   [state source sink] (equal-path* source sink state))
-;;     (best-known-distance   [state nd] (get distance nd))
-;;     (conj-visited [state source] 
-;;       (assoc state :visited (conj visited source)))
-;;   generic/IFringe 
-;; 	  (conj-fringe [state n w] (assoc state :fringe 
-;;                                    (generic/conj-fringe fringe n w)))
-;; 	  (next-fringe [state]  (generic/next-fringe fringe))
-;; 	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
+(defrecord searchstate 
+  [startnode targetnode shortest distance fringe estimator visited]
+  generic/IGraphSearch
+	  (new-path     [state source sink w] (new-path* source sink w state))           
+	  (shorter-path [state source sink wnew wpast]
+	    (shorter-path* source sink wnew wpast state))
+	  (equal-path   [state source sink] (equal-path* source sink state))
+    (best-known-distance   [state nd] (get distance nd))
+    (conj-visited [state source] 
+      (assoc state :visited (conj visited source)))
+  generic/IFringe 
+	  (conj-fringe [state n w] (assoc state :fringe 
+                                   (generic/conj-fringe fringe n w)))
+	  (next-fringe [state]  (generic/next-fringe fringe))
+	  (pop-fringe  [state]  (assoc state :fringe (generic/pop-fringe fringe))))                 
 
 ;;A macro to simplify update semantics using record construction.
 (defmacro update-searchstate 
   [& {:keys [startnode targetnode shortest distance fringe estimator visited]
       :or {startnode 'startnode shortest 'shortest distance 'distance fringe 'fringe estimator 'estimator visited 'visited}}]
-  `(searchstate. 
+  `(~'searchstate2. 
        ~startnode 
        ~targetnode 
        ~shortest 
@@ -160,7 +162,7 @@
        (update-searchstate 
           :shortest (assoc! shortest sink 
                         (-> (if (branch? current) current (->branch current))
-                            (conj source))))))
+                            (push-branch source))))))
   (best-known-distance   [state nd] (get distance nd))
   (conj-visited [state source] 
     (update-searchstate :visited (conj visited source)))
@@ -196,7 +198,7 @@
      (let [current  (get shortest sink)]
        (do (set! shortest (assoc shortest sink 
                                   (-> (if (branch? current) current (->branch current))
-                                      (conj source)))) 
+                                      (push-branch source)))) 
            state)))
   (best-known-distance   [state nd] (get distance nd))
   (conj-visited [state source] 
@@ -235,7 +237,7 @@
      (let [current  (get shortest sink)]
        (do (set! shortest (assoc! shortest sink 
                                   (-> (if (branch? current) current (->branch current))
-                                      (conj source)))) 
+                                      (push-branch source)))) 
            state)))
   (best-known-distance   [state nd] (get distance nd))
   (conj-visited [state source] 
@@ -274,7 +276,7 @@
      (let [current  (get shortest sink)]
        (do (.put shortest sink 
                  (-> (if (branch? current) current (->branch current))
-                     (conj source)))) 
+                     (push-branch source)))) 
            state))
   (best-known-distance   [state nd] (get distance nd))
   (conj-visited [state source] 
@@ -313,18 +315,18 @@
                       :shortest {startnode startnode}
                       :fringe   fringe}))
 
-(defn init-search!
+(definline init-search!
   "Populates an empty search state with an initial set of parameters.  Allows
    searches to be customized by varying the start, target, and the type of 
    fringe used to prosecute the search."
   [startnode & {:keys [targetnode fringe empty-state] 
                 :or   {targetnode ::nullnode fringe fr/depth-fringe empty-state empty-search3}}]
-  (reduce conj! (->empty-search-state) 
-          {:startnode  startnode 
-           :targetnode targetnode
-           :distance {startnode 0}
-           :shortest {startnode startnode}
-           :fringe   fringe}))
+  `(reduce conj! (->empty-search-state) 
+           {:startnode  ~startnode 
+            :targetnode ~targetnode
+            :distance {~startnode 0}
+            :shortest {~startnode ~startnode}
+            :fringe   ~fringe}))
 
 (defn minit-search
   "Populates an empty search state with an initial set of parameters.  Allows
@@ -408,9 +410,23 @@
 (def mempty-BFS  (fn [startnode] (minit-search startnode :fringe fr/breadth-fringe)))
 ;;An empty priority-first search.  Note: THis uses a mutable priority
 ;;queue 
-(let [init-fringe (fn [startnode] (minit-search startnode))]
-  (defn mempty-PFS [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
+;; (definline mempty-PFS [startnode] 
+;;   `(msearchstate.  ~startnode 
+;;                    nil
+;;                    (m/->mutmap [~startnode ~startnode])
+;;                    (m/->mutmap [~startnode 0])
+;;                    (fr/make-pq)
+;;                    nil
+;;                    []))
 
+(definline mempty-PFS [startnode] 
+  `(msearchstate2.  ~startnode 
+                    nil
+                    (doto (HashMap. ) (.put ~startnode ~startnode))
+                    (doto (HashMap. ) (.put ~startnode 0))
+                    (fr/make-pq)
+                    nil
+                    []))
 
 ;;A mutable empty depth-first search, using hashmaps...
 (def mempty-DFS2  (fn [startnode] (minit-search2 startnode :fringe fr/depth-fringe)))
@@ -437,8 +453,12 @@
 (let [init-fringe (memoize (fn [startnode] (init-search startnode :empty-state empty-search2)))]
   (defn empty-PFS2 [startnode] (assoc (init-fringe startnode) :fringe (fr/make-pq))))
 
-(let [init-fringe  (fn [startnode] (init-search! startnode :empty-state empty-search3))]
-  (defn empty-PFS3 [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
+;; (let [init-fringe  (fn [startnode] (init-search! startnode :empty-state empty-search3))]
+;;   (defn empty-PFS3 [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
+
+
+(definline empty-PFS3 [startnode] 
+  `(assoc! (init-search! ~startnode :empty-state empty-search3) :fringe (fr/make-pq)))
 
 ;;Work in progress.
 ;;Inlined search.

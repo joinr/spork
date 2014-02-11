@@ -14,6 +14,8 @@
 (defn ^ArrayDeque queue [xs] 
   (reduce (fn [^ArrayDeque acc x] (doto acc (.add x))) (make-queue) xs))
 
+(definline mutable-list? [coll]  `(= (type ~coll) java.util.ArrayList))
+
 (defn entry-comparer [l r] 
   (let [pl (generic/entry-priority l)
         pr (generic/entry-priority r)]

@@ -86,15 +86,6 @@
       (swap-order k1 k2)
       (dissoc k1)))
 
-;;Abstract fringes to support generic search operations.
-(defprotocol IFringe 
-  (conj-fringe [fringe n w] 
-   "Add node n with weight w to the fringe.  Some fringes may implement conj 
-    in an associative fashion, where existing values of n are effectively 
-    overwritten with a new w, ala clojure.core/assoc")
-  (next-fringe [fringe] "Get the next node on the fringe")
-  (pop-fringe  [fringe] "Remove the next node from the fringe"))
-
 (defprotocol IClearable
   (-clear [fringe]))  
 
@@ -112,6 +103,17 @@
    :else (throw (IllegalArgumentException.
                  "with-open only allows Symbols in bindings"))))
 
+
+;;Abstract fringes to support generic search operations.
+(defprotocol IFringe 
+  (conj-fringe [fringe n w] 
+   "Add node n with weight w to the fringe.  Some fringes may implement conj 
+    in an associative fashion, where existing values of n are effectively 
+    overwritten with a new w, ala clojure.core/assoc")
+  (next-fringe [fringe] "Get the next node on the fringe")
+  (pop-fringe  [fringe] "Remove the next node from the fringe"))
+
+
 (defn conj-fringe-all
   "Add many [node weight] pairs onto the fringe."
   [fringe nws]
@@ -123,7 +125,8 @@
   [fringe]
   (if-let [kv (next-fringe fringe)]
     (lazy-seq (cons kv (fringe-seq (pop-fringe fringe))))))
-(defn empty-fringe? [fringe] (nil? (next-fringe fringe)))
+
+(definline empty-fringe? [fringe] `(nil? (next-fringe ~fringe)))
 (defn fringe? [x] (satisfies? IFringe x))
 
 ;;Abstract protocol for operating on shortest path searches.
@@ -134,11 +137,11 @@
   (conj-visited [state source])
   (best-known-distance [state x]))
 
-(defn visit-node
+(definline visit-node
   "Record the node as having been visited, and remove it from the fringe."
-  [s nd] (pop-fringe (conj-visited s nd)))
+  [s nd] `(pop-fringe (conj-visited ~s ~nd)))
 
-(definline relax
+(defmacro relax
   "Given a shortest path map, a distance map, a source node, sink node, 
    and weight(source,sink) = w, update the search state.
 

@@ -113,10 +113,10 @@
        (do (swap! ~m assoc-in [~k1 ~k2] v#)
            v#))))
 
-(defmacro clear! 
-  [m k]
-  `(do (swap! ~m dissoc ~k)
-       m))
+;; (defmacro clear! 
+;;   [m k]
+;;   `(do (swap! ~m dissoc ~k)
+;;        m))
 
 (definline add-neighbor [m source sink]
   `(let [sources# (get (:sources ~m) ~source [])
@@ -132,7 +132,7 @@
         (update-in [:sources ~source] sources#)
         (update-in [:sinks ~sink] sinks#))))
 
-(definline  neighbors-from [m source] `(-> ~m :sinks (get ~source)))
+(definline  neighbors-from [m source] `(-> ~m :sinks   (get ~source)))
 (definline  neighbors-to   [m sink]   `(-> ~m :sources (get ~sink)))
          
 (defrecord digraph3 [nodes sources sinks cache]
