@@ -129,11 +129,12 @@
 ;;Possible bottleneck here.
 ;optimized
 (defn inc-flow 
-  ([g info flow]
-    (assoc2 g (:from info) (:to info)  
-      (-> info 
-          (assoc :capacity (- (:capacity info) flow))
-          (assoc :flow (+ (:flow info) flow)))))
+  ([g info flow]     
+     (assoc g :flow-info
+            (assoc2 (:flow-info g) (:from info) (:to info)  
+                    (-> info 
+                        (assoc :capacity (- (:capacity info) flow))
+                        (assoc :flow (+ (:flow info) flow))))))
   ([g from to flow] 
      (alter-edge the-edge g from to 
          (-> the-edge 
@@ -143,10 +144,11 @@
 ;optimized
 (defn dec-flow 
   ([g info flow]
-    (assoc2  g  (:from info) (:to info) 
-       (-> info
-           (assoc :capacity (+ (:capacity info) flow))
-           (assoc :flow     (- (:flow info) flow)))))
+     (assoc g :flow-info
+            (assoc2  (:flow-info g)  (:from info) (:to info) 
+                     (-> info
+                         (assoc :capacity (+ (:capacity info) flow))
+                         (assoc :flow     (- (:flow info) flow))))))
   ([g from to flow] 
      (alter-edge the-edge g from to
          (-> the-edge

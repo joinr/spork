@@ -468,17 +468,6 @@
 ;;                  newnode# (if (branch? prior#) (first prior#) prior#)]
 ;;              (recur newnode# (cons newnode# path#)))))))  
 
-(defn first-path [state]  
-  (let [startnode  (:startnode state)
-        targetnode (:targetnode state)
-        spt        (:shortest state)]
-    (loop [node   targetnode
-           path   (list targetnode)]
-      (if (= node startnode) path
-          (let [prior   (get spt node)
-                newnode (if (branch? prior) (first prior) prior)]
-            (recur newnode (cons newnode path)))))))  
-
 (defn path? 
   ([state target] (generic/best-known-distance state target))
   ([state] (path? state (:targetnode state))))
@@ -488,6 +477,18 @@
     (when (path? state target)
       (paths (:shortest state) (:startnode state) target)))
   ([state] (get-paths state (:targetnode state))))
+
+(defn first-path [state]  
+  (let [startnode  (:startnode state)
+        targetnode (:targetnode state)
+        spt        (:shortest state)]
+    (when (generic/best-known-distance state targetnode)
+      (loop [node   targetnode
+             path   (list targetnode)]
+        (if (= node startnode) path
+            (let [prior   (get spt node)
+                  newnode (if (branch? prior) (first prior) prior)]
+                (recur newnode (cons newnode path))))))))
 
 ;;A mutable empty depth-first search...
 (def mempty-DFS  (fn [startnode] (minit-search startnode :fringe fr/depth-fringe)))
