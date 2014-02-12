@@ -50,8 +50,11 @@
 ;;but it kills our performance on lookups since we have to go for 
 ;;a vector equiv.  It's more performant, for hashing, to have nested 
 ;;vectors of single keys.
+;; (definline edge-info [g from to]
+;;   `(get (:flow-info ~g) [~from ~to] (->edge-info2 ~from ~to)))
+
 (definline edge-info [g from to]
-  `(get (:flow-info ~g) [~from ~to] (->edge-info2 ~from ~to)))
+  `(get2 (:flow-info ~g) ~from ~to (->edge-info2 ~from ~to)))
 
 (definline edge-info2 [g from to]
   `(get2 (:flow-info ~g) ~from ~to (->edge-info2 ~from ~to)))
@@ -117,9 +120,8 @@
 
 ;;Hold off on this...implementation may be faulty.
 (defn swap-capacities [net l c r] net)
-(defn forward? 
-  ([g from to] (contains? (get (:sinks g) from) to))
-  ([g info] (forward? g (:from info) (:to info))))
+(definline forward?   [g from to] `(contains? (get (:sinks ~g) ~from) ~to))
+(definline forward2?  [g info] `(forward? ~g (:from ~info) (:to ~info)))
 
 (defn forwardizer [g]
   (memoize (fn [from to] (contains? (get (:sinks g) from) to))))
@@ -297,6 +299,25 @@
            (do (when (> (:flow (edge-info ~g from# ~v))   0)  (.add ~acc from#))
                (recur (rest xs#)))))
        ~acc)))
+
+(defn flow-neighbors!!!!! 
+  ^java.util.ArrayList [g v]     
+   (let [^java.util.ArrayList acc (java.util.ArrayList.)]
+     (do (let [^objects xs  (to-array (generic/-get-sinks g v))
+               n (alength xs)]
+           (loop [idx 0]
+             (if (== idx n) nil                    
+                 (let [to (aget xs idx)]
+                   (do (when (> (:capacity (edge-info g v to) 0)) (.add acc to))
+                       (recur (unchecked-inc idx)))))))
+         (let [^objects xs  (to-array (generic/-get-sinks g v))
+               n (alength xs)]
+           (loop [idx 0]
+             (if (== idx n) nil
+                 (let [from (aget xs idx)]
+                   (do (when (> (:flow (edge-info g from v))   0)  (.add acc from))
+                       (recur (unchecked-inc idx)))))))
+         acc)))
             
 ;; (definline flow-neighbors!! 
 ;;   [g v & xs]
@@ -314,9 +335,27 @@
 
 ;;the flow-cost for g from to.  Forward arcs are positive cost.
 ;;Backward arcs are negative-cost.
-(defn flow-weight [g from to]
-  (if (forward? g from to) (graph/arc-weight g from to) ;forward arc
-      (- (graph/arc-weight g to from))))
+(definline flow-weight [g from to]
+  `(if (forward? ~g ~from ~to) (graph/arc-weight ~g ~from ~to) ;forward arc
+      (- (graph/arc-weight ~g ~to ~from))))
+
+(definline flow-weight2 [g from to]
+  `(if (forward? ~g ~from ~to) (generic/-arc-weight ~g ~from ~to) ;forward arc
+      (- (generic/-arc-weight ~g ~to ~from))))
+
+;;A function for caching flow weight calls.
+(defn flow-weighter [g forward-pred]
+  (memoize (fn [g from to] 
+             (if (forward-pred g from to) (graph/arc-weight g from to) ;forward arc
+                 (- (graph/arc-weight g to from))))))
+
+
+;;A function for caching flow weight calls.
+(defn flow-weighter2 [g forward-pred]
+  (memoize (fn [g from to] 
+             (if (forward-pred g from to) (generic/-arc-weight g from to) ;forward arc
+                 (- (generic/-arc-weight g to from))))))
+             
 
 (defn flow-walk [g startnode endnode]
   (search/priority-walk g startnode :endnode endnode 

@@ -11,8 +11,8 @@
 ;;Now using mutable priority queues for search fringe.  This ends up 
 ;;being faster than my persistent priorityqueue implementation.
 (defn entry-comparer [l r] 
-  (let [pl (generic/entry-priority l)
-        pr (generic/entry-priority r)]
+  (let [pl (key l)
+        pr (key r)]
     (cond (< pl pr) -1 
           (> pl pr) 1
           :else 0))) 
