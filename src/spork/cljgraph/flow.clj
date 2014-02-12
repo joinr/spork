@@ -6,7 +6,8 @@
   (:require [spork.cljgraph [core :as graph]
                             [search :as search]]
             [spork.data [searchstate :as searchstate]]
-            [spork.protocols [core :as generic]]))
+            [spork.protocols [core :as generic]]
+            [spork.util.general :refer [assoc2 get2]]))
 
 (def posinf Long/MAX_VALUE)
 
@@ -45,24 +46,12 @@
   [from to capacity flow]
   `(einfo. ~from ~to ~capacity ~flow :increment))
 
-
-;;These should be exported to a lib.
-;;They are both faster for nested lookups and associations.
-(definline get2 [m from to default]
-  `(get (get ~m ~from) ~to ~default))
-
-(definline assoc2 [m from to v]
-  `(assoc ~m ~from (assoc (get ~m ~from {}) ~to ~v)))
-
-(definline assoc2! [m from to v]
-  `(assoc! ~m ~from (assoc! (get ~m ~from {}) ~to ~v)))
-
 ;;Another performance killer; Using vector keys is cool and all, 
 ;;but it kills our performance on lookups since we have to go for 
 ;;a vector equiv.  It's more performant, for hashing, to have nested 
 ;;vectors of single keys.
 (definline edge-info [g from to]
-  `(get (:flow-info ~g) [~from ~to] (->edge-info ~from ~to)))
+  `(get (:flow-info ~g) [~from ~to] (->edge-info2 ~from ~to)))
 
 (definline edge-info2 [g from to]
   `(get2 (:flow-info ~g) ~from ~to (->edge-info2 ~from ~to)))
@@ -74,12 +63,12 @@
 ;; (defn edge-info [g from to]
 ;;   (get-in g [:flow-info [from to]] (->edge-info from to)))
 
-(definline update-edge*  
-  [g from to cap flow]
-  `(assoc ~g :flow-info                  
-     (assoc 
-         (get ~g :flow-info {})
-       [~from ~to] (einfo. ~from ~to ~cap ~flow :increment))))
+;; (definline update-edge*  
+;;   [g from to cap flow]
+;;   `(assoc ~g :flow-info                  
+;;      (assoc 
+;;          (get ~g :flow-info {})
+;;        [~from ~to] (einfo. ~from ~to ~cap ~flow :increment))))
 
 ;;This should be a bit faster.  We can get even faster if we 
 ;;insert some kind of mutable record container.
@@ -90,15 +79,22 @@
        ~from ~to 
        (einfo. ~from ~to ~cap ~flow :increment))))
 
+(defmacro alter-edge [sym g from to & expr]
+  `(let [~sym (edge-info2 ~g ~from ~to)]
+     (assoc ~g :flow-info
+            (assoc2 (get ~g :flow-info {})
+                    ~from ~to 
+                    ~@expr))))    
+
 ;;->edge-info is called a lot here.
-(defn update-edge 
-  ([g from to cap flow ]
-     (assoc g :flow-info                  
-       (assoc 
-         (get g :flow-info {})
-           [from to] (einfo. from to cap flow :increment))))
-  ([g from to m] 
-    (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
+;; (defn update-edge 
+;;   ([g from to cap flow ]
+;;      (assoc g :flow-info                  
+;;        (assoc 
+;;          (get g :flow-info {})
+;;            [from to] (einfo. from to cap flow :increment))))
+;;   ([g from to m] 
+;;     (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
 
 ;; (defn update-edge 
 ;;   ([g from to flow cap]
@@ -111,8 +107,13 @@
   ([info] (- (:capacity info) (:flow info)))
   ([g from to] (current-capacity (edge-info g from to))))
 
-(defn set-capacity [g from to cap] (update-edge g from to {:capacity cap}))
-(defn set-flow [g from to flow]    (update-edge g from to {:flow flow}))
+(defn set-capacity [g from to cap] 
+  (alter-edge the-edge g from to 
+    (assoc the-edge :capacity cap)))
+
+(defn set-flow [g from to flow]    
+  (alter-edge the-edge g from to 
+     (assoc the-edge :flow flow)))
 
 ;;Hold off on this...implementation may be faulty.
 (defn swap-capacities [net l c r] net)
@@ -120,19 +121,35 @@
   ([g from to] (contains? (get (:sinks g) from) to))
   ([g info] (forward? g (:from info) (:to info))))
 
+(defn forwardizer [g]
+  (memoize (fn [from to] (contains? (get (:sinks g) from) to))))
+
+;;Possible bottleneck here.
 ;optimized
 (defn inc-flow 
   ([g info flow]
-    (update-edge* g (:from info) (:to info) 
-                  (- (:capacity info) flow) (+ (:flow info) flow)))
-  ([g from to flow] (inc-flow g (edge-info g from to) flow)))
+    (assoc2 g (:from info) (:to info)  
+      (-> info 
+          (assoc :capacity (- (:capacity info) flow))
+          (assoc :flow (+ (:flow info) flow)))))
+  ([g from to flow] 
+     (alter-edge the-edge g from to 
+         (-> the-edge 
+             (assoc :capacity (- (:capacity the-edge) flow))
+             (assoc :flow     (+ (:flow the-edge) flow))))))
 
 ;optimized
 (defn dec-flow 
   ([g info flow]
-    (update-edge* g  (:from info) (:to info) 
-                  (+ (:capacity info) flow) (- (:flow info) flow)))
-  ([g from to flow] (dec-flow g (edge-info g from to) flow)))
+    (assoc2  g  (:from info) (:to info) 
+       (-> info
+           (assoc :capacity (+ (:capacity info) flow))
+           (assoc :flow     (- (:flow info) flow)))))
+  ([g from to flow] 
+     (alter-edge the-edge g from to
+         (-> the-edge
+             (assoc :capacity (+ (:capacity the-edge) flow))
+             (assoc :flow     (- (:flow the-edge) flow))))))
 
 (defn flows [g] 
   (for [[k v] (:flow-info g)] [k (select-keys v [:capacity :flow])]))
@@ -141,6 +158,7 @@
   (reduce (fn [acc [k info]] (if (> (:flow info) 0)
                                (assoc acc k (:flow info)) acc)) 
           {} (:flow-info g)))
+
 (defn total-flow 
   ([g active-edges] 
     (->> active-edges 
@@ -185,7 +203,7 @@
   (let [finfo (:flow-info g)]
     (-> (graph/conj-arc g from to w)
         (assoc :flow-info finfo)
-        (update-edge from to cap 0))))
+        (update-edge2* from to cap 0))))
 
 ;;Probable hotspot in at least one use case.  We add arcs to the
 ;;network repeatedly...calls to merge and reduce and destructuring 

@@ -119,4 +119,13 @@
       f))
 
   
+;;These should be exported to a lib.
+;;They are both faster for nested lookups and associations.
+(definline get2 [m from to default]
+  `(get (get ~m ~from) ~to ~default))
 
+(definline assoc2 [m from to v]
+  `(assoc ~m ~from (assoc (get ~m ~from {}) ~to ~v)))
+
+(definline assoc2! [m from to v]
+  `(assoc! ~m ~from (assoc! (get ~m ~from {}) ~to ~v)))
