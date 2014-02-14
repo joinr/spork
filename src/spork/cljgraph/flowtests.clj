@@ -15,9 +15,17 @@
   [:hou :t    0 300]
   [:bos :t    0 300]])
 
-;;Neighbor Caching
 (def the-net2 
+  (-> (assoc spork.data.digraph/empty-digraph2 :flow-info {})
+      (conj-cap-arcs net-data)))
+
+;;Neighbor Caching
+(def the-net3 
   (-> (assoc (spork.data.digraph/->cached-graph) :flow-info {})
+      (conj-cap-arcs net-data)))
+
+(def the-net4 
+  (-> (assoc (spork.data.digraph/->cached-graph2) :flow-info {})
       (conj-cap-arcs net-data)))
 
 (def the-net
@@ -96,6 +104,10 @@
 
 (definline mincost-aug-pathm [g from to]
   `(traverse2d ~g ~from ~to (searchstate/mempty-PFS ~from)))
+
+
+(definline mincost-aug-stateme [g from to]
+  `(traverse2e ~g ~from ~to (searchstate/mempty-PFS ~from)))
 
 (definline mincost-aug-pathme [g from to]
   `(searchstate/first-path (traverse2e ~g ~from ~to (searchstate/mempty-PFS ~from))))
@@ -204,6 +216,6 @@
 
 (defn the-testme-full [x]
   (time (dotimes [i x]
-          (spork.data.searchstate/first-path (mincost-aug-pathme the-net :s :t)))))
+          (mincost-aug-pathme the-net :s :t))))
 
 

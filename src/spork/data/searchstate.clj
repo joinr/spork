@@ -484,7 +484,7 @@
         spt        (:shortest state)]
     (when (generic/best-known-distance state targetnode)
       (loop [node   targetnode
-             path   (list targetnode)]
+             path   (cons targetnode nil)]
         (if (= node startnode) path
             (let [prior   (get spt node)
                   newnode (if (branch? prior) (first prior) prior)]
@@ -492,8 +492,7 @@
 
 ;;A mutable empty depth-first search...
 (def mempty-DFS  (fn [startnode] (minit-search startnode :fringe fr/depth-fringe)))
-;;An empty breadth-first search.
-(def mempty-BFS  (fn [startnode] (minit-search startnode :fringe fr/breadth-fringe)))
+;;An empty breadth-first search.(def mempty-BFS  (fn [startnode] (minit-search startnode :fringe fr/breadth-fringe)))
 ;;An empty priority-first search.  Note: THis uses a mutable priority
 ;;queue 
 ;; (definline mempty-PFS [startnode] 

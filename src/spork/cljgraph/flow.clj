@@ -277,15 +277,29 @@
 (defn flow-neighbors!!! 
   ^java.util.ArrayList [g v]     
    (let [^java.util.ArrayList acc (java.util.ArrayList.)]
-     (loop [xs (graph/sinks g v)]
+     (loop [xs (generic/-get-sinks g v)]
        (if-let [to (first xs)]
-         (do (when (> (:capacity (edge-info g v to)) 0) (.add acc to))
+         (do (when (> (.capacity ^einfo (edge-info g v to)) 0) (.add acc to))
              (recur (rest xs)))))
-     (loop [xs (graph/sources g v)]
+     (loop [xs (generic/-get-sources g v)]
        (if-let [from (first xs)]
-         (do (when (> (:flow (edge-info g from v))   0)  (.add acc from))
+         (do (when (> (.flow ^einfo (edge-info g from v))   0)  (.add acc from))
              (recur (rest xs)))))
      acc))
+
+
+;; (defn flow-neighbors!!! 
+;;   ^java.util.ArrayList [g v]     
+;;    (let [^java.util.ArrayList acc (java.util.ArrayList.)]
+;;      (loop [xs (generic/-get-sinks g v)]
+;;        (if-let [to (first xs)]
+;;          (do (when (> (:capacity (edge-info g v to)) 0) (.add acc to))
+;;              (recur (rest xs)))))
+;;      (loop [xs (generic/-get-sources g v)]
+;;        (if-let [from (first xs)]
+;;          (do (when (> (:flow (edge-info g from v))   0)  (.add acc from))
+;;              (recur (rest xs)))))
+;;      acc))
 
 ;;slow...
 (definline flow-neighbors!!!!
@@ -389,8 +403,6 @@
 ;;   (first (graph/get-paths 
 ;;           (search/traverse g from to (searchstate/empty-PFS from)
 ;;                            :weightf flow-weight :neighborf flow-neighbors))))
-
-
 
 ;convert a path into a list of edge-info 
 ;; (defn path->edge-info [g p]
