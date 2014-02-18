@@ -73,6 +73,28 @@
                                   (unchecked-inc idx))))))))
       state)))
 
+(defn transient-traverse2e
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [net startnode targetnode startstate]
+  (let [g (:g net)]
+    (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                       (generic/conj-fringe startnode 0))]
+      (if-let [source    (generic/next-fringe state)] ;next node to visit
+        (let  [visited   (generic/visit-node state source)] ;record visit.
+          (if (= targetnode source) visited                     
+              (recur (let [^objects xs (to-array (transient-flow-neighbors!!! net source))
+                           n (alength xs)]
+                       (loop [acc visited
+                              idx 0]
+                         (if (== idx n) acc                        
+                             (recur (generic/relax acc (flow-weight2 g source (aget xs idx)) source (aget xs idx))
+                                    (unchecked-inc idx))))))))
+        state))))
+
 (defn traverse2f
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
    the searchstate, the halting criteria, the weight-generating 
@@ -111,6 +133,9 @@
 
 (definline mincost-aug-pathme [g from to]
   `(searchstate/first-path (traverse2e ~g ~from ~to (searchstate/mempty-PFS ~from))))
+
+(definline mincost-aug-pathme!! [g from to]
+  `(searchstate/first-path (transient-traverse2e ~g ~from ~to (searchstate/mempty-PFS ~from))))
 
 (definline mincost-aug-pathmf [g from to]
   `(traverse2f ~g ~from ~to (searchstate/mempty-PFS ~from)))
@@ -166,6 +191,20 @@
            :net g}))))
   ([flow-info graph from to]
     (mincost-flowm! (assoc graph :flow-info flow-info) from to)))
+
+(defn mincost-flowm!!
+  ([graph from to]
+    (loop [g (transient-network!! graph)]
+      (if-let [p (mincost-aug-pathme!! g from to)]
+        (recur (augment-flow!! g p))
+        (let [active (active-flows! g)]
+          {
+           ;:cost (total-cost graph active)
+           ;:flow (total-flow g active)
+           :active active
+           :net g}))))
+  ([flow-info graph from to]
+    (mincost-flowm!! (assoc graph :flow-info flow-info) from to)))
 
 (defn mincost-flowm2
   [graph from to]

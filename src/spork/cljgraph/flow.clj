@@ -5,7 +5,8 @@
 (ns spork.cljgraph.flow
   (:require [spork.cljgraph [core :as graph]
                             [search :as search]]
-            [spork.data [searchstate :as searchstate]]
+            [spork.data [searchstate :as searchstate]
+                        [mutable :as m]]
             [spork.protocols [core :as generic]]
             [spork.util.general :refer [assoc2 assoc2! get2 transient2 persistent2!]]))
 
@@ -27,14 +28,40 @@
 ;;in a spork.data.digraph record.
 
 (def empty-network (assoc graph/empty-graph :flow-info {}))
+;; (m/defmutable transient-net [nodes sources sinks flow-info metadata]
+;;   clojure.lang.IObj
+;;   ;adds metadata support
+;;   (meta [this] metadata)
+;;   (withMeta [this m] (do (set! metadata m) this)))
+
+(m/defmutable transient-net [g flow-info metadata]
+  clojure.lang.IObj
+  ;adds metadata support
+  (meta [this] metadata)
+  (withMeta [this m] (do (set! metadata m) this)))
+
 
 (defn transient-network [g]
   (-> g 
       (assoc :flow-info (transient2 (:flow-info g)))
       (vary-meta assoc :flow-info (:flow-info g))))
 
+
+;;Instead of making a new type and everything....
+;;Let's just make this an object array that wraps all this shiz.
+;; (defn ^transient-net transient-network!! [g]
+;;   (transient-net. (:nodes g) (:sources g) (:sinks g) (transient2 (:flow-info g)) {:flow-info (:flow-info g})))
+
+(defn ^transient-net transient-network!! [g]
+  (transient-net.  g (transient2 (:flow-info g)) {:flow-info (:flow-info g)}))
+
 (defn persistent-network! [g]
   (assoc g :flow-info (persistent2! (:flow-info g))))
+
+(defn persistent-network!! [^transient-net the-net]
+  (let [g (:g the-net)]
+    (assoc g
+           :flow-info (persistent2! (:flow-info the-net)))))
 
 ;; (defmacro with-transient-net [binding & expr]  
 ;;   (let [binding  (first (map vec (partition 2 binding)))
@@ -45,6 +72,10 @@
 ;(defrecord edge-info [from to capacity flow])
 
 (defrecord einfo [from to capacity flow dir])
+;;Another option, to avoid assoc costs, is to make this guy into a
+;;transient.
+
+;(m/defmutable meinfo [from to capacity flow dir])
 
 ;;FYI, the varargs here are killing us.
 ;; (defn ->edge-info 
@@ -97,6 +128,14 @@
        ~from ~to 
        (einfo. ~from ~to ~cap ~flow :increment))))
 
+;;working on transient stuff.
+(definline update-edge2*!  
+  [^transient-net g from to cap flow]
+  `(assoc! ~g :flow-info                  
+     (assoc2! (get ~g :flow-info {})
+       ~from ~to 
+       (einfo. ~from ~to ~cap ~flow :increment))))
+
 (defmacro alter-edge [sym g from to & expr]
   `(let [~sym (edge-info2 ~g ~from ~to)]
      (assoc ~g :flow-info
@@ -110,6 +149,13 @@
             (assoc2! (get ~g :flow-info {})
                     ~from ~to 
                     ~@expr))))    
+
+(defmacro alter-edge!! [sym g from to & expr]
+  `(let [~sym (edge-info2 ~g ~from ~to)]
+     (assoc! ~g :flow-info
+            (assoc2! (get ~g :flow-info {})
+                    ~from ~to 
+                    ~@expr))))
 
 ;;->edge-info is called a lot here.
 ;; (defn update-edge 
@@ -129,7 +175,7 @@
 ;;     (assoc-in g [:flow-info [from to]] (merge (edge-info g from to) m))))
 
 (defn current-capacity 
-  ([info] (- (:capacity info) (:flow info)))
+  ([^einfo info] (- (.capacity info) (.flow info)))
   ([g from to] (current-capacity (edge-info g from to))))
 
 (defn set-capacity [g from to cap] 
@@ -146,6 +192,14 @@
 
 (defn set-flow! [g from to flow]    
   (alter-edge! the-edge g from to 
+     (assoc the-edge :flow flow)))
+
+(defn set-capacity!! [g from to cap] 
+  (alter-edge!! the-edge g from to 
+    (assoc the-edge :capacity cap)))
+
+(defn set-flow!! [g from to flow]    
+  (alter-edge!! the-edge g from to 
      (assoc the-edge :flow flow)))
 
 ;;Hold off on this...implementation may be faulty.
@@ -180,10 +234,22 @@
                          (assoc :flow (+ (:flow info) flow))))))
   ([g from to flow] 
      (alter-edge! the-edge g from to 
-         (-> the-edge 
+         (->  the-edge 
              (assoc :capacity (- (:capacity the-edge) flow))
              (assoc :flow     (+ (:flow the-edge) flow))))))
 
+(defn inc-flow!! 
+  ([^transient-net g ^einfo info flow]     
+     (assoc! g :flow-info
+            (assoc2! (:flow-info g) (.from info) (.to info)  
+                     (-> info 
+                         (assoc :capacity (- (.capacity info) flow))
+                         (assoc :flow (+ (.flow info) flow))))))
+  ([g from to flow] 
+     (alter-edge!! the-edge g from to 
+         (->  the-edge 
+             (assoc :capacity (- (.capacity ^einfo the-edge) flow))
+             (assoc :flow     (+ (.flow ^einfo the-edge) flow))))))
 
 ;optimized
 (defn dec-flow 
@@ -212,6 +278,19 @@
              (assoc :capacity (+ (:capacity the-edge) flow))
              (assoc :flow     (- (:flow the-edge) flow))))))
 
+(defn dec-flow!! 
+  ([^transient-net g ^einfo info flow]
+     (assoc! g :flow-info
+            (assoc2!  (:flow-info g)  (.from info) (.to info) 
+                      (-> info
+                          (assoc :capacity (+ (.capacity info) flow))
+                          (assoc :flow     (- (.flow info) flow))))))
+  ([^transient-net g from to flow] 
+     (alter-edge!! the-edge g from to
+         (-> the-edge
+             (assoc :capacity (+ (.capacity ^einfo the-edge) flow))
+             (assoc :flow     (- (.flow ^einfo the-edge) flow))))))
+
 (defn flows [g] 
   (for [[from vs] (:flow-info g)
         [to info] vs]
@@ -226,6 +305,7 @@
         (for [sink sinks]
           (get m sink))))))          
 
+;;optimization spot.
 (defn active-flows [g] 
   (reduce (fn [acc info] (if (> (:flow info) 0)
                           (assoc acc [(:from info) (:to info)]  (:flow info)) acc)) 
@@ -362,6 +442,20 @@
      (loop [xs (generic/-get-sources g v)]
        (if-let [from (first xs)]
          (do (when (> (.flow ^einfo (edge-info g from v))   0)  (.add acc from))
+             (recur (rest xs)))))
+     acc))
+
+(defn transient-flow-neighbors!!! 
+  ^java.util.ArrayList [^transient-net n v]     
+   (let [^java.util.ArrayList acc (java.util.ArrayList.)
+         g  (:g n)]
+     (loop [xs (generic/-get-sinks g v)]
+       (if-let [to (first xs)]
+         (do (when (> (.capacity ^einfo (edge-info n v to)) 0) (.add acc to))
+             (recur (rest xs)))))
+     (loop [xs (generic/-get-sources g v)]
+       (if-let [from (first xs)]
+         (do (when (> (.flow ^einfo (edge-info n from v))   0)  (.add acc from))
              (recur (rest xs)))))
      acc))
 
@@ -545,6 +639,14 @@
           (dec-flow! gr info flow)))
       g edges))
 
+(defn apply-flow!! [g edges flow]
+  (generic/loop-reduce 
+      (fn [gr info]
+        (if (= :increment (:dir info))
+          (inc-flow!! gr info flow)
+          (dec-flow!! gr info flow)))
+      g edges))
+
 ;;helper function to apply flow.
 (defn augment-flow [g p]
   (let [edges (path->edge-info g p)]
@@ -553,6 +655,10 @@
 (defn augment-flow! [g p]
   (let [edges (path->edge-info g p)]
     (apply-flow! g edges (maximum-flow g edges))))
+
+(defn augment-flow!! [the-net p]
+  (let [edges (path->edge-info (:g the-net) p)]
+    (apply-flow!! the-net edges (maximum-flow the-net edges))))
 
 (defn flow-seq [g from to]
   (take-while :gr 
