@@ -156,12 +156,16 @@
              (assoc :flow     (- (:flow the-edge) flow))))))
 
 (defn flows [g] 
-  (for [[k v] (:flow-info g)] [k (select-keys v [:capacity :flow])]))
+  (for [[from vs] (:flow-info g)
+        [to info] vs]
+    [[from to] (select-keys info [:capacity :flow])]))
 
 (defn active-flows [g] 
-  (reduce (fn [acc [k info]] (if (> (:flow info) 0)
-                               (assoc acc k (:flow info)) acc)) 
-          {} (:flow-info g)))
+  (reduce (fn [acc info] (if (> (:flow info) 0)
+                          (assoc acc [(:from info) (:to info)]  (:flow info)) acc)) 
+          {} (for [[from vs] (:flow-info g)
+                   [to info] vs]
+                info)))
 
 (defn total-flow 
   ([g active-edges] 

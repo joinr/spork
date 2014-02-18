@@ -19,7 +19,7 @@
   
 ;;These allows us to use complex keys in our spt.
 (definline ^ArrayList ->branch [^ArrayList x]  `(doto (ArrayList.) (.add ~x)))
-(definline branch? [x] (= (type x) java.util.ArrayList))
+(definline branch? [x] `(= (type ~x) ~'java.util.ArrayList))
 (defn ^ArrayList push-branch [^ArrayList b x]  (doto b (.add x)))
   
 ;;__TODO__ Use transient operations for updating the search state.
@@ -486,7 +486,8 @@
       (loop [node   targetnode
              path   (cons targetnode nil)]
         (if (= node startnode) path
-            (let [prior   (get spt node)
+            (let [
+                  prior   (get spt node)
                   newnode (if (branch? prior) (first prior) prior)]
                 (recur newnode (cons newnode path))))))))
 

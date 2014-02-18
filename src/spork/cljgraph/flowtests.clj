@@ -155,7 +155,8 @@
 
 (defn mincost-flowm2
   [graph from to]
-     (let [*the-state* (searchstate/mempty-PFS2 from)]
+  (let [*the-state*
+        (searchstate/mempty-PFS2 from)]
        (loop [g graph]
          (if-let [p (mincost-aug-pathm3 g from to *the-state*)]
            (recur (do (generic/clear! *the-state*) 
