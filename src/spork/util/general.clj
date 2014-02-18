@@ -118,6 +118,8 @@
       (fn [x y] (* -1  (f x y)))
       f))
 
+
+;;These functions are really friggin useful for nested tables.
   
 ;;These should be exported to a lib.
 ;;They are both faster for nested lookups and associations.
@@ -129,3 +131,14 @@
 
 (definline assoc2! [m from to v]
   `(assoc! ~m ~from (assoc! (get ~m ~from {}) ~to ~v)))
+
+(definline transient2 [coll] 
+  `(reduce (fn [m# kv#] 
+             (assoc! m# (first kv#) (transient (second kv#))))
+           (transient ~coll) (seq ~coll)))
+
+(definline persistent2! [coll]  
+  `(let [realized# (persistent! ~coll)]
+     (reduce (fn [m# kv#] 
+               (assoc m# (first kv#) (persistent! (second kv#))))
+             realized# (seq realized#))))

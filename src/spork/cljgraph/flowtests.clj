@@ -153,6 +153,20 @@
   ([flow-info graph from to]
     (mincost-flow (assoc graph :flow-info flow-info) from to)))
 
+(defn mincost-flowm!
+  ([graph from to]
+    (loop [g (transient-network graph)]
+      (if-let [p (mincost-aug-pathme g from to)]
+        (recur (augment-flow! g p))
+        (let [active (active-flows! g)]
+          {
+           ;:cost (total-cost graph active)
+           ;:flow (total-flow g active)
+           :active active
+           :net g}))))
+  ([flow-info graph from to]
+    (mincost-flowm! (assoc graph :flow-info flow-info) from to)))
+
 (defn mincost-flowm2
   [graph from to]
   (let [*the-state*
