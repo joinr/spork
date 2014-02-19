@@ -273,12 +273,12 @@
                  (generic/conj-fringe fringe sink wnew))) 
          state))  
   (equal-path   [state source sink] 
-     (let [current  (get shortest sink)]
+     (let [current  (.get shortest sink)]
        (do (.put shortest sink 
                  (-> (if (branch? current) current (->branch current))
                      (push-branch source)))) 
            state))
-  (best-known-distance   [state nd] (get distance nd))
+  (best-known-distance   [state nd] (.get distance nd))
   (conj-visited [state source] 
       (do (set! visited (conj visited source))
           state))

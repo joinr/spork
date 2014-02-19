@@ -105,6 +105,7 @@
 (definline edge-info2 [g from to]
   `(get2 (:flow-info ~g) ~from ~to (->edge-info2 ~from ~to)))
 
+
 ;;OPTIMIZE
 ;; (defn edge-info [g from to]
 ;;   (get-in g [:flow-info [from to]] (->edge-info from to)))
@@ -243,13 +244,14 @@
      (assoc! g :flow-info
             (assoc2! (:flow-info g) (.from info) (.to info)  
                      (-> info 
-                         (assoc :capacity (- (.capacity info) flow))
-                         (assoc :flow (+ (.flow info) flow))))))
+                         (.assoc :capacity (- (.capacity info) flow))
+                         (.assoc :flow (+ (.flow info) flow))))))
   ([g from to flow] 
      (alter-edge!! the-edge g from to 
-         (->  the-edge 
-             (assoc :capacity (- (.capacity ^einfo the-edge) flow))
-             (assoc :flow     (+ (.flow ^einfo the-edge) flow))))))
+                   (let [^einfo e the-edge]
+                     (->  e
+                          (.assoc :capacity (- (.capacity ^einfo the-edge) flow))
+                          (.assoc :flow     (+ (.flow ^einfo the-edge) flow)))))))
 
 ;optimized
 (defn dec-flow 
@@ -283,13 +285,14 @@
      (assoc! g :flow-info
             (assoc2!  (:flow-info g)  (.from info) (.to info) 
                       (-> info
-                          (assoc :capacity (+ (.capacity info) flow))
-                          (assoc :flow     (- (.flow info) flow))))))
+                          (.assoc :capacity (+ (.capacity info) flow))
+                          (.assoc :flow     (- (.flow info) flow))))))
   ([^transient-net g from to flow] 
      (alter-edge!! the-edge g from to
-         (-> the-edge
-             (assoc :capacity (+ (.capacity ^einfo the-edge) flow))
-             (assoc :flow     (- (.flow ^einfo the-edge) flow))))))
+       (let [^einfo e the-edge]
+         (-> e
+             (.assoc :capacity (+ (.capacity ^einfo the-edge) flow))
+             (.assoc :flow     (- (.flow ^einfo the-edge) flow)))))))
 
 (defn flows [g] 
   (for [[from vs] (:flow-info g)
@@ -445,17 +448,21 @@
              (recur (rest xs)))))
      acc))
 
+;;Optimization::
+;;Look at using cheaper comparisons.  We know capacity is supposed to
+;;be a long...type hinting did not yield improvements.  Maybe more
+;;subtle optimizations are possible.
 (defn transient-flow-neighbors!!! 
   ^java.util.ArrayList [^transient-net n v]     
    (let [^java.util.ArrayList acc (java.util.ArrayList.)
          g  (:g n)]
      (loop [xs (generic/-get-sinks g v)]
        (if-let [to (first xs)]
-         (do (when (> (.capacity ^einfo (edge-info n v to)) 0) (.add acc to))
+         (do (when (> ^long (.capacity ^einfo (edge-info n v to)) 0) (.add acc to))
              (recur (rest xs)))))
      (loop [xs (generic/-get-sources g v)]
        (if-let [from (first xs)]
-         (do (when (> (.flow ^einfo (edge-info n from v))   0)  (.add acc from))
+         (do (when (> ^long (.flow ^einfo (edge-info n from v))   0)  (.add acc from))
              (recur (rest xs)))))
      acc))
 

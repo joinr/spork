@@ -13,7 +13,7 @@
 ;;Common function used throughout Spork.
 ;;Clojure entries are basically primitive structs, one could think of them as
 ;;pairs or dotted pairs.  
-(defn ^clojure.lang.MapEntry entry [k v] (clojure.lang.MapEntry. k v))
+(definline entry [k v] `(clojure.lang.MapEntry. ~k ~v))
 (defn entry? [e] (= (type e) clojure.lang.MapEntry))
 (defn nested-entry? [^clojure.lang.MapEntry e] (entry? (val e)))
 
@@ -45,13 +45,17 @@
 ;;We use entries to encode node weights, as well as heuristic estimates for 
 ;;algorithms like A-star search.  This let us use general entries for the 
 ;;priority queues these algorithms rely on.
-(defn entry-priority [^clojure.lang.MapEntry e] (key e))
+(defn entry-priority [^clojure.lang.MapEntry e] (.key e))
+
+(definline -entry-priority [e] 
+  `(let [~(with-meta 'the-val {:tag 'clojure.lang.MapEntry}) ~e]
+    (.key ~'the-val)))
 
 (defn entry-weight [^clojure.lang.MapEntry e]
-  (key (if (nested-entry? e) (val e) e)))
+  (.key (if (nested-entry? e) ^clojure.lang.MapEntry (.val e) e)))
 
 (defn entry-node [^clojure.lang.MapEntry e]
-  (val (if (nested-entry? e) (val e) e)))
+  (.val (if (nested-entry? e) ^clojure.lang.MapEntry  (.val e) e)))
 
 (defn maybe 
   ([coll elseval] (if-let [v (first coll)] v elseval))
@@ -141,6 +145,9 @@
   "Record the node as having been visited, and remove it from the fringe."
   [s nd] `(pop-fringe (conj-visited ~s ~nd)))
 
+
+;;Optimization:: 
+;;We can replace the plus operator with a special variant here...
 (defmacro relax
   "Given a shortest path map, a distance map, a source node, sink node, 
    and weight(source,sink) = w, update the search state.
@@ -160,6 +167,33 @@
      
   [state w source sink]  
     `(let [relaxed# (+ (best-known-distance ~state ~source) ~w)]
+       (if-let [known# (best-known-distance ~state ~sink)]
+         (cond 
+          (< relaxed# known#) (shorter-path ~state ~source ~sink relaxed# known#)            
+          (= relaxed# known#) (equal-path ~state ~source ~sink)                         
+          :else ~state)            
+         ;if sink doesn't exist in distance, sink is new...
+         (new-path ~state ~source ~sink relaxed#))))
+
+(defmacro int-relax
+  "Given a shortest path map, a distance map, a source node, sink node, 
+   and weight(source,sink) = w, update the search state.
+
+   Upon visitation, sources are conjoined to the discovered vector.    
+
+   The implication of a relaxation on sink, relative to source, is that 
+   source no longer exists in the fringe (it's permanently labeled).  
+   So a relaxation can mean one of three things: 
+   1: sink is a newly discovered-node (as a consequence of visiting source);
+   2: sink was visited earlier (from a different source), but this visit exposes
+      a shorter path to sink, so it should be elevated in consideration in 
+      the search fringe.
+   3: sink is a node of equal length to the currently shortest-known path from 
+      an unnamed startnode.  We want to record this equivalence, which means 
+      that we may ultimately end up with multiple shortest* paths."
+     
+  [state w source sink]  
+    `(let [relaxed# (+ (long (best-known-distance ~state ~source)) (long ~w))]
        (if-let [known# (best-known-distance ~state ~sink)]
          (cond 
           (< relaxed# known#) (shorter-path ~state ~source ~sink relaxed# known#)            

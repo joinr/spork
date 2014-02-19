@@ -126,6 +126,10 @@
 (definline get2 [m from to default]
   `(get (get ~m ~from) ~to ~default))
 
+(defmacro hinted-get2 [hint m from to default]
+  `(let [m# (with-meta ~m {:tag hint})]
+     (.valAt (.valAt ~m ~from) ~to ~default)))
+
 (definline assoc2 [m from to v]
   `(assoc ~m ~from (assoc (get ~m ~from {}) ~to ~v)))
 
