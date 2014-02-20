@@ -32,6 +32,12 @@
   (-> empty-network 
       (conj-cap-arcs net-data)))
 
+
+  
+
+
+(comment 
+
 ;;Fastest so far...
 (defn traverse2d
   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
@@ -311,4 +317,4 @@
   (time (dotimes [i x]
           (mincost-aug-pathme the-net :s :t))))
 
-
+)
