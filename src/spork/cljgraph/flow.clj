@@ -308,21 +308,41 @@
         (for [sink sinks]
           (get m sink))))))          
 
+(definline get-edge-infos [n]
+  `(for [[from# vs#] (:flow-info ~n)
+         [to# info#] vs#]
+     info#))
+
+(definline get-edge-infos! [n]
+  `(let [infos# (:flow-info ~n)]
+     (for [[from# vs#] (:flow-info (meta ~n))
+           to# (keys vs#)]
+       (get2 infos# from# to# nil))))
+
+;; (definline get-edge-infos! [g]
+;;   
+
+     
 ;;optimization spot.
 (defn active-flows [g] 
-  (reduce (fn [acc info] (if (> (:flow info) 0)
-                          (assoc acc [(:from info) (:to info)]  (:flow info)) acc)) 
-          {} (for [[from vs] (:flow-info g)
-                   [to info] vs]
-                info)))
+  (generic/loop-reduce 
+   (fn [acc ^einfo info] 
+     (let [^long f (.flow info)]
+       (if (> f 0)
+         (assoc acc [(.from info) (.to info)]  (.flow info)) 
+                acc))) 
+   {}
+   (get-edge-infos g)))
 
 (defn active-flows! [g] 
-  (let [infos (:flow-info g)]
-    (reduce (fn [acc info] (if (> (:flow info) 0)
-                             (assoc acc [(:from info) (:to info)]  (:flow info)) acc)) 
-            {} (for [[from vs] (:flow-info (meta g))
-                     to (keys vs)]
-                 (get2 infos from to nil)))))
+  (persistent! 
+   (generic/loop-reduce 
+    (fn [acc ^einfo info] 
+      (let [^long f (.flow info)]
+        (if (> f 0)
+          (assoc! acc [(.from info) (.to info)]  f) acc))) 
+    (transient {}) 
+    (get-edge-infos! g))))
 
 (defn total-flow 
   ([g active-edges] 
