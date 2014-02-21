@@ -412,7 +412,7 @@
           {:active active
            :net g}))))
   ([flow-info graph from to]
-    (mincost-flow (assoc graph :flow-info flow-info) from to)))
+    (mincost-flow* (assoc graph :flow-info flow-info) from to)))
 
 
 ;;based off of transient-traverse2e
@@ -455,20 +455,27 @@
 (defrecord edge-flows [^long flow ^objects edges])
   
 (defn ^edge-flows path->edge-flows! [flow-info p]
-   (let [xs    (object-array p)
+   (let [g     (:g flow-info)
+         xs    (object-array p)
          n     (alength xs)
          edges (object-array (unchecked-dec n))]
     (loop [from 0
            to   1
            flow posinf]
       (if (== to n) (edge-flows. flow edges)
-          (let [^einfo info (edge-info flow-info (aget xs from) (aget xs to))]
-            (do (aset edges from info)
+          (let [l     (aget xs from)
+                r     (aget xs to)
+                dir   (if (forward? g l r) :increment :decrement)
+                ^einfo info (if (identical? dir :increment) 
+                              (edge-info flow-info l r)
+                              (edge-info flow-info r l))]
+            (do (aset edges from (.assoc info :dir dir))
                 (recur (unchecked-inc from) (unchecked-inc to)
-                       (let [^long new-flow (if (= :increment (.dir info))
-                                              (.capacity info)
-                                              (.flow info))] 
+                       (let [^long new-flow (if (identical? :increment dir)
+                                                (.capacity info)
+                                                (.flow info))] 
                          (min flow  new-flow)))))))))                 
+
 
 (defn augment-flow! [^transient-net the-net p]
   (let [^edge-flows ef (path->edge-flows! the-net (object-array p))
@@ -479,10 +486,10 @@
            ^transient-net acc the-net]
       (if (== idx n) acc
           (recur (unchecked-inc idx)
-                 (let [^einfo info (aget xs idx)]                   
-                   (if (= :increment (.dir info))
+                 (let [^einfo info (aget xs idx)]                  
+                   (if (identical? :increment (.dir info))
                      (inc-flow! the-net info flow)
-                     (dec-flow! the-net info flow))))))))    
+                     (dec-flow! the-net info flow)))))))) 
 
 (defn mincost-flow!
   ([graph from to]

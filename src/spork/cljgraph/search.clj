@@ -320,6 +320,7 @@
   [g startnode endnode & {:keys [weightf neighborf] 
                           :or   {weightf   (get-weightf g) 
                                  neighborf (get-neighborf g)}}]
+  (throw (Exception. "Bellman-ford is currently not verified.  Tests are not passing."))
   (let [startstate    (assoc (searchstate/empty-BFS startnode) 
                              :targetnode endnode)
         bound         (dec (count (generic/-get-nodes g))) ;v - 1 

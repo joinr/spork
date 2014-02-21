@@ -327,36 +327,61 @@
 
 (def flow-results (mincost-flow the-net :s :t))
 (def cost-net (:net flow-results))
+(def actives (:active flow-results))
 
 (deftest mincostflow-test 
-  (is (= ((juxt :active (comp :flow-info :net)) flow-results)
-         [{[:s :chi] 300,
-           [:s :dc] 300,
-           [:dc :hou] 200,
-           [:dc :bos] 100,
-           [:chi :bos] 200,
-           [:chi :hou] 100,
-           [:hou :t] 300,
-           [:bos :t] 300}
-           {[:bos :t] {:from :bos, :to :t, :capacity 0, :flow 300},
-            [:hou :t] {:from :hou, :to :t, :capacity 0, :flow 300},
-            [:chi :hou] {:from :chi, :to :hou, :capacity 100, :flow 100},
-            [:chi :bos] {:from :chi, :to :bos, :capacity 0, :flow 200},
-            [:dc :bos] {:from :dc, :to :bos, :capacity 250, :flow 100},
-            [:dc :hou] {:from :dc, :to :hou, :capacity 80, :flow 200},
-            [:s :dc] {:from :s, :to :dc, :capacity 0, :flow 300},
-            [:s :chi] {:from :s, :to :chi, :capacity 0, :flow 300}}]))
+  (is (= actives
+         '([[:s :chi] 300] 
+           [[:s :dc] 300] 
+           [[:dc :hou] 200] 
+           [[:dc :bos] 100] 
+           [[:chi :bos] 200]
+           [[:chi :hou] 100] 
+           [[:hou :t] 300] 
+           [[:bos :t] 300])))
+  (is (= (:flow-info cost-net)
+          {:bos {:t #spork.cljgraph.flow.einfo{:from :bos, :to :t, :capacity 0, :flow 300, :dir :increment}}, 
+           :hou {:t #spork.cljgraph.flow.einfo{:from :hou, :to :t, :capacity 0, :flow 300, :dir :increment}}, 
+           :chi {:hou #spork.cljgraph.flow.einfo{:from :chi, :to :hou, :capacity 100, :flow 100, :dir :increment}, 
+                 :bos #spork.cljgraph.flow.einfo{:from :chi, :to :bos, :capacity 0, :flow 200, :dir :increment}}, 
+           :dc {:bos #spork.cljgraph.flow.einfo{:from :dc, :to :bos, :capacity 250, :flow 100, :dir :increment}, 
+                :hou #spork.cljgraph.flow.einfo{:from :dc, :to :hou, :capacity 80, :flow 200, :dir :decrement}}, 
+           :s {:dc #spork.cljgraph.flow.einfo{:from :s, :to :dc, :capacity 0, :flow 300, :dir :increment}, 
+               :chi #spork.cljgraph.flow.einfo{:from :s, :to :chi, :capacity 0, :flow 300, :dir :increment}}})
+      "Network should have expected flows." )
   (is (= (total-flow cost-net) 600)
       "There should be 600 units of flow")
   (is (= (total-cost cost-net (:active flow-results)) 3300)
       "Shipping costs 3300 units."))
 
-(def max-results (maxflow the-net :s :t))
-(def max-net (:net max-results))
+(def mutable-flow-results (mincost-flow! the-net :s :t))
+(def mutable-cost-net (:net mutable-flow-results))
+(def persisted-cost-net (persistent-network! mutable-cost-net))
+(def active-mutable-flows (:active mutable-flow-results))
 
-(deftest maxflow-test 
-  (is (= (total-flow max-net) (total-flow cost-net))
-      "Both maxflow and mincost networks produce the same flow."))
+(deftest mutable-mincostflow-test 
+  (is (= (into {} active-mutable-flows) (into {} (:active flow-results)))
+      "Network should have same expected flows on edges.")
+  (is (= persisted-cost-net cost-net)
+      "Resultant networks should be identical.")
+  (is (= (total-flow persisted-cost-net) 600)
+      "There should be 600 units of flow")
+  (is (= (total-cost persisted-cost-net (:active mutable-flow-results)) 3300)
+      "Shipping costs 3300 units."))
+  
+
+(deftest augmentation-test 
+  (is (= (:augmentations (augmentations the-net  :s :t)) 
+         (:augmentations (augmentations! the-net :s :t))
+         '[[280 (:s :dc :hou :t)] [20 (:s :dc :bos :t)] [200 (:s :chi :bos :t)] [20 (:s :chi :hou :t)] [80 (:s :chi :hou :dc :bos :t)]])
+      "Augmentations should be identical in both networks."))
+
+;(def max-results (maxflow the-net :s :t))
+;(def max-net (:net max-results))
+
+;(deftest maxflow-test 
+;  (is (= (total-flow max-net) (total-flow cost-net))
+;      "Both maxflow and mincost networks produce the same flow."))
 
 
 ;;old test in migration
