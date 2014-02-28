@@ -2,8 +2,11 @@
 ;;ordered quality, like event streams, data that has a notion of start and 
 ;;duration, etc. 
 (ns spork.util.temporal
-  (:require [spork.util [generators :as gen]]))
+  (:require [spork.util [generators :as gen]]
+            [spork.data [priorityq :as pq]]))
 
+;;Note -> sorted set was originally a problem here.  I have resulted
+;;to using a priority queue.
 (defn temporal-profile
   "Extracts an event-driven profile of the concurrent records over time from a 
    sequence of values, where start-func is a function that yields a start time 
@@ -15,21 +18,29 @@
         drop-demand (fn [t x] {:t t :type :drop :data x})
         resample    (fn [t]   {:t t :type :resampling :data nil})
         earliest    (fn [l r] (compare (:t l) (:t r)))
-        handle (fn [{:keys [t type data]} [es actives state]]
-                  (case type
-                    :resampling [es actives :changed]
-                    :add [(-> es 
-                            (conj (drop-demand (+ t (duration-func data)) data))
-                            (conj (resample t)))
-                          (conj actives data)
-                          :added]
-                    :drop [es (disj actives data) :dropped]))
-        initial-events (into (sorted-set-by earliest) 
-                             (map (fn [x] (add-demand (start-func x) x)) xs))]
-  (gen/unfold (fn [[es _ _]]  (empty? es))  ;halt when no more events.            
-              (fn [[es actives s]]                
-                (let [event               (first es)
-                      remaining-events    (disj es event)
+        handle (fn [e estate]
+                 (let [es      (first estate)
+                       actives (second estate) 
+                       state   (nth state 2)
+                       t       (:t e)
+                       data    (:data e)]
+                   (case (:type e)
+                     :resampling [es actives :changed]
+                     :add [(-> es 
+                               (conj (drop-demand (+ t (duration-func data)) data))
+                               (conj (resample t)))
+                           (conj actives data)
+                           :added]
+                     :drop [es (disj actives data) :dropped])))
+        initial-events (into pq/emptyq
+                             (map (fn [x] [(add-demand (start-func x) x) (start-func x)]) xs))]
+  (gen/unfold (fn [state]  (empty? (first state)))  ;halt when no more events.            
+              (fn [state]                
+                (let [es      (first state)
+                      actives (second state)
+                      s       (nth state 2)
+                      event               (peek es)
+                      remaining-events    (pop es)
                       current-time        (:t event)]
                   (handle event [remaining-events actives s]))) 
               [initial-events #{} :init])))
