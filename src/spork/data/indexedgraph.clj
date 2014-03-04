@@ -1,4 +1,9 @@
-(ns spork.cljgraph.arrayflow
+;;A graph data structure that maintains numerical indices 
+;;internally, so that all graph operations are performed 
+;;effeciently on primitives.  Graphs maintain a mapping 
+;;of indices to labels, and can be coerced to and from 
+;;indexed graphs.
+(ns spork.data.indexedgraph
   (:require [spork.cljgraph [core :as graph]
                             [flow :as flow]
                             [jungapi :as viz]]
@@ -6,17 +11,6 @@
             [spork.data      [searchstate :as searchstate]
                              [mutable :as m]]
             [spork.util      [array :as arr]]))
-
-;;we can cheat here and use a really small array as our flow
-;;network.  This should allow us cheap updates for dynamic arcs..
-;;The majority of our structure is actually a static array.
-;;The supply network is effectively static.
-;;Our network will have the same topological ordering of nodes.
-;;Nodes [0..k] will always be the same supply nodes.
-;;Node k + 1 will be the SRC node
-;;and node k + 2 will always be the fill node.
-;;Thus, we can define a dynamic graph and use mutation to get a huge
-;;speed boost.  Plus, neighbor searches should be friggin' fast.
 
 (def ^:const posinf Long/MAX_VALUE)
 (def ^:const neginf Long/MIN_VALUE)
@@ -362,4 +356,5 @@
          
 
       
+
 
