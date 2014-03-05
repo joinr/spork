@@ -18,21 +18,51 @@
 ;;Mutable, tabular data is vital for some graph algorithms I'm working
 ;;on, since we often do updates...
 
-
-
-;;An adjacency is a simple mapping of integer indices, or vertices, 
-;;to 
+;;An adjacency is a structure that supports adjacency queries on a 
+;;set of integers.  This is similar to Haskell's data.graph and other
+;;adjacency structures ala C, where we have a simplified numerical 
+;;index of nodes, or vertices, and supplemental information informing 
+;;their adjacency.  We use definterface to support primitive long 
+;;args, i.e. unboxed args.
 (definterface IAdjacency
   (^long   getSize      [])
   (setSize              [^long n])
   (^longs  getNodes     [])
-  (setAdjacent          [^long from ^long to])
+  (connect              [^long from ^long to])
+  (disconnect           [^long from ^long to])
   (^longs  getSources   [^long idx])
   (^longs  getSinks     [^long idx])
   (^long   getIntWeight [^long from ^long to])
-  (^double getWeight    [^long from ^long to]))  
+  (^double getWeight    [^long from ^long to])) 
 
-(defrecord adjacency [source
+  ;; IAdjacency
+  ;; (^long   getSize      [this])
+  ;; (setSize              [this ^long n])
+  ;; (^longs  getNodes     [this ])
+  ;; (connect              [this ^long from ^long to])
+  ;; (disconnect           [this ^long from ^long to])
+  ;; (^longs  getSources   [this ^long idx])
+  ;; (^longs  getSinks     [this ^long idx])
+  ;; (^long   getIntWeight [this ^long from ^long to])
+  ;; (^double getWeight    [this ^long from ^long to]))
+  
+
+;;Note -> we're not doing any math here...
+
+(defrecord avector [^clojure.lang.IPersistentVector sources
+                    ^clojure.lang.IPersistentVector sinks]
+  IAdjacency
+  (^long   getSize      [this] (.count sources))
+  (setSize              [this ^long n] (throw (Exception. "Operation not supported")))
+  (^longs  getNodes     [this ] (throw (Exception. "Operation not supported")))
+  (connect              [this ^long from ^long to] 
+    (let [res (.valAt sources from )] (.assoc sources from )
+  (disconnect           [this ^long from ^long to])
+  (^longs  getSources   [this ^long idx])
+  (^longs  getSinks     [this ^long idx])
+  (^long   getIntWeight [this ^long from ^long to])
+  (^double getWeight    [this ^long from ^long to]))
+  
 
 ;;Another option is to return a vector...
 ;;That satisfies the int mapping.
@@ -78,9 +108,31 @@
 ;;We can maintain backward-looking adjacencies using the same
 ;;structure, with inverted args as an optimization.
 
+;;An array-backed adjacency table.  Connectedness is determined by weight.
+(defrecord adjacency-array  [^objects weights]
+  IAdjacency
+  (^long   getSize      [this])
+  (setSize              [this ^long n])
+  (^longs  getNodes     [this ])
+  (connect              [this ^long from ^long to])
+  (disconnect           [this ^long from ^long to])
+  (^longs  getSources   [this ^long idx])
+  (^longs  getSinks     [this ^long idx])
+  (^long   getIntWeight [this ^long from ^long to])
+  (^double getWeight    [this ^long from ^long to]))
 
-;;An array-backed adjacency table.  We used a re
-(defrecord adjacency-array  [^objects costs])
+;;something we want to do for performance reasons is to cut down on
+;;the hashing we're relying on for hashmaps.
+
+;;One way to do this is to have an indexed graph representation.
+;;We also want to return vectors when we compute neighbors, since
+;;we can traverse them much faster than lazy sequences.
+
+;;So, we probably want to build a library of eager vector functions 
+;;that mirror the sequence lib.
+
+;;That would comport with the array lib from f#, serving roughly (not 
+;;exactly) the same purpose.
 
 ;;This is more dynamic.  We have numerical indices, and object costs.
 ;;Coded as a pair of adjacencies: 
