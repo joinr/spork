@@ -23,13 +23,61 @@
 ;;An adjacency is a simple mapping of integer indices, or vertices, 
 ;;to 
 (definterface IAdjacency
-  (^long getSize        [])
+  (^long   getSize      [])
   (setSize              [^long n])
-  (^longs getNodes      [])
+  (^longs  getNodes     [])
   (setAdjacent          [^long from ^long to])
-  (getNeighbors         [^long idx])
+  (^longs  getSources   [^long idx])
+  (^longs  getSinks     [^long idx])
   (^long   getIntWeight [^long from ^long to])
   (^double getWeight    [^long from ^long to]))  
+
+(defrecord adjacency [source
+
+;;Another option is to return a vector...
+;;That satisfies the int mapping.
+
+;;So a decent structure could be...
+;;adj-vectors 
+;;[0 [1 2]
+;; 1 [3] ] 
+
+;;adj-list 
+;;'(0 (1 2))
+;;'(1 (1 2))
+
+;;optionally, a weighted-adj-list 
+;;'(0 ((1 w01) (2 w02)))
+
+;;Or an adj-table 
+;;[[1 nil nil nil]
+;; [nil 1 nil nil]
+;; [nil nil 1 nil]
+;; [nil nil nil 1]]
+
+
+;;Or an adj-array
+;;[[1 nil nil nil]
+;; [nil 1 nil nil]
+;; [nil nil 1 nil]
+;; [nil nil nil 1]]
+
+;;or an edge list
+;;[[from to w]
+;; [from to w]
+;; [from to w]]
+
+
+;;Pair this with an 0(1) access structure, like a map.
+;;Or a vec.
+
+;;We just maintain two adjacencies...
+
+;;Really, all an adjacency needs to do is implement forward-looking
+;;adjacencies.
+;;We can maintain backward-looking adjacencies using the same
+;;structure, with inverted args as an optimization.
+
 
 ;;An array-backed adjacency table.  We used a re
 (defrecord adjacency-array  [^objects costs])

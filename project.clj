@@ -14,7 +14,7 @@
   :url "None Currently"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.6.0"]
+  :dependencies [[org.clojure/clojure "1.5.0"]
                  [org.clojure.contrib/standalone "1.3.0-alpha4"]
                  [net.sf.jung/jung-api "2.0.1"]
                  [net.sf.jung/jung-graph-impl "2.0.1"]
