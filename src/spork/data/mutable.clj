@@ -10,6 +10,37 @@
 (defn ^ArrayList array-list [xs] 
   (reduce (fn [^ArrayList acc x] (doto acc (.add x))) (make-array-list) xs))
 
+(defmacro hget [hint coll k]
+  `(.get ~(with-meta coll {:tag hint})  ~k))
+(defmacro hput [hint coll k v]
+  `(doto ~(with-meta coll {:tag hint})  (.put ~k ~v)))
+(defmacro hadd [hint coll v]
+  `(doto ~(with-meta coll {:tag hint}) (.add ~v)))
+
+(defprotocol IFastAccess
+  (fast-get [coll k])
+  (fast-put [coll k v])
+  (fast-add [coll v]))
+
+(extend-protocol IFastAccess 
+  ArrayList 
+  (fast-get [coll k]   (hget ArrayList coll k))
+  (fast-put [coll k v] (hadd ArrayList coll [k v]))
+  (fast-add [coll v]   (hadd ArrayList coll v))
+  HashMap 
+  (fast-get [coll k]   (hget HashMap coll k))
+  (fast-put [coll k v] (hput HashMap coll k v))
+  (fast-add [coll v]   (hput HashMap coll (first v) (second v))))
+
+(definline get-arraylist [l n]
+  `(.get ~(with-meta l {:tag 'java.util.ArrayList}) ~n))
+(definline push-arraylist [l x]
+  `(doto  ~(with-meta l {:tag 'java.util.ArrayList}) (.add ~n)))
+
+(definline jassoc [m k v]
+  `(doto ~(with-meta m {:tag 'java.util.HashMap})
+     (.put k v)))
+
 (defn ^ArrayDeque make-queue [] (ArrayDeque.))
 (defn ^ArrayDeque queue [xs] 
   (reduce (fn [^ArrayDeque acc x] (doto acc (.add x))) (make-queue) xs))
@@ -86,6 +117,19 @@
         ~fieldmap)
       clojure.lang.IDeref
       (~'deref [this#] ~fieldmap))))
+
+(deftype mutlist [^java.util.ArrayList m] 
+  clojure.lang.ITransientVector  
+  (assocN [this i val] (do (.add m i val) this))
+  (pop    [this]       (do (.remove m (unchecked-dec (.size m))) this))
+  (nth    [this k]     (.get m k))
+  (nth    [this k not-found] (or (.get m k) not-found))
+  (assoc  [this k v]   (do  (.add m k v) this))
+  (conj    [this v]    (do (.add m v) this))
+;  (without [this k]    (do (.remove m k) this))
+  (persistent [this]   (into [] m))
+  clojure.lang.IDeref
+  (deref [this] m))
 
 (deftype mutmap [^java.util.HashMap m] 
   clojure.lang.ITransientMap  

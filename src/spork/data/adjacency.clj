@@ -131,8 +131,12 @@
 ;;So, we probably want to build a library of eager vector functions 
 ;;that mirror the sequence lib.
 
-;;That would comport with the array lib from f#, serving roughly (not 
-;;exactly) the same purpose.
+;;That would comport with the array lib f
+
+;;If we maintain an indexed node set, as we add unique nodes, the
+;;nodes get indices.  The indexed set, at a minimum, caches
+;;information about the graph's connectedness for fast lookup.
+;;Upon insertion, we maintain a 
 
 ;;This is more dynamic.  We have numerical indices, and object costs.
 ;;Coded as a pair of adjacencies: 

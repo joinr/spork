@@ -283,18 +283,34 @@
 (defn conj-cap-arcs [g arcs]
   (reduce (fn [gr [from to w cap]]  (conj-cap-arc  gr from to w cap)) g arcs))
        
-(defn flow-neighbors 
-  ^java.util.ArrayList [g flow-info v]     
-   (let [^java.util.ArrayList acc (java.util.ArrayList.)]
-     (loop [xs (generic/-get-sinks g v)]
-       (if-let [to (first xs)]
-         (do (when (> (.capacity ^einfo (edge-info flow-info v to)) 0) (.add acc to))
-             (recur (rest xs)))))
-     (loop [xs (generic/-get-sources g v)]
-       (if-let [from (first xs)]
-         (do (when (> (.flow ^einfo (edge-info flow-info from v))   0)  (.add acc from))
-             (recur (rest xs)))))
-     acc))
+;; (defn flow-neighbors 
+;;   ^java.util.ArrayList [g flow-info v]     
+;;    (let [^java.util.ArrayList acc (java.util.ArrayList.)]     
+;;      (loop [xs (generic/-get-sinks g v)]
+;;        (if-let [to (first xs)]
+;;          (do (when (> (.capacity ^einfo (edge-info flow-info v to)) 0) (.add acc to))
+;;              (recur (rest xs)))))
+;;      (loop [xs (generic/-get-sources g v)]
+;;        (if-let [from (first xs)]
+;;          (do (when (> (.flow ^einfo (edge-info flow-info from v))   0)  (.add acc from))
+;;              (recur (rest xs)))))
+;;      acc))
+
+
+;;reduce is much faster.
+(defn ^java.util.ArrayList flow-neighbors 
+  [g flow-info v]     
+  (let [^java.util.ArrayList res]    
+    (do (reduce (fn [^java.util.ArrayList acc to]               
+                  (do (when  (> (.capacity ^einfo (edge-info flow-info v to)) 0) (.add acc to))
+                      acc))
+                res
+                (generic/-get-sinks g v))
+        (reduce (fn [^java.util.ArrayList acc from]
+                  (do (when (> (.flow ^einfo (edge-info flow-info from v))   0)  (.add acc from))
+                       acc))
+                res 
+                 (generic/-get-sources g v)))))
 
 ;;the flow-cost for g from to.  Forward arcs are positive cost.
 ;;Backward arcs are negative-cost.
@@ -310,6 +326,26 @@
                  (- (generic/-arc-weight g to from))))))
 
 ;;based off of traverse2e
+;; (defn flow-traverse
+;;   "Custom function to walk a flow network."
+;;   [g startnode targetnode startstate]
+;;   (loop [state   (-> (assoc! startstate :targetnode targetnode)
+;;                      (generic/conj-fringe startnode 0))]
+;;     (if-let [source    (generic/next-fringe state)] ;next node to visit
+;;       (let  [visited   (generic/visit-node state source)] ;record visit.
+;;         (if (= targetnode source) visited                     
+;;             (recur (let [^objects xs (to-array (flow-neighbors g g source))
+;;                          n (alength xs)]
+;;                      (loop [acc visited
+;;                             idx 0]
+;;                        (if (== idx n) acc                        
+;;                            (recur (generic/relax acc (flow-weight2 g source (aget xs idx)) source (aget xs idx))
+;;                                   (unchecked-inc idx))))))))
+;;       state)))
+
+
+
+;;based off of traverse2e
 (defn flow-traverse
   "Custom function to walk a flow network."
   [g startnode targetnode startstate]
@@ -318,12 +354,14 @@
     (if-let [source    (generic/next-fringe state)] ;next node to visit
       (let  [visited   (generic/visit-node state source)] ;record visit.
         (if (= targetnode source) visited                     
-            (recur (let [^objects xs (to-array (flow-neighbors g g source))
-                         n (alength xs)]
+            (recur (let [xs (flow-neighbors g g source)
+                         n (count xs)]
                      (loop [acc visited
                             idx 0]
                        (if (== idx n) acc                        
-                           (recur (generic/relax acc (flow-weight2 g source (aget xs idx)) source (aget xs idx))
+                           (recur (generic/relax acc (flow-weight2 g source 
+                                                        (m/get-arraylist xs idx)) source 
+                                                        (m/get-arraylist  xs idx))
                                   (unchecked-inc idx))))))))
       state)))
 

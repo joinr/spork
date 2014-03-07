@@ -1,7 +1,8 @@
 ;;A collection of digraph implementations.
 (ns spork.data.digraph
   (:require [spork.protocols.core :refer :all]
-            [spork.data [orderedmap :as om]]))
+            [spork.data [orderedmap :as om]]
+            [spork.util [eager :as eager]]))
 
 ;;The topograph Data Structure, and Implementation of ITopograph
 ;;==============================================================
@@ -46,8 +47,8 @@
   (-arc-weight  [tg source sink] (when-let [snks (get sinks source)]
                                   (get snks sink)))
   (-get-arc     [tg source sink] [source sink (get-in sinks [source sink])])
-  (-get-sources [tg k]   (keys (get sources k)))
-  (-get-sinks   [tg k]   (keys (get sinks   k))))
+  (-get-sources [tg k]   (eager/keys! (get sources k)))
+  (-get-sinks   [tg k]   (eager/keys! (get sinks   k))))
 
 (defrecord ordered-digraph [nodes sources sinks]
   ITopograph

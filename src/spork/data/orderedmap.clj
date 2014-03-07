@@ -9,7 +9,8 @@
 ;;hint that, but should profile to see if it matters.
 
 (ns spork.data.orderedmap
-  (:require [spork.protocols [core :as generic]]))
+  (:require [spork.protocols [core :as generic]]
+            [spork.util [eager :as eager]]))
 
 ;;This is an independent implementation of an ordered map type.  While the graph
 ;;backed topology is nice, one downside of using persistent maps is that 
@@ -30,7 +31,9 @@
 ;;I use a sorted-map, due to the need for ordered-maps to be able to change 
 ;;orderings effeciently.  A vector would be more efficient, but at the moment, 
 ;;the sorted map is doing the job.
-(deftype ordered-map [n basemap idx->key key->idx _meta]
+(deftype ordered-map [n ^clojure.lang.IPersistentMap basemap 
+                        ^clojure.lang.IPersistentMap idx->key 
+                        ^clojure.lang.IPersistentMap key->idx _meta]
   Object
   (toString [this] (str (.seq this)))
   generic/IOrderedMap
@@ -39,18 +42,18 @@
     (ordered-map. n basemap idx->k k->idx _meta))
   clojure.lang.ILookup
   ; valAt gives (get pm key) and (get pm key not-found) behavior
-  (valAt [this k] (get basemap k))
-  (valAt [this k not-found] (get basemap k not-found))  
+  (valAt [this k] (.valAt basemap k))
+  (valAt [this k not-found] (.valAt basemap k not-found))  
   clojure.lang.IPersistentMap
-  (count [this] (count basemap))
+  (count [this] (.count basemap))
   (assoc [this k v]     ;;revisit        
    (let [new-order (inc n)]
      (if (contains? basemap k) 
-       (ordered-map. n (assoc basemap k v) idx->key key->idx _meta)
+       (ordered-map. n (.assoc basemap k v) idx->key key->idx _meta)
        (ordered-map. new-order 
-                     (assoc basemap k v)
-                     (assoc idx->key n k)
-                     (assoc key->idx k n)
+                     (.assoc basemap k v)
+                     (.assoc idx->key n k)
+                     (.assoc key->idx k n)
                      _meta))))
   (empty [this] (ordered-map. 0 {} (sorted-map) {} {}))  
   ;cons defines conj behavior
@@ -66,26 +69,26 @@
       (when-not (identical? v this) ;might need to yank this guy.
         (generic/entry k v))))
   (seq [this] (if (empty? basemap) (seq {})
-                (map (fn [k] (generic/entry k (get basemap k))) 
-                     (vals idx->key))))  
+                (map (fn [k] (generic/entry k (.valAt basemap k))) 
+                     (eager/vals! idx->key))))  
   ;without implements (dissoc pm k) behavior
   (without [this k] 
     (if (not (contains? basemap k)) this
         (ordered-map. n
-                      (dissoc basemap k) 
-                      (dissoc idx->key (get key->idx k))
-                      (dissoc key->idx k)
+                      (.without basemap k) 
+                      (.without idx->key (.valAt key->idx k))
+                      (.without key->idx k)
                       _meta)))
     
   clojure.lang.Indexed
   (nth [this i] (if (and (>= i 0) 
-                         (< i (count basemap))) 
-                  (let [k (get idx->key i)]
-                    (generic/entry k (get basemap k)))
+                         (< i (.count basemap))) 
+                  (let [k (.valAt idx->key i)]
+                    (generic/entry k (.valAt basemap k)))
                   (throw (Exception. (str "Index out of range " i )))))
   (nth [this i not-found] 
-    (if (and (< i (count basemap)) (>= i 0))
-        (get basemap (get idx->key i))        
+    (if (and (< i (.count basemap)) (>= i 0))
+        (.valAt basemap (.valAt idx->key i))        
          not-found))  
   Iterable
   (iterator [this] (clojure.lang.SeqIterator. (seq this)))
@@ -102,22 +105,22 @@
       
   clojure.lang.Reversible
   (rseq [this]
-    (seq (map (fn [k] (clojure.lang.MapEntry. k (get basemap k))) 
-              (reverse (vals idx->key)))))
+    (seq (map (fn [k] (clojure.lang.MapEntry. k (.valAt basemap k))) 
+              (reverse (eager/vals! idx->key)))))
 
   java.io.Serializable ;Serialization comes for free with the other things implemented
   clojure.lang.MapEquivalence
   
   java.util.Map ;Makes this compatible with java's map
-  (size [this] (count basemap))
-  (isEmpty [this] (zero? (count basemap)))
-  (containsValue [this v] (some #{v} (vals (basemap this)) v))
+  (size [this] (.count basemap))
+  (isEmpty [this] (zero? (.count basemap)))
+  (containsValue [this v] (some #{v} (eager/vals! (basemap this)) v))
   (get [this k] (.valAt this k))
   (put [this k v] (throw (UnsupportedOperationException.)))
   (remove [this k] (throw (UnsupportedOperationException.)))
   (putAll [this m] (throw (UnsupportedOperationException.)))
   (clear [this] (throw (UnsupportedOperationException.)))
-  (keySet [this] (set (keys basemap))) ;;modify
+  (keySet [this] (set (eager/keys! basemap))) ;;modify
   (values [this] (map val (.seq this)))
   (entrySet [this] (set (.seq this))))
 
