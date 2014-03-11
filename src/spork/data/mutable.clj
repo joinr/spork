@@ -35,11 +35,11 @@
 (definline get-arraylist [l n]
   `(.get ~(with-meta l {:tag 'java.util.ArrayList}) ~n))
 (definline push-arraylist [l x]
-  `(doto  ~(with-meta l {:tag 'java.util.ArrayList}) (.add ~n)))
+  `(doto  ~(with-meta l {:tag 'java.util.ArrayList}) (.add ~x)))
 
 (definline jassoc [m k v]
   `(doto ~(with-meta m {:tag 'java.util.HashMap})
-     (.put k v)))
+     (.put ~k ~v)))
 
 (defn ^ArrayDeque make-queue [] (ArrayDeque.))
 (defn ^ArrayDeque queue [xs] 

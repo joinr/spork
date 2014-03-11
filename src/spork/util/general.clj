@@ -3,6 +3,16 @@
 (ns spork.util.general)
 
 
+(defmacro with-ns 
+  "Evaluate a form in another namespace.  Useful for repl jobs, to keep from 
+   swapping between namespaces."
+  [nsname & expr]
+  (let [current-ns (.name *ns*)]
+    `(do 
+       (ns ~nsname)
+       ~@expr
+       (ns ~current-ns))))
+
 ;helper functions....I need these somewhere else, since they're universal.
 
 
@@ -126,9 +136,21 @@
 (definline get2 [m from to default]
   `(get (get ~m ~from) ~to ~default))
 
+;;Looking at optimizing this to 
+;;allow us to avoid calculating default unless we
+;;have to.
+(defmacro get2* [m from to default-expr]
+  `(let [outer# (get ~m ~from)]
+     (if-let [inner#  (get outer# ~to)]
+       inner#
+       ~default-expr)))
+
 (defmacro hinted-get2 [hint m from to default]
-  `(let [m# (with-meta ~m {:tag hint})]
-     (.valAt (.valAt ~m ~from) ~to ~default)))
+  (let [outer-map (with-meta (gensym "outer") {:tag hint})
+        inner-map (with-meta (gensym "inner") {:tag hint})]
+    `(let [~outer-map ~m
+           ~inner-map (.valAt ~outer-map ~from)]       
+       (.valAt ~inner-map ~to ~default))))
 
 (definline assoc2 [m from to v]
   `(assoc ~m ~from (assoc (get ~m ~from {}) ~to ~v)))
@@ -137,13 +159,16 @@
   `(assoc! ~m ~from (assoc! (get ~m ~from {}) ~to ~v)))
 
 (definline transient2 [coll] 
-  `(reduce (fn [m# kv#] 
-             (assoc! m# (first kv#) (transient (second kv#))))
-           (transient ~coll) (seq ~coll)))
+  `(reduce-kv (fn [m# k# v#] 
+                (assoc! m#  k# (transient v#)))
+           (transient ~coll)  ~coll))
 
 (definline persistent2! [coll]  
   `(let [realized# (persistent! ~coll)]
-     (reduce (fn [m# kv#] 
-               (assoc m# (first kv#) (persistent! (second kv#))))
-             realized# (seq realized#))))
+     (reduce-kv (fn [m# k# v#] 
+               (assoc m# k# (persistent! v#)))
+             realized# realized#)))
 
+;;list-spectific optimizations.
+(definline cons-head [the-list] `(.first ~(vary-meta the-list assoc        :tag 'clojure.lang.Cons)))
+(definline cons-next [the-list] `(.first (.next ~(vary-meta the-list assoc :tag 'clojure.lang.Cons))))

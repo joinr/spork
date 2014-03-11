@@ -6,18 +6,14 @@
 (defn keys! 
   "Optimized replacement for clojure.core/keys"
   [^clojure.lang.IPersistentMap m]
-  (if (< (.count m) 10)
-      (keys m)
-      (reduce-kv (fn [^java.util.ArrayList acc k v] (doto acc (.add k)))
-                 (java.util.ArrayList.)
-                 m)))
+  (reduce-kv (fn [^java.util.ArrayList acc k v] (doto acc (.add k)))
+             (java.util.ArrayList.)
+             m))
 
 (defn vals! [^clojure.lang.IPersistentMap m]
-  (if (< (.count m) 10)
-    (vals m)
-    (reduce-kv (fn [^java.util.ArrayList acc k v] (doto acc (.add v)))
-               (java.util.ArrayList.)
-               m))) 
+  (reduce-kv (fn [^java.util.ArrayList acc k v] (doto acc (.add v)))
+             (java.util.ArrayList.)
+             m)) 
 
 (defn zipmap! [ks vs]
   (loop [acc (transient {})

@@ -19,9 +19,11 @@
   
 ;;These allows us to use complex keys in our spt.
 (definline ^ArrayList ->branch [^ArrayList x]  `(doto (ArrayList.) (.add ~x)))
-(definline branch? [x] `(= (type ~x) ~'java.util.ArrayList))
+(definline branch? [x] `(identical? (class ~x) ~'java.util.ArrayList))
 (defn ^ArrayList push-branch [^ArrayList b x]  (doto b (.add x)))
-  
+
+(defmacro get-field [hint obj field]  `(.valAt ~(vary-meta obj assoc :tag hint) ~field))
+
 ;;__TODO__ Use transient operations for updating the search state.
 ;; (defn update-search [state shortest distance fringe]
 ;;   (-> state
@@ -250,11 +252,13 @@
   (next-fringe [state]  (generic/next-fringe fringe))
   (pop-fringe  [state]  (do (set! fringe (generic/pop-fringe fringe)) state)))    
 
+;;This is the state we're currently using.
 (m/defmutable msearchstate2 
   [startnode targetnode  
    ^java.util.HashMap shortest 
    ^java.util.HashMap distance 
-   fringe estimator visited]
+   fringe estimator 
+   ^java.util.ArrayList visited]
   generic/IGraphSearch
   (new-path     [state source sink w]
     (do (.put shortest sink source)
@@ -280,7 +284,7 @@
            state))
   (best-known-distance   [state nd] (.get distance nd))
   (conj-visited [state source] 
-      (do (set! visited (conj visited source))
+      (do (.add visited source)
           state))
   generic/IClearable
   (-clear [state]  (do (doto shortest (.clear) (.put startnode startnode))
@@ -301,7 +305,7 @@
   (searchstate3. nil nil {} {} nil nil []))
 
 (defn ^msearchstate2 ->empty-mutable-search-state [] 
-  (msearchstate2. nil nil (HashMap. ) (HashMap. ) nil nil []))
+  (msearchstate2. nil nil (HashMap. ) (HashMap. ) nil nil (java.util.ArrayList.)))
 
 (defn init-search
   "Populates an empty search state with an initial set of parameters.  Allows
@@ -360,7 +364,7 @@
                    (doto (HashMap. ) (.put startnode 0))
                    fringe
                    nil
-                   []))
+                   (java.util.ArrayList.)))
         
 ;; (defn backtrack
 ;;   "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
@@ -485,11 +489,25 @@
     (when (generic/best-known-distance state targetnode)
       (loop [node   targetnode
              path   (cons targetnode nil)]
-        (if (= node startnode) path
+        (if (identical? node startnode) path
             (let [
                   prior   (get spt node)
                   newnode (if (branch? prior) (first prior) prior)]
                 (recur newnode (cons newnode path))))))))
+
+(defn  first-path! [state]  
+  (let [startnode  (get-field msearchstate2  state  :startnode)
+        targetnode (get-field msearchstate2  state  :targetnode)
+         ^java.util.HashMap spt        (get-field msearchstate2 state :shortest)]
+    (when (generic/best-known-distance state targetnode)
+      (loop [node   targetnode
+             path   (cons targetnode nil)]
+        (if (identical? node startnode) path
+            (let [prior   (.get spt node)
+                  newnode (if (branch? prior) (first prior) prior)]
+                (recur newnode (cons newnode path))))))))
+
+
 
 ;;A mutable empty depth-first search...
 (def mempty-DFS  (fn [startnode] (minit-search startnode :fringe fr/depth-fringe)))
@@ -512,7 +530,7 @@
                     (doto (HashMap. ) (.put ~startnode 0))
                     (fr/make-pq)
                     nil
-                    []))
+                    (java.util.ArrayList.)))
 
 ;;A mutable empty depth-first search, using hashmaps...
 (def mempty-DFS2  (fn [startnode] (minit-search2 startnode :fringe fr/depth-fringe)))

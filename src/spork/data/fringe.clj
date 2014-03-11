@@ -61,9 +61,9 @@
   (next-fringe [fringe]     (peek fringe))
   (pop-fringe  [fringe]     (pop fringe))
   java.util.PriorityQueue
-  (conj-fringe [fringe n w] (add-pq fringe (generic/entry w n)))
+  (conj-fringe [fringe n w] (doto fringe (.add (generic/entry w n))))
   (next-fringe [fringe]     (when-let [^clojure.lang.MapEntry e (.peek ^PriorityQueue fringe)] (.val e)))
-  (pop-fringe  [fringe]     (pop-pq fringe)))
+  (pop-fringe  [fringe]     (doto fringe (.poll))))
 
 (extend-protocol generic/IClearable
   nil 
