@@ -325,6 +325,14 @@
   (-> empty-network 
     (conj-cap-arcs net-data)))
 
+(comment
+(defn augmented [n]
+  (reduce (fn [g p] (augment-flow! g p)) 
+          (transient-network the-net)
+          (take n '((:s :dc :hou :t) (:s :dc :bos :t) (:s :chi :bos :t) (:s :chi :hou :t) (:s :chi :hou :dc :bos :t)))))
+          
+)
+
 (def flow-results (mincost-flow the-net :s :t))
 (def cost-net (:net flow-results))
 (def actives (:active flow-results))
