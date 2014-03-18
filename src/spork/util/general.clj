@@ -152,11 +152,16 @@
            ~inner-map (.valAt ~outer-map ~from)]       
        (.valAt ~inner-map ~to ~default))))
 
+(defmacro get-else [m k else-expr]
+  `(if-let [res# (get ~m ~k)]
+     res#
+     ~else-expr))
+
 (definline assoc2 [m from to v]
   `(assoc ~m ~from (assoc (get ~m ~from {}) ~to ~v)))
 
 (definline assoc2! [m from to v]
-  `(assoc! ~m ~from (assoc! (get ~m ~from {}) ~to ~v)))
+  `(assoc! ~m ~from (assoc! (get-else ~m ~from (transient {})) ~to ~v)))
 
 (definline transient2 [coll] 
   `(reduce-kv (fn [m# k# v#] 
@@ -168,6 +173,62 @@
      (reduce-kv (fn [m# k# v#] 
                (assoc m# k# (persistent! v#)))
              realized# realized#)))
+
+;;It might be nice to pull this out into a protocol at some point...
+;;There are other things, which are functors, that can be folded or 
+;;reduced.
+
+
+;;maps over a 2-deep nested collection, ala reduce, using a 
+;;function taking 3 arguments : k1 k2 v, the first key, the second
+;;key,  and the value associated with [k1 k2] in the structure.
+;;Uses internal reduce, so it should be much, much faster than
+;;clojure's default map function.
+(definline kv-map2 [f coll]  
+  `(persistent! 
+    (reduce-kv 
+     (fn [outer# k1# m2#] 
+       (assoc! outer# k1# 
+               (persistent! (reduce-kv (fn [inner# k2# v#] 
+                                         (assoc! inner# k2# (~f k1# k2# v#)))
+                                       (transient {})
+                                       m2#))))
+     (transient {})
+     ~coll)))
+
+;;reduces over a 2-deep nested collection, ala reduce, using a 
+;;function taking 4 arguments : acc k1 k2 v, the accumulator, 
+;;the first key, the second key, and the value associated with [k1 k2] 
+;;in the structure.  Uses internal reduce, so it should be much much 
+;;faster than clojure's default reduce function.
+(definline kv-reduce2 [f init coll]  
+  `(reduce-kv 
+    (fn [acc# k1# m2#]       
+      (reduce-kv (fn [inner# k2# v#] 
+                   (~f inner# k1# k2# v#))
+                 acc#
+                 m2#))
+    ~init
+    ~coll))
+
+(definline kv-filter2 [f coll]
+  `(persistent! 
+    (kv-reduce2 (fn [acc# l# r# v#] (if (~f l# r# v#) (assoc2! acc# l# r# v#) acc#))
+                (transient {}) ~coll)))
+
+(definline kv-flatten2 [coll]
+  `(persistent! 
+    (kv-reduce2 (fn [acc# l# r# v#]  (conj! acc# (clojure.lang.MapEntry. (clojure.lang.MapEntry. l# r#) v#)))
+                (transient []) ~coll)))
+
+(definline kv2 [coll]
+  `(loop [xs# ~coll
+          acc# (transient {})]
+     (if (empty? xs#) (persistent2! acc#)                                                    
+         (let [lrv#  (first xs#)
+               lr#   (first lrv#)]
+           (recur (rest xs#) 
+                  (assoc2! acc# (first lr#) (second lr#) (second lrv#)))))))
 
 ;;list-spectific optimizations.
 (definline cons-head [the-list] `(.first ~(vary-meta the-list assoc        :tag 'clojure.lang.Cons)))
