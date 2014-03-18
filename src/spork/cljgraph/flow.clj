@@ -25,23 +25,41 @@
 
 (def empty-network (assoc graph/empty-graph :flow-info {}))
 
-(defprotocol IFlowNet 
+;;Abstract container for networks.
+(defprotocol IFlowNet
   (-edge-info      [net from to])
-  (einfos     [net]))
+  (einfos          [net])
+  (-get-direction  [net from to]))
 
-(defprotocol IFlowContainer
-  (-set-flow     [net from to flow])
-  (-set-capacity [net from to cap])
-  (-inc-flow     [net from to amt]))
+;;abstract container for capacitated arcs.
+(defprotocol IEdgeInfo
+  (-set-flow      [net from to flow])
+  (-set-capacity  [net from to cap])
+  (-inc-flow      [net from to amt])
+  (-get-flow      [net from to])
+  (-get-capacity  [net from to]))
 
 ;;We define a persistent record to capture capacitated flow
 ;;information across edges.
 (defrecord einfo [from to capacity flow dir]
-  IFlowContainer
+  IEdgeInfo
   (-set-flow     [net from to new-flow] (einfo. from to capacity new-flow dir))
   (-set-capacity [net from to cap] (einfo. from to cap flow dir))
   (-inc-flow     [net from to amt]
-    (einfo.  from to  (- capacity amt)  (+ flow amt) dir)))
+    (einfo.  from to  (- capacity amt)  (+ flow amt) dir))
+  (-get-flow     [net from to] flow)
+  (-get-capacity [net from to] capacity))
+
+;;A mutable edge list.  For mutable stuff.  Mutation.  Mutants.
+;;This ought to be good for small graphs.
+(m/defmutable meinfo [from to capacity flow dir]
+  IEdgeInfo
+  (-set-flow     [net from to new-flow] (do (set! flow new-flow) net))
+  (-set-capacity [net from to cap]      (do (set! capacity cap)  net))
+  (-inc-flow     [net from to amt]      (do (set! capacity (- capacity amt))
+                                            (set! flow     (+ flow amt))))
+  (-get-flow     [net from to] flow)
+  (-get-capacity [net from to] capacity))
 
 (declare get-edge-infos! edge-info ->edge-info2) 
 
@@ -54,28 +72,30 @@
   ;adds metadata support
   (meta [this] metadata)
   (withMeta [this m] (do (set! metadata m) this))
-  IFlowContainer
+  IEdgeInfo
   (-set-flow     [net from to flow]
         (do (set! flow-info
                   (assoc2! flow-info from to 
-                           (.-set-flow ^spork.cljgraph.flow.IFlowContainer 
+                           (.-set-flow ^spork.cljgraph.flow.IEdgeInfo 
                               (.-edge-info net from to) from to flow)))
             net))                 
   (-set-capacity [net from to cap] 
          (do (set! flow-info
                    (assoc2! flow-info from to 
-                            (.-set-capacity  ^spork.cljgraph.flow.IFlowContainer 
+                            (.-set-capacity  ^spork.cljgraph.flow.IEdgeInfo 
                                (.-edge-info net from to)from to cap)))
              net))                 
   (-inc-flow     [net from to amt] 
          (do (set! flow-info
                    (assoc2! flow-info from to 
-                            (.-inc-flow ^spork.cljgraph.flow.IFlowContainer  
+                            (.-inc-flow ^spork.cljgraph.flow.IEdgeInfo  
                                (.-edge-info net from to) from to amt)))
              net))
+  (-get-flow [net from to]     (.-get-flow     (.-edge-info net from to)))
+  (-get-capacity [net from to] (.-get-capacity (.-edge-info net from to)))
   IFlowNet
   (-edge-info      [net from to] 
-         (if-let [^einfo res (get2 flow-info from to nil)]
+         (if-let [^einfo  res (get2 flow-info from to nil)]
            res
            (->edge-info2 from to)))
   (einfos [net] (get-edge-infos! net)))
