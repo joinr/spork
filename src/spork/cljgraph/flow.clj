@@ -31,6 +31,11 @@
   (einfos          [net])
   (-get-direction  [net from to]))
 
+(defprotocol IDynamicFlow
+;  (-conj-cap-arc   [net from to w cap])
+;  (-disj-cap-arc   [net from to])
+  (-active-flows   [net]))
+
 ;;abstract container for capacitated arcs.
 (defprotocol IEdgeInfo
   (-set-flow      [net from to flow])
@@ -38,6 +43,11 @@
   (-inc-flow      [net from to amt])
   (-get-flow      [net from to])
   (-get-capacity  [net from to]))
+
+(defprotocol IDirected
+  (-get-from      [d])
+  (-get-to        [d])
+  (-directed-pair [d]))
 
 ;;We define a persistent record to capture capacitated flow
 ;;information across edges.
@@ -59,9 +69,13 @@
   (-inc-flow     [net from to amt]      (do (set! capacity (- capacity amt))
                                             (set! flow     (+ flow amt))))
   (-get-flow     [net from to] flow)
-  (-get-capacity [net from to] capacity))
+  (-get-capacity [net from to] capacity)
+  IDirected
+  (-get-from      [d] from)
+  (-get-to        [d] to)
+  (-directed-pair [d] (clojure.lang.MapEntry. from to)))
 
-(declare get-edge-infos! edge-info ->edge-info2) 
+(declare get-edge-infos! edge-info ->edge-info2 ->medge-info2) 
 
 ;;Due to the overhead associated with modifying networks, 
 ;;we end up desiring mutation for efficiency.  A transient 
@@ -100,11 +114,55 @@
            (->edge-info2 from to)))
   (einfos [net] (get-edge-infos! net)))
 
+;;A transient network that uses mutable edges.
+;;This will knock off costs to assoc.  We just 
+;;read the data and mutate the edge.  If this is much 
+;;faster, it will become the default.
+(m/defmutable transient-net2 [g flow-info metadata]
+  clojure.lang.IObj
+  ;adds metadata support
+  (meta [this] metadata)
+  (withMeta [this m] (do (set! metadata m) this))
+  IEdgeInfo
+  (-set-flow     [net from to flow]
+      (do (.-set-flow ^meinfo (.-edge-info flow-info from to) from to flow)
+          net))                 
+  (-set-capacity [net from to cap] 
+      (do (.-set-capacity ^meinfo (.-edge-info flow-info from to) from to cap)
+          net))                 
+  (-inc-flow     [net from to amt] 
+      (do (.-inc-flow ^meinfo (.-edge-info flow-info from to) from to amt)
+          net))
+  (-get-flow [net from to]     (.-get-flow     (.-edge-info net from to)))
+  (-get-capacity [net from to] (.-get-capacity (.-edge-info net from to)))
+  IFlowNet
+  (-edge-info    [net from to] 
+      (if-let [^meinfo  res (get2 flow-info from to nil)]
+        res
+        (->medge-info2 from to)))
+  (einfos [net] (get-edge-infos! net))
+  IDynamicFlow
+  (-active-flows [net] 
+    (let [^java.util.ArrayList xs  (get-edge-infos! net)
+          n (count xs)]    
+      (loop [idx 0
+             acc '()]
+        (if (== idx n) acc
+            (let [^meinfo info (m/get-arraylist xs idx)
+                  ^long f (.-get-flow info)]
+              (recur (unchecked-inc idx)
+                     (if (pos? f)
+                       (cons (clojure.lang.MapEntry. (.-directed-pair info)  f) acc)
+                       acc))))))))
+
 ;;We can create transient networks from existing networks to 
 ;;speed up ex. mincost flow computations, or even a series of 
 ;;mincost flows sharing the same transient.
 (defn ^transient-net transient-network [g]
   (transient-net.  g (transient2 (:flow-info g)) {:flow-info (:flow-info g)}))
+
+(defn ^transient-net2 transient-network2 [g]
+  (transient-net2.  g (transient2 (:flow-info g)) {:flow-info (:flow-info g)}))
 
 ;;As with clojure transients, we define a function to realize the 
 ;;transient state as a persistent network.
@@ -113,10 +171,6 @@
     (assoc g
            :flow-info (persistent2! (:flow-info the-net)))))
 
-;;Another option, to avoid assoc costs, is to make this guy into a
-;;transient.
-
-;(m/defmutable meinfo [from to capacity flow dir])
 
 ;;Inline functions for constructing edges.  We adopt the convention 
 ;;of delineating the arity of these functions in the numerical suffix.
@@ -128,6 +182,14 @@
 (definline ->edge-info4 
   [from to capacity flow]
   `(einfo. ~from ~to ~capacity ~flow :increment))
+
+;;Constructors for mutable edges.
+(definline ->medge-info2 
+  [from to]
+  `(meinfo. ~from  ~to posinf 0 :increment))
+(definline ->medge-info4 
+  [from to capacity flow]
+  `(meinfo. ~from ~to ~capacity ~flow :increment))
 
 ;;A generic function to fetch existing edge information from a
 ;;network, or to create a new, uncapacitated edge.
