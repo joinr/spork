@@ -211,16 +211,21 @@
     ~init
     ~coll))
 
+
+;;Filters over a 2-deep nested collection, ala reduce, using a
+;;function taking 3 arguments: l r v.
 (definline kv-filter2 [f coll]
   `(persistent! 
     (kv-reduce2 (fn [acc# l# r# v#] (if (~f l# r# v#) (assoc2! acc# l# r# v#) acc#))
                 (transient {}) ~coll)))
 
+;;Flattens a nested 2d collection into a vector of [[k1 k2] v] map entries.
 (definline kv-flatten2 [coll]
   `(persistent! 
     (kv-reduce2 (fn [acc# l# r# v#]  (conj! acc# (clojure.lang.MapEntry. (clojure.lang.MapEntry. l# r#) v#)))
                 (transient []) ~coll)))
 
+;;Convertes a collection of [[k1 k2] v] entries into a nested map.
 (definline kv2 [coll]
   `(loop [xs# ~coll
           acc# (transient {})]
