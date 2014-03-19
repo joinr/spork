@@ -21,7 +21,8 @@
   (-edge-info      [net from to])
   (einfos          [net])
   (-get-direction  [net from to])
-  (-flow-weight    [net from to]))
+  (-flow-weight    [net from to])
+  (-set-edge       [net edge]))
 
 (defprotocol IDynamicFlow
   (-conj-cap-arc   [net from to w cap])
@@ -36,6 +37,16 @@
   (-inc-flow      [net from to amt])
   (-get-flow      [net from to])
   (-get-capacity  [net from to]))
+
+;;protocol for performing updates based on 
+;;compound edge datastructures, rather than 
+;;from to pairs.  This is more efficicent 
+;;for augmenting flows.
+
+
+;  (-set-edge-flow      [net edge flow])
+;  (-set-edge-capacity  [net edge cap])
+)
 
 (defprotocol IDirected
   (-get-from      [d])
@@ -238,7 +249,7 @@
          (do (set! flow-info
                    (assoc2! flow-info from to 
                             (.-set-capacity  ^spork.cljgraph.flow.IEdgeInfo 
-                               (.-edge-info net from to)from to cap)))
+                               (.-edge-info net from to) from to cap)))
              net))                 
   (-inc-flow     [net from to amt] 
          (do (set! flow-info
@@ -247,7 +258,7 @@
                                (.-edge-info net from to) from to amt)))
              net))
   (-get-flow [net from to]     (.-get-flow     (.-edge-info net from to)))
-  (-get-capacity [net from to] (.-get-capacity (.-edge-info net from to)))
+  (-get-capacity [net from to] (.-get-capacity (.-edge-info net from to)))              
   IFlowNet
   (-edge-info      [net from to] 
          (if-let [^einfo  res (get2 flow-info from to nil)]
@@ -256,7 +267,15 @@
   (einfos [net] (get-edge-infos! net))
   (-get-direction [net from to]  (forward? g from to))
   (-flow-weight    [net from to] (if (forward? g from to) (generic/-arc-weight g from to)
-                                                         (- (generic/-arc-weight g from to)))))
+                                                         (- (generic/-arc-weight g from to))))
+  (-set-edge [net edge]         
+             (let [^spork.cljgraph.flow.IEdgeInfo e edge
+                   from (.-get-from e)
+                   to   (.-get-to e)]
+               (do (set! flow-info
+                         (assoc2! flow-info from to 
+                                  edge from to flow)))
+               net)))
 
 ;;A transient network that uses mutable edges.
 ;;This will knock off costs to assoc.  We just 
@@ -295,7 +314,13 @@
   (-get-direction [net from to] (forward? g from to))
   (-flow-weight   [net from to] (if (forward? g from to) (generic/-arc-weight g from to)
                                      (- (generic/-arc-weight g from to))))
-  IDynamicFlow
+  (-set-edge [net edge]         
+     (let [^spork.cljgraph.flow.IEdgeInfo e edge
+           from (.-get-from e)
+           to   (.-get-to e)]
+       (do (assoc2! flow-info from to edge)
+           net))) 
+  IDynamicFlow 
   (-conj-cap-arc [net from to w cap]                 
          (do (set! g  (graph/conj-arc g from to w))
              (set! flow-info
@@ -316,6 +341,13 @@
                          (cons (clojure.lang.MapEntry. (.-directed-pair info)  f) acc)
                          acc))))))))
 
+  ;; (-inc-edge-flow      [net edge amt]                        
+  ;;    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
+  ;;      (.-set-edge net (.-inc-flow e nil nil  amt))))
+  ;; (-inc-edge-capacity  [net edge amt] 
+  ;;    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
+  ;;      (.-set-edge net (.-inc-capacity e nil nil amt))))
+
 ;;our persistent network is actually a digraph.  Since our digraph is
 ;;implemented as a record, we can store information in it like a map.
 ;;Our flow information happens to live in this map.  Note, this has
@@ -334,6 +366,12 @@
   (-flow-weight   [net from to]      (if (forward? g from to) 
                                        (generic/-arc-weight g from to)
                                        (- (generic/-arc-weight g from to))))
+  (-set-edge      [net edge]         
+    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
+      (assoc net :flow-info                  
+             (assoc2 (get net :flow-info {})
+                     (.-get-from e) (.-get-to e) 
+                     edge))))
   IDynamicFlow
   (-conj-cap-arc [net from to w cap]  (conj-cap-arc net from to w cap))
   (-active-flows [net]                (active-flows net)))  
@@ -369,6 +407,13 @@
   (let [g (:g the-net)]
     (assoc g
            :flow-info (persistent2! (:flow-info the-net)))))
+
+;;build on top of a protocol function here to unify 
+;;the inc-flow arities, there's a case where we pass in 
+;;an edge info.
+(definline -inc-edge-flow [g info flow]  
+  `(.-inc-flow g (.-get-from info) (.-get-to info) flow))
+
 
 ;;Possible bottleneck here.
 ;optimized
@@ -620,15 +665,13 @@
 
 
 
-
-
 ;;Eliminate reduce.
 ;;apply an amount of flow along the path, dropping any nodes that 
 ;;become incapacitated.
 (defn apply-flow [g edges flow]
   (generic/loop-reduce 
       (fn [gr info]
-        (if (= :increment (:dir info))
+        (if (identical? :increment (:dir info))
           (inc-flow gr info flow)
           (dec-flow gr info flow)))
       g edges))
