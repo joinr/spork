@@ -8,10 +8,9 @@
             [spork.data [searchstate :as searchstate]
                         [mutable :as m]]
             [spork.protocols [core :as generic]]
-            [spork.util.general :refer [assoc2 assoc2! get2 transient2 persistent2! hinted-get2]]))
+            [spork.util.general :refer [assoc2 assoc2! get2 transient2 persistent2! hinted-get2 kv-reduce2]]))
 
 (def ^:const posinf Long/MAX_VALUE)
-
 
 ;;Network Protocols
 ;;=================
@@ -105,6 +104,12 @@
   [from to capacity flow]
   `(meinfo. ~from ~to ~capacity ~flow :increment))
 
+(defn ^meinfo edge->medge [^einfo edge]
+  (meinfo. (.-get-from edge) (.-get-to edge) (.-get-capacity edge) (.-get-flow edge)))
+
+(defn ^einfo medge->edge [^meinfo edge]
+  (einfo. (.-get-from edge) (.-get-to edge) (.-get-capacity edge) (.-get-flow edge)))
+
 ;;Shared inline definitions for network topology.
 
 ;;This is currently a bit slow due to some overhead.
@@ -167,15 +172,14 @@
        (einfo. ~from ~to ~cap ~flow :increment))))
 
 (defmacro alter-edge [sym g from to & expr]
-  `(let [~sym (edge-info ~g ~from ~to)]
+  `(let [~(vary-meta sym assoc :tag 'spork.cljgraph.IEdgeInfo) (edge-info ~g ~from ~to)]
      (assoc ~g :flow-info
             (assoc2 (get ~g :flow-info {})
                     ~from ~to 
                     ~@expr))))    
-
 ;;transient op 
 (defmacro alter-edge! [sym g from to & expr]
-  `(let [~sym (edge-info ~g ~from ~to)]
+  `(let [~(vary-meta sym assoc :tag 'spork.cljgraph.IEdgeInfo) (edge-info ~g ~from ~to)]
      (assoc! ~g :flow-info
             (assoc2! (get ~g :flow-info {})
                     ~from ~to 
@@ -185,29 +189,32 @@
   ([^einfo info] (- (.capacity info) (.flow info)))
   ([g from to] (current-capacity (edge-info g from to))))
 
-(defn set-capacity [g from to cap] 
-  (alter-edge the-edge g from to 
-    (assoc the-edge :capacity cap)))
 
-(defn set-flow [g from to flow]    
-  (alter-edge the-edge g from to 
-     (assoc the-edge :flow flow)))
 
-;;transient ops
-(defn set-capacity! [g from to cap] 
-  (alter-edge! the-edge g from to 
-    (assoc the-edge :capacity cap)))
+;;build on top of a protocol function here to unify 
+;;the inc-flow arities, there's a case where we pass in 
+;;an edge info.
 
-(defn set-flow! [g from to flow]    
-  (alter-edge! the-edge g from to 
-     (assoc the-edge :flow flow)))
+;;Macros to help with edge updates, relying on protocols.
+;;Type hints everything for us.
+(defmacro update-edge [net info edge-sym & expr]
+  `(let [~(vary-meta edge-sym assoc :tag 'spork.cljgraph.flow.IEdgeInfo) ~info]
+     (.-set-edge ~(vary-meta net assoc :tag 'spork.cljgraph.flow.IFlowNet)
+                 ~@expr)))               
 
-;add a capacitated arc to the graph
-(defn conj-cap-arc [g from to w cap]
-  (let [finfo (:flow-info g)]
-    (-> (graph/conj-arc g from to w)
-        (assoc :flow-info finfo)
-        (update-edge2* from to cap 0))))
+(definline -inc-edge-flow [net info amt]
+  `(update-edge ~net ~info the-edge# 
+     (.-inc-flow the-edge# nil nil ~amt)))
+ 
+(definline -dec-edge-flow [net info amt]
+  `(-inc-edge-flow ~net ~info (- ~amt)))
+               
+(definline -inc-edge-capacity [net info amt]
+  `(update-edge ~net ~info the-edge# 
+     (.-inc-capacity the-edge# nil nil ~amt)))
+
+(definline -dec-edge-capacity [net info amt]
+  `(-inc-edge-capacity ~net ~info (- ~amt)))
 
 ;;Probable hotspot in at least one use case.  We add arcs to the
 ;;network repeatedly...calls to merge and reduce and destructuring 
@@ -215,7 +222,7 @@
 
 ;;add multiple capacitated arcs to the network.
 (defn conj-cap-arcs [g arcs]
-  (reduce (fn [gr [from to w cap]]  (conj-cap-arc  gr from to w cap)) g arcs))
+  (reduce (fn [gr [from to w cap]]  (-conj-cap-arc  gr from to w cap)) g arcs))
 
 
 ;;Needed forward declarations.
@@ -341,31 +348,32 @@
                          (cons (clojure.lang.MapEntry. (.-directed-pair info)  f) acc)
                          acc))))))))
 
-  ;; (-inc-edge-flow      [net edge amt]                        
-  ;;    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
-  ;;      (.-set-edge net (.-inc-flow e nil nil  amt))))
-  ;; (-inc-edge-capacity  [net edge amt] 
-  ;;    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
-  ;;      (.-set-edge net (.-inc-capacity e nil nil amt))))
-
 ;;our persistent network is actually a digraph.  Since our digraph is
 ;;implemented as a record, we can store information in it like a map.
 ;;Our flow information happens to live in this map.  Note, this has
 ;;performance implications.
 (extend-type spork.data.digraph
   IEdgeInfo
-  (-set-flow      [net from to flow] (set-flow     net from to flow))
-  (-set-capacity  [net from to cap]  (set-capacity net from to cap))
-  (-inc-flow      [net from to amt]  (inc-flow     net from to amt))
-  (-get-flow      [net from to]          (get-flow net from to))
-  (-get-capacity  [net from to]      (get-capacity net from to))
+  (-set-flow      [net from to flow] 
+    (let [^einfo e (.-edge-info net from to)]
+      (.-set-edge net e (.-set-flow e nil nil flow))))
+  (-set-capacity  [net from to cap]  
+    (let [^einfo e (.-edge-info net from to)]
+      (.-set-edge net e (.-set-capacity e nil nil cap))))
+  (-inc-flow      [net from to flow]  
+     (-update-edge net from to the-edge 
+                   (.-inc-flow the-edge nil nil flow)))
+  (-get-flow      [net from to]   
+    (.-get-flow   ^spork.cljgraph.flow.IEdgeInfo (.-edge-info net from to)))
+  (-get-capacity  [net from to]   
+    (.-get-capacity ^spork.cljgraph.flow.IEdgeInfo (.-edge-info net from to)))
   IFlowNet
-  (-edge-info     [net from to]      (edge-info net from to))
-  (einfos         [n]                (get-edge-infos n))
-  (-get-direction [net from to]      (forward? g from to))
-  (-flow-weight   [net from to]      (if (forward? g from to) 
-                                       (generic/-arc-weight g from to)
-                                       (- (generic/-arc-weight g from to))))
+  (-edge-info     [net from to]   (edge-info net from to))
+  (einfos         [n]             (get-edge-infos n))
+  (-get-direction [net from to]   (forward? g from to))
+  (-flow-weight   [net from to]   (if (forward? g from to) 
+                                    (generic/-arc-weight g from to)
+                                    (- (generic/-arc-weight g from to))))
   (-set-edge      [net edge]         
     (let [^spork.cljgraph.flow.IEdgeInfo e edge]
       (assoc net :flow-info                  
@@ -373,8 +381,20 @@
                      (.-get-from e) (.-get-to e) 
                      edge))))
   IDynamicFlow
-  (-conj-cap-arc [net from to w cap]  (conj-cap-arc net from to w cap))
-  (-active-flows [net]                (active-flows net)))  
+  (-conj-cap-arc [net from to w cap]  
+         (let [finfo (:flow-info net)]
+           (-> (graph/conj-arc net from to w)
+               (assoc :flow-info finfo)
+               (update-edge2* from to cap 0))))
+  (-active-flows [net]  (generic/loop-reduce 
+                         (fn [acc ^einfo info] 
+                           (let [^long f (.flow info)]
+                             (if (> f 0)
+                               (cons  [[(.from info) (.to info)]  (.flow info)] acc) 
+                               acc))) 
+                         '()
+                         (get-edge-infos net))))  
+
 
 
 ;;Constructors for various networks.
@@ -394,12 +414,19 @@
 ;;speed up ex. mincost flow computations, or even a series of 
 ;;mincost flows sharing the same transient.
 (defn ^transient-net transient-network [g]
-  (transient-net.  g (transient2 (:flow-info g)) {:flow-info (:flow-info g)}))
+  (transient-net.  g  (transient2 (:flow-info g)) {:flow-info (:flow-info g)}))
 
 ;;We actually need to push each of these guys into a mutable edge.
+;;Basically, for each edge in the stored flow-info, which is a kv2, 
+;;we can get the the flow-info into a flat sequence via kv2-flatten.
 
 (defn ^transient-net2 transient-network2 [g]
-  (transient-net2.  g (transient2 (:flow-info g)) {:flow-info (:flow-info g)}))
+  (let [flow-info!   (kv-reduce2 
+                        (fn [acc from to ^einfo v] 
+                          (assoc2! acc from to v))
+                        (transient {})
+                        (:flow-info g))]        
+  (transient-net2.  g  flow-info! {:flow-info (:flow-info g)}))
 
 ;;As with clojure transients, we define a function to realize the 
 ;;transient state as a persistent network.
@@ -408,70 +435,9 @@
     (assoc g
            :flow-info (persistent2! (:flow-info the-net)))))
 
-;;build on top of a protocol function here to unify 
-;;the inc-flow arities, there's a case where we pass in 
-;;an edge info.
-(definline -inc-edge-flow [g info flow]  
-  `(.-inc-flow g (.-get-from info) (.-get-to info) flow))
-
-
-;;Possible bottleneck here.
-;optimized
-(defn inc-flow 
-  ([g ^einfo info flow]     
-     (assoc g :flow-info
-            (assoc2 (:flow-info g) (:from info) (:to info)  
-                    (-> info 
-                        (.assoc :capacity (- (.capacity info) flow))
-                        (.assoc :flow (+ (.flow info) flow))))))
-  ([g from to flow] 
-     (alter-edge the-edge g from to 
-         (let [^einfo the-edge the-edge]
-           (-> the-edge 
-               (.assoc :capacity (- (.capacity the-edge) flow))
-               (.assoc :flow     (+ (.flow the-edge) flow)))))))
-
-(defn inc-flow! 
-  ([^transient-net g ^einfo info flow]     
-     (assoc! g :flow-info
-            (assoc2! (:flow-info g) (.from info) (.to info)  
-                     (-> info 
-                         (.assoc :capacity (- (.capacity info) flow))
-                         (.assoc :flow     (+ (.flow info) flow))))))
-  ([g from to flow] 
-     (alter-edge! the-edge g from to 
-                   (let [^einfo e the-edge]
-                     (->  e
-                          (.assoc :capacity (- (.capacity ^einfo the-edge) flow))
-                          (.assoc :flow     (+ (.flow ^einfo the-edge) flow)))))))
-
-;optimized
-(defn dec-flow 
-  ([g info flow]
-     (assoc g :flow-info
-            (assoc2  (:flow-info g)  (:from info) (:to info) 
-                     (-> info
-                         (assoc :capacity (+ (:capacity info) flow))
-                         (assoc :flow     (- (:flow info) flow))))))
-  ([g from to flow] 
-     (alter-edge the-edge g from to
-         (-> the-edge
-             (assoc :capacity (+ (:capacity the-edge) flow))
-             (assoc :flow     (- (:flow the-edge) flow))))))
-
-(defn dec-flow!
-  ([^transient-net g ^einfo info flow]
-     (assoc! g :flow-info
-            (assoc2!  (:flow-info g)  (.from info) (.to info) 
-                      (-> info
-                          (.assoc :capacity (+ (.capacity info) flow))
-                          (.assoc :flow     (- (.flow info) flow))))))
-  ([^transient-net g from to flow] 
-     (alter-edge! the-edge g from to
-       (let [^einfo e the-edge]
-         (-> e
-             (.assoc :capacity (+ (.capacity ^einfo the-edge) flow))
-             (.assoc :flow     (- (.flow ^einfo the-edge) flow)))))))
+;;THe API prizes edge-update by accessing edge infos 
+;;directly.  Consequently, we only want to pay the cost 
+;;of looking up an edge once.  
 
 (defn flows [g] 
   (for [[from vs] (:flow-info g)
@@ -487,32 +453,6 @@
         (for [sink sinks]
           (get m sink))))))          
 
-
-;;optimization spot.
-(defn active-flows [g] 
-  (generic/loop-reduce 
-   (fn [acc ^einfo info] 
-     (let [^long f (.flow info)]
-       (if (> f 0)
-         (cons  [[(.from info) (.to info)]  (.flow info)] acc) 
-                acc))) 
-   '()
-   (get-edge-infos g)))
-
-;;transient op
-(defn active-flows! [g] 
-  (let [^java.util.ArrayList xs  (get-edge-infos! g)
-        n (count xs)]    
-    (loop [idx 0
-           acc '()]
-      (if (== idx n) acc
-          (let [^einfo info (m/get-arraylist xs idx)
-                ^long f (.flow info)]
-            (recur (unchecked-inc idx)
-                   (if (pos? f)
-                     (cons (clojure.lang.MapEntry. (clojure.lang.MapEntry. (.from info) (.to info))  f) acc)
-                     acc)))))))
-
 (defn total-flow 
   ([g active-edges] 
     (->> active-edges 
@@ -520,17 +460,6 @@
       (map second)
       (reduce + 0)))
   ([g] (total-flow g (active-flows g))))
-
-(defn flow-provider-type [g nd]
-  (if (not (graph/island? g nd))
-      (cond (graph/terminal-node? g nd) :sinks
-            (empty? (graph/sinks g nd))  :source
-            :else :trans)
-      :island))
-
-(defn flow-topology [g start-node]
-  (group-by (partial flow-provider-type g)
-            (graph/succs g start-node)))
 
 ;;refactored to eliminate reduce and destructuring.
 (defn total-cost 
@@ -591,17 +520,11 @@
                 res 
                 (get2 g :sources v nil)))))
 
-
-
-
 ;;the flow-cost for g from to.  Forward arcs are positive cost.
 ;;Backward arcs are negative-cost.
-
 (definline flow-weight2 [g from to]
   `(if (forward? ~g ~from ~to) (generic/-arc-weight ~g ~from ~to) ;forward arc
       (- (generic/-arc-weight ~g ~to ~from))))
-
-
 
 ;;A function for caching flow weight calls.
 (defn flow-weighter2 [g forward-pred]
@@ -663,8 +586,6 @@
       (if (empty? xs) next-flow
           (recur (first xs) (rest xs) next-flow)))))
 
-
-
 ;;Eliminate reduce.
 ;;apply an amount of flow along the path, dropping any nodes that 
 ;;become incapacitated.
@@ -680,8 +601,6 @@
 (defn augment-flow [g p]
   (let [edges (path->edge-info g g p)]
     (apply-flow g edges (maximum-flow g edges))))
-
-
 
 ;;find the mincost flow, in graph, from -> to, where graph is a directed graph 
 ;;and contains a key :flow-info with compatible network flow information.
@@ -1218,3 +1137,129 @@
 ;;                          acc))
 ;;                    res
 ;;                    (get2 g :sinks v nil)))))
+
+
+;;old accessors...
+;;Possible bottleneck here.
+;optimized
+;; (defn inc-flow 
+;;   ([g ^einfo info flow]     
+;;      (assoc g :flow-info
+;;             (assoc2 (:flow-info g) (:from info) (:to info)  
+;;                     (-> info 
+;;                         (.assoc :capacity (- (.capacity info) flow))
+;;                         (.assoc :flow (+ (.flow info) flow))))))
+;;   ([g from to flow] 
+;;      (alter-edge the-edge g from to 
+;;          (let [^einfo the-edge the-edge]
+;;            (-> the-edge 
+;;                (.assoc :capacity (- (.capacity the-edge) flow))
+;;                (.assoc :flow     (+ (.flow the-edge) flow)))))))
+
+;; (defn inc-flow! 
+;;   ([^transient-net g ^einfo info flow]     
+;;      (assoc! g :flow-info
+;;             (assoc2! (:flow-info g) (.from info) (.to info)  
+;;                      (-> info 
+;;                          (.assoc :capacity (- (.capacity info) flow))
+;;                          (.assoc :flow     (+ (.flow info) flow))))))
+;;   ([g from to flow] 
+;;      (alter-edge! the-edge g from to 
+;;                    (let [^einfo e the-edge]
+;;                      (->  e
+;;                           (.assoc :capacity (- (.capacity ^einfo the-edge) flow))
+;;                           (.assoc :flow     (+ (.flow ^einfo the-edge) flow)))))))
+
+;; ;optimized
+;; (defn dec-flow 
+;;   ([g info flow]
+;;      (assoc g :flow-info
+;;             (assoc2  (:flow-info g)  (:from info) (:to info) 
+;;                      (-> info
+;;                          (assoc :capacity (+ (:capacity info) flow))
+;;                          (assoc :flow     (- (:flow info) flow))))))
+;;   ([g from to flow] 
+;;      (alter-edge the-edge g from to
+;;          (-> the-edge
+;;              (assoc :capacity (+ (:capacity the-edge) flow))
+;;              (assoc :flow     (- (:flow the-edge) flow))))))
+
+;; (defn dec-flow!
+;;   ([^transient-net g ^einfo info flow]
+;;      (assoc! g :flow-info
+;;             (assoc2!  (:flow-info g)  (.from info) (.to info) 
+;;                       (-> info
+;;                           (.assoc :capacity (+ (.capacity info) flow))
+;;                           (.assoc :flow     (- (.flow info) flow))))))
+;;   ([^transient-net g from to flow] 
+;;      (alter-edge! the-edge g from to
+;;        (let [^einfo e the-edge]
+;;          (-> e
+;;              (.assoc :capacity (+ (.capacity ^einfo the-edge) flow))
+;;              (.assoc :flow     (- (.flow ^einfo the-edge) flow)))))))
+
+
+
+;; (defn set-capacity [g from to cap] 
+;;   (alter-edge the-edge g from to 
+;;     (assoc the-edge :capacity cap)))
+
+;; (defn set-flow [g from to flow]    
+;;   (alter-edge the-edge g from to 
+;;      (assoc the-edge :flow flow)))
+
+;; ;;transient ops
+;; (defn set-capacity! [g from to cap] 
+;;   (alter-edge! the-edge g from to 
+;;     (assoc the-edge :capacity cap)))
+
+;; (defn set-flow! [g from to flow]    
+;;   (alter-edge! the-edge g from to 
+;;      (assoc the-edge :flow flow)))
+
+;add a capacitated arc to the graph
+;; (defn conj-cap-arc [g from to w cap]
+;;   (let [finfo (:flow-info g)]
+;;     (-> (graph/conj-arc g from to w)
+;;         (assoc :flow-info finfo)
+;;         (update-edge2* from to cap 0))))
+
+
+;; ;;optimization spot.
+;; (defn active-flows [g] 
+;;   (generic/loop-reduce 
+;;    (fn [acc ^einfo info] 
+;;      (let [^long f (.flow info)]
+;;        (if (> f 0)
+;;          (cons  [[(.from info) (.to info)]  (.flow info)] acc) 
+;;                 acc))) 
+;;    '()
+;;    (get-edge-infos g)))
+
+;; ;;transient op
+;; (defn active-flows! [g] 
+;;   (let [^java.util.ArrayList xs  (get-edge-infos! g)
+;;         n (count xs)]    
+;;     (loop [idx 0
+;;            acc '()]
+;;       (if (== idx n) acc
+;;           (let [^einfo info (m/get-arraylist xs idx)
+;;                 ^long f (.flow info)]
+;;             (recur (unchecked-inc idx)
+;;                    (if (pos? f)
+;;                      (cons (clojure.lang.MapEntry. (clojure.lang.MapEntry. (.from info) (.to info))  f) acc)
+;;                      acc)))))))
+
+
+;;Maybe useful? 
+
+;; (defn flow-provider-type [g nd]
+;;   (if (not (graph/island? g nd))
+;;       (cond (graph/terminal-node? g nd) :sinks
+;;             (empty? (graph/sinks g nd))  :source
+;;             :else :trans)
+;;       :island))
+
+;; (defn flow-topology [g start-node]
+;;   (group-by (partial flow-provider-type g)
+;;             (graph/succs g start-node)))
