@@ -8,7 +8,7 @@
             [spork.data [searchstate :as searchstate]
                         [mutable :as m]]
             [spork.protocols [core :as generic]]
-            [spork.util.general :refer [assoc2 assoc2! get2 transient2 persistent2! hinted-get2 kv-reduce2]]))
+            [spork.util.general :refer [assoc2 assoc2! get2 transient2 persistent2! hinted-get2 kv-reduce2 kv-map2]]))
 
 (def ^:const posinf Long/MAX_VALUE)
 
@@ -31,9 +31,7 @@
 
 (defprotocol IDynamicFlow
   (-conj-cap-arc   [net from to w cap])
-  (-active-flows   [net])
-;  (-disj-cap-arc   [net from to])
-  )
+  (-active-flows   [net]))
 
 ;;We use an interface here for a reason....
 ;;An interface allows direct method invokation on 
@@ -55,11 +53,12 @@
 ;;and more performant.   [insert pithy observation about 
 ;;premature optimization here]
 (definterface IEdgeInfo
-  (setFlow      [from to flow])
-  (setCapacity  [from to cap])
-  (incFlow      [from to amt])
-  (flow         [from to])
-  (capacity     [from to])
+  (setFlow      [ flow])
+  (setCapacity  [ cap])
+  (setDirection [d])
+  (incFlow      [ amt])
+  (flow         [])
+  (capacity     [])
   (from         [])
   (to           [])
   (dir          [])
@@ -72,11 +71,11 @@
 ;;however...Certainly more straightforward.
 
 ;; (defprotocol IEdgeInfo
-;;   (setFlow      [net from to flow])
-;;   (setCapacity  [net from to cap])
-;;   (incFlow      [net from to amt])
-;;   (flow         [net from to])
-;;   (capacity     [net from to])
+;;   (setFlow      [net  flow])
+;;   (setCapacity  [net  cap])
+;;   (incFlow      [net  amt])
+;;   (flow         [net ])
+;;   (capacity     [net ])
 ;;   (from         [e])
 ;;   (to           [e])
 ;;   (dir          [e])
@@ -89,12 +88,12 @@
 ;;information across edges.
 (defrecord einfo [from to capacity flow dir]
   IEdgeInfo
-  (setFlow      [net from to new-flow] (einfo. from to capacity new-flow dir))
-  (setCapacity  [net from to cap] (einfo. from to cap flow dir))
-  (incFlow      [net from to amt]
-    (einfo.  from to  (- capacity amt)  (+ flow amt) dir))
-  (flow         [net from to] flow)
-  (capacity     [net from to] capacity)  
+  (setFlow      [edge new-flow] (einfo. from to  capacity new-flow dir))
+  (setCapacity  [edge cap]      (einfo. from to cap flow dir))
+  (setDirection [edge d]   (einfo. from to capacity flow d))
+  (incFlow      [edge amt] (einfo. from to   (- capacity amt)  (+ flow amt) dir))
+  (flow         [edge] flow)
+  (capacity     [edge] capacity)  
   (from         [e] from)
   (to           [e] to)
   (dir          [e] dir)
@@ -105,12 +104,13 @@
 ;;This ought to be good for small graphs.
 (m/defmutable meinfo [from to capacity flow dir]
   IEdgeInfo
-  (setFlow      [net from to new-flow] (do (set! flow new-flow) net))
-  (setCapacity  [net from to cap]      (do (set! capacity cap)  net))
-  (incFlow      [net from to amt]      (do (set! capacity (- capacity amt))
+  (setFlow      [edge new-flow] (do (set! flow new-flow) edge))
+  (setCapacity  [edge cap]      (do (set! capacity cap)  edge))
+  (setDirection [edge d]        (do (set! dir d) edge))
+  (incFlow      [edge amt]      (do (set! capacity (- capacity amt))
                                              (set! flow     (+ flow amt))))
-  (flow         [net from to] flow)
-  (capacity     [net from to] capacity)
+  (flow         [edge] flow)
+  (capacity     [edge] capacity)
   (from         [d] from)
   (to           [d] to)
   (dir          [e] dir)
@@ -147,10 +147,10 @@
 
 ;;Hinted operations on edges...sorry for the wierdness.
 (definline edge-capacity [e]
-  `(.capacity ~(edge-hint e) nil nil))
+  `(.capacity ~(edge-hint e)))
 
 (definline edge-flow [e]
-  `(.flow ~(edge-hint e) nil nil))
+  `(.flow ~(edge-hint e)))
 
 ;;Need to test the efficacy of using protocol calls instead of funcs.
 (definline edge-from [e]
@@ -159,14 +159,14 @@
 (definline edge-to [e]
   `(.to ~(edge-hint e)))
 
-(definline inc-flow [e from to amt]
-  `(.incFlow ~(edge-hint e) ~from ~to ~amt))
+(definline inc-flow [e  amt]
+  `(.incFlow ~(edge-hint e) ~amt))
 
-(definline set-capacity [e from to amt]
-  `(.setCapacity ~(edge-hint e) ~from ~to ~amt))
+(definline set-capacity [e amt]
+  `(.setCapacity ~(edge-hint e) ~amt))
 
-(definline set-flow [e from to amt]
-  `(.setFlow ~(edge-hint e) ~from ~to ~amt))
+(definline set-flow [e  amt]
+  `(.setFlow ~(edge-hint e) ~amt))
 
 ;; (definline inc-flow [e from to amt]
 ;;   `(.incFlow ~(edge-hint e) ~from ~to ~amt))
@@ -185,7 +185,7 @@
     (meinfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
 
 (defn ^einfo medge->edge [^meinfo edge]
-  (einfo. (.from edge) (.to edge) (.capacity edge nil nil) (.flow edge nil nil) (.dir edge)))
+  (einfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
 
 ;;Shared inline definitions for network topology.
 ;;This is currently a bit slow due to some overhead.
@@ -265,8 +265,6 @@
   ([^einfo info] (- (.capacity info) (.flow info)))
   ([g from to] (current-capacity (edge-info g from to))))
 
-
-
 ;;build on top of a protocol function here to unify 
 ;;the inc-flow arities, there's a case where we pass in 
 ;;an edge info.
@@ -280,14 +278,14 @@
 
 (definline -inc-edge-flow [net info amt]
   `(update-edge ~net ~info the-edge# 
-     (inc-flow the-edge# nil nil ~amt)))
+     (inc-flow the-edge#  ~amt)))
  
 (definline -dec-edge-flow [net info amt]
   `(-inc-edge-flow ~net ~info (- ~amt)))
                
 (definline -inc-edge-capacity [net info amt]
   `(update-edge ~net ~info the-edge# 
-     (.setCapacity the-edge# nil nil (+ ~amt (edge-capacity the-edge#)))))
+     (.setCapacity the-edge# (+ ~amt (edge-capacity the-edge#)))))
 
 (definline -dec-edge-capacity [net info amt]
   `(-inc-edge-capacity ~net ~info (- ~amt)))
@@ -316,7 +314,7 @@
   (-get-direction [net from to]   (forward? net from to))
   (-flow-weight   [net from to]   (if (forward? net from to) 
                                     (generic/-arc-weight net from to)
-                                    (- (generic/-arc-weight net from to))))
+                                    (- (generic/-arc-weight net to from))))
   (-set-edge      [net edge]         
     (assoc net :flow-info                  
            (assoc2 (get net :flow-info {})
@@ -324,7 +322,7 @@
                    edge)))
   (-flow-sinks     [net x] (get2 net :sinks x nil))
   (-flow-sources   [net x] (get2 net :sources x nil))
-  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge nil nil flow)))
+  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge flow)))
   IDynamicFlow
   (-conj-cap-arc [net from to w cap]  
          (let [finfo (:flow-info net)]
@@ -368,7 +366,7 @@
                    net)))
   (-flow-sinks     [net x] (get2 g :sinks x nil))
   (-flow-sources   [net x] (get2 g :sources x nil))
-  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge nil nil flow))))
+  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge flow))))
 
 
 ;;A transient network that uses mutable edges.
@@ -399,7 +397,7 @@
            net)))
   (-flow-sinks     [net x] (get2 g :sinks x nil))
   (-flow-sources   [net x] (get2 g :sources x nil))
-  (-push-flow      [net edge flow] (do (inc-flow edge nil nil flow) net))
+  (-push-flow      [net edge flow] (do (inc-flow edge flow) net))
   IDynamicFlow 
   (-conj-cap-arc [net from to w cap]                 
          (do (set! g  (graph/conj-arc g from to w))
@@ -443,13 +441,7 @@
 ;;Basically, for each edge in the stored flow-info, which is a kv2, 
 ;;we can get the the flow-info into a flat sequence via kv2-flatten.
 
-(defn ^transient-net2 transient-network2 [g]
-  (let [flow-info!   (kv-reduce2 
-                        (fn [acc from to ^einfo v] 
-                          (assoc2! acc from to v))
-                        (transient {})
-                        (:flow-info g))]        
-  (transient-net2.  g  flow-info! {:flow-info (:flow-info g)})))
+
 
 ;;As with clojure transients, we define a function to realize the 
 ;;transient state as a persistent network.
@@ -457,6 +449,20 @@
   (let [g (:g the-net)]
     (assoc g
            :flow-info (persistent2! (:flow-info the-net)))))
+
+(defn ^transient-net2 transient-network2 [g]
+  (let [flow-info!   (kv-reduce2 
+                        (fn [acc from to v] 
+                          (assoc2! acc from to (edge->medge v)))
+                        (transient {})
+                        (:flow-info g))]        
+  (transient-net2.  g  flow-info! {:flow-info (:flow-info g)})))
+
+(defn persistent-network2! [^transient-net2 the-net]
+  (let [g (:g the-net)]
+    (assoc g
+           :flow-info (kv-map2 medge->edge (persistent2! (:flow-info the-net))))))
+
 
 ;;THe API prizes edge-update by accessing edge infos 
 ;;directly.  Consequently, we only want to pay the cost 
@@ -552,10 +558,10 @@
       (if (empty? xs) (edge-flows. flow edges)
           (let [to     (.first xs)
                 dir   (if (-get-direction flow-info from to) :increment :decrement)
-                info (if (identical? dir :increment) 
-                       (-edge-info flow-info from to)
-                       (-edge-info flow-info to from))]
-            (do (.add edges (.assoc info :dir dir))
+                ^IEdgeInfo info (if (identical? dir :increment) 
+                                  (-edge-info flow-info from to)
+                                  (-edge-info flow-info to from))]
+            (do (.add edges (.setDirection info dir))
                 (recur (.next xs) to
                        (let [^long new-flow (if (identical? :increment dir)
                                                 (edge-capacity info)
@@ -575,8 +581,8 @@
           (recur (unchecked-inc idx)
                  (let [info (.get xs idx)]                  
                        (if (identical? :increment (edge-dir info))
-                         (-push-flow the-net info flow)
-                         (-push-flow the-net info (- flow)))))))))
+                         (-push-flow acc info flow)
+                         (-push-flow acc info (- flow)))))))))
 
 (defn mincost-flow
   ([graph from to]
@@ -589,16 +595,15 @@
   ([flow-info graph from to]
     (mincost-flow (assoc graph :flow-info flow-info) from to)))
 
-
 (defn augmentations
   ([graph from to]
      (let [augs (java.util.ArrayList.)]
        (loop [g graph]
          (if-let [p (mincost-aug-path g from to)]
-           (do (let [f (maximum-flow g (path->edge-info g g p))]
+           (do (let [f (.flow ^edge-flows (path->edge-flows g p))]
                  (.add augs [f p]))
                (recur (augment-flow g p)))
-           (let [active (active-flows g)]
+           (let [active (-active-flows g)]
              {:active active
               :augmentations augs
               :net g})))))

@@ -1,9 +1,5 @@
 (ns spork.cljgraph.flowtests
-  (:require [spork.cljgraph [core :as graph]
-             [search :as search]]
-            [spork.data [searchstate :as searchstate]]
-            [spork.protocols [core :as generic]]
-            [spork.cljgraph.flow :refer :all]))
+  (:require [spork.cljgraph.flow :refer :all]))
 
 (def net-data 
  [[:s   :chi  0 300]
@@ -15,25 +11,23 @@
   [:hou :t    0 300]
   [:bos :t    0 300]])
 
-(def the-net2 
-  (-> (assoc spork.data.digraph/empty-digraph2 :flow-info {})
-      (conj-cap-arcs net-data)))
+;; (def the-net2 
+;;   (-> (assoc spork.data.digraph/empty-digraph2 :flow-info {})
+;;       (conj-cap-arcs net-data)))
 
-;;Neighbor Caching
-(def the-net3 
-  (-> (assoc (spork.data.digraph/->cached-graph) :flow-info {})
-      (conj-cap-arcs net-data)))
+;; ;;Neighbor Caching
+;; (def the-net3 
+;;   (-> (assoc (spork.data.digraph/->cached-graph) :flow-info {})
+;;       (conj-cap-arcs net-data)))
 
-(def the-net4 
-  (-> (assoc (spork.data.digraph/->cached-graph2) :flow-info {})
-      (conj-cap-arcs net-data)))
+;; (def the-net4 
+;;   (-> (assoc (spork.data.digraph/->cached-graph2) :flow-info {})
+;;       (conj-cap-arcs net-data)))
 
 (def the-net
   (-> empty-network 
       (conj-cap-arcs net-data)))
 
-
-  
 
 
 (comment 
