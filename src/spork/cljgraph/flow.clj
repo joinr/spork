@@ -12,6 +12,10 @@
 
 (def ^:const posinf Long/MAX_VALUE)
 
+
+;;Notes on performance implications of using protocols and such...
+;;
+
 ;;Network Protocols
 ;;=================
 
@@ -32,12 +36,24 @@
 
 
 ;;abstract container for capacitated arcs.
-(defprotocol IEdgeInfo
-  (-set-flow      [net from to flow])
-  (-set-capacity  [net from to cap])
-  (-inc-flow      [net from to amt])
-  (-get-flow      [net from to])
-  (-get-capacity  [net from to]))
+;; (defprotocol IEdgeInfo
+;;   (-set-flow      [net from to flow])
+;;   (-set-capacity  [net from to cap])
+;;   (-inc-flow      [net from to amt])
+;;   (-get-flow      [net from to])
+;;   (-get-capacity  [net from to]))
+
+;;We use an interface here for a reason....
+(definterface IEdgeInfo
+  (setFlow      [from to flow])
+  (setCapacity  [from to cap])
+  (incFlow      [from to amt])
+  (flow         [from to])
+  (capacity     [from to])
+  (from         [])
+  (to           [])
+  (dir          [])
+  (directedPair []))
 
 ;;protocol for performing updates based on 
 ;;compound edge datastructures, rather than 
@@ -49,10 +65,10 @@
 ;  (-set-edge-capacity  [net edge cap])
 
 
-(defprotocol IDirected
-  (-get-from      [d])
-  (-get-to        [d])
-  (-directed-pair [d]))
+;; (defprotocol IDirected
+;;   (-get-from      [d])
+;;   (-get-to        [d])
+;;   (-directed-pair [d]))
 
 ;;Edge Data Types
 ;;===============
@@ -61,31 +77,31 @@
 ;;information across edges.
 (defrecord einfo [from to capacity flow dir]
   IEdgeInfo
-  (-set-flow     [net from to new-flow] (einfo. from to capacity new-flow dir))
-  (-set-capacity [net from to cap] (einfo. from to cap flow dir))
-  (-inc-flow     [net from to amt]
+  (setFlow      [net from to new-flow] (einfo. from to capacity new-flow dir))
+  (setCapacity  [net from to cap] (einfo. from to cap flow dir))
+  (incFlow      [net from to amt]
     (einfo.  from to  (- capacity amt)  (+ flow amt) dir))
-  (-get-flow     [net from to] flow)
-  (-get-capacity [net from to] capacity)  
-  IDirected
-  (-get-from      [d] from)
-  (-get-to        [d] to)
-  (-directed-pair [d] (clojure.lang.MapEntry. from to)))
+  (flow         [net from to] flow)
+  (capacity     [net from to] capacity)  
+  (from         [e] from)
+  (to           [e] to)
+  (dir          [e] dir)
+  (directedPair [e] (clojure.lang.MapEntry. from to)))
 
 ;;A mutable edge list.  For mutable stuff.  Mutation.  Mutants.
 ;;This ought to be good for small graphs.
 (m/defmutable meinfo [from to capacity flow dir]
   IEdgeInfo
-  (-set-flow     [net from to new-flow] (do (set! flow new-flow) net))
-  (-set-capacity [net from to cap]      (do (set! capacity cap)  net))
-  (-inc-flow     [net from to amt]      (do (set! capacity (- capacity amt))
-                                            (set! flow     (+ flow amt))))
-  (-get-flow     [net from to] flow)
-  (-get-capacity [net from to] capacity)
-  IDirected
-  (-get-from      [d] from)
-  (-get-to        [d] to)
-  (-directed-pair [d] (clojure.lang.MapEntry. from to)))
+  (setFlow      [net from to new-flow] (do (set! flow new-flow) net))
+  (setCapacity  [net from to cap]      (do (set! capacity cap)  net))
+  (incFlow      [net from to amt]      (do (set! capacity (- capacity amt))
+                                             (set! flow     (+ flow amt))))
+  (flow         [net from to] flow)
+  (capacity     [net from to] capacity)
+  (from         [d] from)
+  (to           [d] to)
+  (dir          [e] dir)
+  (directedPair [d] (clojure.lang.MapEntry. from to)))
 
 ;;Inline functions for constructing edges.  We adopt the convention 
 ;;of delineating the arity of these functions in the numerical suffix.
@@ -104,18 +120,45 @@
   `(meinfo. ~from  ~to posinf 0 :increment))
 (definline ->medge-info4 
   [from to capacity flow]
-  `(meinfo. ~from ~to ~capacity ~flow :increment))
+  `(meinfo. ~from ~to ~capacity ~flow :increment))    
 
+(defmacro edge-hint [e] 
+  `(vary-meta ~e assoc :tag 'spork.cljgraph.flow.IEdgeInfo))
+
+;;Might just turn these into macros...i mean, we've got the 
+;;equivalent of field access on these guys...
+;;The inline function calls are costing us a slight bit of 
+;;speed.
+
+;;Hinted operations on edges...sorry for the wierdness.
+(definline edge-capacity [e]
+  `(.capacity ~(edge-hint e) nil nil))
+
+(definline edge-flow [e]
+  `(.flow ~(edge-hint e) nil nil))
+
+;;Need to test the efficacy of using protocol calls instead of funcs.
+(definline edge-from [e]
+  `(.from ~(edge-hint e)))
+
+(definline edge-to [e]
+  `(.to ~(edge-hint e)))
+
+(definline inc-flow [e from to amt]
+  `(.incFlow ~(edge-hint e) ~from ~to ~amt))
+
+(definline edge-dir [e]
+  `(.dir ~(edge-hint e)))
 
 ;;Note:
 ;;Might need to move the direction component into a protocol, or lift
 ;;it out entirely.
 
 (defn ^meinfo edge->medge [^einfo edge]
-  (meinfo. (.-get-from edge) (.-get-to edge) (.-get-capacity edge) (.-get-flow edge) (.dir edge)))
+  (meinfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
 
 (defn ^einfo medge->edge [^meinfo edge]
-  (einfo. (.-get-from edge) (.-get-to edge) (.-get-capacity edge) (.-get-flow edge) (:dir edge)))
+  (einfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
 
 ;;Shared inline definitions for network topology.
 ;;This is currently a bit slow due to some overhead.
@@ -222,18 +265,6 @@
 (definline -dec-edge-capacity [net info amt]
   `(-inc-edge-capacity ~net ~info (- ~amt)))
 
-;;Hinted operations on edges...sorry for the wierdness.
-(definline edge-capacity [e]
-  `(.-get-capacity ~(vary-meta e assoc :tag 'spork.cljgraph.flow.IEdgeInfo) nil nil))
-
-(definline edge-flow [e]
-  `(.-get-flow ~(vary-meta e assoc :tag 'spork.cljgraph.flow.IEdgeInfo) nil nil))
-
-(definline edge-from [e]
-  `(.-get-from ~(vary-meta e assoc :tag 'spork.cljgraph.flow.IDirected)))
-
-(definline edge-to [e]
-  `(.-get-to ~(vary-meta e assoc :tag 'spork.cljgraph.flow.IDirected)))
 
 ;;Probable hotspot in at least one use case.  We add arcs to the
 ;;network repeatedly...calls to merge and reduce and destructuring 
@@ -246,6 +277,8 @@
 
 ;;Needed forward declarations.
 (declare transient-network transient-network2 persistent-network!)
+
+(defn unsupported [& [x]] (throw (Exception. (str "Op " x " is unsupported!"))))
 
 ;;Network Data Types
 ;;==================
@@ -265,26 +298,30 @@
   ;; (conj       [net v] (throw (Exception. "conj! currently not supported on networks")))
   ;; (persistent [net]   (persistent-network! net)) 
   IEdgeInfo
-  (-set-flow     [net from to flow]
+  (setFlow     [net from to flow]
         (do (set! flow-info
                   (assoc2! flow-info from to 
                            (.-set-flow ^spork.cljgraph.flow.IEdgeInfo 
                               (.-edge-info net from to) from to flow)))
             net))                 
-  (-set-capacity [net from to cap] 
+  (setCapacity [net from to cap] 
          (do (set! flow-info
                    (assoc2! flow-info from to 
                             (.-set-capacity  ^spork.cljgraph.flow.IEdgeInfo 
                                (.-edge-info net from to) from to cap)))
              net))                 
-  (-inc-flow     [net from to amt] 
+  (incFlow     [net from to amt] 
          (do (set! flow-info
                    (assoc2! flow-info from to 
                             (.-inc-flow ^spork.cljgraph.flow.IEdgeInfo  
                                (.-edge-info net from to) from to amt)))
              net))
-  (-get-flow [net from to]     (edge-flow     (.-edge-info net from to)))
-  (-get-capacity [net from to] (edge-capacity (.-edge-info net from to)))              
+  (flow     [net from to] (edge-flow     (.-edge-info net from to)))
+  (capacity [net from to] (edge-capacity (.-edge-info net from to)))            
+  (from         [e] (unsupported 'from))
+  (to           [e] (unsupported 'to))
+  (dir          [e] (unsupported 'dir))
+  (directedPair [e] (unsupported 'directed-pair ))
   IFlowNet
   (-edge-info      [net from to] 
          (if-let [^einfo  res (get2 flow-info from to nil)]
@@ -320,17 +357,21 @@
   ;; (conj       [net v] (throw (Exception. "conj! currently not supported on networks")))
   ;; (persistent [net]   (persistent-network! net)) 
   IEdgeInfo
-  (-set-flow     [net from to flow]
-      (do (.-set-flow ^meinfo (.-edge-info flow-info from to) from to flow)
+  (setFlow     [net from to flow]
+      (do (.setFlow ^meinfo (.-edge-info flow-info from to) from to flow)
           net))                 
-  (-set-capacity [net from to cap] 
-      (do (.-set-capacity ^meinfo (.-edge-info flow-info from to) from to cap)
+  (setCapacity [net from to cap] 
+      (do (.setCapacity ^meinfo (.-edge-info flow-info from to) from to cap)
           net))                 
-  (-inc-flow     [net from to amt] 
-      (do (.-inc-flow ^meinfo (.-edge-info flow-info from to) from to amt)
+  (incFlow     [net from to amt] 
+      (do (.incFlow ^meinfo (.-edge-info flow-info from to) from to amt)
           net))
-  (-get-flow [net from to]     (edge-flow     (.-edge-info net from to)))
-  (-get-capacity [net from to] (edge-capacity (.-edge-info net from to)))
+  (flow         [net from to] (edge-flow     (.-edge-info net from to)))
+  (capacity     [net from to] (edge-capacity (.-edge-info net from to)))            
+  (from         [e] (unsupported 'from))
+  (to           [e] (unsupported 'to))
+  (dir          [e] (unsupported 'dir))
+  (directedPair [e] (unsupported 'directed-pair ))
   IFlowNet
   (-edge-info    [net from to] 
       (if-let [^meinfo  res (get2 flow-info from to nil)]
@@ -387,8 +428,12 @@
      (let [e (.-edge-info net from to)]  
        (.-set-edge net e
              (.-inc-flow e nil nil flow))))
-  (-get-flow      [net from to]  (edge-flow  (.-edge-info net from to)))
-  (-get-capacity  [net from to]  (edge-capacity  (.-edge-info net from to)))
+  (flow      [net from to]  (edge-flow  (.-edge-info net from to)))
+  (capacity  [net from to]  (edge-capacity  (.-edge-info net from to)))
+  (from         [e] (unsupported 'from))
+  (to           [e] (unsupported 'to))
+  (dir          [e] (unsupported 'dir))
+  (directedPair [e] (unsupported 'directed-pair ))
   IFlowNet
   (-edge-info     [net from to]   (edge-info net from to))
   (einfos         [n]             (get-edge-infos n))

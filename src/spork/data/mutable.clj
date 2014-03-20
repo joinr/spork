@@ -6,6 +6,55 @@
   (:require [spork.protocols [core :as generic]])
   (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
 
+;;Some notes on performance....
+;;We can mimic field access by creating an interface that correponds
+;;to the type.  The only difference is that the interface methods
+;;cannot contain '-'.....so what's a good way around this? 
+
+;;We have a mechanism to generate random interfaces for our 
+;;types...specifically our mutable types...and from there 
+;;we get native access speeds through the interface.
+
+;;What we really want is a unified way to represent field access...
+;;in clojure, this is typically .-the-field 
+;;Well, we could have a macro called get-field....
+;;that takes a type, sees if it's mutable, and exposes public fields.
+;;Another option is to wrap the mutable in an object that has public
+;;fields.  Then you get 2 allocations per object though...ugh...
+
+;;There's always the good old with-slots form...
+;;(with-slots [obj] [slot1 slot2 slot3] ...)
+;;If a tag is provided, we can see if the type is a mutable.
+;;If it is, we can replace the slot names with appropriate 
+;;mutable alternatives at compile time.
+
+(declare mutable? slot->field slot->accessor)
+
+;;(defn slot->field [slot]   (symbol (str \. slot)))
+;;given a form the-slot-at-blah, we need to turn it into camelcase
+;;theSlotAtBlah
+;; (defn slot->accessor [slot] 
+;;   (let [xs (clojure.string/split (str slot) #"-")]
+;;     (->> (map clojure.string/capitalize (rest xs))
+;;          (into [(first xs)])
+;;          (clojure.string/join)
+;;          (symbol))))
+
+;; (defn slot-binder [f] 
+;;   (fn [slot] [slot (f slot)]))
+
+;;This is a throwback to CommonLisp :)
+;; (defmacro with-fields [obj slots & expr]
+;;   (let [the-hint (:tag (meta obj))]
+;;     `(let [~@(flatten (map (slot-binder (if (mutable? the-hint) 
+;;                                           slot->slot-accessor slot->field))
+;;                            slots))]
+;;        ~@expr)))      
+
+(let [hyphen #"-"]
+  (defn invalid-field? [field]
+    (re-find hyphen (str field))))
+
 (defn ^ArrayList make-array-list [] (ArrayList.))
 (defn ^ArrayList array-list [xs] 
   (reduce (fn [^ArrayList acc x] (doto acc (.add x))) (make-array-list) xs))
@@ -82,6 +131,9 @@
              :else
              `(set! ~f ~v))))
 
+;;Tag protocol
+(defprotocol IMutableContainer)
+
 ;;Defines a mutable container.
 (defmacro defmutable [name fields & specs]
   (let [flds        (mapv (fn [sym] (vary-meta (symbol sym) merge {:unsynchronized-mutable true})) fields)
@@ -92,30 +144,33 @@
         setters (flatten-bindings (map (fn [s] [(keyword s) (field-setter s fld-hints the-value)]) flds))
         getters (flatten-bindings (map (fn [s] [(keyword s) s]) field-symbs))
         fieldmap    (zipmap keyfields field-symbs)]
-   `(deftype ~name ~flds 
-      ~@specs
-      clojure.lang.ITransientMap  
-      (~'valAt [this# k#] 
-        (case k# 
-          ~@getters
-          (throw (Error. (str "Invalid field: " k#)))))
-      (~'valAt [this# k# not-found#] 
-        (case k# 
-          ~@getters
-          (throw (Error. (str "Invalid field: " k#)))))
-      (~'assoc [this# k# ~the-value]
-        (do (case k#
-              ~@setters
-              (throw (Error. (str "Invalid field: " k#))))                                      
-          this#))  
-      (~'conj [this# e#]    
-        (let [[k# v#] e#]      
-          (.assoc this# k# v#)))  
-      (~'without [this# k#]    
-          (throw (Error. (str "Cannot dissoc from a mutable container: " k#))))      
-      (~'persistent [this#]    
-        ~fieldmap)
-      clojure.lang.IDeref
+    (if-let [unclean (filter invalid-field fields)]
+      (throw (Exception. "The following field names cannot contain '-' and are invalid: " unclean))
+      `(deftype ~name ~flds 
+         ~@specs
+         spork.data.mutable.IMutableContainer
+         clojure.lang.ITransientMap  
+         (~'valAt [this# k#] 
+           (case k# 
+             ~@getters
+             (throw (Error. (str "Invalid field: " k#)))))
+         (~'valAt [this# k# not-found#] 
+           (case k# 
+             ~@getters
+             (throw (Error. (str "Invalid field: " k#)))))
+         (~'assoc [this# k# ~the-value]
+           (do (case k#
+                 ~@setters
+                 (throw (Error. (str "Invalid field: " k#))))                                      
+               this#))  
+         (~'conj [this# e#]    
+           (let [[k# v#] e#]      
+             (.assoc this# k# v#)))  
+         (~'without [this# k#]    
+           (throw (Error. (str "Cannot dissoc from a mutable container: " k#))))      
+         (~'persistent [this#]    
+           ~fieldmap)
+         clojure.lang.IDeref
       (~'deref [this#] ~fieldmap))))
 
 (deftype mutlist [^java.util.ArrayList m] 
