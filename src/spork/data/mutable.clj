@@ -51,9 +51,9 @@
 ;;                            slots))]
 ;;        ~@expr)))      
 
-(let [hyphen #"-"]
-  (defn invalid-field? [field]
-    (re-find hyphen (str field))))
+;; (let [hyphen #"-"]
+;;   (defn invalid-field? [field]
+;;     (re-find hyphen (str field))))
 
 (defn ^ArrayList make-array-list [] (ArrayList.))
 (defn ^ArrayList array-list [xs] 
@@ -134,6 +134,7 @@
 ;;Tag protocol
 (defprotocol IMutableContainer)
 
+
 ;;Defines a mutable container.
 (defmacro defmutable [name fields & specs]
   (let [flds        (mapv (fn [sym] (vary-meta (symbol sym) merge {:unsynchronized-mutable true})) fields)
@@ -144,9 +145,7 @@
         setters (flatten-bindings (map (fn [s] [(keyword s) (field-setter s fld-hints the-value)]) flds))
         getters (flatten-bindings (map (fn [s] [(keyword s) s]) field-symbs))
         fieldmap    (zipmap keyfields field-symbs)]
-    (if-let [unclean (filter invalid-field fields)]
-      (throw (Exception. "The following field names cannot contain '-' and are invalid: " unclean))
-      `(deftype ~name ~flds 
+    `(deftype ~name ~flds 
          ~@specs
          spork.data.mutable.IMutableContainer
          clojure.lang.ITransientMap  
@@ -171,7 +170,7 @@
          (~'persistent [this#]    
            ~fieldmap)
          clojure.lang.IDeref
-      (~'deref [this#] ~fieldmap))))
+         (~'deref [this#] ~fieldmap))))
 
 (deftype mutlist [^java.util.ArrayList m] 
   clojure.lang.ITransientVector  

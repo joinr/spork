@@ -12,7 +12,6 @@
 
 (def ^:const posinf Long/MAX_VALUE)
 
-
 ;;Notes on performance implications of using protocols and such...
 ;;
 
@@ -27,23 +26,34 @@
   (-flow-weight    [net from to])
   (-set-edge       [net edge])
   (-flow-sinks     [net x])
-  (-flow-sources   [net x]))
+  (-flow-sources   [net x])
+  (-push-flow      [net edge flow]))
 
 (defprotocol IDynamicFlow
   (-conj-cap-arc   [net from to w cap])
+  (-active-flows   [net])
 ;  (-disj-cap-arc   [net from to])
-  (-active-flows   [net]))
-
-
-;;abstract container for capacitated arcs.
-;; (defprotocol IEdgeInfo
-;;   (-set-flow      [net from to flow])
-;;   (-set-capacity  [net from to cap])
-;;   (-inc-flow      [net from to amt])
-;;   (-get-flow      [net from to])
-;;   (-get-capacity  [net from to]))
+  )
 
 ;;We use an interface here for a reason....
+;;An interface allows direct method invokation on 
+;;anything that's cast to the interface; so we can 
+;;uniformly access containers with field access 
+;;akin to .field 
+;;If we use protocols, we incur about a 2-4x slowdown.
+;;With the interface, we actually get close to 
+;;array access speeds, so it's preferable.  The only 
+;;downside is that the API gets a bit wonkier.
+
+;;I only recommend doing this for limited use cases, 
+;;i.e. where we are trying to unify a protocol over 
+;;multiple implementations (due to mutation efficiencies).
+;;For the most part, protocols are pretty damn good, and 
+;;the run-time type dispatch cost, particularly for inlined 
+;;protocols, is unlikely to be a bottleneck.  For performance 
+;;and uniform field-like access, interfaces are lower level 
+;;and more performant.   [insert pithy observation about 
+;;premature optimization here]
 (definterface IEdgeInfo
   (setFlow      [from to flow])
   (setCapacity  [from to cap])
@@ -55,20 +65,22 @@
   (dir          [])
   (directedPair []))
 
-;;protocol for performing updates based on 
-;;compound edge datastructures, rather than 
-;;from to pairs.  This is more efficicent 
-;;for augmenting flows.
+;;Still performance testing protocol implementation.
+;;We'll see if the method invocation afforded by the 
+;;interface is worth it....it "looks" to be 3x slower 
+;;over a million calls....Inlined protocols may be just dandy, 
+;;however...Certainly more straightforward.
 
-
-;  (-set-edge-flow      [net edge flow])
-;  (-set-edge-capacity  [net edge cap])
-
-
-;; (defprotocol IDirected
-;;   (-get-from      [d])
-;;   (-get-to        [d])
-;;   (-directed-pair [d]))
+;; (defprotocol IEdgeInfo
+;;   (setFlow      [net from to flow])
+;;   (setCapacity  [net from to cap])
+;;   (incFlow      [net from to amt])
+;;   (flow         [net from to])
+;;   (capacity     [net from to])
+;;   (from         [e])
+;;   (to           [e])
+;;   (dir          [e])
+;;   (directedPair [e]))
 
 ;;Edge Data Types
 ;;===============
@@ -88,6 +100,7 @@
   (dir          [e] dir)
   (directedPair [e] (clojure.lang.MapEntry. from to)))
 
+
 ;;A mutable edge list.  For mutable stuff.  Mutation.  Mutants.
 ;;This ought to be good for small graphs.
 (m/defmutable meinfo [from to capacity flow dir]
@@ -102,6 +115,7 @@
   (to           [d] to)
   (dir          [e] dir)
   (directedPair [d] (clojure.lang.MapEntry. from to)))
+
 
 ;;Inline functions for constructing edges.  We adopt the convention 
 ;;of delineating the arity of these functions in the numerical suffix.
@@ -118,6 +132,7 @@
 (definline ->medge-info2 
   [from to]
   `(meinfo. ~from  ~to posinf 0 :increment))
+
 (definline ->medge-info4 
   [from to capacity flow]
   `(meinfo. ~from ~to ~capacity ~flow :increment))    
@@ -147,18 +162,30 @@
 (definline inc-flow [e from to amt]
   `(.incFlow ~(edge-hint e) ~from ~to ~amt))
 
+(definline set-capacity [e from to amt]
+  `(.setCapacity ~(edge-hint e) ~from ~to ~amt))
+
+(definline set-flow [e from to amt]
+  `(.setFlow ~(edge-hint e) ~from ~to ~amt))
+
+;; (definline inc-flow [e from to amt]
+;;   `(.incFlow ~(edge-hint e) ~from ~to ~amt))
+
 (definline edge-dir [e]
   `(.dir ~(edge-hint e)))
+
+(definline edge-pair [e]
+  `(.directedPair ~(edge-hint e)))
 
 ;;Note:
 ;;Might need to move the direction component into a protocol, or lift
 ;;it out entirely.
 
-(defn ^meinfo edge->medge [^einfo edge]
-  (meinfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
+(defn  edge->medge [^einfo edge]
+    (meinfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
 
 (defn ^einfo medge->edge [^meinfo edge]
-  (einfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
+  (einfo. (.from edge) (.to edge) (.capacity edge nil nil) (.flow edge nil nil) (.dir edge)))
 
 ;;Shared inline definitions for network topology.
 ;;This is currently a bit slow due to some overhead.
@@ -253,14 +280,14 @@
 
 (definline -inc-edge-flow [net info amt]
   `(update-edge ~net ~info the-edge# 
-     (.-inc-flow the-edge# nil nil ~amt)))
+     (inc-flow the-edge# nil nil ~amt)))
  
 (definline -dec-edge-flow [net info amt]
   `(-inc-edge-flow ~net ~info (- ~amt)))
                
 (definline -inc-edge-capacity [net info amt]
   `(update-edge ~net ~info the-edge# 
-     (.-inc-capacity the-edge# nil nil ~amt)))
+     (.setCapacity the-edge# nil nil (+ ~amt (edge-capacity the-edge#)))))
 
 (definline -dec-edge-capacity [net info amt]
   `(-inc-edge-capacity ~net ~info (- ~amt)))
@@ -275,13 +302,43 @@
   (reduce (fn [gr [from to w cap]]  (-conj-cap-arc  gr from to w cap)) g arcs))
 
 
-;;Needed forward declarations.
-(declare transient-network transient-network2 persistent-network!)
-
-(defn unsupported [& [x]] (throw (Exception. (str "Op " x " is unsupported!"))))
-
 ;;Network Data Types
 ;;==================
+
+;;our persistent network is actually a digraph.  Since our digraph is
+;;implemented as a record, we can store information in it like a map.
+;;Our flow information happens to live in this map.  Note, this has
+;;performance implications.
+(extend-type spork.data.digraph.digraph  
+  IFlowNet
+  (-edge-info     [net from to]   (edge-info net from to))
+  (einfos         [n]             (get-edge-infos n))
+  (-get-direction [net from to]   (forward? net from to))
+  (-flow-weight   [net from to]   (if (forward? net from to) 
+                                    (generic/-arc-weight net from to)
+                                    (- (generic/-arc-weight net from to))))
+  (-set-edge      [net edge]         
+    (assoc net :flow-info                  
+           (assoc2 (get net :flow-info {})
+                   (.from ^einfo edge) (.to ^einfo edge) 
+                   edge)))
+  (-flow-sinks     [net x] (get2 net :sinks x nil))
+  (-flow-sources   [net x] (get2 net :sources x nil))
+  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge nil nil flow)))
+  IDynamicFlow
+  (-conj-cap-arc [net from to w cap]  
+         (let [finfo (:flow-info net)]
+           (-> (graph/conj-arc net from to w)
+               (assoc :flow-info finfo)
+               (update-edge2* from to cap 0))))
+  (-active-flows [net]  (generic/loop-reduce 
+                         (fn [acc ^einfo info] 
+                           (let [^long f (.flow info)]
+                             (if (> f 0)
+                               (cons  [[(.from info) (.to info)]  (.flow info)] acc) 
+                               acc))) 
+                         '()
+                         (get-edge-infos net))))  
 
 ;;Due to the overhead associated with modifying networks, 
 ;;we end up desiring mutation for efficiency.  A transient 
@@ -292,36 +349,6 @@
   ;adds metadata support
   (meta [this] metadata)
   (withMeta [this m] (do (set! metadata m) this))
-  ;; clojure.lang.IEditableCollection ;transient
-  ;; (asTransient [net] (transient-network net))
-  ;; clojure.lang.ITransientCollection ;conj!, persistent!
-  ;; (conj       [net v] (throw (Exception. "conj! currently not supported on networks")))
-  ;; (persistent [net]   (persistent-network! net)) 
-  IEdgeInfo
-  (setFlow     [net from to flow]
-        (do (set! flow-info
-                  (assoc2! flow-info from to 
-                           (.-set-flow ^spork.cljgraph.flow.IEdgeInfo 
-                              (.-edge-info net from to) from to flow)))
-            net))                 
-  (setCapacity [net from to cap] 
-         (do (set! flow-info
-                   (assoc2! flow-info from to 
-                            (.-set-capacity  ^spork.cljgraph.flow.IEdgeInfo 
-                               (.-edge-info net from to) from to cap)))
-             net))                 
-  (incFlow     [net from to amt] 
-         (do (set! flow-info
-                   (assoc2! flow-info from to 
-                            (.-inc-flow ^spork.cljgraph.flow.IEdgeInfo  
-                               (.-edge-info net from to) from to amt)))
-             net))
-  (flow     [net from to] (edge-flow     (.-edge-info net from to)))
-  (capacity [net from to] (edge-capacity (.-edge-info net from to)))            
-  (from         [e] (unsupported 'from))
-  (to           [e] (unsupported 'to))
-  (dir          [e] (unsupported 'dir))
-  (directedPair [e] (unsupported 'directed-pair ))
   IFlowNet
   (-edge-info      [net from to] 
          (if-let [^einfo  res (get2 flow-info from to nil)]
@@ -332,15 +359,17 @@
   (-flow-weight    [net from to] (if (forward? g from to) (generic/-arc-weight g from to)
                                                          (- (generic/-arc-weight g from to))))
   (-set-edge [net edge]         
-             (let [^spork.cljgraph.flow.IEdgeInfo e edge
-                   from (edge-from e)
-                   to   (edge-to   e)]
+             (let [^einfo e edge
+                   from (.from e)
+                   to   (.to   e)]
                (do (set! flow-info
                          (assoc2! flow-info from to 
                                   edge))
                    net)))
   (-flow-sinks     [net x] (get2 g :sinks x nil))
-  (-flow-sources   [net x] (get2 g :sources x nil)))
+  (-flow-sources   [net x] (get2 g :sources x nil))
+  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge nil nil flow))))
+
 
 ;;A transient network that uses mutable edges.
 ;;This will knock off costs to assoc.  We just 
@@ -351,27 +380,6 @@
   ;adds metadata support
   (meta [this] metadata)
   (withMeta [this m] (do (set! metadata m) this))
-  ;; clojure.lang.IEditableCollection ;transient
-  ;; (asTransient [net] (transient-network2 net))
-  ;; clojure.lang.ITransientCollection ;conj!, persistent!
-  ;; (conj       [net v] (throw (Exception. "conj! currently not supported on networks")))
-  ;; (persistent [net]   (persistent-network! net)) 
-  IEdgeInfo
-  (setFlow     [net from to flow]
-      (do (.setFlow ^meinfo (.-edge-info flow-info from to) from to flow)
-          net))                 
-  (setCapacity [net from to cap] 
-      (do (.setCapacity ^meinfo (.-edge-info flow-info from to) from to cap)
-          net))                 
-  (incFlow     [net from to amt] 
-      (do (.incFlow ^meinfo (.-edge-info flow-info from to) from to amt)
-          net))
-  (flow         [net from to] (edge-flow     (.-edge-info net from to)))
-  (capacity     [net from to] (edge-capacity (.-edge-info net from to)))            
-  (from         [e] (unsupported 'from))
-  (to           [e] (unsupported 'to))
-  (dir          [e] (unsupported 'dir))
-  (directedPair [e] (unsupported 'directed-pair ))
   IFlowNet
   (-edge-info    [net from to] 
       (if-let [^meinfo  res (get2 flow-info from to nil)]
@@ -384,13 +392,14 @@
   (-flow-weight   [net from to] (if (forward? g from to) (generic/-arc-weight g from to)
                                      (- (generic/-arc-weight g from to))))
   (-set-edge [net edge]         
-     (let [^spork.cljgraph.flow.IEdgeInfo e edge
-           from (edge-from e)
-           to   (edge-to   e)]
+     (let [^meinfo e edge
+           from (.from e)
+           to   (.to   e)]
        (do (assoc2! flow-info from to edge)
            net)))
   (-flow-sinks     [net x] (get2 g :sinks x nil))
   (-flow-sources   [net x] (get2 g :sources x nil))
+  (-push-flow      [net edge flow] (do (inc-flow edge nil nil flow) net))
   IDynamicFlow 
   (-conj-cap-arc [net from to w cap]                 
          (do (set! g  (graph/conj-arc g from to w))
@@ -409,64 +418,11 @@
                   ^long f (edge-flow info)]
                (recur (unchecked-inc idx)
                      (if (pos? f)
-                         (cons (clojure.lang.MapEntry. (.-directed-pair info)  f) acc)
+                         (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
                          acc))))))))
-
-;;our persistent network is actually a digraph.  Since our digraph is
-;;implemented as a record, we can store information in it like a map.
-;;Our flow information happens to live in this map.  Note, this has
-;;performance implications.
-(extend-type spork.data.digraph.digraph
-  IEdgeInfo
-  (-set-flow      [net from to flow] 
-    (let [^einfo e (.-edge-info net from to)]
-      (.-set-edge net e (.-set-flow e nil nil flow))))
-  (-set-capacity  [net from to cap]  
-    (let [^einfo e (.-edge-info net from to)]
-      (.-set-edge net e (.-set-capacity e nil nil cap))))
-  (-inc-flow      [net from to flow]  
-     (let [e (.-edge-info net from to)]  
-       (.-set-edge net e
-             (.-inc-flow e nil nil flow))))
-  (flow      [net from to]  (edge-flow  (.-edge-info net from to)))
-  (capacity  [net from to]  (edge-capacity  (.-edge-info net from to)))
-  (from         [e] (unsupported 'from))
-  (to           [e] (unsupported 'to))
-  (dir          [e] (unsupported 'dir))
-  (directedPair [e] (unsupported 'directed-pair ))
-  IFlowNet
-  (-edge-info     [net from to]   (edge-info net from to))
-  (einfos         [n]             (get-edge-infos n))
-  (-get-direction [net from to]   (forward? net from to))
-  (-flow-weight   [net from to]   (if (forward? net from to) 
-                                    (generic/-arc-weight net from to)
-                                    (- (generic/-arc-weight net from to))))
-  (-set-edge      [net edge]         
-    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
-      (assoc net :flow-info                  
-             (assoc2 (get net :flow-info {})
-                     (edge-from e) (edge-to e) 
-                     edge))))
-  (-flow-sinks     [net x] (get2 net :sinks x nil))
-  (-flow-sources   [net x] (get2 net :sources x nil))
-  IDynamicFlow
-  (-conj-cap-arc [net from to w cap]  
-         (let [finfo (:flow-info net)]
-           (-> (graph/conj-arc net from to w)
-               (assoc :flow-info finfo)
-               (update-edge2* from to cap 0))))
-  (-active-flows [net]  (generic/loop-reduce 
-                         (fn [acc ^einfo info] 
-                           (let [^long f (.flow info)]
-                             (if (> f 0)
-                               (cons  [[(.from info) (.to info)]  (.flow info)] acc) 
-                               acc))) 
-                         '()
-                         (get-edge-infos net))))  
 
 ;;Constructors for various networks.
 ;;=================================
-
 
 ;;Network Flow data is stored as extra data in a 
 ;;digraph.  The API will be generalized behind a 
@@ -526,7 +482,7 @@
       (filter (fn [[k v]] (graph/terminal-node? g (second k))))
       (map second)
       (reduce + 0)))
-  ([g] (total-flow g (active-flows g))))
+  ([g] (total-flow g (-active-flows g))))
 
 ;;refactored to eliminate reduce and destructuring.
 (defn total-cost 
@@ -538,55 +494,48 @@
              to   (second (first info))]
          (+ acc (* flow (graph/arc-weight g from to)))))
             0 active-edges))
-  ([g] (total-cost g (active-flows g))))
-
+  ([g] (total-cost g (-active-flows g))))
 
 ;;Flows and Augmenting Paths
 ;;==========================
-
 
 ;;There might be a better way to do this, exploiting caching for
 ;;instance, if make it part of a protocol or something.
 
 ;;Might be a faster way to do this, possibly cache via protocol.
 (defn ^java.util.ArrayList flow-neighbors
-  [^IFlowNet flow-info v]     
+  [flow-info v]     
   (let [^java.util.ArrayList res (java.util.ArrayList.)]    
     (do (reduce-kv (fn [^java.util.ArrayList acc to w]               
-                     (do (when  (pos? (edge-capacity (.-edge-info flow-info v to))) (.add acc to))
+                     (do (when  (pos? (edge-capacity (-edge-info flow-info v to))) (.add acc to))
                       acc))
                 res
-                (.-flow-sinks flow-info v))
+                (-flow-sinks flow-info v))
         (reduce-kv (fn [^java.util.ArrayList acc from w]
-                     (do (when (pos? (edge-flow (.-edge-info flow-info from v)))  (.add acc from))
+                     (do (when (pos? (edge-flow (-edge-info flow-info from v)))  (.add acc from))
                        acc))
                 res 
-                (.-flow-sources flow-info v)))))
+                (-flow-sources flow-info v)))))
 
 ;;This should work for both transient and persistent networks.
 (defn flow-traverse
   "Custom function to walk a transient flow network."
-  [^IFlowNet net startnode targetnode startstate]
+  [net startnode targetnode startstate]
   (loop [state   (-> (assoc! startstate :targetnode targetnode)
                      (generic/conj-fringe startnode 0))]
     (if-let [source    (generic/next-fringe state)] ;next node to visit
       (let  [visited   (generic/visit-node state source)] ;record visit.
         (if (identical? targetnode source) visited                     
-            (recur (let [xs (flow-neighbors g net source)
+            (recur (let [xs (flow-neighbors net source)
                            n  (count xs)]
                      (loop [acc visited
                             idx 0]
                        (if (== idx n) acc                        
-                           (recur (generic/relax acc (.-flow-weight net source (m/get-arraylist xs idx)) source 
+                           (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
                                                  (m/get-arraylist xs idx)
                                                  (generic/best-known-distance visited source))
                                     (unchecked-inc idx))))))))
         state)))
-
-;;Changed from using flow-walk, due to overhead from function
-;;invocation.  This guy gets called a lot.  Function overhead adds up.
-;;Also, defwalk forms use merge internally...so runtime costs are
-;;incurred in tight loops (i.e. lots of flow calcs).
 
 ;;formerly mincost-aug-pathme
 (definline mincost-aug-path [g from to]
@@ -595,17 +544,17 @@
 ;;A container for augmenting flows
 (defrecord edge-flows [^long flow ^java.util.ArrayList edges])
 
-(defn ^edge-flows path->edge-flows [^IFlowNet flow-info ^clojure.lang.ISeq p]
+(defn ^edge-flows path->edge-flows [flow-info ^clojure.lang.ISeq p]
    (let [edges  (java.util.ArrayList. )]
     (loop [xs   (.next p)
            from (.first p)
            flow posinf]
       (if (empty? xs) (edge-flows. flow edges)
           (let [to     (.first xs)
-                dir   (if (.-direction flow-info from to) :increment :decrement)
-                ^IEdgeInfo info (if (identical? dir :increment) 
-                                  (.-edge-info flow-info from to)
-                                  (.-edge-info flow-info to from))]
+                dir   (if (-get-direction flow-info from to) :increment :decrement)
+                info (if (identical? dir :increment) 
+                       (-edge-info flow-info from to)
+                       (-edge-info flow-info to from))]
             (do (.add edges (.assoc info :dir dir))
                 (recur (.next xs) to
                        (let [^long new-flow (if (identical? :increment dir)
@@ -615,75 +564,34 @@
 
 ;;Persistent augmentation actually sets the edge to the result 
 ;;of increasing flow.
-(defn augment-flow [^IFlowNet the-net p]
+(defn augment-flow [^spork.cljgraph.flow.IFlowNet the-net p]
   (let [^edge-flows ef (path->edge-flows the-net p)
          flow (.flow ef)
          ^java.util.ArrayList xs   (.edges ef)
          n     (count xs)]
     (loop [idx 0
-           ^IFlowNet acc the-net]
+           acc the-net]
       (if (== idx n) acc
           (recur (unchecked-inc idx)
-                 (let [^einfo info (.get xs idx)]                  
-                   (.-set-edge the-net
-                               (if (identical? :increment (.dir info))
-                                 (.-inc-flow info nil nil flow)
-                                 (.-inc-flow info nil nil (- flow))))))))))
-
-;;Since we're augmenting via mutation, we have mutable edges.  We just 
-;;increment the flow directly instead of indirectly.
-(defn augment-flow! [^transient-net2 the-net p]
-  (let [^edge-flows ef (path->edge-flows the-net p)
-         flow (.flow ef)
-         ^java.util.ArrayList xs   (.edges ef)
-         n     (count xs)]
-    (loop [idx 0]
-      (if (== idx n) the-net         
-          (let [^meinfo info (.get xs idx)]                  
-            (do (if (identical? :increment (.dir info))
-                  (.-inc-flow info nil nil flow)
-                  (.-inc-flow info nil nil (- flow)))
-                (recur (unchecked-inc idx))))))))
+                 (let [info (.get xs idx)]                  
+                       (if (identical? :increment (edge-dir info))
+                         (-push-flow the-net info flow)
+                         (-push-flow the-net info (- flow)))))))))
 
 (defn mincost-flow
-  ([^IFlowNet graph from to]
+  ([graph from to]
     (loop [g graph]
       (if-let [p (mincost-aug-path g from to)]
         (recur (augment-flow g p))
-        (let [active (.-active-flows g)]
+        (let [active (-active-flows g)]
           {:active active
            :net g}))))
   ([flow-info graph from to]
     (mincost-flow (assoc graph :flow-info flow-info) from to)))
 
-(defn mincost-flow!
-  ([^IFlowNet graph from to]
-    (loop [g (transient graph)]
-      (if-let [p (mincost-aug-path g from to)]
-        (recur (augment-flow! g p))
-        (let [active (.-active-flows g)]
-          {:active active
-           :net g}))))
-  ([flow-info graph from to]
-    (mincost-flow! (assoc graph :flow-info flow-info) from to)))
-
-(defn augmentations!
-  ([^IFlowNet graph from to]
-     (let [augs (java.util.ArrayList.)]
-       (loop [g (transient graph)]
-         (if-let [p (mincost-aug-path g from to)]
-           (do (let [f (maximum-flow (:g g) (path->edge-info (:g g) g p))]
-                 (.add augs [f p]))
-               (recur (augment-flow! g p)))
-           (let [active (.-active-flows g)]
-             {:active active
-              :augmentations augs
-              :net g})))))
-  ([flow-info graph from to]
-    (augmentations! (assoc graph :flow-info flow-info) from to)))
 
 (defn augmentations
-  ([^IFlowNet graph from to]
+  ([graph from to]
      (let [augs (java.util.ArrayList.)]
        (loop [g graph]
          (if-let [p (mincost-aug-path g from to)]
@@ -696,9 +604,6 @@
               :net g})))))
   ([flow-info graph from to]
     (augmentations (assoc graph :flow-info flow-info) from to)))
-
-;;testing has been moved to flowtests.
-
 
 ;;Vestigial, or pending.  Not currently relevant, but would be nice to
 ;;get backported.
@@ -1346,3 +1251,91 @@
 ;;            :net g}))))
 ;;   ([flow-info graph from to]
 ;;     (mincost-flow! (assoc graph :flow-info flow-info) from to)))
+
+;;protocol for performing updates based on 
+;;compound edge datastructures, rather than 
+;;from to pairs.  This is more efficicent 
+;;for augmenting flows.
+
+;  (-set-edge-flow      [net edge flow])
+;  (-set-edge-capacity  [net edge cap])
+
+
+;; (defprotocol IDirected
+;;   (-get-from      [d])
+;;   (-get-to        [d])
+;;   (-directed-pair [d]))
+
+
+;;;;trans
+  ;; clojure.lang.IEditableCollection ;transient
+  ;; (asTransient [net] (transient-network net))
+  ;; clojure.lang.ITransientCollection ;conj!, persistent!
+  ;; (conj       [net v] (throw (Exception. "conj! currently not supported on networks")))
+  ;; (persistent [net]   (persistent-network! net)) 
+  ;; IEdgeInfo
+  ;; (setFlow     [net from to flow]
+  ;;       (do (set! flow-info
+  ;;                 (assoc2! flow-info from to 
+  ;;                          (.-set-flow ^spork.cljgraph.flow.IEdgeInfo 
+  ;;                             (.-edge-info net from to) from to flow)))
+  ;;           net))                 
+  ;; (setCapacity [net from to cap] 
+  ;;        (do (set! flow-info
+  ;;                  (assoc2! flow-info from to 
+  ;;                           (.-set-capacity  ^spork.cljgraph.flow.IEdgeInfo 
+  ;;                              (.-edge-info net from to) from to cap)))
+  ;;            net))                 
+  ;; (incFlow     [net from to amt] 
+  ;;        (do (set! flow-info
+  ;;                  (assoc2! flow-info from to 
+  ;;                           (.-inc-flow ^spork.cljgraph.flow.IEdgeInfo  
+  ;;                              (.-edge-info net from to) from to amt)))
+  ;;            net))
+  ;; (flow     [net from to] (edge-flow     (.-edge-info net from to)))
+  ;; (capacity [net from to] (edge-capacity (.-edge-info net from to)))            
+  ;; (from         [e] (unsupported 'from))
+  ;; (to           [e] (unsupported 'to))
+  ;; (dir          [e] (unsupported 'dir))
+  ;; (directedPair [e] (unsupported 'directed-pair ))
+
+;;;;trans2
+  ;; clojure.lang.IEditableCollection ;transient
+  ;; (asTransient [net] (transient-network2 net))
+  ;; clojure.lang.ITransientCollection ;conj!, persistent!
+  ;; (conj       [net v] (throw (Exception. "conj! currently not supported on networks")))
+  ;; (persistent [net]   (persistent-network! net)) 
+  ;; IEdgeInfo
+  ;; (setFlow     [net from to flow]
+  ;;     (do (.setFlow ^meinfo (.-edge-info flow-info from to) from to flow)
+  ;;         net))                 
+  ;; (setCapacity [net from to cap] 
+  ;;     (do (.setCapacity ^meinfo (.-edge-info flow-info from to) from to cap)
+  ;;         net))                 
+  ;; (incFlow     [net from to amt] 
+  ;;     (do (.incFlow ^meinfo (.-edge-info flow-info from to) from to amt)
+  ;;         net))
+  ;; (flow         [net from to] (edge-flow     (.-edge-info net from to)))
+  ;; (capacity     [net from to] (edge-capacity (.-edge-info net from to)))            
+  ;; (from         [e] (unsupported 'from))
+  ;; (to           [e] (unsupported 'to))
+  ;; (dir          [e] (unsupported 'dir))
+  ;; (directedPair [e] (unsupported 'directed-pair ))
+
+;;;;digraph
+;; IEdgeInfo
+;;   (-set-flow      [net from to flow] 
+;;     (let [^einfo e (-edge-info net from to)]
+;;       (-set-edge net e (.setFlow e nil nil flow))))
+;;   (-set-capacity  [net from to cap]  
+;;     (let [^einfo e (-edge-info net from to)]
+;;       (-set-edge net e (.setCapacity e nil nil cap))))
+;;   (-inc-flow      [net from to flow]  
+;;     (-set-edge net e
+;;        (inc-flow (-edge-info net from to) nil nil flow)))
+;;   (flow      [net from to]  (edge-flow  (.-edge-info net from to)))
+;;   (capacity  [net from to]  (edge-capacity  (.-edge-info net from to)))
+;;   (from         [e] (unsupported 'from))
+;;   (to           [e] (unsupported 'to))
+;;   (dir          [e] (unsupported 'dir))
+;;   (directedPair [e] (unsupported 'directed-pair ))
