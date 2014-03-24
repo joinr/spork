@@ -299,6 +299,10 @@
 (defn conj-cap-arcs [g arcs]
   (reduce (fn [gr [from to w cap]]  (-conj-cap-arc  gr from to w cap)) g arcs))
 
+(defmacro forward-flow [g from to]
+  `(if (forward? ~g ~from ~to) 
+     (generic/-arc-weight ~g ~from ~to)
+     (- (generic/-arc-weight ~g ~to ~from))))
 
 ;;Network Data Types
 ;;==================
@@ -312,9 +316,7 @@
   (-edge-info     [net from to]   (edge-info net from to))
   (einfos         [n]             (get-edge-infos n))
   (-get-direction [net from to]   (forward? net from to))
-  (-flow-weight   [net from to]   (if (forward? net from to) 
-                                    (generic/-arc-weight net from to)
-                                    (- (generic/-arc-weight net to from))))
+  (-flow-weight   [net from to]   (forward-flow net from to))
   (-set-edge      [net edge]         
     (assoc net :flow-info                  
            (assoc2 (get net :flow-info {})
@@ -354,8 +356,7 @@
            (->edge-info2 from to)))
   (einfos [net] (get-edge-infos! net))
   (-get-direction [net from to]  (forward? g from to))
-  (-flow-weight    [net from to] (if (forward? g from to) (generic/-arc-weight g from to)
-                                                         (- (generic/-arc-weight g from to))))
+  (-flow-weight    [net from to] (forward-flow g from to))
   (-set-edge [net edge]         
              (let [^einfo e edge
                    from (.from e)
@@ -366,7 +367,22 @@
                    net)))
   (-flow-sinks     [net x] (get2 g :sinks x nil))
   (-flow-sources   [net x] (get2 g :sources x nil))
-  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge flow))))
+  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge flow)))
+  IDynamicFlow
+  (-conj-cap-arc [net from to w cap]  (throw (Exception. "unsupported op -conj-cap-arc"))) 
+  (-active-flows [net] 
+                 (let [^java.util.ArrayList xs  (get-edge-infos! net)
+                       n (count xs)]    
+                   (loop [idx 0
+                          acc '()]
+                     (if (== idx n) acc
+                         (let [^einfo info (m/get-arraylist xs idx)
+                               ^long f (edge-flow info)]
+                           (recur (unchecked-inc idx)
+                                  (if (pos? f)
+                                    (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
+                                    acc))))))))  
+
 
 
 ;;A transient network that uses mutable edges.
@@ -387,8 +403,7 @@
               edge))))
   (einfos [n]     (get-edge-infos! n))
   (-get-direction [net from to] (forward? g from to))
-  (-flow-weight   [net from to] (if (forward? g from to) (generic/-arc-weight g from to)
-                                     (- (generic/-arc-weight g from to))))
+  (-flow-weight   [net from to] (forward-flow g from to))
   (-set-edge [net edge]         
      (let [^meinfo e edge
            from (.from e)
