@@ -238,3 +238,36 @@
 ;;list-spectific optimizations.
 (definline cons-head [the-list] `(.first ~(vary-meta the-list assoc        :tag 'clojure.lang.Cons)))
 (definline cons-next [the-list] `(.first (.next ~(vary-meta the-list assoc :tag 'clojure.lang.Cons))))
+
+
+
+;;More effecient memoization functions.  Clojure's built in memo 
+;;memoizes args using a variadic code path, which forces the creation
+;;of tons of arrayseqs....this is horrible for small, fast lookups.
+(defn memo-1 [f]
+  (let [tbl (java.util.HashMap.)]
+    (fn [k] (if-let [res (.get tbl k)]
+              res 
+              (let [res (f k)]
+                (do (.put tbl k res)
+                    res))))))
+
+(defn mutable-memo 
+  "Returns a memoized version of a referentially transparent function. The
+  memoized version of the function keeps a cache of the mapping from arguments
+  to results and, when calls with the same arguments are repeated often, has
+  higher performance at the expense of higher memory use."
+  [f]
+  (let [mem (atom {})]
+    (fn [& args]
+      (if-let [e (find @mem args)]
+        (val e)
+        (let [ret (apply f args)]
+          (swap! mem assoc args ret)
+          ret))))) 
+
+;; (defmacro memo-n [n f]
+;;   (let [args (map #(gensym (str "arg" %)) (range n))]
+;;     `(let [tbl# (java.util.HashMap.)]
+;;        (fn [~@args]
+;;          (if-let [res (.get tbl 

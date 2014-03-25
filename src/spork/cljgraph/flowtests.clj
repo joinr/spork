@@ -29,7 +29,7 @@
       (conj-cap-arcs net-data)))
 
 
-
+(def ctx (->memoized-flow-context the-net))
 
 (comment 
 

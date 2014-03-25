@@ -443,8 +443,19 @@
 (defn ->memoized-flow-context [x]
   (let [forward?    (memoize (fn [from to] (forward? x from to)))
         flow-weight (memoize (fn [from to] (-flow-weight x from to)))
-        flow-sinks  (memoize (fn [from] (-flow-sinks x from)))
-        flow-sources (memoize (fn [to] (-flow-sources x to)))]
+        flow-sinks  (memoize (fn [from]    (-flow-sinks x from)))
+        flow-sources (memoize (fn [to]     (-flow-sources x to)))]
+    (reify IMemoizedFlow
+      (-memo-forward?      [net from to] (forward? from to))
+      (-memo-flow-weight   [net from to] (flow-weight from to))
+      (-memo-flow-sinks    [net from]    (flow-sinks from))
+      (-memo-flow-sources  [net to]      (flow-sources to)))))
+
+(defn ->memoized-flow-context2 [x]
+  (let [forward?     (memoize (fn [from to] (forward? x from to)))
+        flow-weight  (memoize (fn [from to] (-flow-weight x from to)))
+        flow-sinks   (memoize (fn [from]    (-flow-sinks x from)))
+        flow-sources (memoize (fn [to]      (-flow-sources x to)))]
     (reify IMemoizedFlow
       (-memo-forward?      [net from to] (forward? from to))
       (-memo-flow-weight   [net from to] (flow-weight from to))
@@ -581,20 +592,47 @@
       (let  [visited   (generic/visit-node state source)] ;record visit.
         (if (identical? targetnode source) visited                     
             (recur (let [^java.util.ArrayList xs (flow-neighbors net source  
-                                                    (-flow-sinks net source) (-flow-sources net source))
+                                                                 (-flow-sinks net source) (-flow-sources net source))
+                         n  (.size xs)]
+                     (loop [acc visited
+                               idx 0]
+                       (if (== idx n) acc                        
+                           (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
+                                                 (m/get-arraylist xs idx)
+                                                 (generic/best-known-distance visited source))
+                                  (unchecked-inc idx))))))))
+         state)))
+  
+
+;;We can probably refactor this into a single function with another arity...
+(defn flow-traverse-memoized
+  "Custom function to walk a transient flow network.  Allows use, preferably re-use of a memoized 
+   context of graph topology queries.  Experimental."
+  [net startnode targetnode startstate ctx]
+  (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                     (generic/conj-fringe startnode 0))]
+    (if-let [source    (generic/next-fringe state)] ;next node to visit
+      (let  [visited   (generic/visit-node state source)] ;record visit.
+        (if (identical? targetnode source) visited                     
+            (recur (let [^java.util.ArrayList xs (flow-neighbors net source  
+                                                    (-memo-flow-sinks ctx source) (-memo-flow-sources ctx source))
                            n  (.size xs)]
                      (loop [acc visited
                             idx 0]
                        (if (== idx n) acc                        
-                           (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
+                           (recur (generic/relax acc (-memo-flow-weight ctx source (m/get-arraylist xs idx)) source 
                                                  (m/get-arraylist xs idx)
                                                  (generic/best-known-distance visited source))
                                     (unchecked-inc idx))))))))
         state)))
 
+
 ;;formerly mincost-aug-pathme
 (definline mincost-aug-path [g from to]
   `(searchstate/first-path (flow-traverse ~g ~from ~to (searchstate/mempty-PFS ~from))))
+
+(definline mincost-aug-path-memoized [g from to ctx]
+  `(searchstate/first-path (flow-traverse-memoized ~g ~from ~to (searchstate/mempty-PFS ~from) ~ctx)))
 
 ;;A container for augmenting flows
 (defrecord edge-flows [^long flow ^java.util.ArrayList edges])
@@ -641,8 +679,13 @@
         (let [active (-active-flows g)]
           {:active active
            :net g}))))
-  ([flow-info graph from to]
-    (mincost-flow (assoc graph :flow-info flow-info) from to)))
+  ([graph from to memo-context]     
+     (loop [g graph]
+       (if-let [p (mincost-aug-path-memoized g from to memo-context)]
+         (recur (augment-flow g p))
+         (let [active (-active-flows g)]
+           {:active active
+            :net g})))))
 
 (defn augmentations
   ([graph from to]
