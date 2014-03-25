@@ -441,15 +441,15 @@
                          acc))))))))
 
 (defn ->memoized-flow-context [x]
-  (let [forward?    (memoize (fn [from to] (-forward? net from to)))
-        flow-weight (memoize (fn [from to] (-flow-weight net from to)))
-        flow-sinks  (memoize (fn [from] (-flow-sinks net from to)))
-        flow-sources (memoize (fn [to] (-flow-sources net from to)))]
+  (let [forward?    (memoize (fn [from to] (forward? x from to)))
+        flow-weight (memoize (fn [from to] (-flow-weight x from to)))
+        flow-sinks  (memoize (fn [from] (-flow-sinks x from)))
+        flow-sources (memoize (fn [to] (-flow-sources x to)))]
     (reify IMemoizedFlow
       (-memo-forward?      [net from to] (forward? from to))
       (-memo-flow-weight   [net from to] (flow-weight from to))
-      (-memo-flow-sinks    [net from]    (flow-sinks from to))
-      (-memo-flow-sources  [net to]      (flow-sources from to)))))
+      (-memo-flow-sinks    [net from]    (flow-sinks from))
+      (-memo-flow-sources  [net to]      (flow-sources to)))))
 
 ;;(defmacro with-memo-context [blah expr]) 
   
