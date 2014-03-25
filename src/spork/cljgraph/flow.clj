@@ -29,6 +29,14 @@
   (-flow-sources   [net x])
   (-push-flow      [net edge flow]))
 
+;;For certain flows, we provide a memoized version of two common 
+;;slow paths.
+(defprotocol IMemoizedFlow
+  (-memo-forward?      [net from to])
+  (-memo-flow-weight   [net from to])
+  (-memo-flow-sinks    [net from])
+  (-memo-flow-sources  [net to]))
+
 (defprotocol IDynamicFlow
   (-conj-cap-arc   [net from to w cap])
   (-active-flows   [net]))
@@ -383,8 +391,6 @@
                                     (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
                                     acc))))))))  
 
-
-
 ;;A transient network that uses mutable edges.
 ;;This will knock off costs to assoc.  We just 
 ;;read the data and mutate the edge.  If this is much 
@@ -434,6 +440,19 @@
                          (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
                          acc))))))))
 
+(defn ->memoized-flow-context [x]
+  (let [forward?    (memoize (fn [from to] (-forward? net from to)))
+        flow-weight (memoize (fn [from to] (-flow-weight net from to)))
+        flow-sinks  (memoize (fn [from] (-flow-sinks net from to)))
+        flow-sources (memoize (fn [to] (-flow-sources net from to)))]
+    (reify IMemoizedFlow
+      (-memo-forward?      [net from to] (forward? from to))
+      (-memo-flow-weight   [net from to] (flow-weight from to))
+      (-memo-flow-sinks    [net from]    (flow-sinks from to))
+      (-memo-flow-sources  [net to]      (flow-sources from to)))))
+
+;;(defmacro with-memo-context [blah expr]) 
+  
 ;;Constructors for various networks.
 ;;=================================
 
@@ -525,18 +544,32 @@
 
 ;;Might be a faster way to do this, possibly cache via protocol.
 (defn ^java.util.ArrayList flow-neighbors
-  [flow-info v]     
+  [flow-info v sinks sources]     
   (let [^java.util.ArrayList res (java.util.ArrayList.)]    
     (do (reduce-kv (fn [^java.util.ArrayList acc to w]               
                      (do (when  (pos? (edge-capacity (-edge-info flow-info v to))) (.add acc to))
                       acc))
                 res
-                (-flow-sinks flow-info v))
+               sinks)
         (reduce-kv (fn [^java.util.ArrayList acc from w]
                      (do (when (pos? (edge-flow (-edge-info flow-info from v)))  (.add acc from))
                        acc))
                 res 
-                (-flow-sources flow-info v)))))
+               sources))))
+
+;; (defn ^java.util.ArrayList memo-flow-neighbors
+;;   [flow-info v source-func sink-func]     
+;;   (let [^java.util.ArrayList res (java.util.ArrayList.)]    
+;;     (do (reduce-kv (fn [^java.util.ArrayList acc to w]               
+;;                      (do (when  (pos? (edge-capacity (-edge-info flow-info v to))) (.add acc to))
+;;                       acc))
+;;                 res
+;;                 (source-func v))
+;;         (reduce-kv (fn [^java.util.ArrayList acc from w]
+;;                      (do (when (pos? (edge-flow (-edge-info flow-info from v)))  (.add acc from))
+;;                        acc))
+;;                 res 
+;;                 (sink-func v)))))
 
 ;;This should work for both transient and persistent networks.
 (defn flow-traverse
@@ -547,8 +580,9 @@
     (if-let [source    (generic/next-fringe state)] ;next node to visit
       (let  [visited   (generic/visit-node state source)] ;record visit.
         (if (identical? targetnode source) visited                     
-            (recur (let [xs (flow-neighbors net source)
-                           n  (count xs)]
+            (recur (let [^java.util.ArrayList xs (flow-neighbors net source  
+                                                    (-flow-sinks net source) (-flow-sources net source))
+                           n  (.size xs)]
                      (loop [acc visited
                             idx 0]
                        (if (== idx n) acc                        
@@ -589,7 +623,7 @@
   (let [^edge-flows ef (path->edge-flows the-net p)
          flow (.flow ef)
          ^java.util.ArrayList xs   (.edges ef)
-         n     (count xs)]
+         n     (.size xs)]
     (loop [idx 0
            acc the-net]
       (if (== idx n) acc

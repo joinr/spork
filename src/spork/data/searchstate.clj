@@ -258,7 +258,8 @@
    ^java.util.HashMap shortest 
    ^java.util.HashMap distance 
    fringe estimator 
-   ^java.util.ArrayList visited]
+   ^java.util.ArrayList visited
+   multipath]
   generic/IGraphSearch
   (new-path     [state source sink w]
     (do (.put shortest sink source)
@@ -277,11 +278,12 @@
                  (generic/conj-fringe fringe sink wnew))) 
          state))  
   (equal-path   [state source sink] 
-     (let [current  (.get shortest sink)]
-       (do (.put shortest sink 
-                 (-> (if (branch? current) current (->branch current))
-                     (push-branch source)))) 
-           state))
+     (do (when multipath
+           (let [current  (.get shortest sink)]
+             (do (.put shortest sink 
+                       (-> (if (branch? current) current (->branch current))
+                           (push-branch source))))))
+         state))
   (best-known-distance   [state nd] (.get distance nd))
   (conj-visited [state source] 
       (do (.add visited source)
@@ -305,7 +307,7 @@
   (searchstate3. nil nil {} {} nil nil []))
 
 (defn ^msearchstate2 ->empty-mutable-search-state [] 
-  (msearchstate2. nil nil (HashMap. ) (HashMap. ) nil nil (java.util.ArrayList.)))
+  (msearchstate2. nil nil (HashMap. ) (HashMap. ) nil nil (java.util.ArrayList.) nil))
 
 (defn init-search
   "Populates an empty search state with an initial set of parameters.  Allows
@@ -356,15 +358,16 @@
   "Populates an empty search state with an initial set of parameters.  Allows
    searches to be customized by varying the start, target, and the type of 
    fringe used to prosecute the search."
-  [startnode & {:keys [targetnode fringe] 
-                :or   {targetnode ::nullnode fringe fr/depth-fringe}}]
+  [startnode & {:keys [targetnode fringe multipath] 
+                :or   {targetnode ::nullnode fringe fr/depth-fringe multipath nil}}]
   (msearchstate2.  startnode 
                    targetnode
                    (doto (HashMap. ) (.put startnode startnode))
                    (doto (HashMap. ) (.put startnode 0))
                    fringe
                    nil
-                   (java.util.ArrayList.)))
+                   (java.util.ArrayList.)
+                   multipath))
         
 ;; (defn backtrack
 ;;   "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
@@ -530,7 +533,8 @@
                     (doto (HashMap. ) (.put ~startnode 0))
                     (fr/make-pq)
                     nil
-                    (java.util.ArrayList.)))
+                    (java.util.ArrayList.)
+                    nil))
 
 ;;A mutable empty depth-first search, using hashmaps...
 (def mempty-DFS2  (fn [startnode] (minit-search2 startnode :fringe fr/depth-fringe)))
@@ -560,7 +564,6 @@
 ;; (let [init-fringe  (fn [startnode] (init-search! startnode :empty-state empty-search3))]
 ;;   (defn empty-PFS3 [startnode] (assoc! (init-fringe startnode) :fringe (fr/make-pq))))
 
-
 (definline empty-PFS3 [startnode] 
   `(assoc! (init-search! ~startnode :empty-state empty-search3) :fringe (fr/make-pq)))
 
@@ -571,8 +574,6 @@
 
 (def empty-DFS2 (memoize (fn [startnode] (init-search! startnode :fringe fr/depth-fringe :empty-state empty-search2))))
 (def empty-DFS3 (fn [startnode] (init-search! startnode :fringe fr/depth-fringe :empty-state empty-search3)))
-
-
 
 
 ;;testing
