@@ -568,6 +568,20 @@
                 res 
                sources))))
 
+(defn ^java.util.ArrayList flow-neighbors-scaled
+  [flow-info v sinks sources scalef]     
+  (let [^java.util.ArrayList res (java.util.ArrayList.)]    
+    (do (reduce-kv (fn [^java.util.ArrayList acc to w]               
+                     (do (when  (pos? (scalef (edge-capacity (-edge-info flow-info v to)))) (.add acc to))
+                      acc))
+                res
+               sinks)
+        (reduce-kv (fn [^java.util.ArrayList acc from w]
+                     (do (when (pos? (scalef (edge-flow (-edge-info flow-info from v))))   (.add acc from))
+                       acc))
+                res 
+               sources))))
+
 ;; (defn ^java.util.ArrayList memo-flow-neighbors
 ;;   [flow-info v source-func sink-func]     
 ;;   (let [^java.util.ArrayList res (java.util.ArrayList.)]    
@@ -626,6 +640,27 @@
                                     (unchecked-inc idx))))))))
         state)))
 
+;; (defn flow-traverse-scaled
+;;   "Custom function to walk a transient flow network.  Allows use, preferably re-use of a memoized 
+;;    context of graph topology queries.  Experimental."
+;;   [net startnode targetnode startstate scalef]
+;;   (loop [state   (-> (assoc! startstate :targetnode targetnode)
+;;                      (generic/conj-fringe startnode 0))]
+;;     (if-let [source    (generic/next-fringe state)] ;next node to visit
+;;       (let  [visited   (generic/visit-node state source)] ;record visit.
+;;         (if (identical? targetnode source) visited                     
+;;             (recur (let [^java.util.ArrayList xs (flow-neighbors-scaled net source  
+;;                                                     (-flow-sinks net source) (-flow-sources net source) scalef)
+;;                            n  (.size xs)]
+;;                      (loop [acc visited
+;;                             idx 0]
+;;                        (if (== idx n) acc                        
+;;                            (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
+;;                                                  (m/get-arraylist xs idx)
+;;                                                  (generic/best-known-distance visited source))
+;;                                     (unchecked-inc idx))))))))
+;;         state)))
+
 
 ;;formerly mincost-aug-pathme
 (definline mincost-aug-path [g from to]
@@ -633,6 +668,9 @@
 
 (definline mincost-aug-path-memoized [g from to ctx]
   `(searchstate/first-path (flow-traverse-memoized ~g ~from ~to (searchstate/mempty-PFS ~from) ~ctx)))
+
+(definline mincost-aug-path-scaled [g from to scalef]
+  `(searchstate/first-path (flow-traverse-memoized ~g ~from ~to (searchstate/mempty-PFS ~from) ~scalef)))
 
 ;;A container for augmenting flows
 (defrecord edge-flows [^long flow ^java.util.ArrayList edges])
@@ -654,6 +692,25 @@
                                                 (edge-capacity info)
                                                 (edge-flow info))] 
                          (min flow  new-flow)))))))))
+
+;; (defn ^edge-flows path->edge-flows-scaled [scalef flow-info ^clojure.lang.ISeq p ]
+;;    (let [edges  (java.util.ArrayList. )]
+;;     (loop [xs   (.next p)
+;;            from (.first p)
+;;            flow posinf]
+;;       (if (empty? xs) (edge-flows. flow edges)
+;;           (let [to     (.first xs)
+;;                 dir   (if (-get-direction flow-info from to) :increment :decrement)
+;;                 ^IEdgeInfo info (if (identical? dir :increment) 
+;;                                   (-edge-info flow-info from to)
+;;                                   (-edge-info flow-info to from))]
+;;             (do (.add edges (.setDirection info dir))
+;;                 (recur (.next xs) to
+;;                        (let [^long new-flow (if (identical? :increment dir)
+;;                                                 (scalef (edge-capacity info))
+;;                                                 (scalef (edge-flow info)))] 
+;;                          (min flow  new-flow)))))))))
+
 
 ;;Persistent augmentation actually sets the edge to the result 
 ;;of increasing flow.
