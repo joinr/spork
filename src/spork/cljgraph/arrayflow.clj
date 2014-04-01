@@ -41,7 +41,7 @@
         flows        (arr/longs-2d nodes nodes)
         caps         (arr/longs-2d nodes nodes)
         costs        (arr/longs-2d nodes nodes)]
-    (do (doseq [spork.cljgraph.flow.einfo e (flow/get-edge-infos supply-net)]
+    (do (doseq [^spork.cljgraph.flow.einfo e (flow/get-edge-infos supply-net)]
           (let [from (get node->num (.from e))
                 to   (get node->num (.to e))
                 cost (generic/-arc-weight supply-net (.from e) (.to e))]
@@ -69,7 +69,7 @@
   (let [flows (.flows a)
         capacities (.capacities a)
         bound (.n a)
-        acc   (java.util.ArrayOist.)]
+        acc   (java.util.ArrayList.)]
     (do 
       (loop [to 0] ;forward arcs
         (when (not (== to bound))
@@ -115,7 +115,7 @@
   (conj-visited [state source] state)
   (best-known-distance [state x] (if (aget known x) (aget distance x) nil))
   IFlowSearch
-  (newpath [state ^long sink ^long w]
+  (newPath [state ^long source ^long sink ^long w]
            (do (aset known sink true)
                (aset shortest sink source)
                (aset distance sink w)
@@ -225,7 +225,7 @@
 (definline array-mincost-aug-path [g from to]
   `(searchstate/first-path (array-flow-traverse ~g ~from ~to (searchstate/mempty-PFS ~from))))
 
-(defn first-path [^array-search a]
+(defn first-path [^arraysearch a]
   (let [^long target (:targetnode a)]
     (when (generic/best-known-distance a (:targetnode a))
       (let [^long source (:startnode a)
@@ -286,11 +286,11 @@
        (loop [~i 0]
          (if (== ~i bound#) ~a
              (do (loop [~j 0]
-                   (if (== ~i ~j) (recur (unchecked-inc ~j))
+                   (if (== ~i ~j)        (recur (unchecked-inc ~j))
                        (if (== ~j bound#) nil
                            (do ~expr 
-                               (recur (unchecked-inc ~j)))))
-                   (recur (unchecked-inc ~i)))))))))
+                               (recur (unchecked-inc ~j))))))
+                   (recur (unchecked-inc ~i))))))))
 
 (defn ^array-net reset-flow! [^array-net a]
   (do-edges a arr i j
@@ -316,7 +316,7 @@
         n (unchecked-dec (alength xs))]
     (do (loop [idx 0]
           (if (== idx n) the-net
-              (let [from (aget xs ids)
+              (let [from (aget xs idx)
                     to   (aget xs (unchecked-inc idx))]
                 (if (< from to)
                   (do (array-inc-flow! the-net from to ^long flow)

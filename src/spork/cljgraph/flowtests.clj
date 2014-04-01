@@ -1,5 +1,6 @@
 (ns spork.cljgraph.flowtests
-  (:require [spork.cljgraph.flow :refer :all]))
+  (:require [spork.cljgraph.flow :refer :all]
+            [spork.cljgraph [arrayflow :as arr]]))
 
 (def net-data 
  [[:s   :chi  0 300]
@@ -34,6 +35,8 @@
   (-> empty-network 
       (conj-cap-arcs net-data)))
 
+(def anet 
+  (arr/net->array-net the-net))
 
 ;(def ctx (->memoized-flow-context the-net))
 

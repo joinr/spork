@@ -46,7 +46,7 @@
   IScaling
   (scale [n x] (scale-func x))
   (unscale [n x] (unscale-func x)))
-  
+ 
 
 ;;We use an interface here for a reason....
 ;;An interface allows direct method invokation on 
