@@ -29,15 +29,6 @@
   (-flow-sources   [net x])
   (-push-flow      [net edge flow]))
 
-
-;;For certain flows, we provide a memoized version of two common 
-;;slow paths.
-(defprotocol IMemoizedFlow
-  (-memo-forward?      [net from to])
-  (-memo-flow-weight   [net from to])
-  (-memo-flow-sinks    [net from])
-  (-memo-flow-sources  [net to]))
-
 (defprotocol IDynamicFlow
   (-conj-cap-arc   [net from to w cap])
   (-active-flows   [net]))
@@ -45,6 +36,17 @@
 (defprotocol IScaling
   (scale    [n x])
   (unscale  [n x]))
+
+(defrecord scaled-int-flow [^long factor]
+  IScaling
+  (scale [n x] (quot x factor))
+  (unscale [n x] (* ^long x factor)))
+
+(defrecord general-scaled-flow [scale-func unscale-func]
+  IScaling
+  (scale [n x] (scale-func x))
+  (unscale [n x] (unscale-func x)))
+  
 
 ;;We use an interface here for a reason....
 ;;An interface allows direct method invokation on 
@@ -353,55 +355,12 @@
                                acc))) 
                          '()
                          (get-edge-infos net))))  
-
-;;Due to the overhead associated with modifying networks, 
-;;we end up desiring mutation for efficiency.  A transient 
-;;net is just a wrapper around the original persistent network, 
-;;with a set of mutable flow-info and meta data.
-(m/defmutable transient-net [g flow-info metadata]
-  clojure.lang.IObj
-  ;adds metadata support
-  (meta [this] metadata)
-  (withMeta [this m] (do (set! metadata m) this))
-  IFlowNet
-  (-edge-info      [net from to] 
-         (if-let [^einfo  res (get2 flow-info from to nil)]
-           res
-           (->edge-info2 from to)))
-  (einfos [net] (get-edge-infos! net))
-  (-get-direction [net from to]  (forward? g from to))
-  (-flow-weight    [net from to] (forward-flow g from to))
-  (-set-edge [net edge]         
-             (let [^einfo e edge
-                   from (.from e)
-                   to   (.to   e)]
-               (do (set! flow-info
-                         (assoc2! flow-info from to 
-                                  edge))
-                   net)))
-  (-flow-sinks     [net x] (get2 g :sinks x nil))
-  (-flow-sources   [net x] (get2 g :sources x nil))
-  (-push-flow      [net edge flow] (-set-edge net (inc-flow edge flow)))
-  IDynamicFlow
-  (-conj-cap-arc [net from to w cap]  (throw (Exception. "unsupported op -conj-cap-arc"))) 
-  (-active-flows [net] 
-                 (let [^java.util.ArrayList xs  (get-edge-infos! net)
-                       n (count xs)]    
-                   (loop [idx 0
-                          acc '()]
-                     (if (== idx n) acc
-                         (let [^einfo info (m/get-arraylist xs idx)
-                               ^long f (edge-flow info)]
-                           (recur (unchecked-inc idx)
-                                  (if (pos? f)
-                                    (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
-                                    acc))))))))  
-
+ 
 ;;A transient network that uses mutable edges.
 ;;This will knock off costs to assoc.  We just 
 ;;read the data and mutate the edge.  If this is much 
 ;;faster, it will become the default.
-(m/defmutable transient-net2 [g flow-info metadata]
+(m/defmutable transient-net [g flow-info metadata]
   clojure.lang.IObj
   ;adds metadata support
   (meta [this] metadata)
@@ -446,28 +405,6 @@
                          (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
                          acc))))))))
 
-(defn ->memoized-flow-context [x]
-  (let [forward?    (memoize (fn [from to] (forward? x from to)))
-        flow-weight (memoize (fn [from to] (-flow-weight x from to)))
-        flow-sinks  (memoize (fn [from]    (-flow-sinks x from)))
-        flow-sources (memoize (fn [to]     (-flow-sources x to)))]
-    (reify IMemoizedFlow
-      (-memo-forward?      [net from to] (forward? from to))
-      (-memo-flow-weight   [net from to] (flow-weight from to))
-      (-memo-flow-sinks    [net from]    (flow-sinks from))
-      (-memo-flow-sources  [net to]      (flow-sources to)))))
-
-(defn ->memoized-flow-context2 [x]
-  (let [forward?     (memoize (fn [from to] (forward? x from to)))
-        flow-weight  (memoize (fn [from to] (-flow-weight x from to)))
-        flow-sinks   (memoize (fn [from]    (-flow-sinks x from)))
-        flow-sources (memoize (fn [to]      (-flow-sources x to)))]
-    (reify IMemoizedFlow
-      (-memo-forward?      [net from to] (forward? from to))
-      (-memo-flow-weight   [net from to] (flow-weight from to))
-      (-memo-flow-sinks    [net from]    (flow-sinks from))
-      (-memo-flow-sources  [net to]      (flow-sources to)))))
-
 ;;we can build a fairly powerful abstraction if we allow the user 
 ;;to define ways to wrap existing flows.
 
@@ -488,31 +425,22 @@
 ;;We can create transient networks from existing networks to 
 ;;speed up ex. mincost flow computations, or even a series of 
 ;;mincost flows sharing the same transient.
-(defn ^transient-net transient-network [g]
-  (transient-net.  g  (transient2 (:flow-info g)) {:flow-info (:flow-info g)}))
 
 ;;We actually need to push each of these guys into a mutable edge.
 ;;Basically, for each edge in the stored flow-info, which is a kv2, 
 ;;we can get the the flow-info into a flat sequence via kv2-flatten.
 
-
-
 ;;As with clojure transients, we define a function to realize the 
 ;;transient state as a persistent network.
-(defn persistent-network! [^transient-net the-net]
-  (let [g (:g the-net)]
-    (assoc g
-           :flow-info (persistent2! (:flow-info the-net)))))
-
-(defn ^transient-net2 transient-network2 [g]
+(defn ^transient-net transient-network [g]
   (let [flow-info!   (kv-reduce2 
                         (fn [acc from to v] 
                           (assoc2! acc from to (edge->medge v)))
                         (transient {})
                         (:flow-info g))]        
-  (transient-net2.  g  flow-info! {:flow-info (:flow-info g)})))
+  (transient-net.  g  flow-info! {:flow-info (:flow-info g)})))
 
-(defn persistent-network2! [^transient-net2 the-net]
+(defn persistent-network! [^transient-net the-net]
   (let [g (:g the-net)]
     (assoc g
            :flow-info (kv-map2 medge->edge (persistent2! (:flow-info the-net))))))
@@ -558,24 +486,6 @@
 
 ;;Flows and Augmenting Paths
 ;;==========================
-
-;;There might be a better way to do this, exploiting caching for
-;;instance, if make it part of a protocol or something.
-
-
-;; (defn ^java.util.ArrayList filter-edges [f flow-info v sinks sources]
-;;   (let [^java.util.ArrayList res (java.util.ArrayList.)]    
-;;     (do (reduce-kv (fn [^java.util.ArrayList acc to w]               
-;;                      (do (when  (pos? (edge-capacity (-edge-info flow-info v to))) (.add acc to))
-;;                          acc))
-;;                    res
-;;                    sinks)
-;;         (reduce-kv (fn [^java.util.ArrayList acc from w]
-;;                      (do (when (pos? (edge-flow (-edge-info flow-info from v)))  (.add acc from))
-;;                          acc))
-;;                    res 
-;;                    sources))))
-
 
 ;;Might be a faster way to do this, possibly cache via protocol.
 (defn ^java.util.ArrayList flow-neighbors
@@ -626,16 +536,8 @@
 ;;do this stuff.
 
 
-;;One idea is to have a dedicated protocol
-(defprotocol IFlowContext
-  (internal-flow-neighbors   [fl net source])
-  (internal-path->edge-flows [fl net p])
-  (internal-augment-flow     [f1 p])
-  (internal-flow-weight      [f1 from to]))
 
-;;We can then describe combinators that help us out.
-    
-
+;;We can then describe combinators that help us out.  
 
 ;;This should work for both transient and persistent networks.
 (defn flow-traverse
@@ -658,37 +560,40 @@
                                   (unchecked-inc idx))))))))
          state))) 
 
-(defn flow-traverse-generic 
+
+(defn flow-traverse-scaled
   "Custom function to walk a transient flow network."
-  [net startnode targetnode startstate ^IFlowContext ctx]
+  [net startnode targetnode startstate scaling]
   (loop [state   (-> (assoc! startstate :targetnode targetnode)
                      (generic/conj-fringe startnode 0))]
     (if-let [source    (generic/next-fringe state)] ;next node to visit
       (let  [visited   (generic/visit-node state source)] ;record visit.
         (if (identical? targetnode source) visited                     
-            (recur (let [^java.util.ArrayList xs (.internal-flow-neighbors ctx net source)
+            (recur (let [^java.util.ArrayList xs (flow-neighbors-scaled net source  
+                                                                 (-flow-sinks net source) (-flow-sources net source) scaling)
                          n  (.size xs)]
                      (loop [acc visited
                                idx 0]
                        (if (== idx n) acc                        
-                           (recur (generic/relax acc (.internal-flow-weight ctx net source (m/get-arraylist xs idx)) source 
+                           (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
                                                  (m/get-arraylist xs idx)
                                                  (generic/best-known-distance visited source))
                                   (unchecked-inc idx))))))))
-         state)))
+         state))) 
+
+
 
 ;;formerly mincost-aug-pathme
 (definline mincost-aug-path [g from to]
   `(searchstate/first-path (flow-traverse ~g ~from ~to (searchstate/mempty-PFS ~from))))
 
-(definline mincost-aug-path-generic [g from to ctx]
-  `(searchstate/first-path (flow-traverse-generic ~g ~from ~to (searchstate/mempty-PFS ~from) ~ctx)))
+(definline mincost-aug-path-scaled [g from to scaling]
+  `(searchstate/first-path (flow-traverse-scaled ~g ~from ~to (searchstate/mempty-PFS ~from) ~scaling)))
 
 ;;A container for augmenting flows
 (defrecord edge-flows [^long flow ^java.util.ArrayList edges])
 
-
-
+;;original
 (comment
 
 (defn ^edge-flows path->edge-flows [flow-info ^clojure.lang.ISeq p]
@@ -708,6 +613,7 @@
                                                 (edge-capacity info)
                                                 (edge-flow info))] 
                          (min flow  new-flow)))))))))
+)
 
 (defmacro path-reduce [flow-info rfunc init p]
   (let [the-edge (with-meta (gensym "the-edge") {:tag 'spork.cljgraph.flow.IEdgeInfo})]
@@ -715,15 +621,13 @@
             from# (.first ~p)
             acc#  ~init]
        (if (empty? xs#) acc#
-           (let [to#     (.first xs)
+           (let [to#     (.first xs#)
                  dir#   (if (-get-direction ~flow-info from# to#) :increment :decrement)
                  ~the-edge (if (identical? dir# :increment) 
-                             (-edge-info flow-info# from# to#)
-                             (-edge-info flow-info# to# from#))]
+                             (-edge-info ~flow-info from# to#)
+                             (-edge-info ~flow-info to# from#))]
                  (recur (.next xs#) to#
                         (~rfunc acc# dir# ~the-edge)))))))
-
-)
 
 ;;Given a path and a network, reduce over the path's edge's, as
 ;;represented by the flow information in the network.
@@ -739,7 +643,11 @@
                  edges)))
 
 
-(defn path->scaled-edge-flows [flow-info ^clojure.lang.ISeq p ^IScaling scaling]
+;;Given a scaling context, reduce over the path's edges using a
+;;the provided scaling factor, such that both flow and capacity are
+;;scaled, and the resulting minimum flow is scaled.
+
+(defn path->edge-flows-scaled [flow-info ^clojure.lang.ISeq p ^spork.cljgraph.flow.IScaling scaling]
   (let [edges (java.util.ArrayList.)]
     (edge-flows. (.unscale scaling 
                     (path-reduce flow-info 
@@ -749,18 +657,8 @@
                                             (if (identical? :increment dir)
                                               (.scale scaling (edge-capacity e))
                                               (.scale scaling (edge-flow e))))))
-                                 posinf p) 
-                    edges))))  
-  
-
-;; (defprotocol IEdgeFlow
-;;   (path->edge-flows [
-
-;; (defprotocol ITraversal
-;;   (traversal-neighbors [t net source sinks sources])
-;;   (traversal-weight    [t net from tos])) 
-
-
+                                 posinf p)) 
+                    edges)))
 
 ;;Persistent augmentation actually sets the edge to the result 
 ;;of increasing flow.
@@ -789,36 +687,17 @@
          (let [active (-active-flows g)]
            {:active active
             :net g}))))
-  ([graph from to augpath augment path-to-edgeflows]
+  ([graph from to scaling]
      (loop [g graph]
-       (if-let [p (augpath g from to)]
-         (recur (augment g p path-to-edge-flows))
+       (if-let [p (mincost-aug-path-scaled g from to scaling)]
+         (recur (augment-flow g p #(path->edge-flows-scaled %1 %2 scaling)))
          (let [active (-active-flows g)]
            {:active active
             :net g})))))
 
-(defn memoized-mincost-flow
-  [graph from to memo-context]     
-  (loop [g graph]
-    (if-let [p (mincost-aug-path-memoized g from to memo-context)]
-      (recur (augment-flow g p))
-      (let [active (-active-flows g)]
-        {:active active
-         :net g}))))
-
 ;;scaling affects our traversal
 
 ;;scaling also affects our flow
-
-
-
-(defn scaled-mincost-flow [graph from to scaling]
-  (with-scaling scaling
-    (mincost-flow graph from to)))
-
-(defn memoized-mincost-flow [graph from to ctx]
-  (with-memoization ctx
-    (mincost-flow graph from to)))     
 
 (defn augmentations
   ([graph from to]
@@ -832,8 +711,21 @@
              {:active active
               :augmentations augs
               :net g})))))
-  ([flow-info graph from to]
-    (augmentations (assoc graph :flow-info flow-info) from to)))
+  ([graph from to scaling]
+     (let [augs (java.util.ArrayList.)]
+       (loop [g graph]
+         (if-let [p (mincost-aug-path-scaled g from to scaling)]
+           (do (let [f (.flow ^edge-flows (path->edge-flows-scaled g p scaling))]
+                 (.add augs [f p]))
+               (recur (augment-flow g p #(path->edge-flows-scaled %1 %2 scaling))))
+           (let [active (-active-flows g)]
+             {:active active
+              :augmentations augs
+              :net g}))))))
+
+
+
+
 
 ;;Vestigial, or pending.  Not currently relevant, but would be nice to
 ;;get backported.
@@ -1622,3 +1514,94 @@
 ;;                                                 (.scale scaling (edge-capacity info))
 ;;                                                 (.scale scaling (edge-flow info)))] 
 ;;                          (min flow  new-flow)))))))))
+
+
+
+
+
+
+;;beta
+;;========
+
+;; (defprotocol IFlowContext
+;;   (internal-flow-neighbors   [fl net source])
+;;   (internal-path->edge-flows [fl net p])
+;;   (internal-augment-flow     [f1 p])
+;;   (internal-flow-weight      [f1 from to]))
+
+;; (definline mincost-aug-path-generic [g from to ctx]
+;;   `(searchstate/first-path (flow-traverse-generic ~g ~from ~to (searchstate/mempty-PFS ~from) ~ctx)))
+
+;; (defn flow-traverse-generic 
+;;   "Custom function to walk a transient flow network."
+;;   [net startnode targetnode startstate ^IFlowContext ctx]
+;;   (loop [state   (-> (assoc! startstate :targetnode targetnode)
+;;                      (generic/conj-fringe startnode 0))]
+;;     (if-let [source    (generic/next-fringe state)]       ;next node to visit
+;;       (let  [visited   (generic/visit-node state source)] ;record visit.
+;;         (if (identical? targetnode source) visited                     
+;;             (recur (let [^java.util.ArrayList xs (.internal-flow-neighbors ctx net source)
+;;                          n  (.size xs)]
+;;                      (loop [acc visited
+;;                                idx 0]
+;;                        (if (== idx n) acc                        
+;;                            (recur (generic/relax acc (.internal-flow-weight ctx net source (m/get-arraylist xs idx)) source 
+;;                                                  (m/get-arraylist xs idx)
+;;                                                  (generic/best-known-distance visited source))
+;;                                   (unchecked-inc idx))))))))
+;;          state)))
+
+
+;;(defn memoized-mincost-flow
+  ;; [graph from to memo-context]     
+  ;; (loop [g graph]
+  ;;   (if-let [p (mincost-aug-path-memoized g from to memo-context)]
+  ;;     (recur (augment-flow g p))
+  ;;     (let [active (-active-flows g)]
+  ;;       {:active active
+  ;;        :net g}))))
+
+
+
+;;Due to the overhead associated with modifying networks, 
+;;we end up desiring mutation for efficiency.  A transient 
+;;net is just a wrapper around the original persistent network, 
+;;with a set of mutable flow-info and meta data.
+;; (m/defmutable transient-net [g flow-info metadata]
+;;   clojure.lang.IObj
+;;   ;adds metadata support
+;;   (meta [this] metadata)
+;;   (withMeta [this m] (do (set! metadata m) this))
+;;   IFlowNet
+;;   (-edge-info      [net from to] 
+;;          (if-let [^einfo  res (get2 flow-info from to nil)]
+;;            res
+;;            (->edge-info2 from to)))
+;;   (einfos [net] (get-edge-infos! net))
+;;   (-get-direction [net from to]  (forward? g from to))
+;;   (-flow-weight    [net from to] (forward-flow g from to))
+;;   (-set-edge [net edge]         
+;;              (let [^einfo e edge
+;;                    from (.from e)
+;;                    to   (.to   e)]
+;;                (do (set! flow-info
+;;                          (assoc2! flow-info from to 
+;;                                   edge))
+;;                    net)))
+;;   (-flow-sinks     [net x] (get2 g :sinks x nil))
+;;   (-flow-sources   [net x] (get2 g :sources x nil))
+;;   (-push-flow      [net edge flow] (-set-edge net (inc-flow edge flow)))
+;;   IDynamicFlow
+;;   (-conj-cap-arc [net from to w cap]  (throw (Exception. "unsupported op -conj-cap-arc"))) 
+;;   (-active-flows [net] 
+;;                  (let [^java.util.ArrayList xs  (get-edge-infos! net)
+;;                        n (count xs)]    
+;;                    (loop [idx 0
+;;                           acc '()]
+;;                      (if (== idx n) acc
+;;                          (let [^einfo info (m/get-arraylist xs idx)
+;;                                ^long f (edge-flow info)]
+;;                            (recur (unchecked-inc idx)
+;;                                   (if (pos? f)
+;;                                     (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
+;;                                     acc)))))))) 

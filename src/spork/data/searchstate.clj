@@ -257,7 +257,8 @@
   [startnode targetnode  
    ^java.util.HashMap shortest 
    ^java.util.HashMap distance 
-   fringe estimator 
+   fringe 
+   estimator 
    ^java.util.ArrayList visited
    multipath]
   generic/IGraphSearch

@@ -11,6 +11,12 @@
   [:hou :t    0 300]
   [:bos :t    0 300]])
 
+;;we can now introduce scaled networks...
+
+
+(def three-scale (->scaled-int-flow 3))
+
+
 ;; (def the-net2 
 ;;   (-> (assoc spork.data.digraph/empty-digraph2 :flow-info {})
 ;;       (conj-cap-arcs net-data)))
@@ -29,7 +35,7 @@
       (conj-cap-arcs net-data)))
 
 
-(def ctx (->memoized-flow-context the-net))
+;(def ctx (->memoized-flow-context the-net))
 
 (comment 
 

@@ -235,7 +235,7 @@
        (if-let [known# (best-known-distance ~state ~sink)]
          (cond 
           (< relaxed# known#) (shorter-path ~state ~source ~sink relaxed# known#)            
-          (= relaxed# known#) (equal-path ~state ~source ~sink)                         
+          (== relaxed# known#) (equal-path ~state ~source ~sink)                         
           :else ~state)            
          ;if sink doesn't exist in distance, sink is new...
          (new-path ~state ~source ~sink relaxed#))))

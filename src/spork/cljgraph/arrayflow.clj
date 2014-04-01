@@ -25,7 +25,7 @@
   (object-array  (-> (graph/topsort-nodes supply-net))))
 
 (defrecord array-net  [g ^objects nodes nodenum nodemap ^long n 
-                       ^objects flows ^objects capacities ^objects costs])
+                         ^objects flows ^objects capacities ^objects costs])
 
 (defn ^array-net net->array-net
   "Create a mutable, array-backed network that can be efficiently searched and 
