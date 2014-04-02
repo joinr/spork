@@ -21,11 +21,52 @@
 (def ^:const posinf Long/MAX_VALUE)
 (def ^:const neginf Long/MIN_VALUE)
 
+
+(definterface IArrayNet
+  (^objects flows [])
+  (^objects capacities [])
+  (^objects costs [])
+  (^long n []))
+
+  
+
 (defn index-nodes [supply-net] 
   (object-array  (-> (graph/topsort-nodes supply-net))))
 
 (defrecord array-net  [g ^objects nodes nodenum nodemap ^long n 
-                         ^objects flows ^objects capacities ^objects costs])
+                         ^objects flows ^objects capacities ^objects costs]
+  IArrayNet
+  (flows      [net] flows)
+  (capacities [net] capacities)
+  (costs      [net] costs)
+  (n          [net] n)
+  flow/IFlowNet
+  (-edge-info    [net from to] )
+  (einfos [n]     (get-edge-infos! n)  )
+  (-get-direction [net from to] (< from to))
+  (-flow-weight   [net from to] (if (< from to) (arr/deep-aget longs costs from to)
+                                    (- (arr/deep-aget longs costs from to))))
+  (-set-edge [net edge]         
+    (let [^spork.cljgraph.IEdgeInfo e edge
+          from (.from e)
+          to   (.to   e)
+          capacity (.capacity e)
+          flow     (.flow e)]
+      ))     
+      
+
+  (-flow-sinks     [net x] (array-sinks  net x))
+  (-flow-sources   [net x] (array-source net x))
+  (-push-flow      [net edge flow] 
+    (let [^spork.cljgraph.IEdgeInfo e edge]
+      (inc-flow net (.from e) (.to e) flow)))
+  flow/IDynamicFlow 
+  (-conj-cap-arc [net from to w cap]                 
+    (throw (Exception. "Cannot add arcs to an array graph.")))
+  (-active-flows [net] 
+    )
+  )
+
 
 (defn ^array-net net->array-net
   "Create a mutable, array-backed network that can be efficiently searched and 
@@ -81,7 +122,7 @@
         (when (not (== from bound))
           (if (== from v) (recur (unchecked-inc from))
               (do (when (and (not (zero? (arr/deep-aget longs flows from v)))
-                             (pos? (arr/deep-aget longs capacities from v)))
+                             (not (neg?  (arr/deep-aget longs capacities from v))))
                     (.add acc from))
                   (recur (unchecked-inc from))))))
       acc)))
@@ -131,6 +172,7 @@
   (conj-fringe [this n w] (do (set! fringe (generic/conj-fringe fringe n w)) this))
   (next-fringe [this]     (generic/next-fringe fringe))
   (pop-fringe [this]      (do (set! fringe (generic/pop-fringe fringe)) this)))
+  
 
 (defn ^arraysearch empty-search [^array-net net ^long startnode ^long endnode fringe]
   (let [knowns (boolean-array (.n net))]
@@ -217,7 +259,7 @@
                        (loop [acc visited
                               idx 0]
                          (if (== idx n) acc
-                             (recur (flow-relax (array-flow-weight g source (.get xs idx))
+                             (recur (flow-relax state (array-flow-weight g source (.get xs idx))
                                                    source (.get xs idx))
                                     (unchecked-inc idx))))))))
         state)))
