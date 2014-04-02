@@ -14,6 +14,8 @@
     `(let [a# (aget ~(vary-meta array assoc :tag 'objects) ~idx)]
        (deep-aget ~hint a# ~@idxs))))                   
 
+               
+
 ;;from christophe Garande   - for working on 2d arrays efficiently.
 (defmacro deep-aset [hint array & idxsv]
   (let [hints '{booleans boolean
@@ -33,6 +35,20 @@
         a-sym (with-meta (gensym "a") {:tag hint})]
       `(let [~a-sym ~nested-array]
          (aset ~a-sym ~idx ~v))))  
+
+
+(defmacro clone-table [hint array]
+  (let [the-clone (with-meta (gensym "clone" ) {:tag 'objects})
+        the-row   (with-meta (gensym "row")    {:tag hint})
+        the-array (with-meta array {:tag 'objects})]
+    `(let [~the-clone (aclone ~the-array)
+           bound#      (alength ~the-clone)]
+      (loop [idx# 0]
+        (if (== idx# bound#) ~the-clone
+            (let [~the-row (aget ~the-clone idx#)]
+              (do (aset ~the-clone idx# (aclone ~the-row))
+                  (recur (unchecked-inc idx#)))))))))
+          
 
 
 ;;Functions for providing effecient keyed access to 

@@ -81,10 +81,13 @@
                (recur (unchecked-inc ~i)))))))
 
 (defn reset-flow! [a]
-  (do-edges a arr i j
-            (let [flow (get-flow arr i j)]
-              (when (not (zero? flow))
-                (array-dec-flow! arr i j flow)))))
+  (let [flows (_flows a)
+        capacities (_capacities a)]
+    (do-edges a arr i j
+              (let [flow (arr/deep-aget longs flows i j)]
+                (when (pos?  flow)
+                  (do (arr/deep-aset longs flows i j 0)
+                      (arr/deep-aset longs capacities i j (+ (arr/deep-aget longs capacities i j) flow))))))))
 
 (defn zero-flow! [a]
   (do-edges a arr i j (do (set-flow! arr i j 0))))
@@ -181,9 +184,9 @@
                (.nodenum an)
                (.nodemap an)
                (.n an)
-               (aclone ^objects (.flows an))
-               (aclone ^objects (.capacities an))
-               (aclone ^objects (.costs an))))
+               (arr/clone-table longs (.flows an))
+               (arr/clone-table longs (.capacities an))
+               (arr/clone-table longs (.costs an))))
    
 
 (defn ^array-net net->array-net
@@ -331,10 +334,10 @@
 (defn array-flow-traverse 
     "Custom function to walk an array-backed flow network.  Using a custom search state."
     [^array-net g ^long startnode ^long targetnode fringe]
-    (loop [^arraysearch state (-> (empty-search g startnode targetnode fringe)
-                                  (generic/conj-fringe startnode 0))]
-      (if-let [source (generic/next-fringe state)] ;next node to visit
-        (let [visited (generic/pop-fringe state)] ;record visit
+    (let [initsearch (empty-search g startnode targetnode fringe)]
+      (loop [^arraysearch state (.conj-fringe ^arraysearch initsearch startnode 0)]
+      (if-let [source (.next-fringe state)] ;next node to visit
+        (let [visited (.pop-fringe state)] ;record visit
           (if (== targetnode source) visited 
               (recur (let [^java.util.ArrayList xs (array-flow-neighbors g source)
                            n (.size xs)]
@@ -342,9 +345,27 @@
                               idx 0]
                          (if (== idx n) acc
                              (recur (flow-relax state (array-flow-weight g source (.get xs idx))
-                                                   source (.get xs idx))
+                                                source (.get xs idx))
                                     (unchecked-inc idx))))))))
-        state)))
+        state))))
+
+;; (defn array-flow-traverse 
+;;     "Custom function to walk an array-backed flow network.  Using a custom search state."
+;;     [^array-net g ^long startnode ^long targetnode fringe]
+;;     (loop [^arraysearch state (-> (empty-search g startnode targetnode fringe)
+;;                                   (generic/conj-fringe startnode 0))]
+;;       (if-let [source (generic/next-fringe state)] ;next node to visit
+;;         (let [visited (generic/pop-fringe state)] ;record visit
+;;           (if (== targetnode source) visited 
+;;               (recur (let [^java.util.ArrayList xs (array-flow-neighbors g source)
+;;                            n (.size xs)]
+;;                        (loop [acc visited
+;;                               idx 0]
+;;                          (if (== idx n) acc
+;;                              (recur (flow-relax state (array-flow-weight g source (.get xs idx))
+;;                                                    source (.get xs idx))
+;;                                     (unchecked-inc idx))))))))
+;;         state)))
 
 (defn first-path [^arraysearch a]
   (let [^long target (:targetnode a)]
