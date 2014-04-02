@@ -38,6 +38,16 @@
 (def anet 
   (arr/net->array-net the-net))
 
+(defn aflow-test [& {:keys [n] :or {n 100000}}]
+  (time (dotimes [i n]
+          (arr/array-mincost-flow anet 0 5))))
+
+(defn aflow-test! [& {:keys [n] :or {n 100000}}]
+  (let [bnet (arr/clone-network anet)]
+    (time (dotimes [i n]
+            (do (arr/array-mincost-flow! bnet 0 5)
+                (arr/reset-flow! bnet))))))
+
 ;(def ctx (->memoized-flow-context the-net))
 
 (comment 

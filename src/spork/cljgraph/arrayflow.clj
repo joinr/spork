@@ -22,24 +22,119 @@
 (def ^:const neginf Long/MIN_VALUE)
 
 
-(definterface IArrayNet
-  (^objects flows [])
-  (^objects capacities [])
-  (^objects costs [])
-  (^long n []))
+;; (definterface IArrayNet
+;;   (flows [])
+;;   (capacities [])
+;;   (costs [])
+;;   (^long n [])
+;;   (nodemap []))
 
-  
+;;
+
+(defprotocol IArrayNet
+  (_flows      [n])
+  (_capacities [n])
+  (_costs      [n])
+  (_n          [n])
+  (_nodemap    [n]))
+
+
+(defn ^long get-flow [a ^long from ^long to]
+  (arr/deep-aget longs (_flows a) from to))
+
+(defn set-flow! [a ^long from ^long to ^long flow]
+  (do (arr/deep-aset longs (_flows a) from to flow)
+      a))
+
+(defn ^long get-capacity [a ^long from ^long to]
+  (arr/deep-aget longs (_capacities a) from to))
+
+(defn  set-capacity! [a ^long from ^long to ^long cap]
+  (do (arr/deep-aset longs (_capacities a) from to cap)
+      a))
+
+(defn  array-inc-flow! [a ^long from ^long to ^long flow]
+  (let [flows      (_flows a)
+        capacities (_capacities a)]
+    (do (arr/deep-aset longs flows from to (+ (arr/deep-aget longs flows from to) flow))
+        (arr/deep-aset longs capacities from to (- (arr/deep-aget longs capacities from to) flow))
+        a)))
+
+(defn  array-dec-flow! [a ^long from ^Long to ^long flow]
+  (let [flows (_flows a)
+        capacities (_capacities a)]
+    (do (arr/deep-aset longs flows from to (- (arr/deep-aget longs flows from to) flow))
+        (arr/deep-aset longs capacities from to (+ (arr/deep-aget longs capacities from to) flow))
+        a)))
+
+;  (let [a (with-meta axp {:tag 'spork.cljgraph.arrayflow.IArrayNet})]
+(defmacro do-edges [arr a i j expr]
+  `(let [~a ~arr
+         bound# (_n ~a)]
+     (loop [~i 0]
+       (if (== ~i bound#) ~a
+           (do (loop [~j 0]
+                 (if (== ~i ~j)        (recur (unchecked-inc ~j))
+                     (if (== ~j bound#) nil
+                         (do ~expr 
+                             (recur (unchecked-inc ~j))))))
+               (recur (unchecked-inc ~i)))))))
+
+(defn reset-flow! [a]
+  (do-edges a arr i j
+            (let [flow (get-flow arr i j)]
+              (when (not (zero? flow))
+                (array-dec-flow! arr i j flow)))))
+
+(defn zero-flow! [a]
+  (do-edges a arr i j (do (set-flow! arr i j 0))))
+
+
+(defn disable-edge! [a ^long from ^long to]  
+  (set-capacity! a from to neginf))
+
+(defn enable-edge! [a ^long from ^long to]  
+  (set-capacity! a from to posinf))
+
+(defn enabled? [a ^long from ^long to]
+   (not (neg?  (arr/deep-aget longs (_capacities a) from to))))  
+
+(defn array-edge-info! [the-net i j]
+  (spork.cljgraph.flow.einfo. i j 
+       (get-capacity the-net i j) (get-flow the-net i j) (if (< i j) :increment :decrement)))
+
+(defn get-edge-infos! [the-net]
+  (for [i (range (_n the-net))
+        j (range (_n the-net))
+        :when (and (not= i j)) ]
+    (spork.cljgraph.flow.einfo. i j 
+       (get-capacity the-net i j) (get-flow the-net i j) :increment)))
+
+(defn get-labeled-edge-infos! [the-net]
+  (let [nm (_nodemap the-net)]
+    (for [i (range (_n the-net))
+          j (range (_n the-net))
+          :when (and (not= i j) (> (get-flow the-net i j) 0))]
+      (let [from (nm i)
+            to   (nm j)]
+        (spork.cljgraph.flow.einfo. from to 
+           (get-capacity the-net i j) (get-flow the-net i j) :increment))))) 
+
+
 
 (defn index-nodes [supply-net] 
   (object-array  (-> (graph/topsort-nodes supply-net))))
 
+(declare array-sinks array-sources)
+
 (defrecord array-net  [g ^objects nodes nodenum nodemap ^long n 
                          ^objects flows ^objects capacities ^objects costs]
   IArrayNet
-  (flows      [net] flows)
-  (capacities [net] capacities)
-  (costs      [net] costs)
-  (n          [net] n)
+  (_flows      [net] flows)
+  (_capacities [net] capacities)
+  (_costs      [net] costs)
+  (_n          [net] n)
+  (_nodemap    [net] nodemap)
   flow/IFlowNet
   (-edge-info    [net from to] )
   (einfos [n]     (get-edge-infos! n)  )
@@ -47,26 +142,49 @@
   (-flow-weight   [net from to] (if (< from to) (arr/deep-aget longs costs from to)
                                     (- (arr/deep-aget longs costs from to))))
   (-set-edge [net edge]         
-    (let [^spork.cljgraph.IEdgeInfo e edge
+    (let [^spork.cljgraph.flow.IEdgeInfo e edge
           from (.from e)
           to   (.to   e)
           capacity (.capacity e)
           flow     (.flow e)]
-      ))     
-      
-
+      (do (arr/deep-aset longs capacities from to capacity)
+          (arr/deep-aset longs flows from to flow)
+          net)))                         
   (-flow-sinks     [net x] (array-sinks  net x))
-  (-flow-sources   [net x] (array-source net x))
+  (-flow-sources   [net x] (array-sources net x))
   (-push-flow      [net edge flow] 
-    (let [^spork.cljgraph.IEdgeInfo e edge]
-      (inc-flow net (.from e) (.to e) flow)))
+    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
+      (array-inc-flow! net (.from e) (.to e) flow)))
   flow/IDynamicFlow 
-  (-conj-cap-arc [net from to w cap]                 
-    (throw (Exception. "Cannot add arcs to an array graph.")))
-  (-active-flows [net] 
-    )
-  )
+  (-conj-cap-arc [net from to w cap]
+    (assert (and (contains? nodemap from)
+                 (contains? nodemap to))
+            (str "Nodes " [from to] " are unknown"))
+    (let [^long i (get nodemap from)
+          ^long j (get nodemap to)]
+      (do (arr/deep-aset longs capacities i j cap)
+          (arr/deep-aset longs costs      i j w)
+          net)))         
+  (-active_flows [net]
+    (let [xs (java.util.ArrayList.)]
+       (do-edges net arr i j 
+                 (do (let [flow  (arr/deep-aget longs flows i j)]
+                       (when (pos? flow)                           
+                         (.add xs (spork.cljgraph.flow.einfo. i j 
+                                  (arr/deep-aget longs capacities i j) 
+                                  flow  :increment) )))))
+       xs)))
 
+(defn ^array-net clone-network [^array-net an]
+  (array-net.  (.g an)
+               (.nodes an)
+               (.nodenum an)
+               (.nodemap an)
+               (.n an)
+               (aclone ^objects (.flows an))
+               (aclone ^objects (.capacities an))
+               (aclone ^objects (.costs an))))
+   
 
 (defn ^array-net net->array-net
   "Create a mutable, array-backed network that can be efficiently searched and 
@@ -107,8 +225,8 @@
 ;;since node indices are top sorted, we only have to 
 ;;check if (< from to)
 (defn ^java.util.ArrayList array-flow-neighbors [^array-net a ^long v]
-  (let [flows (.flows a)
-        capacities (.capacities a)
+  (let [flows (_flows a)
+        capacities (_capacities a)
         bound (.n a)
         acc   (java.util.ArrayList.)]
     (do 
@@ -208,45 +326,9 @@
       (if (< relaxed known) (.shorterPath state source sink relaxed)
           state)
       (.newPath state source sink relaxed))))
-
-(defn array-flow-traverse
-  "Custom function to walk an array-backed flow network."
-  [^array-net g ^long startnode ^long targetnode startstate]
-  (loop [state (-> (assoc! startstate :targetnode targetnode)
-                   (generic/conj-fringe startnode 0))]
-    (if-let [source (generic/next-fringe state)] ;next node to visit
-      (let [visited (generic/visit-node state source)] ;record visit
-        (if (= targetnode source) visited
-            (recur (let [^java.util.ArrayList xs (array-flow-neighbors g source)
-                         n (.size xs)]
-                     (loop [acc visited
-                            idx 0]
-                       (if (== idx n) acc
-                           (recur (generic/relax acc (array-flow-weight g source (.get xs idx))
-                                                 source (.get xs idx))
-                                  (unchecked-inc idx))))))))
-                     state)))
-
-(defn array-flow-traverse! 
-    "Custom function to walk an array-backed flow network.  Using a custom search state."
-    [^array-net g ^long startnode ^long targetnode fringe]
-    (loop [^arraysearch state (-> (empty-search g startnode targetnode fringe)
-                                  (generic/conj-fringe startnode 0))]
-      (if-let [source (generic/next-fringe state)] ;next node to visit
-        (let [visited (generic/pop-fringe state)] ;record visit
-          (if (== targetnode source) visited 
-              (recur (let [^java.util.ArrayList xs (array-flow-neighbors g source)
-                           n (.size xs)]
-                       (loop [acc visited
-                              idx 0]
-                         (if (== idx n) acc
-                             (recur (generic/relax acc (array-flow-weight g source (.get xs idx))
-                                                   source (.get xs idx))
-                                    (unchecked-inc idx))))))))
-        state)))
+                     
                                                                         
-                                                                        
-(defn array-flow-traverse!! 
+(defn array-flow-traverse 
     "Custom function to walk an array-backed flow network.  Using a custom search state."
     [^array-net g ^long startnode ^long targetnode fringe]
     (loop [^arraysearch state (-> (empty-search g startnode targetnode fringe)
@@ -264,9 +346,6 @@
                                     (unchecked-inc idx))))))))
         state)))
 
-(definline array-mincost-aug-path [g from to]
-  `(searchstate/first-path (array-flow-traverse ~g ~from ~to (searchstate/mempty-PFS ~from))))
-
 (defn first-path [^arraysearch a]
   (let [^long target (:targetnode a)]
     (when (generic/best-known-distance a (:targetnode a))
@@ -278,8 +357,8 @@
               (recur (aget spt idx)
                      (cons idx acc))))))))
 
-(definline array-mincost-aug-path!! [g from to]
-  `(first-path (array-flow-traverse!! ~g ~from ~to (java.util.PriorityQueue.))))
+(definline array-mincost-aug-path [g from to]
+  `(first-path (array-flow-traverse ~g ~from ~to (java.util.PriorityQueue.))))
 
 (defn ^long array-max-flow [^objects flows ^objects capacities ^longs p]
   (let [bound (alength p)]
@@ -293,63 +372,8 @@
                                     (arr/deep-aget longs flows r l))
                         flow)))))))
 
-(defn ^long get-flow [^array-net a ^long from ^long to]
-  (arr/deep-aget longs (.flows a) from to))
-
-(defn ^array-net set-flow! [^array-net a ^long from ^long to ^long flow]
-  (do (arr/deep-aset longs (.flows a) from to flow)
-      a))
-
-(defn ^long get-capacity [^array-net a ^long from ^long to]
-  (arr/deep-aget longs (.capacities a) from to))
-
-(defn ^array-net set-capacity! [^array-net a ^long from ^long to ^long cap]
-  (do (arr/deep-aset longs (.capacities a) from to cap)
-      a))
-
-(defn ^array-net array-inc-flow! [^array-net a ^long from ^long to ^long flow]
-  (let [flows      (.flows a)
-        capacities (.capacities a)]
-    (do (arr/deep-aset longs flows from to (+ (arr/deep-aget longs flows from to) flow))
-        (arr/deep-aset longs capacities from to (- (arr/deep-aget longs capacities from to) flow))
-        a)))
-
-(defn ^array-net array-dec-flow! [^array-net a ^long from ^Long to ^long flow]
-  (let [flows (.flows a)
-        capacities (.capacities a)]
-    (do (arr/deep-aset longs flows from to (- (arr/deep-aget longs flows from to) flow))
-        (arr/deep-aset longs capacities from to (+ (arr/deep-aget longs capacities from to) flow))
-        a)))
-
-(defmacro do-edges [arr axp i j expr]
-  (let [a (with-meta axp {:tag 'array-net})]
-    `(let [~a ~arr
-           bound# (.n ~a)]
-       (loop [~i 0]
-         (if (== ~i bound#) ~a
-             (do (loop [~j 0]
-                   (if (== ~i ~j)        (recur (unchecked-inc ~j))
-                       (if (== ~j bound#) nil
-                           (do ~expr 
-                               (recur (unchecked-inc ~j))))))
-                   (recur (unchecked-inc ~i))))))))
-
-(defn ^array-net reset-flow! [^array-net a]
-  (do-edges a arr i j
-            (let [flow (get-flow arr i j)]
-              (when (not (zero? flow))
-                (array-dec-flow! arr i j flow)))))
-
-(defn ^array-net zero-flow! [^array-net a]
-  (do-edges a arr i j (do (set-flow! arr i j 0))))
-
-
-(defn ^array-net disable-edge! [^array-net a ^long from ^long to]  
-  (set-capacity! a from to neginf))
-
-(defn ^array-net enable-edge! [^array-net a ^long from ^long to]  
-  (set-capacity! a from to posinf))
-
+;;There's an optimization here.  WE can avoid the intermediate
+;;long-array conversion cost if we use the list methods.
 (defn array-augment-flow [^array-net the-net p]
   (let [^longs xs (long-array p)
         ^objects flows (.flows the-net)
@@ -365,11 +389,17 @@
                       (recur (unchecked-inc idx)))
                   (do (array-dec-flow! the-net to from ^long flow)
                       (recur (unchecked-inc idx)))))))
-        the-net)))
+        the-net)))       
+
+(defn array-mincost-flow! [^array-net the-net ^long from ^long to]
+  (loop [acc the-net]
+    (if-let [p (array-mincost-aug-path acc from to)]
+      (recur (array-augment-flow acc p))
+      acc)))
 
 (defn array-mincost-flow [^array-net the-net ^long from ^long to]
-  (loop [acc the-net]
-    (if-let [p (array-mincost-aug-path!! acc from to)]
+  (loop [acc (clone-network the-net)]
+    (if-let [p (array-mincost-aug-path acc from to)]
       (recur (array-augment-flow acc p))
       acc)))
 
@@ -377,7 +407,7 @@
   (let [res (java.util.ArrayList.)
         nm  (:nodemap the-net)]
     (loop [acc the-net]
-      (if-let [p (array-mincost-aug-path!! acc from to)]
+      (if-let [p (array-mincost-aug-path acc from to)]
         (let [f (array-max-flow (:flows acc) (:capacities acc) (long-array p))
               _ (.add res [f (map (fn [n] [n (nm n)]) p)])]
           (if (> (count res) n)
@@ -385,23 +415,7 @@
               (recur (array-augment-flow acc p))))
         [res acc]))))
 
-(defn get-edge-infos! [^array-net the-net]
-  (for [i (range (.n the-net))
-        j (range (.n the-net))
-        :when (and (not= i j) (> (get-flow the-net i j) 0))]
-    (spork.cljgraph.flow.einfo. i j 
-       (get-capacity the-net i j) (get-flow the-net i j) :increment)))
 
-(defn get-labeled-edge-infos! [^array-net the-net]
-  (let [nm (.nodemap the-net)]
-    (for [i (range (.n the-net))
-          j (range (.n the-net))
-          :when (and (not= i j) (> (get-flow the-net i j) 0))]
-      (let [from (nm i)
-            to   (nm j)]
-        (spork.cljgraph.flow.einfo. from to 
-           (get-capacity the-net i j) (get-flow the-net i j) :increment)))))
-         
 
       
 
