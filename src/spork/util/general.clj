@@ -1,7 +1,51 @@
 ;A collection for general utilities.  This is basically a dumping ground for
 ;small utilities that are undeserving of a seperate library.
-(ns spork.util.general)
+(ns spork.util.general
+  (:require [clj-tuple :as tup]))
 
+;;replacement for memoize, much much faster for small cache lookups.
+;;clojure.core/memoize actually uses varargs, creates a RestFn, and 
+;;require using equiv to lookup the hashed value.  This guy uses 
+;;a much more efficient key mechansim, Zach Tellman's tuple, which
+;;is - at LEAST - 4 times faster than the default varargs stuff.
+(defmacro memo-fn 
+  "Creates a memoized function, like defn, using a FINITE number of 
+   arguments.  Intended for use with 1 to 6 arguments."
+  [args body]
+  (let [n (count args)
+        tup  (case n
+                   1 (first args)
+                   2 `(clj_tuple.Tuple2. ~@args nil)
+                   3 `(clj_tuple.Tuple3. ~@args nil)
+                   4 `(clj_tuple.Tuple4. ~@args nil)
+                   5 `(clj_tuple.Tuple5. ~@args nil)
+                   6 `(clj_tuple.Tuple6. ~@args nil)
+                   (throw (Exception. "blah")))]
+    `(let [hash# (java.util.HashMap.)]
+       (fn [~@args] 
+         (let [k# ~tup]
+           (if-let [v# (.get hash# k#)]
+             v#
+             (let [newv# ~body]
+               (do (.put hash# k# newv#)
+                   newv#))))))))   
+
+;;testing some stuff...
+;; (defn the-func [x y & {:keys [positive? blah] :or {positive? true blah 2}}]
+;;   (if positive? (+ x y) (- (+ x y))))
+
+;; (defn the-func 
+;;   ([x y from to] (+ (+ x y) (+ from to)))
+;;   ([x y] (+ (+ x y) (+ 0 0)))
+;;   ([x y opts] (+ (+ x y) (+ (:from opts) (:to opts)))))
+
+;; [[x y from to] :or [x y 0 0]] -> 
+
+;; (defn the-func [x y from to]
+;;   (let [from (or from 0)
+;;         to   (or to 0)]
+
+     
 
 (defmacro with-ns 
   "Evaluate a form in another namespace.  Useful for repl jobs, to keep from 
@@ -124,7 +168,7 @@
   "If direction is descending, wraps f in a function that negates its comparison 
    result."
   [f direction]
-  (if (= direction :descending)
+  (if (identical? direction :descending)
       (fn [x y] (* -1  (f x y)))
       f))
 
@@ -253,7 +297,7 @@
                     res))))))
 
 (defn mutable-memo 
-  "Returns a memoized version of a referentially transparent function. The
+  "DEPRECATED. Returns a memoized version of a referentially transparent function. The
   memoized version of the function keeps a cache of the mapping from arguments
   to results and, when calls with the same arguments are repeated often, has
   higher performance at the expense of higher memory use."
@@ -266,8 +310,85 @@
           (swap! mem assoc args ret)
           ret))))) 
 
-;; (defmacro memo-n [n f]
-;;   (let [args (map #(gensym (str "arg" %)) (range n))]
-;;     `(let [tbl# (java.util.HashMap.)]
-;;        (fn [~@args]
-;;          (if-let [res (.get tbl 
+;;Tuples are indeed faster than other things btw.  This allows us to 
+;;have decent access to sparse tables.  Still, nested tables are 
+;;faster for most lookups. The functions in spork.util.general 
+;;with a 2 postfix highlight this fact.
+
+(defmacro assoc-n [m & idxsv]
+  (let [arity (dec (count idxsv))                
+        _     (assert (> arity 1) "need at least one key and one value")
+        idxs  (butlast  idxsv) ;awesome idiom..thanks
+        v     (last idxsv)]
+    `(assoc ~m (tup/tuple ~@idxs) ~v)))
+
+(defmacro assoc-n! [m & idxsv]
+  (let [arity (dec (count idxsv))                
+        _     (assert (> arity 1) "need at least one key and one value")
+        idxs  (butlast  idxsv) ;awesome idiom..thanks
+        v     (last idxsv)]
+    `(assoc! ~m (tup/tuple ~@idxs) ~v))) 
+
+(defmacro get-n! [m & idxs]
+  (let [arity (count idxs)
+        _     (assert (> arity 1) "need at least one key and one value")]
+    `(get ~m (tup/tuple ~@idxs))
+    ))
+  
+
+;;Experiments in integer hashing.
+;;Strangely
+
+;;inlines a hashing function using the 31 prime hashing strategy, 
+;;assuming inputs are already integers.
+
+(definterface IIntegerPair
+  (^long fst [])
+  (^long snd []))
+  
+(deftype intPair [^long x ^long y ^:unsynchronized-mutable ^int hashcode]
+  IIntegerPair 
+  (^long fst [n] x)
+  (^long snd [n] y)
+  Object 
+  (hashCode [this]
+    (when (== -1 hashcode)
+      (set! hashcode (int (+ (* 31 (+ 31 x)) y))))
+    hashcode)
+  (equals  [this that]
+    (or (identical? this that)
+        (and (instance? spork.util.general.IIntegerPair that)             
+             (== x (.fst ^spork.util.general.IIntegerPair that))
+             (== y (.snd ^spork.util.general.IIntegerPair that))))))
+
+
+(comment 
+
+
+(defn test-keys [ps]
+  (let [m (java.util.HashMap.)
+        _ (doseq [p ps]
+            (.put m p :a))
+        p (first ps)]
+    (time (dotimes [i 1000000]
+            (get m p)))))
+
+(defn ptest-keys [ps]
+  (let [m (zipmap ps (repeat :a))
+        p (first ps)]
+    (time (dotimes [i 1000000]
+            (get m p)))))
+
+
+(def intpairs  (map #(intPair. % % -1) (range 100)))        
+(def vpairs    (map #(vector % %) (range 100)))        
+(def epairs    (map #(clojure.lang.MapEntry. % %) (range 100)))        
+(def vintpairs (map #(vector-of :int % %) (range 100)))        
+
+(defn test-mutable []
+  (doseq [p [intpairs vpairs epairs vintpairs]]
+    (test-keys p)))
+
+(defn test-persistent []
+  (doseq [p [intpairs vpairs epairs vintpairs]]
+    (ptest-keys p)))

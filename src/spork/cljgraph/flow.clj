@@ -318,8 +318,6 @@
      (generic/-arc-weight ~g ~from ~to)
      (- (generic/-arc-weight ~g ~to ~from))))
 
-
-
 ;;Network Data Types
 ;;==================
 
@@ -404,6 +402,51 @@
                      (if (pos? f)
                          (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
                          acc))))))))
+
+;; (defrecord transient-array-net [g ^objects flow-info nodemap nodenum metadata]
+;;   clojure.lang.IObj
+;;   ;adds metadata support
+;;   (meta [this] metadata)
+;;   (withMeta [this m] (do (set! metadata m) this))
+;;   IFlowNet
+;;   (-edge-info    [net from to] 
+;;       (if-let [^meinfo  res (get2 flow-info from to nil)]
+;;         res
+;;         (let [edge (->medge-info2 from to)]
+;;           (do (assoc2! flow-info from to edge)
+;;               edge))))
+;;   (einfos [n]     (get-edge-infos! n))
+;;   (-get-direction [net from to] (forward? g from to))
+;;   (-flow-weight   [net from to] (forward-flow g from to))
+;;   (-set-edge [net edge]         
+;;      (let [^meinfo e edge
+;;            from (.from e)
+;;            to   (.to   e)]
+;;        (do (assoc2! flow-info from to edge)
+;;            net)))
+;;   (-flow-sinks     [net x] (get2 g :sinks x nil))
+;;   (-flow-sources   [net x] (get2 g :sources x nil))
+;;   (-push-flow      [net edge flow] (do (inc-flow edge flow) net))
+;;   IDynamicFlow 
+;;   (-conj-cap-arc [net from to w cap]                 
+;;          (do (set! g  (graph/conj-arc g from to w))
+;;              (set! flow-info
+;;                    (assoc2! flow-info
+;;                             from to  
+;;                             (meinfo. from to cap 0 :increment)))
+;;              net))
+;;   (-active-flows [net] 
+;;     (let [^java.util.ArrayList xs  (get-edge-infos! net)
+;;           n (count xs)]    
+;;       (loop [idx 0
+;;              acc '()]
+;;         (if (== idx n) acc
+;;             (let [^meinfo info (m/get-arraylist xs idx)
+;;                   ^long f (edge-flow info)]
+;;                (recur (unchecked-inc idx)
+;;                      (if (pos? f)
+;;                          (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
+;;                          acc))))))))
 
 ;;we can build a fairly powerful abstraction if we allow the user 
 ;;to define ways to wrap existing flows.
