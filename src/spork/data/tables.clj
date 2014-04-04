@@ -12,31 +12,7 @@
 
 ;;Primarily for use as algorithmic building blocks.
 
-;;Tuples are indeed faster than other things btw.  This allows us to 
-;;have decent access to sparse tables.  Still, nested tables are 
-;;faster for most lookups. The functions in spork.util.general 
-;;with a 2 postfix highlight this fact.
 
-(defmacro assoc-n [m & idxsv]
-  (let [arity (dec (count idxsv))                
-        _     (assert (> arity 1) "need at least one key and one value")
-        idxs  (butlast  idxsv) ;awesome idiom..thanks
-        v     (last idxsv)]
-    `(assoc ~m (tup/tuple ~@idxs) ~v)))
-
-(defmacro assoc-n! [m & idxsv]
-  (let [arity (dec (count idxsv))                
-        _     (assert (> arity 1) "need at least one key and one value")
-        idxs  (butlast  idxsv) ;awesome idiom..thanks
-        v     (last idxsv)]
-    `(assoc! ~m (tup/tuple ~@idxs) ~v))) 
-
-(defmacro get-n! [m & idxs]
-  (let [arity (count idxs)
-        _     (assert (> arity 1) "need at least one key and one value")]
-    `(get ~m (tup/tuple ~@idxs))
-    ))
-  
 
     
 

@@ -336,12 +336,6 @@
     ))
   
 
-;;Experiments in integer hashing.
-;;Strangely
-
-;;inlines a hashing function using the 31 prime hashing strategy, 
-;;assuming inputs are already integers.
-
 (definterface IIntegerPair
   (^long fst [])
   (^long snd []))
@@ -360,35 +354,3 @@
         (and (instance? spork.util.general.IIntegerPair that)             
              (== x (.fst ^spork.util.general.IIntegerPair that))
              (== y (.snd ^spork.util.general.IIntegerPair that))))))
-
-
-(comment 
-
-
-(defn test-keys [ps]
-  (let [m (java.util.HashMap.)
-        _ (doseq [p ps]
-            (.put m p :a))
-        p (first ps)]
-    (time (dotimes [i 1000000]
-            (get m p)))))
-
-(defn ptest-keys [ps]
-  (let [m (zipmap ps (repeat :a))
-        p (first ps)]
-    (time (dotimes [i 1000000]
-            (get m p)))))
-
-
-(def intpairs  (map #(intPair. % % -1) (range 100)))        
-(def vpairs    (map #(vector % %) (range 100)))        
-(def epairs    (map #(clojure.lang.MapEntry. % %) (range 100)))        
-(def vintpairs (map #(vector-of :int % %) (range 100)))        
-
-(defn test-mutable []
-  (doseq [p [intpairs vpairs epairs vintpairs]]
-    (test-keys p)))
-
-(defn test-persistent []
-  (doseq [p [intpairs vpairs epairs vintpairs]]
-    (ptest-keys p)))
