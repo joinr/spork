@@ -47,6 +47,18 @@
     (time (dotimes [i n]
             (do (arr/array-mincost-flow! bnet 0 5)
                 (arr/reset-flow! bnet))))))
+(defn mf-test [& {:keys [n] :or {n 100000}}]
+  (time (dotimes [i n]
+          (mincost-flow the-net :s :t))))
+
+(defn mf-test! [& {:keys [n] :or {n 100000}}]
+  (time (dotimes [i n]
+          (mincost-flow (transient-network the-net) :s :t))))
+
+(defn scaled-flow-test [& {:keys [n] :or {n 100000}}]
+  (let [scale (->scaled-int-flow 3)]
+    (time (dotimes [i n]
+            (mincost-flow (transient-network the-net) :s :t scale))))) 
 
 ;(def ctx (->memoized-flow-context the-net))
 

@@ -218,3 +218,31 @@
   (-get-sinks   [tg k]   (keys (get sinks   k))))
 
 
+;;sedgwick proposes a simpler design.
+;;we have a common edgeinfo data structure, ala einfo.
+;;Rather than storing two adjacency maps with weights, 
+;;we assume the network is undirected, and share 
+;;edge-infos between two adjacency lists.
+;;He uses a bag (dunno why), but effectively has
+;;an adjacency list for each vertex in the network, 
+;;ordered by v (froms) and w (tos). 
+;;The same edgeinfo datastructure is stored in each list though.
+;;So you get the bennies of sparseness and mutation.
+;;You also get the ability to see which edges are 
+;;adjacent to w or v, and determine direction with a simple
+;;check (is v identical to from in the edgeinfo?) 
+
+;;I think that eliminates the edge-info queries.
+;;If the structure of the network is not changing drastically, 
+;;then we're golden...We also have a single pointer to the 
+;;edge info, if we're using mutable edge infos.  That 
+;;should be a big win...both sparseness and mutation.
+
+;;if we have a structure that captures adjacencies...
+(defprotocol IAdjacency
+  (adj-sources [adj v])
+  (adj-sinks   [adj w]))
+
+(defrecord adj-map [froms tos])
+
+  

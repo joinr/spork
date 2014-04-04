@@ -56,15 +56,15 @@
 (defn  array-inc-flow! [a ^long from ^long to ^long flow]
   (let [flows      (_flows a)
         capacities (_capacities a)]
-    (do (arr/deep-aset longs flows from to (+ (arr/deep-aget longs flows from to) flow))
-        (arr/deep-aset longs capacities from to (- (arr/deep-aget longs capacities from to) flow))
+    (do (arr/deep-aset longs flows from to (unchecked-add (arr/deep-aget longs flows from to) flow))
+        (arr/deep-aset longs capacities from to (unchecked-subtract (arr/deep-aget longs capacities from to) flow))
         a)))
 
-(defn  array-dec-flow! [a ^long from ^Long to ^long flow]
+(defn  array-dec-flow! [a ^long from ^long to ^long flow]
   (let [flows (_flows a)
         capacities (_capacities a)]
-    (do (arr/deep-aset longs flows from to (- (arr/deep-aget longs flows from to) flow))
-        (arr/deep-aset longs capacities from to (+ (arr/deep-aget longs capacities from to) flow))
+    (do (arr/deep-aset longs flows from to (unchecked-subtract (arr/deep-aget longs flows from to) flow))
+        (arr/deep-aset longs capacities from to (unchecked-add (arr/deep-aget longs capacities from to) flow))
         a)))
 
 ;  (let [a (with-meta axp {:tag 'spork.cljgraph.arrayflow.IArrayNet})]
@@ -87,7 +87,7 @@
               (let [flow (arr/deep-aget longs flows i j)]
                 (when (pos?  flow)
                   (do (arr/deep-aset longs flows i j 0)
-                      (arr/deep-aset longs capacities i j (+ (arr/deep-aget longs capacities i j) flow))))))))
+                      (arr/deep-aset longs capacities i j (unchecked-add (arr/deep-aget longs capacities i j) flow))))))))
 
 (defn zero-flow! [a]
   (do-edges a arr i j (do (set-flow! arr i j 0))))

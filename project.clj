@@ -23,5 +23,5 @@
                  [net.sf.jung/jung-visualization "2.0.1"]
                  [net.sf.jung/jung-io "2.0.1"]
                  [dk.ative/docjure    "1.6.0-SNAPSHOT"]
-                 [criterium "0.4.3"]])
-
+                 [criterium "0.4.3"]]
+  :jvm-opts ^:replace ["-Xmx500m" "-XX:NewSize=200m"])
