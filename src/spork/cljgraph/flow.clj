@@ -37,6 +37,17 @@
   (scale    [n x])
   (unscale  [n x]))
 
+;;Another idea here...
+;;Have a container with the function fields that we need.
+;;Let the user provide over-rides...
+
+
+(defprotocol IFlowOptions 
+  (_flow-function  [x])
+  (_flow-neighbors [x from])
+  (_flow-scale     [x])
+  (_path->edges    [x]))
+
 (defrecord scaled-int-flow [^long factor]
   IScaling
   (scale [n x] (quot x factor))
@@ -625,53 +636,76 @@
 ;;do this stuff.
 
 
-
 ;;We can then describe combinators that help us out.  
+
+(defn default-neighbors [net source] 
+  (flow-neighbors net source (-flow-sinks net source) (-flow-sources net source)))
+
+(defn default-weight [net source sink]
+  (-flow-weight net source sink))
+
+
+(defmacro tagged [type name]
+  `(with-meta (gensym ~name) {:tag ~type}))
+
+;;Generic, customizable version.
+(defmacro general-flow-traverse
+  "Custom macro to walk a transient flow network."
+  [net startnode targetnode startstate 
+   & {:keys [weightf neighborf] 
+      :or {weightf 'default-weight neighborf 'default-neighbors}}]
+  (let [xs (tagged 'java.util.ArrayList "xs")]
+    `(loop [state#   (-> (assoc! ~startstate :targetnode ~targetnode)
+                         (generic/conj-fringe ~startnode 0))]
+       (if-let [source#    (generic/next-fringe state#)] ;next node to visit
+         (let  [visited#   (generic/visit-node state# source#)] ;record visit.
+           (if (identical? ~targetnode source#) visited#                     
+               (recur (let [~xs (~neighborf ~net source#)
+                            n#   (.size ~xs)]
+                        (loop [acc# visited#
+                               idx# 0]
+                          (if (== idx# n#) acc#                        
+                              (recur (generic/relax acc# (~weightf ~net source# (m/get-arraylist ~xs idx#)) source# 
+                                                    (m/get-arraylist ~xs idx#)
+                                                    (generic/best-known-distance visited# source#))
+                                     (unchecked-inc idx#))))))))
+         state#)))) 
 
 ;;This should work for both transient and persistent networks.
 (defn flow-traverse
   "Custom function to walk a transient flow network."
   [net startnode targetnode startstate]
-  (loop [state   (-> (assoc! startstate :targetnode targetnode)
-                     (generic/conj-fringe startnode 0))]
-    (if-let [source    (generic/next-fringe state)] ;next node to visit
-      (let  [visited   (generic/visit-node state source)] ;record visit.
-        (if (identical? targetnode source) visited                     
-            (recur (let [^java.util.ArrayList xs (flow-neighbors net source  
-                                                                 (-flow-sinks net source) (-flow-sources net source))
-                         n  (.size xs)]
-                     (loop [acc visited
-                               idx 0]
-                       (if (== idx n) acc                        
-                           (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
-                                                 (m/get-arraylist xs idx)
-                                                 (generic/best-known-distance visited source))
-                                  (unchecked-inc idx))))))))
-         state))) 
+  (general-flow-traverse net startnode targetnode startstate))
 
-
-(defn flow-traverse-scaled
-  "Custom function to walk a transient flow network."
+(defn flow-traverse-scaled 
   [net startnode targetnode startstate scaling]
-  (loop [state   (-> (assoc! startstate :targetnode targetnode)
-                     (generic/conj-fringe startnode 0))]
-    (if-let [source    (generic/next-fringe state)] ;next node to visit
-      (let  [visited   (generic/visit-node state source)] ;record visit.
-        (if (identical? targetnode source) visited                     
-            (recur (let [^java.util.ArrayList xs (flow-neighbors-scaled net source  
-                                                                 (-flow-sinks net source) (-flow-sources net source) scaling)
-                         n  (.size xs)]
-                     (loop [acc visited
-                               idx 0]
-                       (if (== idx n) acc                        
-                           (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
-                                                 (m/get-arraylist xs idx)
-                                                 (generic/best-known-distance visited source))
-                                  (unchecked-inc idx))))))))
-         state))) 
+  (general-flow-traverse net startnode targetnode startstate 
+    :neighborf (fn [net source] 
+                 (flow-neighbors-scaled net source  
+                   (-flow-sinks net source) (-flow-sources net source) scaling))))
+
+;; (defn flow-traverse-scaled
+;;   "Custom function to walk a transient flow network."
+;;   [net startnode targetnode startstate scaling]
+;;   (loop [state   (-> (assoc! startstate :targetnode targetnode)
+;;                      (generic/conj-fringe startnode 0))]
+;;     (if-let [source    (generic/next-fringe state)] ;next node to visit
+;;       (let  [visited   (generic/visit-node state source)] ;record visit.
+;;         (if (identical? targetnode source) visited                     
+;;             (recur (let [^java.util.ArrayList xs (flow-neighbors-scaled net source  
+;;                                                                  (-flow-sinks net source) (-flow-sources net source) scaling)
+;;                          n  (.size xs)]
+;;                      (loop [acc visited
+;;                                idx 0]
+;;                        (if (== idx n) acc                        
+;;                            (recur (generic/relax acc (-flow-weight net source (m/get-arraylist xs idx)) source 
+;;                                                  (m/get-arraylist xs idx)
+;;                                                  (generic/best-known-distance visited source))
+;;                                   (unchecked-inc idx))))))))
+;;          state))) 
 
 
-
+  
 ;;formerly mincost-aug-pathme
 (definline mincost-aug-path [g from to]
   `(searchstate/first-path (flow-traverse ~g ~from ~to (searchstate/mempty-PFS ~from))))
@@ -768,6 +802,8 @@
 ;;High level API
 ;;==============
 
+
+
 (defn mincost-flow
   ([graph from to]
      (loop [g graph]
@@ -783,6 +819,8 @@
          (let [active (-active-flows g)]
            {:active active
             :net g})))))
+
+
 
 ;;scaling affects our traversal
 

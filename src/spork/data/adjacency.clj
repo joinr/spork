@@ -9,6 +9,9 @@
                              [mutable :as m]]
             [spork.util      [array :as arr]]))
 
+
+
+
 ;;This is an attempt to get back to some simple, performant, data
 ;;structures that fill a variety of roles.
 
@@ -35,6 +38,7 @@
   (^long   getIntWeight [^long from ^long to])
   (^double getWeight    [^long from ^long to])) 
 
+
   ;; IAdjacency
   ;; (^long   getSize      [this])
   ;; (setSize              [this ^long n])
@@ -56,12 +60,63 @@
   (setSize              [this ^long n] (throw (Exception. "Operation not supported")))
   (^longs  getNodes     [this ] (throw (Exception. "Operation not supported")))
   (connect              [this ^long from ^long to] 
-    (let [res (.valAt sources from )] (.assoc sources from )
+    (let [res (.valAt sources from )] (.assoc sources from to)
   (disconnect           [this ^long from ^long to])
   (^longs  getSources   [this ^long idx])
   (^longs  getSinks     [this ^long idx])
   (^long   getIntWeight [this ^long from ^long to])
   (^double getWeight    [this ^long from ^long to]))
+
+
+;;A simple adjacency vector.
+;;'[0 [1 2 3]]
+
+;;Even simpler..
+;;'[0 #{1 2 3}]
+;;
+
+;;say we have a vector like the sample...
+;;0 -> 1   -> 3  -> 5
+;;|     \          /
+;;|      \        /
+;;|       \      / 
+;;  \> 2   -> 4 /
+
+
+(def sinks
+  [0 [1 2]
+   1 [3 4]
+   2 [4]
+   3 [5]
+   4 [5]])
+
+(def sources
+  [0 []
+   1 [0]
+   2 [0]
+   3 [1]
+   4 [2]
+   5 [3 4]])
+
+(def weights 
+  {[0 1] 1
+   [0 2] 1
+   [1 3] 1
+   [1 4] 1
+   [2 4] 1
+   [3 5] 1
+   [4 5] 1})
+
+;;we can have a specific structure for each edge too..
+(defrecord simpleEdge [from to weight capacity flow])
+
+(defn ->edge 
+  ([from to] (simpleEdge. from to 0 0 0))
+  ([from to w] (simpleEdge. from to w 0 0))
+  ([from to w c] (simpleEdge. from to w c 0))
+  ([from to w c f] (simpleEdge. from to w c f)))
+;;let's just time lookups...
+
 
 
 ;;Another option is to abstract out the functionality common to many
@@ -80,7 +135,7 @@
 
 ;;This lets us ignore directionality, as it's directly encoded 
 ;;in the edge already.
- 
+
 
 ;;Another option is to return a vector...
 ;;That satisfies the int mapping.
