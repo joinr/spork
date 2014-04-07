@@ -62,7 +62,25 @@
   (^longs  getSinks     [this ^long idx])
   (^long   getIntWeight [this ^long from ^long to])
   (^double getWeight    [this ^long from ^long to]))
-  
+
+
+;;Another option is to abstract out the functionality common to many
+;;algorithms...
+
+;;In sedgewick's design for network flows, he maintains two arrays,
+;;similar to my source and sinks design.
+
+;;These arrays serve as handles to the same data structure...
+;;the Edge, or some kind of edge representation. 
+
+;;The implication is that an edge in sources is adjacent to sinks.
+;;We get an edgeinfo, and then execute queries depending on the 
+;;edge info.  Sedgewick speaks in terms of residual flow, and 
+;;flowing "toward" a vertex across an edge. 
+
+;;This lets us ignore directionality, as it's directly encoded 
+;;in the edge already.
+ 
 
 ;;Another option is to return a vector...
 ;;That satisfies the int mapping.
@@ -243,6 +261,9 @@
   (adj-sources [adj v])
   (adj-sinks   [adj w]))
 
-(defrecord adj-map [froms tos])
+(defrecord adj-map [froms tos]
+  IAdjacency
+  (adj-sources [adj v] (get froms v))
+  (adj-sinks   [adj v] (get tos v)))
 
   

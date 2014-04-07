@@ -20,6 +20,7 @@
 (defn ^PriorityQueue make-pq 
   ([] (PriorityQueue. 11 entry-comparer))
   ([compf] (PriorityQueue. 11 compf)))
+
 (defn ^PriorityQueue pq [xs] 
   (reduce (fn [^PriorityQueue acc x]   
             (doto acc (.add x))) (make-pq) xs))
