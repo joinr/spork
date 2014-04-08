@@ -10,9 +10,11 @@
 ;;is - at LEAST - 4 times faster than the default varargs stuff.
 (defmacro memo-fn 
   "Creates a memoized function, like defn, using a FINITE number of 
-   arguments.  Intended for use with 1 to 6 arguments."
-  [args body]
-  (let [n (count args)
+   arguments.  Intended for use with 1 to 6 arguments. Allows 
+   arg masking, as with _ in defn."
+  [raw-args body]
+  (let [args (filterv (fn [a] (not= a '_)) raw-args)
+        n (count args)
         tup  (case n
                    1 (first args)
                    2 `(clj_tuple.Tuple2. ~@args nil)
@@ -22,7 +24,7 @@
                    6 `(clj_tuple.Tuple6. ~@args nil)
                    (throw (Exception. "blah")))]
     `(let [hash# (java.util.HashMap.)]
-       (fn [~@args] 
+       (fn [~@raw-args] 
          (let [k# ~tup]
            (if-let [v# (.get hash# k#)]
              v#
