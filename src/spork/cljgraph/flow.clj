@@ -497,6 +497,31 @@
 ;;Flows and Augmenting Paths
 ;;==========================
 
+(declare default-weight default-neighbors empty-search)
+
+;;we define a set of options for building flow computations.
+(def default-flow-opts
+  {:alter-flow    id
+   :unalter-flow  id
+   :get-edge      -edge-info
+   :get-direction -get-direction
+   :get-sinks     -flow-sinks
+   :get-sources   -flow-sources
+   :weightf       default-weight
+   :neighborf     default-neighbors
+   :doc           (str "A custom flow computation, taking three args [net from to] " 
+                       "returning a map of active flow and the resulting network.")
+   :state         empty-search})
+
+(def ^:dynamic *flow-options* default-flow-opts)
+(defmacro  with-flow-options
+  "Merges the supplied options with the current options.  Useful for defining 
+   complex flow computations."
+  [opts & body]
+  `(let [old-opts# *flow-options*]
+     (binding [*flow-options* (merge old-opts# ~opts)]
+       ~@body)))   
+
 ;;Might be a faster way to do this, possibly cache via protocol.
 (defn ^java.util.ArrayList flow-neighbors
   [flow-info v sinks sources]     
@@ -512,42 +537,21 @@
                 res 
                sources))))
 
-(defn ^java.util.ArrayList flow-neighbors-scaled
-  [flow-info v sinks sources ^spork.cljgraph.flow.IScaling scaling]     
-  (let [^java.util.ArrayList res (java.util.ArrayList.)]    
-    (do (reduce-kv (fn [^java.util.ArrayList acc to w]               
-                     (do (when  (pos? (.scale scaling (edge-capacity (-edge-info flow-info v to)))) (.add acc to)))
-                      acc)
-                res
-               sinks)
-        (reduce-kv (fn [^java.util.ArrayList acc from w]
-                     (do (when (pos? (.scale scaling (edge-flow (-edge-info flow-info from v))))  (.add acc from)))
-                       acc)
-                res 
-               sources))))
-
-;;We have some configuration that's going on here...
-;;When computing flows, there are a couple of different pieces of the
-;;pipeline..
-
-;;flow-traversal 
-;;    flow neighbors
-;;       flow-sinks
-;;       edge-capacity
-
-;;edge-flow-computation 
-;;   path->edge-flows 
-
-;;augmentation 
-
-;;Both flow-traversal and edge-flow computation 
-;;are subject to significant alterations, via memoization
-;;and scaling.  There may even be arbitrary ways to 
-;;do this stuff.
-
+;; (defn ^java.util.ArrayList flow-neighbors-scaled
+;;   [flow-info v sinks sources ^spork.cljgraph.flow.IScaling scaling]     
+;;   (let [^java.util.ArrayList res (java.util.ArrayList.)]    
+;;     (do (reduce-kv (fn [^java.util.ArrayList acc to w]               
+;;                      (do (when  (pos? (.scale scaling (edge-capacity (-edge-info flow-info v to)))) (.add acc to)))
+;;                       acc)
+;;                 res
+;;                sinks)
+;;         (reduce-kv (fn [^java.util.ArrayList acc from w]
+;;                      (do (when (pos? (.scale scaling (edge-flow (-edge-info flow-info from v))))  (.add acc from)))
+;;                        acc)
+;;                 res 
+;;                sources))))
 
 ;;We can then describe combinators that help us out.  
-
 (defn default-neighbors [net source] 
   (flow-neighbors net source (-flow-sinks net source) (-flow-sources net source)))
 
@@ -555,14 +559,12 @@
   (neighborf net source (get-sinks source) (get-sources source)))
 
 (defn default-weight [net source sink]
-  (-flow-weight net source sink))
-
+  (-flow-weight net source sink))  
+  
 ;;Generic, customizable version.
 (defmacro general-flow-traverse
   "Custom macro to walk a transient flow network."
-  [net startnode targetnode startstate 
-   & {:keys [weightf neighborf] 
-      :or {weightf 'default-weight neighborf 'default-neighbors}}]
+  [net startnode targetnode startstate & {:keys [weightf neighborf]}]
   (let [xs (tagged 'java.util.ArrayList "xs")]
     `(loop [state#   (-> (assoc! ~startstate :targetnode ~targetnode)
                          (generic/conj-fringe ~startnode 0))]
@@ -581,22 +583,20 @@
          state#)))) 
 
 ;;This should work for both transient and persistent networks.
-(defn flow-traverse
-  "Custom function to walk a transient flow network."
-  [net startnode targetnode startstate]
-  (general-flow-traverse net startnode targetnode startstate))
+;; (defn flow-traverse
+;;   "Custom function to walk a transient flow network."
+;;   [net startnode targetnode startstate]
+;;   (general-flow-traverse net startnode targetnode startstate))
 
-(defn flow-traverse-scaled [scaling]
-  (fn [net startnode targetnode startstate]
-    (general-flow-traverse net startnode targetnode startstate 
-       :neighborf (fn [net source] 
-                    (flow-neighbors-scaled net source  
-                       (-flow-sinks net source) (-flow-sources net source) scaling)))))
+;; (defn flow-traverse-scaled [scaling]
+;;   (fn [net startnode targetnode startstate]
+;;     (general-flow-traverse net startnode targetnode startstate 
+;;        :neighborf (fn [net source] 
+;;                     (flow-neighbors-scaled net source  
+;;                        (-flow-sinks net source) (-flow-sources net source) scaling)))))
   
 (defn empty-search [from] (searchstate/mempty-PFS from))
-(defmacro aug-path [g from to & {:keys [traversal state] 
-                                 :or {traversal 'flow-traverse 
-                                      state     'empty-search}}]
+(defmacro aug-path [g from to & {:keys [traversal state]}]
   `(searchstate/first-path (~traversal ~g ~from ~to (~state ~from))))
   
 ;;formerly mincost-aug-pathme
@@ -620,9 +620,7 @@
 
 ;;Traverse a path, relative to a flow provider, as per reduce.
 ;;Takes a function, func, which takes as args [acc direction edge].
-(defmacro path-reduce [flow-info rfunc init p & {:keys [get-edge get-direction]
-                                                 :or   {get-edge '-edge-info
-                                                        get-direction '-get-direction}}]
+(defmacro path-reduce [flow-info rfunc init p & {:keys [get-edge get-direction]}]
   (let [the-edge (with-meta (gensym "the-edge") {:tag 'spork.cljgraph.flow.IEdgeInfo})]
     `(loop [xs#   (.next ~p)
             from# (.first ~p)
@@ -636,12 +634,8 @@
                  (recur (.next xs#) to#
                         (~rfunc acc# dir# ~the-edge)))))))
 
-
-
-(defmacro path-walk [flow-info p & {:keys [alter-flow unalter-flow]
-                                      :or {alter-flow 'id
-                                           unalter-flow 'id}}]
-  (let [e (tagged 'spork.cljgraph.flow.IEdgeInfo "edge")
+(defmacro path-walk [flow-info p & {:keys [alter-flow unalter-flow]}]
+  (let [e             (tagged 'spork.cljgraph.flow.IEdgeInfo "edge")
         feasible-flow (tagged 'long "flow")]
     ` (let [edges# (java.util.ArrayList.)]
         (edge-flows. 
@@ -660,7 +654,7 @@
 ;;Given a path and a network, reduce over the path's edges, as
 ;;represented by the flow information in the network.
 (defn ^edge-flows path->edge-flows [flow-info ^clojure.lang.ISeq p]  
-  (path-walk flow-info p)) 
+  (path-walk flow-info p :alter-flow id :unalter-flow id)) 
 
 ;; (defn ^edge-flows path->edge-flows [flow-info ^clojure.lang.ISeq p]
 ;;   (let [edges (java.util.ArrayList.)]
@@ -709,30 +703,6 @@
                          (-push-flow acc info flow)
                          (-push-flow acc info (- flow)))))))))
 
-
-;;we define a set of options for building flow computations.
-(def default-flow-opts
-  {:alter-flow    id
-   :unalter-flow  id
-   :get-edge      -edge-info
-   :get-direction -get-direction
-   :get-sinks     -flow-sinks
-   :get-sources   -flow-sources
-   :weightf       default-weight
-   :neighborf     default-neighbors
-   :doc           (str "A custom flow computation, taking three args [net from to] " 
-                       "returning a map of active flow and the resulting network.")
-   :state         empty-search})
-
-(def ^:dynamic *flow-options* default-flow-opts)
-(defmacro  with-flow-options
-  "Merges the supplied options with the current options.  Useful for defining 
-   complex flow computations."
-  [opts & body]
-  `(let [old-opts# *flow-options*]
-     (binding [*flow-options* (merge old-opts# ~opts)]
-       ~@body)))   
-
 ;;Define custom flow computations...
 (defmacro flow 
   "Defines a flow computation across net, originating at from and ending at to.
@@ -750,7 +720,8 @@
                                               :weightf ~weightf   :neighborf ~neighborf))
            aug-path#  (fn [g# from# to#] (aug-path g# from# to# :traversal traverse#))
            path->edge-flows# (fn [flow-info# ~p]
-                               (path-walk flow-info# ~p :alter-flow   ~alter-flow 
+                               (path-walk flow-info# ~p 
+                                          :alter-flow   ~alter-flow 
                                           :unalter-flow ~unalter-flow))]
        (loop [acc# ~net]
          (if-let [p# (aug-path# acc# ~from ~to)]
@@ -758,8 +729,6 @@
            (let [active# (-active-flows acc#)]
              {:active active#
               :net acc#}))))))
-
-
 
 (defn mincost-flow [net from to]    (flow net from to))           
 (defn mincost-flow-scaled [net from to scale]
@@ -772,20 +741,22 @@
                              (-flow-sinks net source) (-flow-sources net source) scaling))}
       (flow net from to))))
 
-
 (defmacro with-memoized-topology [net body]
-  (with-flow-options 
-    {:neighborf  (fn [net source] 
-                   (custom-neighbors flow-neighbors 
-                                     net 
-                                     source  
-                                     (memo-fn [source] (-get-sinks net  source)) 
-                                     (memo-fn [sinks]  (-get-sources net sink))))
-     :weightf    (memo-fn [_ source sink] (-flow-weight net source sink))}
-    ~body))
+ `(let [get-sinks#    (memo-fn [source#] (-get-sinks   ~net  source#))
+        get-sources#  (memo-fn [sinks#]  (-get-sources ~net sink#))]
+    (with-flow-options 
+      {:neighborf  (fn [the-net# source#] 
+                     (custom-neighbors flow-neighbors 
+                                       the-net# 
+                                       source#  
+                                       get-sinks#
+                                       get-sources#))
+       :get-sinks   (memo-fn [source#] (-get-sinks   ~net  source#))
+       :get-sources (memo-fn [sinks#]  (-get-sources ~net sink#))
+       :weightf     (memo-fn [_ source# sink#] (-flow-weight ~net source# sink#))}
+      ~body)))
 
 (defn mincost-flow-memoized [net from to]
-  
   (flow net from to
 ))
   
