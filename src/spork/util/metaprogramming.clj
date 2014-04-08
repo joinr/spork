@@ -3,7 +3,7 @@
 (ns spork.util.metaprogramming)
 
 
-(defmacro id 
+(definline id 
   "Like identity, but acts at compile time.  Acts as a stand-in for 
    identity to avoid un-necessary function calls."
   [expr]
