@@ -2,6 +2,18 @@
 ;development. 
 (ns spork.util.metaprogramming)
 
+
+(defmacro id 
+  "Like identity, but acts at compile time.  Acts as a stand-in for 
+   identity to avoid un-necessary function calls."
+  [expr]
+  `~expr)
+
+(defmacro tagged 
+  "Like gensym, but tags the symbol with a type hint."
+  [type name]
+  `(with-meta (gensym ~name) {:tag ~type}))
+
 (defmacro defmany
   "Define multiple definitions inline.  Takes a collection of bindings, and 
    converts them into def expressions."
