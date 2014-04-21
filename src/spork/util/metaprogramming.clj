@@ -48,3 +48,16 @@
   ([kvps]         `(defpaths [] ~kvps))
   ([prefix kvps]  
     `(do ~@(map (fn [[n p]] `(defpath ~n ~(into prefix p))) kvps))))
+
+(defn key->symb [k]  (symbol (subs (str k) 1)))
+(defn key->gensymb [k]  (symbol (str (subs (str k) 1) \#)))
+(defn key->var [k]  (symbol (str \* (subs (str k) 1) \*)))
+
+(defmacro binding-keys [opts & body]
+  `(let ~(reduce-kv (fn [acc k v] 
+                           (-> acc
+                               (conj (key->var k))
+                               (conj v)))
+                         []
+                         (if (map? opts) opts (eval opts)))
+     ~@body))

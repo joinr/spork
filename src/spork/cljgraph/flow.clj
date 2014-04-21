@@ -9,7 +9,7 @@
                         [mutable :as m]]
             [spork.protocols [core :as generic]]
             [spork.util.general :refer [assoc2 assoc2! get2 transient2 persistent2! hinted-get2 kv-reduce2 kv-map2]]
-            [spork.util.metaprogramming :refer [id tagged]]))
+            [spork.util.metaprogramming :refer [id tagged binding-keys key->symb]]))
 
 (def ^:const posinf Long/MAX_VALUE)
 
@@ -502,39 +502,6 @@
 ;;==========================
 (defn empty-search [from] (searchstate/mempty-PFS from))
 
-(declare default-weight flow-neighbors )
-
-;;we define a set of options for building flow computations.
-(def default-flow-opts
-  {:alter-flow    id
-   :unalter-flow  id
-   ;filters for neighborhoods
-   :forward-filter  (fn [e _] (pos? (capacity e)))
-   :backward-filter (fn [e _] (pos? (flow e)))
-   ;edge accessors
-   :get-edge      -edge-info
-   :get-direction -get-direction
-   ;used to construct a new neighborf
-   :get-sinks     -flow-sinks
-   :get-sources   -flow-sources
-   ;custom weight function
-   :weightf       -flow-weight
-   ;custom neighborhood function.
-   :neighborf     flow-neighbors
-   :doc           (str "A custom flow computation, taking three args [net from to] " 
-                       "returning a map of active flow and the resulting network.")
-   ;flow searchstate constructor.
-   :state         empty-search})
-
-(def ^:dynamic *flow-options* default-flow-opts)
-(defmacro  with-flow-options
-  "Merges the supplied options with the current options.  Useful for defining 
-   complex flow computations."
-  [opts & body]
-  `(let [old-opts# *flow-options*]
-     (binding [*flow-options* (merge old-opts# ~opts)]
-       ~@body)))   
-
 
 ;;another option is to compute incident edges.
 ;;From that, return a pair of ins and outs.
@@ -622,7 +589,7 @@
 
 (definline flow-mult [dir] `(if (identical? ~dir :forward) 1 -1))
 ;;A simple container for directed flows along edges.
-(deftype  directed-flow [^long flowmult edge])
+(defrecord  directed-flow [^long flowmult edge])
 
 ;;A container for augmenting flows
 (defrecord edge-flows [^long flow ^java.util.ArrayList edges])
@@ -683,7 +650,7 @@
 ;;Supplemental functions for building flow computations, namely 
 ;;the actual flow itself.  Determines whether the agumenting 
 ;;paths are captured and returned.
-(defn flow-body [net from to aug-path- path->edge-flows]
+(defmacro flow-body [net from to aug-path- path->edge-flows]
   `(loop [acc# ~net]
      (if-let [p# (~aug-path- acc# ~from ~to)]
        (recur (augment-flow acc# p# ~path->edge-flows))
@@ -691,7 +658,7 @@
          {:active active#
           :net acc#}))))
 
-(defn aug-body [net from to aug-path- path->edge-flows]
+(defmacro aug-body [net from to aug-path- path->edge-flows]
   `(let [augs# (java.util.ArrayList.)]
      (loop [acc# ~net]
        (if-let [p# (~aug-path- acc# ~from ~to)]
@@ -710,53 +677,102 @@
               (conj acc s)
               acc))
           [] symbs))
+
+
 ;;Define custom flow computations...
-(defmacro flow-fn 
+(defn build-flow
   "Defines a flow computation across net, originating at from and ending at to.  Caller may supply 
    flow options explicitly, or defer to the explicit *flow-options* dynamic binding, using 
    supporting macros ala with-flow-options or manual modification."
-  [net from to & [opts]]
-  (let [{:keys [alter-flow 
-                unalter-flow 
-                backward-filter
-                forward-filter
-                get-edge 
-                get-direction 
-                get-sinks
-                get-sources
-                weightf 
-                neighborf
-                state
-                augmentations] :as v} (or (eval opts) *flow-options*)
-                neighborf    (or neighborf   
-                                 (fn [flow-info v]
-                                   (general-flow-neighbors flow-info v
-                                                           :get-sinks       get-sinks 
-                                                           :get-sources     get-sources
-                                                           :forward-filter  forward-filter
-                                                           :backward-filter backward-filter
-                                                           :get-edge        get-edge)))
-                traverse_ (gensym "traverse")
-                aug-path_ (gensym "aug-path")
-                path->edge-flows_ (gensym "path->edge-flows") ]
-    `(let [~traverse_ (fn [net# startnode# targetnode# startstate#] 
-                       (general-flow-traverse net# startnode# targetnode# startstate# 
-                                              :weightf ~weightf   :neighborf ~neighborf))
-           ~aug-path_ (fn [g# from# to#] (aug-path g# from# to# ~traverse_ ~state))
-           ~path->edge-flows_ (fn [flow-info# p#]
-                                    (path-walk flow-info# p# 
-                                       :alter-flow    ~alter-flow 
-                                       :unalter-flow  ~unalter-flow
-                                       :get-edge      ~get-edge
-                                       :get-direction ~get-direction))]
-           ~(if augmentations 
-              (aug-body net from to aug-path_  path->edge-flows_)
-              (flow-body net from to aug-path_ path->edge-flows_)))))           
-         
+  [opts]
+  (let [
+        ;traverse_ (gensym "traverse")
+        ;aug-path_ (gensym "aug-path")
+        ;path->edge-flows_ (gensym "path->edge-flows")
+        ;env opts
+        ]
+    (let [get-sinks#       (:get-sinks opts)
+          get-sources#     (:get-sources opts)
+          forward-filter#  (:forward-filter opts)
+          backward-filter# (:backward-filter opts)
+          get-edge#        (:get-edge opts)
+          neighborf#       (or (:neighborf opts)                       
+                               (fn [flow-info v]
+                                 (general-flow-neighbors flow-info v
+                                                         :get-sinks       (:get-sinks opts)
+                                                         :get-sources     (:get-sources opts)
+                                                         :forward-filter  (:forward-filter opts)
+                                                         :backward-filter (:backward-filter opts)
+                                                         :get-edge        (:get-edge opts))))
+          ]
+      (letfn [(traverse_ [net startnode targetnode startstate] 
+                (general-flow-traverse net startnode targetnode startstate
+                                       :weightf (:weightf opts)   :neighborf (:neighborf opts)))
+              (aug-path_  [g from to] (aug-path g from to traverse_ (:state opts)))
+              (path->edge-flows_  [flow-info p]
+                (path-walk flow-info p 
+                           :alter-flow    (:alter-flow opts)
+                           :unalter-flow  (:unalter-flow opts)
+                           :get-edge      (:get-edge opts)
+                           :get-direction (:get-direction opts)))]
+        {:traverse traverse_
+         :aug-path aug-path_
+         :path->edge-flows path->edge-flows_
+         :augmentations (get opts :augmentations)}))))
 
+(defmacro flow-fn [flow-body]  
+  `(let [bdy# ~flow-body
+         aug-path# (:aug-path bdy#)
+         path->edge-flows# (:path->edge-flows bdy#)
+         augmentations# (:augmentations bdy#)]
+     (if (:augmentations bdy#)
+       (fn [net# from# to#]
+         (aug-body net# from# to# (:aug-path bdy#) (:path->edge-flows bdy#)))
+       (fn [net# from# to#]
+         (flow-body net# from# to# (:aug-path bdy#) (:path->edge-flows bdy#))))))
+
+(defmacro with-flow [flow & body]
+  `(let [~'traverse (:traverse ~flow)
+         ~'aug-path (:aug-path ~flow)
+         ~'path->edge-flows (:path->edge-flows ~flow)]
+     ~@body))
 
 ;;High level API
 ;;==============
+;;we define a set of options for building flow computations.
+;;NOTE -> protocol functions, unlike anonymous functions, do NOT like
+;;being passed around in macros as a first class functions.  They toss
+;;an error when invoked, complaining about "unmatched ctor" despite
+;;being given the right args.  Consequently, we use the quoted symbol name of
+;;the protocol function.  Every other function appears to be fine.
+(def default-flow-opts
+  {:alter-flow    id
+   :unalter-flow  id
+   ;filters for neighborhoods
+   :forward-filter  (fn [e _] (pos? (capacity e)))
+   :backward-filter (fn [e _] (pos? (flow e)))
+   ;edge accessors
+   :get-edge      -edge-info
+   :get-direction -get-direction
+   ;used to construct a new neighborf
+   :get-sinks     -flow-sinks
+   :get-sources   -flow-sources
+   ;custom weight function
+   :weightf       -flow-weight
+   ;custom neighborhood function.
+   :neighborf     flow-neighbors
+   :doc           (str "A custom flow computation, taking three args [net from to] " 
+                       "returning a map of active flow and the resulting network.")
+   ;flow searchstate constructor.
+   :state         empty-search})
+
+(def ^:dynamic *flow-options* default-flow-opts)
+(defmacro  with-flow-options
+  "Merges the supplied options with the current options.  Useful for defining 
+   complex flow computations."
+  [opts & body]
+  `(binding [*flow-options* (merge *flow-options* ~opts)]
+      ~@body))
 
 (defmacro with-scaled-flow [scale & body]
   `(let [s# (as-scale ~scale)]
@@ -791,15 +807,9 @@
      {:augmentations true}
      ~@body))
 
-(defn mincost-flow        
-  [net from to]
-  (flow-fn net from to))
+(def mincost-flow    (flow-fn (build-flow *flow-options*)))
+(def augmentations   (flow-fn (with-augmentations (build-flow *flow-options*))))
 
-(defn augmentations
-  [net from to]
-  (with-augmentations net 
-    (flow-fn net from to)))
-      
 ;;if we build a flow, we are allowing the caller to replace 
 ;;the means by which we get edges, diection, weights, neighbors,   
 
