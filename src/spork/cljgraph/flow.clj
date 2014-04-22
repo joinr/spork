@@ -706,12 +706,10 @@
         {:traverse traverse_
          :aug-path aug-path_
          :path->edge-flows path->edge-flows_
-         :augmentations augmentations})))
-
-(defmacro flow-fn [net from to aug-path path->edge-flows augmentations]  
-  (if augmentations 
-    `(aug-body  ~net ~from ~to ~aug-path ~path->edge-flows)
-    `(flow-body ~net ~from ~to ~aug-path ~path->edge-flows)))
+         :augmentations augmentations
+         :flow-fn   (if augmentations 
+                      (fn [net from to] (aug-body  net from to aug-path_ path->edge-flows_))
+                      (fn [net from to] (flow-body net from to aug-path_ path->edge-flows_)))})))
 
 ;; (defmacro flow-fn [flow-body net from to]  
 ;;   `(let [bdy# ~flow-body
@@ -727,7 +725,8 @@
 (defmacro with-flow-ctx [flow & body]
   `(let [~'traverse (:traverse ~flow)
          ~'aug-path (:aug-path ~flow)
-         ~'path->edge-flows (:path->edge-flows ~flow)]
+         ~'path->edge-flows (:path->edge-flows ~flow)
+         ~'flowfn (:flow-fn ~flow)]
      ~@body))
 
 ;;High level API
@@ -799,6 +798,7 @@
      ~@body))
 (def default-flow (build-flow default-flow-opts))
 (def aug-flow     (assoc default-flow :augmentations true))
+(def minflow (:flow-fn default-flow))
 
 (defn mincost-flow 
   ([net from to]  (flow-fn default-flow net from to ))
