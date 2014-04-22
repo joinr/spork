@@ -61,6 +61,13 @@
             (mincost-flow (transient-network the-net) :s :t scale))))) 
 
 ;(def ctx (->memoized-flow-context the-net))
+(def ctx (build-flow *flow-options*))
+
+(defn augment! [n]
+  (with-flow-ctx ctx 
+     (when-let [p (aug-path n :s :t)]
+       {:edgeflows (path->edge-flows n p)
+        :residual  (augment-flow n p path->edge-flows)})))
 
 (comment 
 

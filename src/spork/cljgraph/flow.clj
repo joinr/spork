@@ -662,10 +662,10 @@
   `(let [augs# (java.util.ArrayList.)]
      (loop [acc# ~net]
        (if-let [p# (~aug-path- acc# ~from ~to)]
-         (do (let [~(with-meta 'flow-res {:tag 'edge-flows}) (~path->edge-flows ~net p#)
-                   f# (.flow ~'flow-res)]
-               (.add augs# [f# p#]))
-             (recur (augment-flow acc# p# ~path->edge-flows)))
+         (let [~(with-meta 'flow-res {:tag 'spork.cljgraph.flow.edge-flows}) (~path->edge-flows acc# p#)
+               f# (.flow ~'flow-res)
+               ~'_  (.add augs# [f# p#])]
+           (recur (augment-flow acc# p# ~path->edge-flows)))
          (let [active# (-active-flows acc#)]
            {:active active#
             :net acc#
@@ -679,46 +679,43 @@
           [] symbs))
 
 
+;;The problem with this strategy is that we lose compile-time
+;;inlining.  Dunno if that's so terrible.  We'll see...We gain the
+;;ability to define flows pretty easily, based off of data driven
+;;approaches, using functions and data structures though...
 ;;Define custom flow computations...
 (defn build-flow
   "Defines a flow computation across net, originating at from and ending at to.  Caller may supply 
    flow options explicitly, or defer to the explicit *flow-options* dynamic binding, using 
    supporting macros ala with-flow-options or manual modification."
   [opts]
-  (let [
-        ;traverse_ (gensym "traverse")
-        ;aug-path_ (gensym "aug-path")
-        ;path->edge-flows_ (gensym "path->edge-flows")
-        ;env opts
-        ]
-    (let [get-sinks#       (:get-sinks opts)
-          get-sources#     (:get-sources opts)
-          forward-filter#  (:forward-filter opts)
-          backward-filter# (:backward-filter opts)
-          get-edge#        (:get-edge opts)
-          neighborf#       (or (:neighborf opts)                       
-                               (fn [flow-info v]
-                                 (general-flow-neighbors flow-info v
-                                                         :get-sinks       (:get-sinks opts)
-                                                         :get-sources     (:get-sources opts)
-                                                         :forward-filter  (:forward-filter opts)
-                                                         :backward-filter (:backward-filter opts)
-                                                         :get-edge        (:get-edge opts))))
-          ]
-      (letfn [(traverse_ [net startnode targetnode startstate] 
-                (general-flow-traverse net startnode targetnode startstate
-                                       :weightf (:weightf opts)   :neighborf (:neighborf opts)))
-              (aug-path_  [g from to] (aug-path g from to traverse_ (:state opts)))
-              (path->edge-flows_  [flow-info p]
-                (path-walk flow-info p 
-                           :alter-flow    (:alter-flow opts)
-                           :unalter-flow  (:unalter-flow opts)
-                           :get-edge      (:get-edge opts)
-                           :get-direction (:get-direction opts)))]
+ (let [get-sinks#       (:get-sinks opts)
+       get-sources#     (:get-sources opts)
+       forward-filter#  (:forward-filter opts)
+       backward-filter# (:backward-filter opts)
+       get-edge#        (:get-edge opts)
+       neighborf#       (or (:neighborf opts)                       
+                            (fn [flow-info v]
+                              (general-flow-neighbors flow-info v
+                                                      :get-sinks       (:get-sinks opts)
+                                                      :get-sources     (:get-sources opts)
+                                                      :forward-filter  (:forward-filter opts)
+                                                      :backward-filter (:backward-filter opts)
+                                                      :get-edge        (:get-edge opts))))]
+   (letfn [(traverse_ [net startnode targetnode startstate] 
+             (general-flow-traverse net startnode targetnode startstate
+                                    :weightf (:weightf opts)   :neighborf (:neighborf opts)))
+           (aug-path_  [g from to] (aug-path g from to traverse_ (:state opts)))
+           (path->edge-flows_  [flow-info p]
+             (path-walk flow-info p 
+                        :alter-flow    (:alter-flow opts)
+                        :unalter-flow  (:unalter-flow opts)
+                        :get-edge      (:get-edge opts)
+                        :get-direction (:get-direction opts)))]
         {:traverse traverse_
          :aug-path aug-path_
          :path->edge-flows path->edge-flows_
-         :augmentations (get opts :augmentations)}))))
+         :augmentations (get opts :augmentations)})))
 
 (defmacro flow-fn [flow-body]  
   `(let [bdy# ~flow-body
@@ -731,7 +728,9 @@
        (fn [net# from# to#]
          (flow-body net# from# to# (:aug-path bdy#) (:path->edge-flows bdy#))))))
 
-(defmacro with-flow [flow & body]
+;;Given a flow context, pulls out traverse, aug-path, and
+;;path->edge-flows, binding them to the lexical scope.
+(defmacro with-flow-ctx [flow & body]
   `(let [~'traverse (:traverse ~flow)
          ~'aug-path (:aug-path ~flow)
          ~'path->edge-flows (:path->edge-flows ~flow)]
