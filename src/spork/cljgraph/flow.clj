@@ -578,10 +578,7 @@
                                                     (m/get-arraylist ~xs idx#)
                                                     (generic/best-known-distance visited# source#))
                                      (unchecked-inc idx#))))))))
-         state#)))) 
-
-
-  
+         state#))))  
 
 (defmacro aug-path [g from to traversal state]
   `(searchstate/first-path (~traversal ~g ~from ~to (~state ~from))))
@@ -600,35 +597,38 @@
 
 ;;Traverse a path, relative to a flow provider, as per reduce.
 ;;Takes a function, func, which takes as args [acc direction edge].
-(defmacro path-reduce [flow-info rfunc init p & {:keys [get-edge get-direction]}]
-  (let [the-edge (with-meta (gensym "the-edge") {:tag 'spork.cljgraph.flow.IEdgeInfo})]
+(defmacro path-reduce [flow-info rfunc init p & {:keys [get-edge get-direction coercion]
+                                                 :or   {coercion 'id}}]
+  (let [the-edge (with-meta (gensym "the-edge") {:tag 'spork.cljgraph.flow.IEdgeInfo})
+        p (vary-meta p assoc :tag 'clojure.lang.ISeq) ]
     `(loop [xs#   (.next ~p)
             from# (.first ~p)
             acc#  ~init]
        (if (empty? xs#) acc#
-           (let [to#     (.first xs#)
-                 dir#        (~get-direction ~flow-info from# to#)                 
-                 ~the-edge   (~get-edge ~flow-info from# to#)]
+           (let [to#       (.first xs#)
+                 dir#      (~get-direction ~flow-info from# to#)                 
+                 ~the-edge (~get-edge ~flow-info from# to#)]
                  (recur (.next xs#) to#
-                        (~rfunc acc# dir# ~the-edge)))))))
+                        (~coercion (~rfunc acc# dir# ~the-edge))))))))
 
 (defmacro path-walk [flow-info p & 
                      {:keys [alter-flow unalter-flow get-edge get-direction]}]
   (let [e             (tagged 'spork.cljgraph.flow.IEdgeInfo "edge")
-        feasible-flow (gensym "flow") ];(tagged 'long "flow")]
+        feasible-flow (gensym "flow")];(vary-meta (gensym "flow") assoc :tag 'long)];(tagged 'long "flow")]
     `(let [edges# (java.util.ArrayList.)]
         (edge-flows. 
          (~unalter-flow 
           (path-reduce ~flow-info 
-                       (fn [~feasible-flow dir# ~e] 
-                         (do (.add edges#  (directed-flow. (flow-mult dir#) ~e))
-                             (min ~feasible-flow              
-                                  (if (identical? :forward dir#)
-                                    (~alter-flow (edge-capacity ~e))
-                                    (~alter-flow (edge-flow ~e)))))) 
+                       (~(with-meta 'fn {:tag 'long}) [~feasible-flow dir# ~e] 
+                        (do (.add edges#  (directed-flow. (flow-mult dir#) ~e))
+                            (min ~feasible-flow              
+                                 (if (identical? :forward dir#)
+                                   (~alter-flow (edge-capacity ~e))
+                                   (~alter-flow (edge-flow ~e))))))
                        posinf ~p
                        :get-edge      ~get-edge
-                       :get-direction ~get-direction)) 
+                       :get-direction ~get-direction
+                       :coercion      ~'long)) 
          edges#))))
 
 
@@ -671,51 +671,42 @@
             :net acc#
             :augmentations augs#})))))
 
-(defmacro nil-symbs [symbs]
-  (reduce (fn [acc s]
-            (if (nil? (eval s))
-              (conj acc s)
-              acc))
-          [] symbs))
-
-
 ;;The problem with this strategy is that we lose compile-time
 ;;inlining.  Dunno if that's so terrible.  We'll see...We gain the
 ;;ability to define flows pretty easily, based off of data driven
 ;;approaches, using functions and data structures though...
 ;;Define custom flow computations...
 (defn build-flow
-  "Defines a flow computation across net, originating at from and ending at to.  Caller may supply 
-   flow options explicitly, or defer to the explicit *flow-options* dynamic binding, using 
-   supporting macros ala with-flow-options or manual modification."
-  [opts]
- (let [get-sinks#       (:get-sinks opts)
-       get-sources#     (:get-sources opts)
-       forward-filter#  (:forward-filter opts)
-       backward-filter# (:backward-filter opts)
-       get-edge#        (:get-edge opts)
-       neighborf#       (or (:neighborf opts)                       
-                            (fn [flow-info v]
-                              (general-flow-neighbors flow-info v
-                                                      :get-sinks       (:get-sinks opts)
-                                                      :get-sources     (:get-sources opts)
-                                                      :forward-filter  (:forward-filter opts)
-                                                      :backward-filter (:backward-filter opts)
-                                                      :get-edge        (:get-edge opts))))]
+  "Defines a flow computation across net, originating at from and ending at to.  
+   Caller may supply flow options explicitly, or defer to the explicit 
+   *flow-options* dynamic binding, using  supporting macros ala with-flow-options 
+   or manual modification."
+  [{:keys 
+    [get-sinks get-sources get-edge get-direction neighborf weightf augmentations
+     forward-filter backward-filter state alter-flow unalter-flow] :as opts}]
+  (let [neighborf 
+        (or neighborf                       
+            (fn [flow-info v]
+              (general-flow-neighbors flow-info v
+                                      :get-sinks       get-sinks
+                                      :get-sources     get-sources
+                                      :forward-filter  forward-filter
+                                      :backward-filter backward-filter
+                                      :get-edge        get-edge)))]
    (letfn [(traverse_ [net startnode targetnode startstate] 
              (general-flow-traverse net startnode targetnode startstate
-                                    :weightf (:weightf opts)   :neighborf (:neighborf opts)))
-           (aug-path_  [g from to] (aug-path g from to traverse_ (:state opts)))
+                                    :weightf weightf   :neighborf neighborf))
+           (aug-path_  [g from to] (aug-path g from to traverse_ state))
            (path->edge-flows_  [flow-info p]
              (path-walk flow-info p 
-                        :alter-flow    (:alter-flow opts)
-                        :unalter-flow  (:unalter-flow opts)
-                        :get-edge      (:get-edge opts)
-                        :get-direction (:get-direction opts)))]
+                        :alter-flow    alter-flow
+                        :unalter-flow  unalter-flow
+                        :get-edge      get-edge
+                        :get-direction get-direction))]
         {:traverse traverse_
          :aug-path aug-path_
          :path->edge-flows path->edge-flows_
-         :augmentations (get opts :augmentations)})))
+         :augmentations augmentations})))
 
 (defmacro flow-fn [flow-body]  
   `(let [bdy# ~flow-body
@@ -783,22 +774,20 @@
        ~@body)))
 
 (defmacro with-memoized-topology [net & body]
- `(let [get-sinks#    (memo-fn [source#] (-get-sinks   ~net  source#))
-        get-sources#  (memo-fn [sinks#]  (-get-sources ~net sink#))]
-    (with-flow-options 
-      {:neighborf    nil ;create a custom neighborf
-       :get-sinks   (memo-fn [source#] (-get-sinks   ~net  source#))
-       :get-sources (memo-fn [sinks#]  (-get-sources ~net sink#))}
-      ~@body)))  
+ `(with-flow-options 
+    {:neighborf    nil ;create a custom neighborf
+     :get-sinks   (memo-fn [~'_ source#] (-flow-sinks   ~net source#))
+     :get-sources (memo-fn [~'_ sink#]   (-flow-sources ~net sink#))}
+    ~@body))  
 
 (defmacro with-memoized-weight [net & body]
   `(with-flow-options 
-     {:weightf     (memo-fn [_ source# sink#] (-flow-weight ~net source# sink#))}
+     {:weightf     (memo-fn [~'_ source# sink#] (-flow-weight ~net source# sink#))}
      ~@body))
 
 (defmacro with-cached-graph [net & body]
-  `(with-memoized-topology net 
-     (with-memoized-weight net
+  `(with-memoized-topology ~net 
+     (with-memoized-weight ~net
        ~@body)))    
 
 (defmacro with-augmentations [& body]
@@ -1807,3 +1796,9 @@
 ;; ;;                                               (.scale scaling (edge-flow e))))))
 ;; ;;                                  posinf p)) 
 ;; ;;                     edges)))
+;; (defmacro nil-symbs [symbs]
+;;   (reduce (fn [acc s]
+;;             (if (nil? (eval s))
+;;               (conj acc s)
+;;               acc))
+;;           [] symbs))
