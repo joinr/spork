@@ -708,16 +708,19 @@
          :path->edge-flows path->edge-flows_
          :augmentations augmentations})))
 
-(defmacro flow-fn [flow-body]  
-  `(let [bdy# ~flow-body
-         aug-path# (:aug-path bdy#)
-         path->edge-flows# (:path->edge-flows bdy#)
-         augmentations# (:augmentations bdy#)]
-     (if (:augmentations bdy#)
-       (fn [net# from# to#]
-         (aug-body net# from# to# (:aug-path bdy#) (:path->edge-flows bdy#)))
-       (fn [net# from# to#]
-         (flow-body net# from# to# (:aug-path bdy#) (:path->edge-flows bdy#))))))
+(defmacro flow-fn [net from to aug-path path->edge-flows augmentations]  
+  (if augmentations 
+    `(aug-body  ~net ~from ~to ~aug-path ~path->edge-flows)
+    `(flow-body ~net ~from ~to ~aug-path ~path->edge-flows)))
+
+;; (defmacro flow-fn [flow-body net from to]  
+;;   `(let [bdy# ~flow-body
+;;          aug-path# (:aug-path bdy#)
+;;          path->edge-flows# (:path->edge-flows bdy#)
+;;          augmentations# (:augmentations bdy#)]
+;;      (if augmentations# 
+;;          (aug-body  ~net ~from ~to (:aug-path bdy#) (:path->edge-flows bdy#))
+;;          (flow-body ~net ~from ~to (:aug-path bdy#) (:path->edge-flows bdy#)))))
 
 ;;Given a flow context, pulls out traverse, aug-path, and
 ;;path->edge-flows, binding them to the lexical scope.
@@ -794,9 +797,17 @@
   `(with-flow-options 
      {:augmentations true}
      ~@body))
+(def default-flow (build-flow default-flow-opts))
+(def aug-flow     (assoc default-flow :augmentations true))
 
-(def mincost-flow    (flow-fn (build-flow *flow-options*)))
-(def augmentations   (flow-fn (with-augmentations (build-flow *flow-options*))))
+(defn mincost-flow 
+  ([net from to]  (flow-fn default-flow net from to ))
+  ([net from to ctx] 
+     (flow-fn ctx net from to)))
+(defn augmentations 
+  ([net from to]  (flow-fn aug-flow net from to ))
+  ([net from to ctx] (flow-fn (assoc ctx :augmentations true) net from to ))))
+
 
 ;;if we build a flow, we are allowing the caller to replace 
 ;;the means by which we get edges, diection, weights, neighbors,   
