@@ -650,7 +650,7 @@
 ;;Supplemental functions for building flow computations, namely 
 ;;the actual flow itself.  Determines whether the agumenting 
 ;;paths are captured and returned.
-(defmacro flow-body [net from to aug-path- path->edge-flows]
+(defmacro flowbody [net from to aug-path- path->edge-flows]
   `(loop [acc# ~net]
      (if-let [p# (~aug-path- acc# ~from ~to)]
        (recur (augment-flow acc# p# ~path->edge-flows))
@@ -658,7 +658,7 @@
          {:active active#
           :net acc#}))))
 
-(defmacro aug-body [net from to aug-path- path->edge-flows]
+(defmacro augbody [net from to aug-path- path->edge-flows]
   `(let [augs# (java.util.ArrayList.)]
      (loop [acc# ~net]
        (if-let [p# (~aug-path- acc# ~from ~to)]
@@ -676,6 +676,10 @@
 ;;ability to define flows pretty easily, based off of data driven
 ;;approaches, using functions and data structures though...
 ;;Define custom flow computations...
+;;Dynamic bindings don't really work all that well with compile-time
+;;macros...particularly when we want to have nested bindings that
+;;alter the options dynamically....we can lift everything into 
+;;runtime though...
 (defn build-flow
   "Defines a flow computation across net, originating at from and ending at to.  
    Caller may supply flow options explicitly, or defer to the explicit 
@@ -706,19 +710,11 @@
         {:traverse traverse_
          :aug-path aug-path_
          :path->edge-flows path->edge-flows_
-         :augmentations augmentations
-         :flow-fn   (if augmentations 
-                      (fn [net from to] (aug-body  net from to aug-path_ path->edge-flows_))
-                      (fn [net from to] (flow-body net from to aug-path_ path->edge-flows_)))})))
+         :augmentations augmentations})))
 
-;; (defmacro flow-fn [flow-body net from to]  
-;;   `(let [bdy# ~flow-body
-;;          aug-path# (:aug-path bdy#)
-;;          path->edge-flows# (:path->edge-flows bdy#)
-;;          augmentations# (:augmentations bdy#)]
-;;      (if augmentations# 
-;;          (aug-body  ~net ~from ~to (:aug-path bdy#) (:path->edge-flows bdy#))
-;;          (flow-body ~net ~from ~to (:aug-path bdy#) (:path->edge-flows bdy#)))))
+(defmacro flow-with [net from to augpath path->edgeflows augmentations]
+  `(~(if augmentations 'aug-body 'flow-body)
+    ~net ~from ~to ~augpath ~path->edge-flows))
 
 ;;Given a flow context, pulls out traverse, aug-path, and
 ;;path->edge-flows, binding them to the lexical scope.
@@ -805,7 +801,7 @@
   ([net from to ctx] 
      (flow-fn ctx net from to)))
 (defn augmentations 
-  ([net from to]  (flow-fn aug-flow net from to ))
+  ([net from to]     (flow-fn aug-flow net from to ))
   ([net from to ctx] (flow-fn (assoc ctx :augmentations true) net from to ))))
 
 
