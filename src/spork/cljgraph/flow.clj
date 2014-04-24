@@ -558,6 +558,37 @@
                             ~acc))
                       ~res 
                       (~get-sources ~flow-info ~v))))))
+
+(defn build-flow-neighbors 
+  [flow-info v & {:keys [get-sinks get-sources forward-filter backward-filter get-edge]}]     
+  (let [res (tagged 'java.util.ArrayList "res")
+        acc (tagged 'java.util.ArrayList "acc")]
+    `(let [~res (java.util.ArrayList.)]    
+       (do (reduce-kv (fn [~acc to# w#]               
+                        (do (when  (~forward-filter (~get-edge ~flow-info ~v to#) to#) (.add ~acc to#))
+                            ~acc))
+                      ~res
+                      (~get-sinks ~flow-info ~v))
+           (reduce-kv (fn [~acc from# w#]
+                        (do (when (~backward-filter (~get-edge ~flow-info from# ~v) from#)  (.add ~acc from#))
+                            ~acc))
+                      ~res 
+                      (~get-sources ~flow-info ~v))))))
+
+;; (defn gen-flow-neighbors [flow-info v & {:keys [get-sinks get-sources forward-filter backward-filter get-edge]}]     
+;;   (let [^java.util.ArrayList res 
+;;         ^java.util.ArrayList acc]
+;;     (let [res (java.util.ArrayList.)]    
+;;       (do (reduce-kv (fn [acc to w]               
+;;                         (do (when  (forward-filter (get-edge flow-info v to) to) (.add acc to))
+;;                             acc))
+;;                       res
+;;                       (get-sinks flow-info v))
+;;            (reduce-kv (fn [acc from w]
+;;                         (do (when (backward-filter (get-edge flow-info from v) from)  (.add acc from))
+;;                             acc))
+;;                       res 
+;;                       (get-sources flow-info v))))))
   
 ;;Generic, customizable version.
 (defmacro general-flow-traverse
@@ -579,6 +610,46 @@
                                                     (generic/best-known-distance visited# source#))
                                      (unchecked-inc idx#))))))))
          state#))))  
+
+(defn build-flow-traverse
+  "Custom macro to walk a transient flow network."
+  [net startnode targetnode startstate & {:keys [weightf neighborf]}]
+  (let [xs (tagged 'java.util.ArrayList "xs")]
+    `(loop [state#   (-> (assoc! ~startstate :targetnode ~targetnode)
+                         (generic/conj-fringe ~startnode 0))]
+       (if-let [source#    (generic/next-fringe state#)] ;next node to visit
+         (let  [visited#   (generic/visit-node state# source#)] ;record visit.
+           (if (identical? ~targetnode source#) visited#                     
+               (recur (let [~xs (~neighborf ~net source#)
+                            n#   (.size ~xs)]
+                        (loop [acc# visited#
+                               idx# 0]
+                          (if (== idx# n#) acc#                        
+                              (recur (generic/relax acc# (~weightf ~net source# (m/get-arraylist ~xs idx#)) source# 
+                                                    (m/get-arraylist ~xs idx#)
+                                                    (generic/best-known-distance visited# source#))
+                                     (unchecked-inc idx#))))))))
+         state#))))  
+
+;; (defn gen-flow-traverse
+;;   "Custom macro to walk a transient flow network."
+;;   [net startnode targetnode startstate & {:keys [weightf neighborf]}]
+;;   (let [^java.util.ArrayList xs]
+;;     (loop [state   (-> (assoc! startstate :targetnode targetnode)
+;;                        (generic/conj-fringe startnode 0))]
+;;        (if-let [source    (generic/next-fringe state)] ;next node to visit
+;;          (let  [visited   (generic/visit-node state source)] ;record visit.
+;;            (if (identical? targetnode source) visited                    
+;;                (recur (let [xs (neighborf net source)
+;;                             n   (.size xs)]
+;;                         (loop [acc visited
+;;                                idx 0]
+;;                           (if (== idx n) acc
+;;                               (recur (generic/relax acc (weightf net source (m/get-arraylist xs idx)) source
+;;                                                     (m/get-arraylist xs idx)
+;;                                                     (generic/best-known-distance visited source))
+;;                                      (unchecked-inc idx))))))))
+;;          state))))
 
 (defmacro aug-path [g from to traversal state]
   `(searchstate/first-path (~traversal ~g ~from ~to (~state ~from))))
@@ -613,6 +684,26 @@
 
 (defmacro path-walk [flow-info p & 
                      {:keys [alter-flow unalter-flow get-edge get-direction]}]
+  (let [e             (tagged 'spork.cljgraph.flow.IEdgeInfo "edge")
+        feasible-flow (gensym "flow")];(vary-meta (gensym "flow") assoc :tag 'long)];(tagged 'long "flow")]
+    `(let [edges# (java.util.ArrayList.)]
+        (edge-flows. 
+         (~unalter-flow 
+          (path-reduce ~flow-info 
+                       (~(with-meta 'fn {:tag 'long}) [~feasible-flow dir# ~e] 
+                        (do (.add edges#  (directed-flow. (flow-mult dir#) ~e))
+                            (min ~feasible-flow              
+                                 (if (identical? :forward dir#)
+                                   (~alter-flow (edge-capacity ~e))
+                                   (~alter-flow (edge-flow ~e))))))
+                       posinf ~p
+                       :get-edge      ~get-edge
+                       :get-direction ~get-direction
+                       :coercion      ~'long)) 
+         edges#))))
+
+(defn build-path-walk [flow-info p & 
+                       {:keys [alter-flow unalter-flow get-edge get-direction]}]
   (let [e             (tagged 'spork.cljgraph.flow.IEdgeInfo "edge")
         feasible-flow (gensym "flow")];(vary-meta (gensym "flow") assoc :tag 'long)];(tagged 'long "flow")]
     `(let [edges# (java.util.ArrayList.)]
@@ -726,7 +817,7 @@
          (fn [net# from# to#] 
            (~(case augmentations 
                nil 'flowbody 
-               :recording 'augbody 
+               true 'augbody 
                :debug 'augdebug 
                (throw (Exception. (str "unknown aug type" augmentations))))
             net# from# to# aug# flows#))
@@ -771,17 +862,68 @@
               :debug 'augdebug 
               (throw (Exception. (str "unknown aug type" augmentations))))
             net# from# to# aug# flows#)
-           net# from# to# aug# flows#))
+           net# from# to# aug# flows#)
         {:opts ~opts
          :neighborf neighborf#
          :traverse traverse#
          :aug-path aug#
          :path->edge-flows flows#})))
 
+(defn flow-fn
+  "Defines a flow computation across net, originating at from and ending at to.  
+   Caller may supply flow options explicitly, or defer to the explicit 
+   *flow-options* dynamic binding, using  supporting macros ala with-flow-options 
+   or manual modification."
+  [{:keys 
+    [get-sinks get-sources get-edge get-direction neighborf weightf augmentations
+     forward-filter backward-filter state alter-flow unalter-flow] :as opts}]
+   (doseq [[k v] opts] (when (not= k :neighborf) (assert (not (nil? v)) (println [k :is :nil!]))))
+   (let [neighborf (gensym "neighborf")
+         traverse  (gensym "traverse")
+         aug       (gensym "aug")
+         flows     (gensym "flows")]
+     `(let [~neighborf (fn [~'flow-info ~'v]
+                          ~(build-flow-neighbors 'flow-info 'v
+                                                 :get-sinks       get-sinks
+                                                 :get-sources     get-sources
+                                                 :forward-filter  forward-filter
+                                                 :backward-filter backward-filter
+                                                 :get-edge        get-edge))
+            ~traverse (fn [~'net ~'startnode ~'targetnode ~'startstate] 
+                         ~(build-flow-traverse 'net 'startnode 'targetnode 'startstate
+                                               :weightf weightf   :neighborf neighborf))
+            ~aug     (fn [g# from# to#] (aug-path g# from# to# ~traverse ~state))
+            ~flows   (fn [~'flow-info ~'p]
+                        ~(build-path-walk 'flow-info 'p 
+                                          :alter-flow    alter-flow
+                                          :unalter-flow  unalter-flow
+                                          :get-edge      get-edge
+                                          :get-direction get-direction))]
+        (with-meta 
+          (fn [~'net ~'from ~'to] 
+            (~(case augmentations 
+                nil 'flowbody 
+                :recording 'augbody 
+                :debug 'augdebug 
+                (throw (Exception. (str "unknown aug type" augmentations))))
+             ~'net ~'from ~'to ~aug ~flows))
+          {:opts ~opts
+           :neighborf ~neighborf
+           :traverse ~traverse
+           :aug-path ~aug
+           :path->edge-flows ~flows}))))
+   
 (defmacro custom-flow [opts]  
   `(let [total-opts# (merge *flow-options* ~opts)
          blah# (clojure.pprint/pprint total-opts#)]
      (eval (flow-computation total-opts#))))
+
+(defmacro custom-flow-fn [opts]  
+  `(let [total-opts# (merge *flow-options* ~opts)
+         blah# (clojure.pprint/pprint total-opts#)]
+     (eval (flow-fn total-opts#))))
+
+
 
 ;;High level API
 ;;==============

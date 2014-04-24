@@ -17,6 +17,13 @@
 
 (def three-scale (->scaled-int-flow 3))
 
+(comment
+(def threes (let [scale (fn [flow] (quot flow 3)) 
+                  unscale (fn [flow] (* flow 3)) 
+                  forward (fn [e] (pos? (scale (edge-capacity e)))) 
+                  backward (fn [e] (pos? (scale (edge-flow e))))]  
+              (custom-flow {:alter-flow  scale :unalter-flow unscale :forward-filter forward :backward-filter backward})))
+)
 
 ;; (def the-net2 
 ;;   (-> (assoc spork.data.digraph/empty-digraph2 :flow-info {})

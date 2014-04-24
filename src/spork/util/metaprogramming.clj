@@ -61,3 +61,13 @@
                          []
                          (if (map? opts) opts (eval opts)))
      ~@body))
+
+
+;;One useful extrapolation I've found is defining macros that take 
+;;"hooks", or forms that allow the user access to forms within.
+;;I have built this pattern by hand so far, but I need to encode it
+;;into a metaprogramming macro.
+
+
+     
+  
