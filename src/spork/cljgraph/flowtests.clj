@@ -12,40 +12,6 @@
   [:hou :t    0 300]
   [:bos :t    0 300]])
 
-;;we can now introduce scaled networks...
-
-
-(def three-scale (->scaled-int-flow 3))
-
-(comment
-  (def threes (let [scale (fn [flow] (quot flow 3)) 
-                    unscale (fn [flow] (* flow 3)) 
-                    forward (fn [e] (pos? (scale (edge-capacity e)))) 
-                    backward (fn [e] (pos? (scale (edge-flow e))))]  
-                (custom-flow {:alter-flow  scale :unalter-flow unscale :forward-filter forward :backward-filter backward})))
-)
-
-(defmacro with-scale [scalar opts & body]
-  `(let [~'scalef    `(fn [flow#]   (quot flow# ~~scalar)) 
-         ~'unscalef  `(fn [flow#]   (* flow# ~~scalar)) 
-         ~'forwardf  `(fn [e#]      (pos? (~'scalef (edge-capacity e#)))) 
-         ~'backwardf `(fn [e#]      (pos? (~'scalef (edge-flow e#))))]
-     (binding [*flow-options* (merge ~opts {:alter-flow  ~'scalef :unalter-flow ~'unscalef :forward-filter ~'forwardf :backward-filter ~'backwardf})]
-       ~@body)))
-
-;; (def the-net2 
-;;   (-> (assoc spork.data.digraph/empty-digraph2 :flow-info {})
-;;       (conj-cap-arcs net-data)))
-
-;; ;;Neighbor Caching
-;; (def the-net3 
-;;   (-> (assoc (spork.data.digraph/->cached-graph) :flow-info {})
-;;       (conj-cap-arcs net-data)))
-
-;; (def the-net4 
-;;   (-> (assoc (spork.data.digraph/->cached-graph2) :flow-info {})
-;;       (conj-cap-arcs net-data)))
-
 (def the-net
   (-> empty-network 
       (conj-cap-arcs net-data)))
@@ -70,19 +36,11 @@
   (time (dotimes [i n]
           (mincost-flow (transient-network the-net) :s :t))))
 
-(defn scaled-flow-test [& {:keys [n] :or {n 100000}}]
-  (let [scale (->scaled-int-flow 3)]
-    (time (dotimes [i n]
-            (mincost-flow (transient-network the-net) :s :t scale))))) 
-
-;(def ctx (->memoized-flow-context the-net))
-;(def ctx (build-flow *flow-options*))
-
-;; (defn augment! [n]
-;;   (with-flow-ctx ctx 
-;;      (when-let [p (aug-path n :s :t)]
-;;        {:edgeflows (path->edge-flows n p)
-;;         :residual  (augment-flow n p path->edge-flows)})))
+(defn scaled-flow-test [& {:keys [n scalar] :or {n 100000 scalar 3}}]
+  (with-scaled-flow scalar     
+    (let [scaled-flow (eval (flow-fn *flow-options*))]
+      (time (dotimes [i n]
+            (scaled-flow (transient-network the-net) :s :t))))))
 
 (comment 
 

@@ -21,16 +21,6 @@
 (def ^:const posinf Long/MAX_VALUE)
 (def ^:const neginf Long/MIN_VALUE)
 
-
-;; (definterface IArrayNet
-;;   (flows [])
-;;   (capacities [])
-;;   (costs [])
-;;   (^long n [])
-;;   (nodemap []))
-
-;;
-
 (defprotocol IArrayNet
   (_flows      [n])
   (_capacities [n])
@@ -131,7 +121,7 @@
 (declare array-sinks array-sources)
 
 (defrecord array-net  [g ^objects nodes nodenum nodemap ^long n 
-                         ^objects flows ^objects capacities ^objects costs]
+                         ^objects flows ^objects capacities ^objects costs scaling]
   IArrayNet
   (_flows      [net] flows)
   (_capacities [net] capacities)
@@ -186,7 +176,8 @@
                (.n an)
                (arr/clone-table longs (.flows an))
                (arr/clone-table longs (.capacities an))
-               (arr/clone-table longs (.costs an))))
+               (arr/clone-table longs (.costs an))
+               (.scaling an)))
    
 
 (defn ^array-net net->array-net
@@ -217,7 +208,8 @@
                      nodes
                      flows
                      caps
-                     costs))))
+                     costs
+                     nil))))
 
 (defn ^long array-flow-weight [^array-net a ^long from ^long to]
   (if (< from to)
@@ -232,21 +224,39 @@
         capacities (_capacities a)
         bound (.n a)
         acc   (java.util.ArrayList.)]
-    (do 
-      (loop [to 0] ;forward arcs
-        (when (not (== to bound))
-          (if (== to v) (recur (unchecked-inc to))
-              (do (when (> (arr/deep-aget longs capacities v to) 0)
-                    (.add acc to))
-                  (recur (unchecked-inc to))))))
-      (loop [from 0]
-        (when (not (== from bound))
-          (if (== from v) (recur (unchecked-inc from))
-              (do (when (and (not (zero? (arr/deep-aget longs flows from v)))
-                             (not (neg?  (arr/deep-aget longs capacities from v))))
-                    (.add acc from))
-                  (recur (unchecked-inc from))))))
-      acc)))
+    (if-let [scaling (.scaling a)]
+      ;;scaled
+      (do 
+        (loop [to 0] ;forward arcs
+          (when (not (== to bound))
+            (if (== to v) (recur (unchecked-inc to))
+                (do (when (> (flow/scale scaling (arr/deep-aget longs capacities v to)) 0)
+                      (.add acc to))
+                    (recur (unchecked-inc to))))))
+        (loop [from 0]
+          (when (not (== from bound))
+            (if (== from v) (recur (unchecked-inc from))
+                (do (when (and (not (zero? (flow/scale scaling (arr/deep-aget longs flows from v))))
+                               (not (neg?  (flow/scale scaling (arr/deep-aget longs capacities from v)))))
+                      (.add acc from))
+                    (recur (unchecked-inc from))))))
+        acc)
+      ;;unscaled
+      (do 
+        (loop [to 0] ;forward arcs
+          (when (not (== to bound))
+            (if (== to v) (recur (unchecked-inc to))
+                (do (when (> (arr/deep-aget longs capacities v to) 0)
+                      (.add acc to))
+                    (recur (unchecked-inc to))))))
+        (loop [from 0]
+          (when (not (== from bound))
+            (if (== from v) (recur (unchecked-inc from))
+                (do (when (and (not (zero? (arr/deep-aget longs flows from v)))
+                               (not (neg?  (arr/deep-aget longs capacities from v))))
+                      (.add acc from))
+                    (recur (unchecked-inc from))))))
+        acc))))
 
 (definterface IFlowSearch
   (newPath   [^long source ^long sink ^long w])
@@ -292,8 +302,7 @@
   generic/IFringe
   (conj-fringe [this n w] (do (set! fringe (generic/conj-fringe fringe n w)) this))
   (next-fringe [this]     (generic/next-fringe fringe))
-  (pop-fringe [this]      (do (set! fringe (generic/pop-fringe fringe)) this)))
-  
+  (pop-fringe [this]      (do (set! fringe (generic/pop-fringe fringe)) this))) 
 
 (defn ^arraysearch empty-search [^array-net net ^long startnode ^long endnode fringe]
   (let [knowns (boolean-array (.n net))]
@@ -349,24 +358,6 @@
                                     (unchecked-inc idx))))))))
         state))))
 
-;; (defn array-flow-traverse 
-;;     "Custom function to walk an array-backed flow network.  Using a custom search state."
-;;     [^array-net g ^long startnode ^long targetnode fringe]
-;;     (loop [^arraysearch state (-> (empty-search g startnode targetnode fringe)
-;;                                   (generic/conj-fringe startnode 0))]
-;;       (if-let [source (generic/next-fringe state)] ;next node to visit
-;;         (let [visited (generic/pop-fringe state)] ;record visit
-;;           (if (== targetnode source) visited 
-;;               (recur (let [^java.util.ArrayList xs (array-flow-neighbors g source)
-;;                            n (.size xs)]
-;;                        (loop [acc visited
-;;                               idx 0]
-;;                          (if (== idx n) acc
-;;                              (recur (flow-relax state (array-flow-weight g source (.get xs idx))
-;;                                                    source (.get xs idx))
-;;                                     (unchecked-inc idx))))))))
-;;         state)))
-
 (defn first-path [^arraysearch a]
   (let [^long target (:targetnode a)]
     (when (generic/best-known-distance a (:targetnode a))
@@ -393,13 +384,27 @@
                                     (arr/deep-aget longs flows r l))
                         flow)))))))
 
+(defn ^long array-max-flow-scaled [^objects flows ^objects capacities ^longs p scaling]
+  (let [bound (alength p)]
+    (loop [to 1
+           flow flow/posinf]
+      (if (== to bound) (flow/unscale scaling flow)
+          (let [l (aget p (unchecked-dec to))
+                r (aget p to)]
+            (recur (unchecked-inc to)
+                   (min (if (< l r) (flow/scale scaling (arr/deep-aget longs capacities l r))
+                                    (flow/scale scaling (arr/deep-aget longs flows r l)))
+                        flow)))))))
+
 ;;There's an optimization here.  WE can avoid the intermediate
 ;;long-array conversion cost if we use the list methods.
 (defn array-augment-flow [^array-net the-net p]
   (let [^longs xs (long-array p)
         ^objects flows (.flows the-net)
         ^objects capacities (.capacities the-net)
-        flow (array-max-flow flows capacities xs)
+        flow  (if-let [sc (.scaling the-net)] 
+                (array-max-flow-scaled flows capacities xs sc)
+                (array-max-flow flows capacities xs))
         n (unchecked-dec (alength xs))]
     (do (loop [idx 0]
           (if (== idx n) the-net
@@ -435,6 +440,11 @@
               [res acc]
               (recur (array-augment-flow acc p))))
         [res acc]))))
+
+(defmacro with-scaled-arrayflow [scalar net & body]
+  `(do (assoc! net :scaling (flow/as-scale ~scalar))
+       ~@body
+       (assoc! net :scaling nil)))
 
 
 

@@ -32,7 +32,7 @@
                    6 `(clj_tuple.Tuple6. ~@args nil)
                    (throw (Exception. "blah")))]
     `(let [hash# (java.util.HashMap.)]
-       (fn [~@raw-args] 
+       (fn memoized# [~@raw-args] 
          (let [k# ~tup]
            (if-let [v# (.get hash# k#)]
              v#

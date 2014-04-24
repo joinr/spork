@@ -632,25 +632,25 @@
   [{:keys [get-sinks get-sources get-edge get-direction neighborf weightf augmentations
            forward-filter backward-filter state alter-flow unalter-flow] :as opts}]
    (doseq [[k v] opts] (when (not= k :neighborf) (assert (not (nil? v)) (println [k :is :nil!]))))
-   `(let [neighborf# (fn [flow-info# v#]
+   `(let [neighborf# (fn ~(gensym "neighborf") [flow-info# v#]
                        (general-flow-neighbors flow-info# v#
                                                :get-sinks       ~get-sinks
                                                :get-sources     ~get-sources
                                                :forward-filter  ~forward-filter
                                                :backward-filter ~backward-filter
                                                :get-edge        ~get-edge))
-          traverse# (fn [net# startnode# targetnode# startstate#] 
+          traverse# (fn ~(gensym "traverse") [net# startnode# targetnode# startstate#] 
                       (general-flow-traverse net# startnode# targetnode# startstate#
                                              :weightf ~weightf   :neighborf neighborf#))
-          aug#     (fn [g# from# to#] (aug-path g# from# to# traverse# ~state))
-          flows#   (fn [flow-info# p#]
+          aug#     (fn ~(gensym "aug-path") [g# from# to#] (aug-path g# from# to# traverse# ~state))
+          flows#   (fn ~(gensym "path->edge-flows") [flow-info# p#]
                      (path-walk flow-info# p#
                                 :alter-flow    ~alter-flow
                                 :unalter-flow  ~unalter-flow
                                 :get-edge      ~get-edge
                                 :get-direction ~get-direction))]
       (with-meta 
-        (fn [net# from# to#] 
+        (fn ~(gensym "flow") [net# from# to#] 
           (~(case augmentations 
               nil 'flowbody 
               (true :recording) 'augbody 
@@ -701,6 +701,9 @@
       ~@body))
 
 ;;Flow alterations and such...
+
+;;This guy only works on flow....we probably want something much more
+;;general, that works on edges writ-large.
 (defmacro with-altered-flow [alter-func unalter-func & body]
   `(let [e#      (gensym "blah")
          blah#   (gensym "blah")
@@ -721,29 +724,6 @@
        `(fn [~flow#] (.unscale ~x# ~flow#))
        ~@body)))  
 
-(defmacro with-memoized-topology [net & body]
- `(let [net#    (gensym "net")
-        source# (gensym "source")
-        sink#   (gensym "sink")]
-    (with-flow-options 
-      {:neighborf    nil ;create a custom neighborf
-       :get-sinks   `(memo-fn [~net# ~source#] (-flow-sinks   ~~net ~source#))
-       :get-sources `(memo-fn [~net# ~sink#]   (-flow-sources ~~net ~sink#))}
-      ~@body)))
-
-(defmacro with-memoized-weight [net & body]
-  `(let [net#    (gensym "net")
-         source# (gensym "source")
-         sink#   (gensym "sinks")]
-     (with-flow-options 
-       {:weightf     `(memo-fn [~net# ~source# ~sink#] (-flow-weight ~~net ~source# ~sink#))}
-       ~@body)))
-
-(defmacro with-cached-graph [net & body]
-  `(with-memoized-topology ~net 
-     (with-memoized-weight ~net
-       ~@body)))    
-
 (defmacro with-augmentations [& body]
   `(with-flow-options 
      {:augmentations true}
@@ -756,7 +736,6 @@
          ~'neighborf (:neighborf ~ctx)]
      ~@body))
 
-
 (def default-flow (eval (flow-fn default-flow-opts)))
 (def aug-flow     (eval (flow-fn (assoc default-flow-opts :augmentations true))))
 
@@ -764,3 +743,50 @@
   [net from to]  (default-flow net from to))
 (defn augmentations 
   [net from to]     (aug-flow net from to))
+
+;;Extraneous - CounterIntuitive
+
+;;These guys are relatively useless....
+;;I think maybe we'd use them if there was a really costly 
+;;weight function or something....but they are less than awesome :(
+
+;;slow...
+(defmacro with-memoized-topology [net & body]
+ `(let [net#    (gensym "net")
+        source# (gensym "source")
+        sink#   (gensym "sink")]
+    (with-flow-options 
+      {:neighborf    nil ;create a custom neighborf
+       :get-sinks   `(memo-fn [~~''_ ~source#] (-flow-sinks   ~~net ~source#))
+       :get-sources `(memo-fn [~~''_ ~sink#]   (-flow-sources ~~net ~sink#))}
+      ~@body)))
+;;slow...
+(defmacro with-memoized-weight [net & body]
+  `(let [net#    (gensym "net")
+         source# (gensym "source")
+         sink#   (gensym "sinks")]
+     (with-flow-options 
+       {:weightf     `(memo-fn [~~''_ ~source# ~sink#] (-flow-weight ~~net ~source# ~sink#))}
+       ~@body)))
+;;slow...
+(defmacro with-memoized-direction [net & body]
+  `(let [net#    (gensym "net")
+         source# (gensym "source")
+         sink#   (gensym "sinks")]
+     (with-flow-options 
+       {:get-direction     `(memo-fn [~~''_ ~source# ~sink#] (-get-direction ~~net ~source# ~sink#))}
+       ~@body)))
+
+;;slowest...
+(defmacro with-memoed-direction [net & body]
+  `(let [net#    (gensym "net")
+         source# (gensym "source")
+         sink#   (gensym "sinks")]
+     (with-flow-options 
+       {:get-direction     `(memoize (fn [~~''_ ~source# ~sink#] (-get-direction ~~net ~source# ~sink#)))}
+       ~@body)))
+;;useless
+(defmacro with-cached-graph [net & body]
+  `(with-memoized-topology ~net 
+     (with-memoized-weight ~net
+       ~@body)))    
