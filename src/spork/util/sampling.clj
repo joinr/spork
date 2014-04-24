@@ -414,8 +414,14 @@
   (->node :chain {:children nodes}))
 (defn ->replications [n nodes] 
   (->node :replications {:reps n :children nodes}))
-(defn ->choice [nodes]    
-  (->node :choice {:children nodes}))
+(defn ->choice 
+  ([nodes]    
+     (->node :choice {:sample-func sample-nth :children nodes}))
+  ([f nodes] 
+     (->node :choice {:sample-func f :children nodes})))
+(defn ->without-replacement [xs] 
+  (let [sampler (spork.util.stats/non-replacing-samples xs)]
+    (->choice (fn [xs] (sampler)) xs)))    
 (defn ->transform    
   [f nodes]  
   (->node :transform {:f  f :children nodes})) 
@@ -483,13 +489,15 @@
 
 (defmethod sample-node :leaf     [node ctx] (get ctx (node-data node)))
 (defmethod sample-node :chain    [node ctx] ((chain (node-data node)) ctx))
+;;sample-node now delegates to its function data to perform sampling.
 (defmethod sample-node :choice   [node ctx]
-  (let [data (:children (node-data node))]
+  (let [data (:children (node-data node))
+        sample-func (:sample-func (node-data node))]
     (if (map? data) 
       (let [rendered-map (zipmap (lift-children (keys data))
                                                   (vals data))]                                             
         (sample-node ((weighted-choice rendered-map) ctx) ctx))
-      (sample-node ((choice (lift-children data)) ctx) ctx))))
+      (sample-node ((choice sample-func (lift-children data)) ctx) ctx))))
 
 (defmethod sample-node :transform [node ctx]
   (let [{:keys [f children]} (node-data node)
@@ -557,7 +565,7 @@
 ;let's create a set of grouped nodes...
 
 ;Rules for composing primitive nodes, which in turn create new nodes.
-(def p2 {:bar (->chain  [:bar1 :bar2 :bar3])
+(def p2 {:bar (->choice [:bar1 :bar2 :bar3])
          :baz (->choice [:bill 
                          (->transform 
                            {:start    (stats/exponential-dist 10)
@@ -577,7 +585,7 @@
 ;Rules for composing everything into a sample. 
 (def p4 {:sample (->replications 3 [(->constrain {:tfinal 5000 
                                                   :duration-max 5000}
-                                                 :case1)])})
+                                                  :case1)])})
 ;;We can compose p1..p4 into a database of rules just using clojure.core/merge
 (def sample-graph (merge p1 p2 p3 p4))
 
@@ -647,6 +655,11 @@
                         (replications 2)                                                                                
                         (sample-context simple-graph)))
                                             
+)
+
+(comment
+
+
 )
 
 

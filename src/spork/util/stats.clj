@@ -3,7 +3,8 @@
 (ns spork.util.stats
   (:require [spork.util [vectors :as v]]
             [spork.util.numerics :refer :all]
-            [spork.util [ranges :as r]])
+            [spork.util [ranges :as r]]
+            [spork.util [general :as gen]])
   (:import [java.util.Random]))
 
 (set! *warn-on-reflection* true)
@@ -334,6 +335,33 @@
     (let [u (*rand*)]
       (* b (pow (/ u (- 1 u)) (/ 1 a))))))
 
+;;added to support empirical sampling
+(defn non-replacing-samples 
+  "Returns a 0 arg function that repeatedly draws from the sample set, and 
+   returns a value from xs akin to rand-th.  Every time a sample is drawn, the 
+   sample will not have the opportunity to be drawn again until all the "
+  [xs]
+  (let [sample      (vec xs)]
+    (if (== (count sample) 1)  (fn [] (first sample))
+      (let [current     (atom sample)
+            bound       (count sample)
+            upper-bound (atom  bound)
+            push!       (fn [from to]
+                          (let [v @current]
+                            (do (reset! current
+                                        (gen/swapv from to v))
+                                (swap! upper-bound dec))))]
+        (assert (pos? bound) (str "cannot create an empirical sample from nothing : " xs))
+        (fn [] 
+          (let [ub @upper-bound]
+            (if (== ub 1) 
+              (do (reset! upper-bound bound)
+                  (first @current))
+              (let [drawn (rand-int ub)
+                    val   (nth @current drawn)]
+                (do (push! drawn (dec ub))
+                    val)))))))))           
+
 (def lower-case clojure.string/lower-case)
 
 (def distribution-map
@@ -360,7 +388,6 @@
    "loglogistic"  log-logistic-dist
    "log-logistic" log-logistic-dist
    "fix"          (fn [n] #(round n))})
-
 
 (defn distribution-error [dname]
   (throw (Exception. (str "distribution " dname " does not exist!"))))

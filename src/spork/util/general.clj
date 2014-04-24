@@ -3,6 +3,14 @@
 (ns spork.util.general
   (:require [clj-tuple :as tup]))
 
+(defn swapv 
+  "Swaps the indices in vector v at from and to."
+  [from to v] (let [tov (nth v to)] (-> v (assoc to (nth v from)) (assoc from tov))))
+
+(defn swapv! 
+  "Swaps the indices in vector v at from and to.  Uses transients"
+  [from to v] (let [tov (nth v to)] (-> v (assoc! to (nth v from)) (assoc! from tov))))
+
 ;;replacement for memoize, much much faster for small cache lookups.
 ;;clojure.core/memoize actually uses varargs, creates a RestFn, and 
 ;;require using equiv to lookup the hashed value.  This guy uses 
