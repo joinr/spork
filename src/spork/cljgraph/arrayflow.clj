@@ -113,8 +113,6 @@
         (spork.cljgraph.flow.einfo. from to 
            (get-capacity the-net i j) (get-flow the-net i j) :increment))))) 
 
-
-
 (defn index-nodes [supply-net] 
   (object-array  (-> (graph/topsort-nodes supply-net))))
 
@@ -372,29 +370,29 @@
 (definline array-mincost-aug-path [g from to]
   `(first-path (array-flow-traverse ~g ~from ~to (java.util.PriorityQueue.))))
 
-(defn ^long array-max-flow [^objects flows ^objects capacities ^longs p]
-  (let [bound (alength p)]
-    (loop [to 1
-           flow flow/posinf]
-      (if (== to bound) flow
-          (let [l (aget p (unchecked-dec to))
-                r (aget p to)]
-            (recur (unchecked-inc to)
-                   (min (if (< l r) (arr/deep-aget longs capacities l r)
-                                    (arr/deep-aget longs flows r l))
-                        flow)))))))
-
-(defn ^long array-max-flow-scaled [^objects flows ^objects capacities ^longs p scaling]
-  (let [bound (alength p)]
-    (loop [to 1
-           flow flow/posinf]
-      (if (== to bound) (flow/unscale scaling flow)
-          (let [l (aget p (unchecked-dec to))
-                r (aget p to)]
-            (recur (unchecked-inc to)
-                   (min (if (< l r) (flow/scale scaling (arr/deep-aget longs capacities l r))
-                                    (flow/scale scaling (arr/deep-aget longs flows r l)))
-                        flow)))))))
+(defn ^long array-max-flow 
+ ( [^objects flows ^objects capacities ^longs p]
+     (let [bound (alength p)]
+       (loop [to 1
+              flow flow/posinf]
+         (if (== to bound) flow
+             (let [l (aget p (unchecked-dec to))
+                   r (aget p to)]
+               (recur (unchecked-inc to)
+                      (min (if (< l r) (arr/deep-aget longs capacities l r)
+                               (arr/deep-aget longs flows r l))
+                           flow)))))))
+  ( [^objects flows ^objects capacities ^longs p scaling]
+     (let [bound (alength p)]
+       (loop [to 1
+              flow flow/posinf]
+         (if (== to bound) (flow/unscale scaling flow)
+             (let [l (aget p (unchecked-dec to))
+                   r (aget p to)]
+               (recur (unchecked-inc to)
+                      (min  (if (< l r) (long (flow/scale scaling (arr/deep-aget longs capacities l r)))
+                                        (long (flow/scale scaling (arr/deep-aget longs flows r l))))
+                            flow))))))))
 
 ;;There's an optimization here.  WE can avoid the intermediate
 ;;long-array conversion cost if we use the list methods.
@@ -402,9 +400,9 @@
   (let [^longs xs (long-array p)
         ^objects flows (.flows the-net)
         ^objects capacities (.capacities the-net)
-        flow  (if-let [sc (.scaling the-net)] 
-                (array-max-flow-scaled flows capacities xs sc)
-                (array-max-flow flows capacities xs))
+         flow  (if-not  (.scaling the-net)
+                 ^long (array-max-flow flows capacities xs)
+                 ^long (array-max-flow flows capacities xs (.scaling the-net)))                 
         n (unchecked-dec (alength xs))]
     (do (loop [idx 0]
           (if (== idx n) the-net
@@ -442,9 +440,9 @@
         [res acc]))))
 
 (defmacro with-scaled-arrayflow [scalar net & body]
-  `(do (assoc! net :scaling (flow/as-scale ~scalar))
+  `(let [ (assoc ~net :scaling (flow/as-scale ~scalar))
        ~@body
-       (assoc! net :scaling nil)))
+       (assoc ~net :scaling nil)))
 
 
 
