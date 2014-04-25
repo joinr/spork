@@ -439,12 +439,19 @@
               (recur (array-augment-flow acc p))))
         [res acc]))))
 
-(defmacro with-scaled-arrayflow [scalar net & body]
-  `(let [ (assoc ~net :scaling (flow/as-scale ~scalar))
-       ~@body
-       (assoc ~net :scaling nil)))
+(defmacro with-scaled-arrayflow [scalar binding & body]
+  (let [k (first binding) 
+        v (second binding)]
+    `(let [~k (assoc ~v :scaling (flow/as-scale ~scalar))]
+       ~@body)))
 
-
+(defmacro with-mutable-copy [binding & body]
+  (let [k (first binding)
+        v (second binding)]
+    `(let [~k (clone-network ~v)]
+       (let [res# ~@body]
+         (do (reset-flow! ~k)
+             res#)))))
 
       
 

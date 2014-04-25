@@ -42,6 +42,14 @@
       (time (dotimes [i n]
             (scaled-flow (transient-network the-net) :s :t))))))
 
+(defn pflow-test [& {:keys [n] :or {n 100000}}]
+  (time (doseq [i (pmap (fn [i] (mincost-flow the-net :s :t)) (range n))]
+          nil)))
+
+(defn pflow-test! [& {:keys [n] :or {n 100000}}]
+  (time (doseq [i (pmap (fn [i] (mincost-flow (transient-network the-net) :s :t)) (range n))]
+          nil)))
+
 (comment 
 
 ;;Fastest so far...
