@@ -133,19 +133,17 @@
   (-flow-weight   [net from to] (if (< from to) (arr/deep-aget longs costs from to)
                                     (- (arr/deep-aget longs costs from to))))
   (-set-edge [net edge]         
-    (let [^spork.cljgraph.flow.IEdgeInfo e edge
-          from (.from e)
-          to   (.to   e)
-          capacity (.capacity e)
-          flow     (.flow e)]
+    (let [from (flow/edge-from e)
+          to   (flow/edge-to   e)
+          capacity (flow/edge-capacity e)
+          flow     (flow/edge-flow e)]
       (do (arr/deep-aset longs capacities from to capacity)
           (arr/deep-aset longs flows from to flow)
           net)))                         
   (-flow-sinks     [net x] (array-sinks  net x))
   (-flow-sources   [net x] (array-sources net x))
   (-push-flow      [net edge flow] 
-    (let [^spork.cljgraph.flow.IEdgeInfo e edge]
-      (array-inc-flow! net (.from e) (.to e) flow)))
+      (array-inc-flow! net (flow/edge-from e) (flow/edge-to e) flow))
   flow/IDynamicFlow 
   (-conj-cap-arc [net from to w cap]
     (assert (and (contains? nodemap from)
@@ -175,8 +173,7 @@
                (arr/clone-table longs (.flows an))
                (arr/clone-table longs (.capacities an))
                (arr/clone-table longs (.costs an))
-               (.scaling an)))
-   
+               (.scaling an)))   
 
 (defn ^array-net net->array-net
   "Create a mutable, array-backed network that can be efficiently searched and 

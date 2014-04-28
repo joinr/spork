@@ -157,7 +157,7 @@
   (meinfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
 
 (defn ^einfo medge->edge [^meinfo edge]
-  (einfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
+  (einfo. (.edge-from edge) (.edge-to edge) (.edge-capacity edge) (.edge-flow edge) (.edge-dir edge)))
 
 ;;Shared inline definitions for network topology.
 ;;This is currently a bit slow due to some overhead.
@@ -337,8 +337,8 @@
   (-flow-weight   [net from to] (forward-flow g from to))
   (-set-edge [net edge]         
      (let [^meinfo e edge
-           from (.from e)
-           to   (.to   e)]
+           from (.edge-from e)
+           to   (.edge-to   e)]
        (do (assoc2! flow-info from to edge)
            net)))
   (-flow-sinks     [net x] (get2 g :sinks x nil))
@@ -400,7 +400,7 @@
 (defn persistent-network! [^transient-net the-net]
   (let [g (:g the-net)]
     (assoc g
-           :flow-info (kv-map2 medge->edge (persistent2! (:flow-info the-net))))))
+           :flow-info (kv-map2 (fn [_ _ v] (medge->edge v)) (persistent2! (:flow-info the-net))))))
 
 ;;THe API prizes edge-update by accessing edge infos 
 ;;directly.  Consequently, we only want to pay the cost 
@@ -435,7 +435,7 @@
        (let [flow (second info)
              from (first  (first info))
              to   (second (first info))]
-         (+ acc (* flow (graph/arc-weight g from to)))))
+         (+  acc (* flow (graph/arc-weight g from to)))))
             0 active-edges))
   ([g] (total-cost g (-active-flows g))))
 
