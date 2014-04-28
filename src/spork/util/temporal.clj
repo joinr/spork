@@ -7,7 +7,9 @@
 
 ;;Note -> sorted set was originally a problem here.  I have resulted
 ;;to using a priority queue.
-(defn temporal-profile
+
+;;remixed
+(defn temporal-profile 
   "Extracts an event-driven profile of the concurrent records over time from a 
    sequence of values, where start-func is a function that yields a start time 
    for each record, and duration-func is a function that yields a numeric 
@@ -18,20 +20,19 @@
         drop-demand (fn [t x] {:t t :type :drop :data x})
         resample    (fn [t]   {:t t :type :resampling :data nil})
         earliest    (fn [l r] (compare (:t l) (:t r)))
-        handle (fn [e estate]
-                 (let [es      (first estate)
-                       actives (second estate) 
-                       state   (nth state 2)
-                       t       (:t e)
+        handle (fn [e [es actives state]]
+                 (let [t       (:t e)
                        data    (:data e)]
                    (case (:type e)
-                     :resampling [es actives :changed]
-                     :add [(-> es 
-                               (conj (drop-demand (+ t (duration-func data)) data))
-                               (conj (resample t)))
-                           (conj actives data)
-                           :added]
-                     :drop [es (disj actives data) :dropped])))
+;                     :resampling [es actives :changed]
+                     :add (let [to-drop (drop-demand (+ t (duration-func data)) data)
+                                nxt     (conj es [to-drop (:t to-drop)])]
+                            [nxt 
+                             (conj actives data)
+                             :added])
+                     :drop (let [res (disj actives data)]
+                             [es res :dropped])
+                     (throw (Exception. (str "unknown event" e))))))
         initial-events (into pq/emptyq
                              (map (fn [x] [(add-demand (start-func x) x) (start-func x)]) xs))]
   (gen/unfold (fn [state]  (empty? (first state)))  ;halt when no more events.            
@@ -44,6 +45,44 @@
                       current-time        (:t event)]
                   (handle event [remaining-events actives s]))) 
               [initial-events #{} :init])))
+
+;; (defn temporal-profile
+;;   "Extracts an event-driven profile of the concurrent records over time from a 
+;;    sequence of values, where start-func is a function that yields a start time 
+;;    for each record, and duration-func is a function that yields a numeric 
+;;    duration for each record."
+;;   [xs & {:keys [start-func duration-func]
+;;          :or {start-func :Start duration-func :Duration}}] 
+;;   (let [add-demand  (fn [t x] {:t t :type :add  :data x})
+;;         drop-demand (fn [t x] {:t t :type :drop :data x})
+;;         resample    (fn [t]   {:t t :type :resampling :data nil})
+;;         earliest    (fn [l r] (compare (:t l) (:t r)))
+;;         handle (fn [e estate]
+;;                  (let [es      (first estate)
+;;                        actives (second estate) 
+;;                        state   (nth estate 2)
+;;                        t       (:t e)
+;;                        data    (:data e)]
+;;                    (case (:type e)
+;;                      :resampling [es actives :changed]
+;;                      :add [(-> es 
+;;                                (conj (drop-demand (+ t (duration-func data)) data))
+;;                                (conj (resample t)))
+;;                            (conj actives data)
+;;                            :added]
+;;                      :drop [es (disj actives data) :dropped])))
+;;         initial-events (into pq/emptyq
+;;                              (map (fn [x] [(add-demand (start-func x) x) (start-func x)]) xs))]
+;;   (gen/unfold (fn [state]  (empty? (first state)))  ;halt when no more events.            
+;;               (fn [state]                
+;;                 (let [es      (first state)
+;;                       actives (second state)
+;;                       s       (nth state 2)
+;;                       event               (peek es)
+;;                       remaining-events    (pop es)
+;;                       current-time        (:t event)]
+;;                   (handle event [remaining-events actives s]))) 
+;;               [initial-events #{} :init])))
 
 ;;Pretty general function.
 (defn activity-profile
@@ -97,3 +136,24 @@
                                         :peak-function peak-function))] 
         [k (assoc peak-record :t t)]))))
 
+
+;;test data
+
+(
+(def recs [{:name :blah 
+            :Start 10
+            :src 1
+            :Duration 20}          
+           {:name :blee
+            :Start 15 
+            :src 1
+            :Duration 20}
+           {:name :foo 
+            :Start 23
+            :src 2
+            :Duration 33}
+           {:name :fizz
+            :Start 2 
+            :src 1
+            :Duration 4}])
+)
