@@ -9,6 +9,7 @@
             [spork.util     [topographic :as top]]))
  
 (def empty-graph dig/empty-digraph)
+(def empty-ordered-graph dig/empty-ordered-digraph)
 
 ;;Graph-Backed Operations
 ;;=======================

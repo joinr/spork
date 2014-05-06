@@ -18,7 +18,6 @@
           (recur (unchecked-inc idx) 
                  (+ acc (* (vec-nth v1 idx) (vec-nth v2 idx)))))))
 
-
 ;;quick meta to determine if we need to scale a vector.  Many times, we'll 
 ;;have unit-vectors already generated, so we don't want to waste time scaling
 ;;and rescaling (since there's a sqrt involved).  I'm exploiting meta data here

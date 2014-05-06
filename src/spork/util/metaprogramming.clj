@@ -69,5 +69,25 @@
 ;;into a metaprogramming macro.
 
 
-     
-  
+;;A useful binding form that replaces the - unperformant - 
+;;varargs idiom in clojure with something that 
+;;takes a map of varargs and unpacks it.
+
+(defn blah [x & {:keys [op y z] :or {op + y 2 z 3}}]
+  (op x y z))
+
+
+;; (defn blah-opt 
+;;   ([x opts]
+;;      (let [op (get opts :op +)
+;;            y  (get opts :y 2)
+;;            z  (get opts :z 3)]
+;;        (op x y z)))
+;;   ([x]      
+;;      (let [op  +
+;;            y   2
+;;            z   3]
+;;        (op  y z))))
+
+
+   

@@ -132,7 +132,7 @@
   (-get-direction [net from to] (< from to))
   (-flow-weight   [net from to] (if (< from to) (arr/deep-aget longs costs from to)
                                     (- (arr/deep-aget longs costs from to))))
-  (-set-edge [net edge]         
+  (-set-edge [net e]         
     (let [from (flow/edge-from e)
           to   (flow/edge-to   e)
           capacity (flow/edge-capacity e)
@@ -142,9 +142,13 @@
           net)))                         
   (-flow-sinks     [net x] (array-sinks  net x))
   (-flow-sources   [net x] (array-sources net x))
-  (-push-flow      [net edge flow] 
+  (-push-flow      [net e flow] 
       (array-inc-flow! net (flow/edge-from e) (flow/edge-to e) flow))
   flow/IDynamicFlow 
+  (-update-edge  [net from to f] 
+    (throw (Exception. "Cannot update edges in array network.  Edges are implicit")))
+  (-disj-cap-arc   [net from to]  
+    (throw (Exception. "Cannot update edges in array network.  Edges are implicit")))
   (-conj-cap-arc [net from to w cap]
     (assert (and (contains? nodemap from)
                  (contains? nodemap to))

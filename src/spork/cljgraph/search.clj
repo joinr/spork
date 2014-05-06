@@ -109,33 +109,6 @@
 (defn get-nodefilter [g]  (get (meta g) :nodefilter nil))
 
 
-;;__TODO__ Reformat to use nested entries, or build your own primitive type. 
-;; (defn traverse
-;;   "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
-;;    the searchstate, the halting criteria, the weight-generating 
-;;    function, or criteria for filtering candidates.  Returns a searchstate 
-;;    of the walk, which contains the shortest path trees, distances, etc. for 
-;;    multiple kinds of walks, depending on the searchstate's fringe structure."
-;;   [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
-;;                                          :or  {halt?     default-halt?
-;;                                                weightf   (get-weightf g)
-;;                                                neighborf (get-neighborf g)}}]
-;;     (let [get-weight    (partial weightf   g)
-;;           get-neighbors (if-let [nodefilter (get-nodefilter g)]
-;;                            (fn [nd s] (nodefilter (neighborf g nd s)))
-;;                            (partial neighborf g))
-;;           relax-by      (fn [source s sink]
-;;                           (generic/relax s (get-weight source sink) source sink))]
-;;       (loop [state   (-> (assoc startstate :targetnode targetnode)
-;;                          (generic/conj-fringe startnode 0))]
-;;         (if (generic/empty-fringe? state) state 
-;;             (let [nd        (generic/next-fringe state) ;next node to visit
-;;                   visited   (generic/visit-node state nd)] ;record visit.
-;;               (if (halt? state nd) visited                     
-;;                   (recur (reduce (partial relax-by nd) 
-;;                                  visited
-;;                                  (get-neighbors nd state))))))))) 
-
 ;;This should be an altogether faster version of traverse.  Most of
 ;;the speed improvements are achieved from agressive inlining of
 ;;functions for relaxation, and better implementations of conj-fringe.
@@ -145,25 +118,26 @@
    function, or criteria for filtering candidates.  Returns a searchstate 
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
-  [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
-                                         :or  {halt?     default-halt?
-                                               weightf   (get-weightf g)
-                                               neighborf (get-neighborf g)}}]
+  [g startnode targetnode startstate  {:keys [halt? weightf neighborf] 
+                                        :or  {halt?     default-halt?
+                                              weightf   (get-weightf g)
+                                              neighborf (get-neighborf g)}}]
     (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
                           (fn [nd s] (nodefilter (neighborf g nd s)))
-                          (partial neighborf g))]
+                          (fn [source state] (neighborf g source state)))]
       (loop [state   (-> (assoc startstate :targetnode targetnode)
                          (generic/conj-fringe startnode 0))]
         (if-let [source    (generic/next-fringe state)] ;next node to visit
           (let  [visited   (generic/visit-node state source)] ;record visit.
-            (if (halt? state source) visited                     
+            (if (halt? visited source) visited                     
                 (recur (generic/loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
                                             visited
                                             (get-neighbors source state)))))
           state))))
 
-(defn drop-empty-options [m]
-  (reduce (fn [m k] (if (nil? (get m k)) (dissoc m k) m)) m (keys m)))
+;;Needs to be implemented....should validate the options map to 
+;;ensure we have defaults for everything.
+(defn validate-walk-options [option-map]  true)
 
 (defmacro defwalk
   "Macro for helping us define various kinds of walks, built on top of 
@@ -173,17 +147,18 @@
    shuttling the supplied defaults to traverse, while allowing callers to
    provide key arguments for neighborf, weightf, and halt?."
   [name docstring state-ctor default-opts]
-  `(defn ~name ~docstring [~'g ~'startnode 
-                & {:keys [~'endnode ~'halt? ~'neighborf ~'weightf] 
-                   :as user-opts#}]
-     (let [clean-opts# (drop-empty-options user-opts#) 
-           {:keys [~'endnode ~'halt? ~'neighborf ~'weightf]}
-           (merge ~default-opts clean-opts#)]
-       (traverse ~'g ~'startnode ~'endnode (~state-ctor ~'startnode)
-                 :halt? ~'halt?                  
-                 :neighborf ~'neighborf 
-                 :weightf   ~'weightf))))        
-
+  `(let [defaults#  ~default-opts
+         ~'_ (validate-walk-options defaults#)]
+     (defn ~name ~docstring 
+       ([g# startnode#]
+            (traverse g# startnode# ::undefined (~state-ctor startnode#) defaults#))
+       ([g# startnode# endnode# user-opts#] 
+          (let [clean-opts# 
+                (if (or (not (identical? user-opts# defaults#)) (pos? (count user-opts#)))
+                  (merge defaults# user-opts#)
+                  defaults#)]
+            (traverse g# startnode# endnode# (~state-ctor startnode#) clean-opts#))))))
+     
 (defwalk depth-walk 
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
@@ -232,7 +207,7 @@
    not guaranteed to find the actual shortest path, thus the shortest path tree
    may be invalid."
   [g startnode endnode]
-  (depth-walk g startnode :endnode endnode))
+  (depth-walk g startnode endnode {}))
 
 (defn bfs
   "Starting from startnode, explores g using a breadth-first strategy, looking 
@@ -241,7 +216,7 @@
    is not guaranteed to find the actual shortest path, thus the shortest path 
    tree may be invalid."
   [g startnode endnode]
-  (breadth-walk g startnode :endnode endnode))
+  (breadth-walk g startnode endnode {}))
 
 (defn pfs
   "Starting from startnode, explores g using a priority-first strategy, looking 
@@ -250,14 +225,14 @@
    algorithm.  Note: Requires that arc weights are non-negative.  For negative 
    arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode]
-  (priority-walk g startnode :endnode endnode))
+  (priority-walk g startnode endnode {}))
 
 (defn rfs
   "Starting from startnode, explores g using random choice, looking for endnode. 
    Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree."
   [g startnode endnode]
-  (random-walk g startnode :endnode endnode))
+  (random-walk g startnode endnode {}))
 
 ;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
 ;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
@@ -270,18 +245,18 @@
    search state, which contains the shortest path tree or precedence tree, the 
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode & {:keys [weightf neighborf] 
-                          :or   {weightf   (get-weightf g) 
-                                 neighborf (get-neighborf g)}}]
-  (priority-walk g startnode :endnode endnode
-   :weightf  (memoize (fn [g source sink]
-                        (let [w (weightf g source sink)]
-                          (if (>= w 0)  w ;positive only
-                            (throw 
-                              (Exception. 
-                                (str "Negative Arc Weight Detected in Dijkstra: " 
-                                     [source sink w])))))))
-   :neighborf neighborf))                                            
+  [g startnode endnode  {:keys [weightf neighborf] 
+                         :or   {weightf   (get-weightf g) 
+                                neighborf (get-neighborf g)}}]
+  (priority-walk g startnode endnode
+   {:weightf  (fn [g source sink]
+                (let [w (weightf g source sink)]
+                  (if (>= w 0)  w ;positive only
+                      (throw 
+                       (Exception. 
+                        (str "Negative Arc Weight Detected in Dijkstra: " 
+                             [source sink w]))))))
+    :neighborf neighborf}))                                            
 
 ;;__TODO__ Check implementation of a-star, I think this is generally correct.
 (defn a*
@@ -317,9 +292,9 @@
    we allow negative edge weights, and non-negative cycles.  The search uses 
    a queue for the fringe, rather than a priority queue.  Other than that, 
    the search steps are almost identical."
-  [g startnode endnode & {:keys [weightf neighborf] 
-                          :or   {weightf   (get-weightf g) 
-                                 neighborf (get-neighborf g)}}]
+  [g startnode endnode {:keys [weightf neighborf] 
+                         :or   {weightf   (get-weightf g) 
+                                neighborf (get-neighborf g)}}]
   (throw (Exception. "Bellman-ford is currently not verified.  Tests are not passing."))
   (let [startstate    (assoc (searchstate/empty-BFS startnode) 
                              :targetnode endnode)
@@ -346,57 +321,6 @@
 ;;with-added-edges 
 ;;with-added-nodes 
 
-
-;;A revamp of traverse.  Still testing.
-(defn traverse2a
-  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
-   the searchstate, the halting criteria, the weight-generating 
-   function, or criteria for filtering candidates.  Returns a searchstate 
-   of the walk, which contains the shortest path trees, distances, etc. for 
-   multiple kinds of walks, depending on the searchstate's fringe structure."
-  [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
-                                         :or  {halt?     default-halt?
-                                               weightf   (get-weightf g)
-                                               neighborf (get-neighborf g)}}]
-    (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
-                          (fn [nd s] (nodefilter (neighborf g nd s)))
-                          (fn [nd s] (neighborf g nd s)))]
-      (loop [state   (-> (assoc! startstate :targetnode targetnode)
-                         (generic/conj-fringe startnode 0))]
-        (if-let [source    (generic/next-fringe state)] ;next node to visit
-          (let  [visited   (generic/visit-node state source)] ;record visit.
-            (if (halt? state source) visited                     
-                (recur (loop [acc visited
-                              xs (get-neighbors source state)]
-                         (if (empty? xs) acc
-                             (let [sink (first xs)]
-                               (recur (generic/relax acc (weightf g source sink) source sink)
-                                      (rest xs))))))))
-          state))))
-
-(defn traverse2b
-  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
-   the searchstate, the halting criteria, the weight-generating 
-   function, or criteria for filtering candidates.  Returns a searchstate 
-   of the walk, which contains the shortest path trees, distances, etc. for 
-   multiple kinds of walks, depending on the searchstate's fringe structure."
-  [g startnode targetnode startstate neighborf]
-    (let [halt?     default-halt?
-          weightf   (get-weightf g)
-;          neighborf (get-neighborf g)
-          ;; get-neighbors (if-let [nodefilter (get-nodefilter g)]
-          ;;                 (fn [nd s] (nodefilter (neighborf g nd s)))
-          ;;                 (partial neighborf g))
-          ]
-      (loop [state   (-> (assoc! startstate :targetnode targetnode)
-                         (generic/conj-fringe startnode 0))]
-        (if-let [source    (generic/next-fringe state)] ;next node to visit
-          (let  [visited   (generic/visit-node state source)] ;record visit.
-            (if (halt? state source) visited                     
-                (recur (generic/loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
-                                            visited
-                                            (neighborf g source state)))))
-          state))))
 
 ;;Trying alternative search techniques to avoid allocation and funcalls..
 (comment 
@@ -547,4 +471,58 @@
 
 (definline quick-dfs [g startnode targetnode]
   `(traverse2a ~g ~startnode ~targetnode (searchstate/mempty-DFS ~startnode)))
+
+
+
+;;A revamp of traverse.  Still testing.
+(defn traverse2a
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate & {:keys [halt? weightf neighborf] 
+                                         :or  {halt?     default-halt?
+                                               weightf   (get-weightf g)
+                                               neighborf (get-neighborf g)}}]
+    (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
+                          (fn [nd s] (nodefilter (neighborf g nd s)))
+                          (fn [nd s] (neighborf g nd s)))]
+      (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
+        (if-let [source    (generic/next-fringe state)] ;next node to visit
+          (let  [visited   (generic/visit-node state source)] ;record visit.
+            (if (halt? state source) visited                     
+                (recur (loop [acc visited
+                              xs (get-neighbors source state)]
+                         (if (empty? xs) acc
+                             (let [sink (first xs)]
+                               (recur (generic/relax acc (weightf g source sink) source sink)
+                                      (rest xs))))))))
+          state))))
+
+(defn traverse2b
+  "Generic fn to eagerly walk a graph.  The type of walk can vary by changing 
+   the searchstate, the halting criteria, the weight-generating 
+   function, or criteria for filtering candidates.  Returns a searchstate 
+   of the walk, which contains the shortest path trees, distances, etc. for 
+   multiple kinds of walks, depending on the searchstate's fringe structure."
+  [g startnode targetnode startstate neighborf]
+    (let [halt?     default-halt?
+          weightf   (get-weightf g)
+;          neighborf (get-neighborf g)
+          ;; get-neighbors (if-let [nodefilter (get-nodefilter g)]
+          ;;                 (fn [nd s] (nodefilter (neighborf g nd s)))
+          ;;                 (partial neighborf g))
+          ]
+      (loop [state   (-> (assoc! startstate :targetnode targetnode)
+                         (generic/conj-fringe startnode 0))]
+        (if-let [source    (generic/next-fringe state)] ;next node to visit
+          (let  [visited   (generic/visit-node state source)] ;record visit.
+            (if (halt? state source) visited                     
+                (recur (generic/loop-reduce (fn [acc sink] (generic/relax acc (weightf g source sink) source sink))
+                                            visited
+                                            (neighborf g source state)))))
+          state))))
+
 )

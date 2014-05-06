@@ -60,3 +60,40 @@
 (defn save-graph 
   ([g] (write-graph g anongraph))
   ([g path] (write-graph g path)))
+
+;;Added some stuff for testing.  Wipe this file out.
+
+(defn find-age  [x] (:age  x))
+(defn find-name [x] (:name x))
+
+(let [const 100]
+  (def ^:dynamic *specs* {:get-name (fn [p] (:name p))
+                          :get-age  (fn [p] (:age p))
+                          :alter-name (fn [n] (clojure.string/capitalize n ))
+                          :alter-age  (fn [a] (+ a const))}))
+
+(defmacro general-person-printer [p & {:keys [get-name get-age alter-name alter-age]}]
+  `(println {:name (~alter-name (~get-name  ~p))
+             :age  (~alter-age  (~get-age   ~p))}))          
+
+(defn build-printer 
+  [{:keys [get-name get-age alter-name alter-age] :as specs}]
+  `(let [gpp# (fn [p#] (general-person-printer p# :get-name ~get-name :get-age ~get-age :alter-name ~alter-name :alter-age ~alter-age))]
+     (fn ~(gensym "Printer") [person#] 
+       (gpp# person#))))
+
+(defmacro with-all-caps [& expr]
+  `(binding [~'*specs* (assoc ~'*specs* :alter-name (fn [n#] (clojure.string/upper-case n#)))]
+     ~@expr))
+
+(defmacro build-printer 
+  [ specs] 
+  `(let [specs# ~specs
+         get-name# (:get-name specs#)
+         get-age#  (:get-age specs#)
+         alter-name# (:alter-name specs#)
+         alter-age#  (:alter-age specs#)
+         gpp# (fn [p#] (general-person-printer p# :get-name get-name# :get-age get-age# :alter-name alter-name# :alter-age alter-age#))]
+     (fn ~(gensym "Printer") [person#] 
+       (gpp# person#))))
+

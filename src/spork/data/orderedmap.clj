@@ -68,7 +68,7 @@
     (let [v (.valAt this k this)]
       (when-not (identical? v this) ;might need to yank this guy.
         (generic/entry k v))))
-  (seq [this] (if (empty? basemap) (seq {})
+  (seq [this] (if (zero? (count basemap)) (seq {})
                 (map (fn [k] (generic/entry k (.valAt basemap k))) 
                      (eager/vals! idx->key))))  
   ;without implements (dissoc pm k) behavior

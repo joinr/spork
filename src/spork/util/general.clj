@@ -3,6 +3,9 @@
 (ns spork.util.general
   (:require [clj-tuple :as tup]))
 
+(defmacro clone-meta [obj expr]
+  `(with-meta ~expr (meta ~obj)))
+
 (defn swapv 
   "Swaps the indices in vector v at from and to."
   [from to v] (let [tov (nth v to)] (-> v (assoc to (nth v from)) (assoc from tov))))
@@ -216,6 +219,24 @@
 
 (definline assoc2! [m from to v]
   `(assoc! ~m ~from (assoc! (get-else ~m ~from (transient {})) ~to ~v)))
+
+;;this is faster, and works on transient collections.
+(defmacro zero-items? 
+  "A more general replacement for empty?, specifically use for accessing 
+   transient, indexed collections."
+  [coll] `(zero? (count ~coll)))
+
+(definline dissoc2 [m from to]
+  `(let [res# (dissoc (get ~m ~from) ~to)]
+     (if (zero-items? res#) 
+       (dissoc ~m ~from)
+       (assoc ~m ~from res#))))
+
+(definline dissoc2! [m from to]
+  `(let [res# (dissoc! (get ~m ~from) ~to)]
+     (if (zero-items? res#) 
+       (dissoc! ~m ~from)
+       ~m)))
 
 (definline transient2 [coll] 
   `(reduce-kv (fn [m# k# v#] 

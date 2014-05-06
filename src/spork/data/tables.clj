@@ -1,4 +1,5 @@
-;;A representation of mutable tables.
+;;A representation of mutable and persistent tables. Basically, 
+;;2D/3D arrays or 2D/3D maps
 (ns spork.data.tables
   (:require [spork.util [array :as arr] [general :as gen]]
             [clj-tuple :as tup]))
@@ -11,6 +12,12 @@
 ;;default, rather than vectors.
 
 ;;Primarily for use as algorithmic building blocks.
+
+;(defprotocol ISparseTable)
+;(defprotocol IDenseTable) 
+
+;(defrecord table2d [])
+
 
 
 
