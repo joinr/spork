@@ -93,6 +93,7 @@
   (-get-sources [tg k]   (eager/keys! (get sources k)))
   (-get-sinks   [tg k]   (eager/keys! (get sinks   k))))
 
+
 (def  empty-digraph     (->digraph {} {} {}))
 (def  empty-ordered-digraph (->ordered-digraph {} om/empty-ordered-map om/empty-ordered-map))
 
@@ -100,6 +101,25 @@
   (-> g 
       (assoc :sinks (:sources g))
       (assoc :sources (:sinks g))))
+
+
+;;Graph Transformations
+;;=====================
+;; (defrecord masked-graph [g disabled-nodes disabled-arcs]
+;;   ITopograph                
+;;   (-conj-node [tg k v] (masked-graph. (-conj-node g k v) disabled-nodes disabled-arcs))
+;;   (-disj-node [tg k]   (masked-graph. (-disj-node g k v) disabled-nodes disabled-arcs))
+;;   (-has-node? [tg k]   (and (-has-node? g k) (not (contains? disabled-nodes k))))
+;;   (-conj-arc  [tg source sink w] (masked-graph. (-conj-arc g source sink w) disabled-nodes disabled-arcs))
+;;   (-disj-arc  [tg source sink]   (masked-graph. (-disj-arc g source sink) disabled-nodes disabled-arcs))
+;;   (-has-arc?    [tg source sink] (when (gen/get2 disabled-arcs source sink nil) 
+;;                                    (-has-arc? g source sink)))
+;;   (-arc-weight  [tg source sink] (when (gen/get2 disabled-arcs source sink nil)
+;;                                    (-arc-weight g source sink)))
+;;   (-get-arc     [tg source sink] (when (gen/get2 disabled-arcs source sink nil)
+;;                                    (-get-arc g source sink)))
+;;   (-get-sources [tg k]   (when )
+;;   (-get-sinks   [tg k]   ))
 
 ;;Work in progress.
 

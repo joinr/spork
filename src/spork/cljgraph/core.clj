@@ -559,6 +559,7 @@
            ~sym graph#]
        ~@body)))
 
+
 ;;Testing/Examples
 (comment 
 
@@ -642,4 +643,3 @@
  (def the-other-tree (-> empty-graph (add-arcs (tree-arcs :a [:b :c]))))
  
 )
-

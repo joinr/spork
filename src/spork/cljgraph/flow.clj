@@ -13,6 +13,7 @@
             [spork.util.metaprogramming :refer [id tagged binding-keys key->symb]]))
 
 (def ^:const posinf Long/MAX_VALUE)
+(def ^:const empty-list (list))
 
 ;;Notes on performance implications of using protocols and such...
 ;;
@@ -174,15 +175,16 @@
   `(contains? (get (:sinks ~g)  ~from) ~to))
 
 ;;Current function, should be replaced by the commented one below.
-(definline get-edge-infos [n]
-  `(for [[from# vs#] (:flow-info ~n)
-         [to# info#] vs#]
-     info#))
+;; (definline get-edge-infos [n]
+;;   `(for [[from# vs#] (:flow-info ~n)
+;;          [to# info#] vs#]
+;;      info#))
 
 ;;should be faster.
 ;;================
-;; (definline get-edge-infos [n]
-;;   `(kv-flatten2 ~n))
+(definline get-edge-infos [n]
+  (let [acc (with-meta (gensym "acc") {:tag 'clojure.lang.ISeq})]
+    `(kv-reduce2 (fn [~acc from# to# v#] (.cons ~acc v#)) empty-list (get ~n :flow-info))))
 
 (definline get-edge-infos! [n]
   `(let [infos# (:flow-info ~n)
@@ -331,6 +333,7 @@
                                acc))) 
                          '()
                          (get-edge-infos net)))) 
+
 ;;A transient network that uses mutable edges.
 ;;This will knock off costs to assoc.  We just 
 ;;read the data and mutate the edge.  If this is much 
@@ -465,40 +468,81 @@
             0 active-edges))
   ([g] (total-cost g (-active-flows g))))
 
-(defmacro edge-reduce [net node f & {:keys [get-children] :or {get-children 'spork.cljgraph.flow/flow-sinks}}]
-  `(let [dfunc#    ~get-children
-         visited# (atom (transient {}))
-         visited?# (fn [from# to#]
-                     (spork.util.general/get2 @visited# from# to# nil))
-         visit!#   (fn [from# to#]
-                     (reset! visited# (spork.util.general/assoc2! @visited# from# to# 1)))]
-     (loop [fringe# #{~node}
-            acc#    ~net](if (zero? (.count fringe#)) acc#
-                             (let [from# (first fringe#)
-                                   parents# (reduce-kv
-                                             (fn [acc# k# v#] (conj acc# k#)) #{} (dfunc# ~net from#))]
-                               (reduce (fn [inner-acc# to#]
-                                         (if (visited?# from# to#)
-                                           inner-acc#
-                                           (let [~'_ (visit!# from# to#)
-                                                 e#  (spork.cljgraph.flow/-edge-info
-                                                      inner-acc# to# from#)]
-                                             (~f inner-acc# e#))))
-                                       acc# parents#))))))
+;;Aggregate functions on Networks
+;;===============================
 
-(defmacro edge-map [net node f & {:keys [get-children] :or {get-children 'spork.cljgraph.flow/flow-sinks}}]
-  `(edge-reduce ~net ~node
-                (fn [acc# edge#]
-                  (let [res# (~f edge#)]
-                    (if (identical? res# edge#) acc#
-                        (spork.cljgraph.flow/-set-edge acc# res#))))
-                :get-children ~get-children))
-                  
-  
+(defn edge-reduce 
+  [f init net]
+  (reduce f init (einfos net)))
+
+(defn edge-map
+  [f net]
+  (edge-reduce 
+   (fn [acc e] (let [res  (f e)]
+                 (if (identical? e res) acc (-set-edge acc e))))
+   net
+   net))
+
+;;Look into migrating these into the more general reducers framework.
+(defn edge-reduce-from 
+  ([startnode f init  get-children net]
+     (let [fringe#   (doto (java.util.HashSet.) (.add startnode))
+           visited# (atom (transient {}))
+           visited?# (fn [from# to#]
+                       (spork.util.general/get2 @visited# from# to# nil))
+           visit!#   (fn [from# to#]
+                       (reset! visited# (spork.util.general/assoc2! @visited# from# to# 1)))]
+       (loop [acc#     init] 
+         (if (.isEmpty  fringe#) acc#
+             (let [from# (first fringe#)
+                   _     (.remove fringe# from#)]
+               (recur (reduce-kv (fn [inner-acc#  to# weight#]
+                                   (if (visited?# from# to#)  inner-acc#
+                                       (let [_   (visit!# from# to#)
+                                             _   (.add fringe# to#)
+                                             e#  (spork.cljgraph.flow/-edge-info net from# to#)]
+                                         (f inner-acc# e#))))
+                              acc# (get-children net from#))))))))
+  ([startnode f net] (edge-reduce-from startnode f net  spork.cljgraph.flow/-flow-sinks net)))
+
+;;persistent version....slower but more portable.
+;; (defn edge-reduce-from 
+;;   ([startnode f init  get-children net]
+;;      (let [visited# (atom (transient {}))
+;;            visited?# (fn [from# to#]
+;;                        (spork.util.general/get2 @visited# from# to# nil))
+;;            visit!#   (fn [from# to#]
+;;                        (reset! visited# (spork.util.general/assoc2! @visited# from# to# 1)))]
+;;        (loop [fringe# #{startnode}
+;;               acc#     init] 
+;;          (if (zero? (.count fringe#)) acc#
+;;              (let [from# (first fringe#)
+;;                    children# (reduce-kv
+;;                               (fn [acc# k# v#] (conj acc# k#)) #{} (get-children net from#))]
+;;                (recur (clojure.set/union (disj fringe# from#) children#)
+;;                       (reduce (fn [inner-acc# to#]
+;;                                 (if (visited?# from# to#)  inner-acc#
+;;                                     (let [_   (visit!# from# to#)
+;;                                           e#  (spork.cljgraph.flow/-edge-info net from# to#)]
+;;                                       (f inner-acc# e#))))
+;;                               acc# children#)))))))
+;;   ([startnode f net] (edge-reduce-from startnode f net  spork.cljgraph.flow/-flow-sinks net)))
+
+(defn edge-map-from 
+  ([startnode f get-children net]
+     (edge-reduce-from  startnode
+      (fn [acc# edge#]
+        (let [res# (f edge#)]  
+          (if (identical? res# edge#) acc#
+              (spork.cljgraph.flow/-set-edge acc# res#))))
+       net get-children net))
+  ([startnode f net] (edge-map-from startnode f spork.cljgraph.flow/-flow-sinks net)))           
+
 
 ;;Flows and Augmenting Paths
 ;;==========================
 (definline empty-search [from] `(searchstate/mempty-PFS ~from))
+(definline empty-depthsearch [from] `(searchstate/empty-DFS ~from))
 
 ;;another option is to compute incident edges.
 ;;From that, return a pair of ins and outs.
@@ -725,6 +769,12 @@
          :aug-path  aug#
          :path->edge-flows flows#})))
 
+
+;; (defmacro defnflow [name args & {:keys [options pre-flow post-flow] 
+;;                                  :or {options *flow-options* :pre-flow id :post-flow id}}]
+;;   `(defn ~name ~args 
+;;      (let [flow (with-flow-options ~opts-expr)
+     
 ;;High level API
 ;;==============
 ;;we define a set of options for building flow computations.
@@ -799,7 +849,8 @@
 (def aug-flow      (flow-fn (assoc default-flow-opts :augmentations true)))
 
 (defn mincost-flow 
-  [net from to]  (default-flow net from to))
+  [net from to]  (default-flow net from to))  
+   
 (defn augmentations 
   [net from to]     (aug-flow net from to))
 
@@ -908,3 +959,49 @@
           ;; state#           (:state              opts#)
           ;; alter-flow#      (:alter-flow         opts#)
           ;; unalter-flow#    (:untalter-flow      opts#)
+
+
+(comment 
+(defmacro dynamic-flow-fn
+  "Defines a flow computation across net, originating at from and ending at to.  
+   Caller may supply flow options explicitly, or defer to the explicit 
+   *flow-options* dynamic binding, using  supporting macros ala with-flow-options 
+   or manual modification."
+  [opts]
+   `(let [opts# (reduce-kv (fn [acc# k# v#] (assoc acc# k# (eval v#))) {} ~opts)
+          ~'_   (doseq [[k# v#] opts#] (when (not= k# :neighborf) (assert (not (nil? v#)) (println [k# :is :nil!]))))
+          {:keys [~'get-sinks ~'get-sources ~'get-edge ~'get-direction ~'neighborf ~'weightf ~'augmentations
+                  ~'forward-filter ~'backward-filter ~'state ~'alter-flow ~'unalter-flow]} opts#
+          neighborf# (fn neighbors# [flow-info# v#]
+                       (general-flow-neighbors flow-info# v#
+                                               :get-sinks       ~'get-sinks
+                                               :get-sources     ~'get-sources
+                                               :forward-filter  ~'forward-filter
+                                               :backward-filter ~'backward-filter
+                                               :get-edge        ~'get-edge))
+          traverse# (fn traversal# [net# startnode# targetnode# startstate#] 
+                      (general-flow-traverse net# startnode# targetnode# startstate#
+                                             :weightf ~'weightf   :neighborf neighborf#))
+          aug#     (fn aug-path# [g# from# to#] (aug-path g# from# to# traverse# ~'state))
+          flows#   (fn path->edge-flows# [flow-info# p#]
+                     (path-walk flow-info# p#
+                                :alter-flow    ~'alter-flow
+                                :unalter-flow  ~'unalter-flow
+                                :get-edge      ~'get-edge
+                                :get-direction ~'get-direction))]
+      (with-meta         
+        (case ~'augmentations 
+          nil (fn flow# [net# from# to#] 
+                (spork.cljgraph.flow/flowbody  net# from# to# aug# flows#))
+          (true :recording)  (fn flow# [net# from# to#] 
+                              (spork.cljgraph.flow/augbody  net# from# to# aug# flows#))
+          :debug (fn flow# [net# from# to#] 
+                   (spork.cljgraph.flow/augdebug  net# from# to# aug# flows#))
+          (throw (Exception. (str "unknown aug type" 
+                                  (:augmentations opts#)))))
+        {:options opts#
+         :neighborf neighborf#
+         :traverse  traverse#
+         :aug-path  aug#
+         :path->edge-flows flows#})))
+)
