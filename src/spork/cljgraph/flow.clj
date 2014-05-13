@@ -671,6 +671,13 @@
                        :coercion      ~'long)) 
          edges#))))
 
+(defn path->edge-flows-default [flow-info p]
+  (path-walk flow-info p
+                  :alter-flow    id
+                  :unalter-flow  id
+                  :get-edge      -edge-info
+                  :get-direction -get-direction))
+
 ;;Persistent augmentation actually sets the edge to the result 
 ;;of increasing flow.
 (defn augment-flow [the-net p get-edge-flows]
