@@ -369,37 +369,6 @@
                    nil
                    (java.util.ArrayList.)
                    multipath))
-        
-;; (defn backtrack
-;;   "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
-;;    backtrack throught the shortest path tree to yield a pair of a path, and 
-;;    all the branching subpaths encountered along the way."
-;;   [preds startnode tail-path]
-;;   (when (seq tail-path)
-;;     (loop [path          tail-path
-;;            pending-paths []]
-;;       (let [node (first path)] 
-;;         (if (= node startnode) [path pending-paths]
-;;             (let [prior  (get preds node)
-;;                   prior-node   (if (branch? prior) (first prior) prior)
-;;                   branch-paths (when (branch? prior) 
-;;                                  (for [nd (rest prior)]
-;;                                    (cons nd path)))]
-;;               (recur (cons prior-node path) 
-;;                      (into pending-paths branch-paths))))))))
-
-;; (definline backtrack [preds startnode tail-path]
-;;  `(when (seq ~tail-path)
-;;     (loop [path#          ~tail-path
-;;            pending-paths# []]
-;;       (let [node# (first path#)] 
-;;         (if (= node# ~startnode) [path# pending-paths#]
-;;             (let [prior#  (get ~preds node#)                  
-;;                   prior-node#   (if (branch? prior#) (first prior#) prior#)
-;;                   branch-paths# (when (branch? prior#) 
-;;                                  (map (fn [n#] (cons n# path#)) (rest prior#)))]
-;;               (recur (cons prior-node# path#) 
-;;                      (into pending-paths# branch-paths#))))))))
 
 (definline backtrack [preds startnode tail-path]
  `(when (seq ~tail-path)
@@ -413,23 +382,6 @@
                                  (generic/loop-reduce (fn [acc# x#] (conj acc# (cons x# path#))) [] (rest prior#)))]
               (recur (cons prior-node# path#) 
                      (generic/loop-reduce (fn [acc# x#] (conj acc# x#))  pending-paths# branch-paths#))))))))
-
-;; (defn backtrack
-;;   "Given a shortest-path-tree, a start-node, and an initial, or tail, path, 
-;;    backtrack throught the shortest path tree to yield a pair of a path, and 
-;;    all the branching subpaths encountered along the way."
-;;   [preds startnode tail-path]
-;;   (when (seq tail-path)
-;;     (loop [path          tail-path
-;;            pending-paths []]
-;;       (let [node (first path)] 
-;;         (if (= node startnode) [path pending-paths]
-;;             (let [prior  (get preds node)                  
-;;                   prior-node   (if (branch? prior) (first prior) prior)
-;;                   branch-paths (when (branch? prior) 
-;;                                  (map (fn [n] (cons n path)) (rest prior)))]
-;;               (recur (cons prior-node path) 
-;;                      (into pending-paths branch-paths))))))))
 
 (definline paths 
   "Given a shortest-path-tree that encodes the predecessors of nodes, yield a 
@@ -447,34 +399,6 @@
                              (vector next-path# (into (rest pending-paths#) new-subpaths#))))))
                      (backtrack ~preds ~startnode (list ~endnode)))
             (take-while identity)))) 
-
-;; (defn paths 
-;;   "Given a shortest-path-tree that encodes the predecessors of nodes, yield a 
-;;    sequence of all the paths from start node to end node."
-;;   [preds startnode endnode]
-;;   (map first 
-;;        (->> (iterate (fn [pair]
-;;                        (let [current-path  (get pair 0)
-;;                              pending-paths (get pair 1)]
-;;                          (when (not (empty? pending-paths))
-;;                            (let [res (backtrack preds startnode 
-;;                                                 (first pending-paths))
-;;                                  next-path    (get res 0)
-;;                                  new-subpaths (get res 1)]
-;;                              (vector next-path (into (rest pending-paths) new-subpaths))))))
-;;                      (backtrack preds startnode (list endnode)))
-;;             (take-while identity)))) 
-
-;; (definline first-path [state]  
-;;   `(let [startnode#  (:startnode ~state)
-;;          targetnode# (:targetnode ~state)
-;;          spt#        (:shortest ~state)]
-;;      (loop [node#   targetnode#
-;;             path#   (list targetnode#)]
-;;        (if (= node# startnode#) path#
-;;            (let [prior#   (get spt# node#)
-;;                  newnode# (if (branch? prior#) (first prior#) prior#)]
-;;              (recur newnode# (cons newnode# path#)))))))  
 
 (defn path? 
   ([state target] (generic/best-known-distance state target))
@@ -511,21 +435,27 @@
                   newnode (if (branch? prior) (first prior) prior)]
                 (recur newnode (cons newnode path))))))))
 
-
-
 ;;A mutable empty depth-first search...
-(def mempty-DFS  (fn [startnode] (minit-search startnode :fringe fr/depth-fringe)))
-;;An empty breadth-first search.(def mempty-BFS  (fn [startnode] (minit-search startnode :fringe fr/breadth-fringe)))
-;;An empty priority-first search.  Note: THis uses a mutable priority
-;;queue 
-;; (definline mempty-PFS [startnode] 
-;;   `(msearchstate.  ~startnode 
-;;                    nil
-;;                    (m/->mutmap [~startnode ~startnode])
-;;                    (m/->mutmap [~startnode 0])
-;;                    (fr/make-pq)
-;;                    nil
-;;                    []))
+;(def mempty-DFS  (fn [startnode] (minit-search startnode :fringe fr/depth-fringe)))
+(definline mempty-DFS [startnode]
+  `(msearchstate2.  ~startnode 
+                    nil
+                    (doto (HashMap. ) (.put ~startnode ~startnode))
+                    (doto (HashMap. ) (.put ~startnode 0))
+                    fr/depth-fringe
+                    nil
+                    (java.util.ArrayList.)
+                    nil))
+
+(definline mempty-BFS [startnode]
+  `(msearchstate2.  ~startnode 
+                    nil
+                    (doto (HashMap. ) (.put ~startnode ~startnode))
+                    (doto (HashMap. ) (.put ~startnode 0))
+                    fr/breadth-fringe
+                    nil
+                    (java.util.ArrayList.)
+                    nil))
 
 (definline mempty-PFS [startnode] 
   `(msearchstate2.  ~startnode 
@@ -537,10 +467,7 @@
                     (java.util.ArrayList.)
                     nil))
 
-;;A mutable empty depth-first search, using hashmaps...
-(def mempty-DFS2  (fn [startnode] (minit-search2 startnode :fringe fr/depth-fringe)))
-;;An empty breadth-first search.
-(def mempty-BFS2  (fn [startnode] (minit-search2 startnode :fringe fr/breadth-fringe)))
+
 ;;An empty priority-first search.  Note: THis uses a mutable priority
 ;;queue 
 (let [init-fringe (fn [startnode] (minit-search2 startnode))]

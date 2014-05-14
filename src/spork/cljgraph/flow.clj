@@ -289,7 +289,7 @@
 ;;implemented as a record, we can store information in it like a map.
 ;;Our flow information happens to live in this map.  Note, this has
 ;;performance implications.
-(extend-type spork.data.digraph.digraph  
+(extend-type spork.data.digraph.digraph    
   IFlowNet
   (-edge-info     [net from to]  
     (let [finfo (get net :flow-info)]
@@ -339,6 +339,8 @@
 ;;read the data and mutate the edge.  If this is much 
 ;;faster, it will become the default.
 (m/defmutable transient-net [g flow-info metadata]
+  spork.protocols.core.IGraphable 
+  (-get-graph [net] g)
   clojure.lang.IObj
   ;adds metadata support
   (meta [this] metadata)
@@ -468,6 +470,38 @@
             0 active-edges))
   ([g] (total-cost g (-active-flows g))))
 
+;;find the maximum capacity that can flow through the network.
+(defn max-stats [net]
+  (->> (einfos net)
+       (reduce (fn [^doubles stats e]
+                 (do (aset stats 0 
+                           ^double (max (aget stats 0)
+                                        (edge-capacity e)))
+                     (aset stats 1 
+                           ^double (max (aget stats 1)
+                                        (-flow-weight net (edge-from e) (edge-to e))))
+                     stats))
+               (double-array [0 0]))
+       (zipmap [:max-capacity :max-cost])))
+
+(defn max-outflow [net from]
+  (reduce-kv (fn [acc to v]
+               (max acc (edge-capacity (-edge-info net from to))))
+             0
+             (-flow-sinks net from)))
+
+(defn max-inflow [net to]
+  (reduce-kv (fn [acc from v]
+               (max acc (edge-capacity (-edge-info net from to))))
+             0
+             (-flow-sources net to)))
+
+(defn theoretical-flow-bound [net from to]
+  (min (max-outflow net from)
+       (max-inflow  net to)))
+ 
+  
+
 ;;Aggregate functions on Networks
 ;;===============================
 
@@ -542,7 +576,8 @@
 ;;Flows and Augmenting Paths
 ;;==========================
 (definline empty-search [from] `(searchstate/mempty-PFS ~from))
-(definline empty-depthsearch [from] `(searchstate/empty-DFS ~from))
+(definline empty-depthsearch [from] `(searchstate/mempty-DFS ~from))
+(definline empty-breadthsearch [from] `(searchstate/mempty-BFS ~from))
 
 ;;another option is to compute incident edges.
 ;;From that, return a pair of ins and outs.
@@ -599,6 +634,15 @@
                             ~acc))
                       ~res 
                       (~get-sources ~flow-info ~v))))))
+
+(defn residual-spanning-tree 
+  ([net from to] (:shortest 
+                  (spork.cljgraph.search/depth-walk (generic/-get-graph net) from to
+                    {:neighborf  (fn [_ nd _] (flow-neighbors net nd))})))
+  ([net from to neighborf] 
+     (:shortest 
+      (spork.cljgraph.search/depth-walk (generic/-get-graph net) from to
+             {:neighborf  (fn [_ nd _] (neighborf net nd))}))))
 
 ;;Generic, customizable version.
 (defmacro general-flow-traverse
@@ -857,9 +901,19 @@
 
 (defn mincost-flow 
   [net from to]  (default-flow net from to))  
+
+(def max-flow 
+  (with-flow-options {:weightf (fn [n from to] 1) :state empty-breadthsearch}
+    (flow-fn *flow-options*)))
+
+(def ford-fulkerson 
+  (with-flow-options {:weightf (fn [n from to] 1) :state empty-depthsearch}
+    (flow-fn *flow-options*)))
+
+(def edmonds-karp max-flow)
    
-(defn augmentations 
-  [net from to]     (aug-flow net from to))
+(defn augmentations [net from to]
+  (aug-flow net from to))
 
 (defn ->scaled-mincost-flow [scalar]
   (with-scaled-flow scalar

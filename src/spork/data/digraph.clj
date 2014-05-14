@@ -14,6 +14,8 @@
 ;;sources : {nd {sink nodes}}
 ;;sinks   : {nd {source nodes}}
 (defrecord digraph [nodes sources sinks]
+  IGraphable 
+  (-get-graph [g] g)
   ITopograph
   (-get-nodes [tg] nodes)
   (-set-nodes [tg m] (digraph. m sources sinks))
@@ -55,6 +57,8 @@
   (-get-sinks   [tg k]   (eager/keys! (get sinks   k))))
 
 (defrecord ordered-digraph [nodes sources sinks]
+  IGraphable 
+  (-get-graph [g] g)
   ITopograph
   (-get-nodes [tg]     nodes)
   (-set-nodes [tg m]  (ordered-digraph.  m sources sinks))

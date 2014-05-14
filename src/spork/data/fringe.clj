@@ -6,7 +6,8 @@
              [spork.protocols [core :as generic]])
    (:import  [java.util PriorityQueue]))
 
-(def emptyq clojure.lang.PersistentQueue/EMPTY)
+(def ^:constant  emptyq clojure.lang.PersistentQueue/EMPTY)
+(def ^:constant  emptylist (list))
 
 ;;Now using mutable priority queues for search fringe.  This ends up 
 ;;being faster than my persistent priorityqueue implementation.
@@ -49,16 +50,12 @@
   (pop-fringe  [fringe]     (pop   fringe))
   clojure.lang.PersistentList
   (conj-fringe [fringe n w] (conj fringe n))
-  (next-fringe [fringe]     (first fringe))
-  (pop-fringe  [fringe]     (pop fringe))
+  (next-fringe [fringe]     (.first fringe))
+  (pop-fringe  [fringe]     (.next fringe))
   clojure.lang.PersistentList$EmptyList
   (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     nil)
   (pop-fringe  [fringe]     nil)
-  clojure.lang.Cons 
-  (conj-fringe [fringe n w] (conj fringe n))
-  (next-fringe [fringe]     (first fringe))
-  (pop-fringe  [fringe]     (pop fringe))
   spork.data.randq.randomq
   (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     (peek fringe))
@@ -123,7 +120,7 @@
 (def depth-fringe 
   "Builds a fringe that stores [node weight] entries in last-in-first-out 
    LIFO order.  Backed by a persistent list."
-  (list))
+  emptylist)
 
 ;;Testing
 (comment 

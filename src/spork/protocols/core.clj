@@ -326,11 +326,18 @@
 
 (defn graphable? [x] (satisfies? IGraphable x))
 
-;;A protocol for supporting various network flow algorithms.
-;(defprotocol INetwork
-;  (get-capacity [net from to])
-;  (get-flow     [net from to])
-;  (add-flow     [net path]))
+
+(defprotocol IPredecessorTree 
+  (-get-parent [st nd])
+  (-set-parent [st nd parent]))
+
+(extend-protocol IPredecessorTree 
+  clojure.lang.PersistentArrayMap
+  (-get-parent [st nd] (.valAt st nd))
+  (-set-parent [st nd parent] (.assoc st nd parent))
+  clojure.lang.PersistentHashMap 
+  (-get-parent [st nd] (.valAt st nd))
+  (-set-parent [st nd parent] (.assoc st nd parent)))
 
 ;;We often times have great need for tree-like structures, which are GREAT in 
 ;;functional programming, as long as you don't need bi-directionality or 
