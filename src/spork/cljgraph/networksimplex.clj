@@ -237,6 +237,23 @@
     (if (identical? child to) (cons child p)
         (recur (get preds child)
                (cons child p)))))
+
+(defn path-to-root [preds from]
+  (loop [child from
+         p     empty-list]
+    (let [parent (get preds child)]
+      (if (identical? child parent) (cons child p)
+          (recur parent
+                 (cons child p))))))
+
+(defn path-from-root [preds to]
+  (let [p     (java.util.ArrayList.)]
+    (loop [child to]
+      (let [parent (get preds child)]
+        (if (identical? child parent) (doto p (.add  child) (java.util.Collections/reverse))
+            (do (doto p (.add child))
+                (recur parent)))))))
+  
 ;;currently a bottleneck, although it may not matter since 
 ;;we "should" not be doing tons of augmentations.
 (defn cycle-path [preds from to]
@@ -296,9 +313,35 @@
    (spork.cljgraph.search/depth-walk (generic/-get-graph net) from 
       {:neighborf  (fn [_ nd _] (flow/flow-neighbors net nd))})))
 
-(defn compute-potentials [preds costf])
- 
+;;The potential of a node is equivalent to the 
+;;potential of its predecessor - the cost of traversing predecessor
+;;to node.
+(definline phi [costf pots u v]
+  `(- (get ~pots ~u) 
+      (~costf ~u ~v)))
 
+;;we can replicate lazy potentials by only computing potentials on
+;;the path we need.  Sedgewick does it recursively.  We just build 
+;;a path of nodes, then compute the potentials in order from 
+;;root to v, so we have potentials computed.
+(defn update-path-potentials [costf preds pots v]
+  (let [^java.util.ArrayList p (path-from-root preds v)
+        bound (dec (.size p))
+        root  (.get p 0)]
+    (loop [idx 1
+           ps (assoc pots root 0)]
+      (if (== idx bound) ps
+          (assoc ps (.get p idx) 
+                 (phi costf ps (.get p idx) 
+                               (.get p (unchecked-inc idx))))))))    
+
+;;We can compute potentials for an entire spanning tree (although we
+;;may only need to compute potentials for a portion of the tree, i.e. 
+;;do it lazily...
+(defn compute-potentials [preds costf]
+  
+  )
+ 
 (defn init-simplex [net from to]
   (let [dummy-cap (flow/max-outflow net from)
         init-flow (min (flow/max-inflow net to) dummy-cap)

@@ -3,6 +3,55 @@
 (ns spork.util.topotree
   (:require [spork.cljgraph [core :as top]]))
 
+
+;;Operations to convert to and from Trees
+;;=======================================
+                               
+;(def tmap  {:a :a :b :a :c :a :d :c :e :c  :f :d :g :d})
+
+(defn map->tree [m]
+  (let [trees (reduce-kv (fn [m child parent] 
+                           (if (identical? child parent) (assoc m ::root child)
+                               (update-in m [parent] assoc child (count m)))) {} tmap)
+        aux (fn aux [tr nd] 
+              ;;get parent from tr.  if parent exists in tr, it's a
+              ;;subtree.  
+              (let [children (get tr nd)]
+                (if (map? children)
+                  (reduce-kv (fn [acc child v] (conj acc (aux tr child))) [nd] children)
+                  nd)))]
+    (aux (dissoc trees ::root) (get trees ::root))))
+
+(defn simple-path [preds from to]
+  (let [p (java.util.ArrayList.)]
+        (loop [child from]
+          (do (.add p child)
+              (if (identical? child to) p
+                  (recur (get preds child)))))))                 
+
+(defn reversed-path [preds from to]
+  (loop [child from
+         p     empty-list]
+    (if (identical? child to) (cons child p)
+        (recur (get preds child)
+               (cons child p)))))
+
+(defn path-to-root [preds from]
+  (loop [child from
+         p     empty-list]
+    (let [parent (get preds child)]
+      (if (identical? child parent) (cons child p)
+          (recur parent
+                 (cons child p))))))
+
+(defn path-from-root [preds to]
+  (let [p     (java.util.ArrayList.)]
+    (loop [child to]
+      (let [parent (get preds child)]
+        (if (identical? child parent) (doto p (.add  child) (java.util.Collections/reverse))
+            (do (doto p (.add child))
+                (recur parent)))))))
+  
 ;;Tree-like Operations
 ;;====================
 

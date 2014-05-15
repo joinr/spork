@@ -12,6 +12,24 @@
                                         persistent2! hinted-get2 kv-reduce2 kv-map2 memo-fn]]
             [spork.util.metaprogramming :refer [id tagged binding-keys key->symb]]))
 
+
+;;TODO
+;;====
+;;We should define combinators for networks.  In other words, they
+;;should compose...
+;;For instance, we can model a slew of phenomena via composition.
+;;An network, with a source node and a terminal node, may be 
+;;seen as an edge, whose capacity is determined by a maxflow.  
+;;We can compose MCF and MAxflow problems into larger, more
+;;sophisticated flow problems by building networks.
+;;For instance, one design problem I was faced with was scaling 
+;;a network.  How easy would that have been to compose with a 
+;;scaling edge to the source and a scaling edge from the sink 
+;;of a network?  I think that's a great way to go in the future, 
+;;and it significantly differs from canonical flow implementations.
+;;It would allow us to define network optimization models at a 
+;;much higher level of abstraction.  I think that'd be pretty kickass.
+
 (def ^:const posinf Long/MAX_VALUE)
 (def ^:const empty-list (list))
 
