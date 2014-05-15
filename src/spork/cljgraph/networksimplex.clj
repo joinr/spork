@@ -253,6 +253,14 @@
         (if (identical? child parent) (doto p (.add  child) (java.util.Collections/reverse))
             (do (doto p (.add child))
                 (recur parent)))))))
+
+(defn path-from-valid [preds to valid?]
+  (let [p     (java.util.ArrayList.)]
+    (loop [child to]
+      (let [parent (get preds child)]
+        (if (or (valid? parent) (identical? child parent)) (doto p (.add  child) (java.util.Collections/reverse))
+            (do (doto p (.add child))
+                (recur parent)))))))
   
 ;;currently a bottleneck, although it may not matter since 
 ;;we "should" not be doing tons of augmentations.
@@ -304,7 +312,7 @@
                      (java.util.HashMap.)
                      (seq preds)))
 
-(defrecord simplex-net [net source sink st pt])
+(defrecord simplex-net [net source sink st pt valids])
 
 ;;compute a spanning tree in the residual network.
 ;;basically, we do a flow-flow, 
@@ -324,23 +332,20 @@
 ;;the path we need.  Sedgewick does it recursively.  We just build 
 ;;a path of nodes, then compute the potentials in order from 
 ;;root to v, so we have potentials computed.
-(defn update-path-potentials [costf preds pots v]
-  (let [^java.util.ArrayList p (path-from-root preds v)
-        bound (dec (.size p))
+(defn update-path-potentials [costf preds pots ^java.util.ArrayList p]
+  (let [bound (dec (.size p))
         root  (.get p 0)]
     (loop [idx 1
            ps (assoc pots root 0)]
       (if (== idx bound) ps
           (assoc ps (.get p idx) 
                  (phi costf ps (.get p idx) 
-                               (.get p (unchecked-inc idx))))))))    
+                               (.get p (unchecked-inc idx))))))))
 
 ;;We can compute potentials for an entire spanning tree (although we
 ;;may only need to compute potentials for a portion of the tree, i.e. 
 ;;do it lazily...
-(defn compute-potentials [preds costf]
-  
-  )
+;; (defn compute-potentials [preds costf])
  
 (defn init-simplex [net from to]
   (let [dummy-cap (flow/max-outflow net from)
@@ -349,8 +354,8 @@
                       (flow/-conj-cap-arc from to flow/posinf dummy-cap)
                       (flow/-update-edge  from to #(inc-flow % init-flow)))
         spanning  (residual-spanning-tree augnet from to)
-        pots      (compute-potentials spanning (fn [from to] (flow/-flow-weight augnet from to)))]
-    (->simplex-net augnet from to spanning {})))
+        pots      (compute-potentials spanning (fn [from to] (flow/-flow-weight augnet from to))) ]
+    (->simplex-net augnet from to spanning {} #{})))
 
 
 
