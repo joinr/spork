@@ -702,7 +702,7 @@
 (defmacro path-reduce [flow-info rfunc init p & {:keys [get-edge get-direction coercion]
                                                  :or   {coercion 'id}}]
   (let [the-edge (with-meta (gensym "the-edge") {:tag 'spork.cljgraph.flow.IEdgeInfo})
-        p (vary-meta p assoc :tag 'clojure.lang.ISeq) ]
+        p (vary-meta p assoc :tag 'clojure.lang.ISeq)]
     `(loop [xs#   (.next ~p)
             from# (.first ~p)
             acc#  ~init]
@@ -733,12 +733,53 @@
                        :coercion      ~'long)) 
          edges#))))
 
+(defmacro path-reduce! [flow-info rfunc init p & {:keys [get-edge get-direction coercion]
+                                                 :or   {coercion 'id}}]
+  (let [the-edge (with-meta (gensym "the-edge") {:tag 'spork.cljgraph.flow.IEdgeInfo})
+        p (vary-meta p assoc :tag 'java.util.ArrayList)]
+    `(let [bound# (unchecked-dec (.size ~p))] 
+       (loop [idx#   0
+              acc#  ~init]
+         (if (== idx# bound#) acc#
+             (let [from#     (.get ~p idx#)
+                   to#       (.get ~p (unchecked-inc idx#))
+                   dir#      (~get-direction ~flow-info from# to#)                 
+                   ~the-edge (~get-edge ~flow-info from# to#)]
+               (recur (unchecked-inc idx#) 
+                      (~coercion (~rfunc acc# dir# ~the-edge)))))))))
+
+(defmacro path-walk! [flow-info p & 
+                     {:keys [alter-flow unalter-flow get-edge get-direction]}]
+  (let [e             (tagged 'spork.cljgraph.flow.IEdgeInfo "edge")
+        feasible-flow (gensym "flow")];(vary-meta (gensym "flow") assoc :tag 'long)];(tagged 'long "flow")]
+    `(let [edges# (java.util.ArrayList.)]
+        (edge-flows. 
+         (~unalter-flow 
+          (path-reduce! ~flow-info 
+                       (~(with-meta 'fn {:tag 'long}) [~feasible-flow dir# ~e] 
+                        (do (.add edges#  (directed-flow. (flow-mult dir#) ~e))
+                            (min ~feasible-flow              
+                                 (if (identical? :forward dir#)
+                                   (~alter-flow (edge-capacity ~e))
+                                   (~alter-flow (edge-flow ~e))))))
+                       posinf ~p
+                       :get-edge      ~get-edge
+                       :get-direction ~get-direction
+                       :coercion      ~'long)) 
+         edges#))))
+
 (defn path->edge-flows-default [flow-info p]
-  (path-walk flow-info p
+  (if (not (instance? java.util.ArrayList p))
+      (path-walk flow-info p
+                 :alter-flow    id
+                 :unalter-flow  id
+                 :get-edge      -edge-info
+                 :get-direction -get-direction)
+      (path-walk! flow-info p
                   :alter-flow    id
                   :unalter-flow  id
                   :get-edge      -edge-info
-                  :get-direction -get-direction))
+                  :get-direction -get-direction)))
 
 ;;Persistent augmentation actually sets the edge to the result 
 ;;of increasing flow.

@@ -28,7 +28,7 @@
 
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
-(defrecord simplex-net [net potentials lower basis-tree upper])
+(defrecord simplex-net [net source sink tree potentials lower upper valids])
 
 ;;Our basis-tree is a minimum spanning tree, with the property 
 ;;that edges in the tree have a reduced cost of 0 (they are basic 
@@ -261,20 +261,33 @@
         (if (or (valid? parent) (identical? child parent)) (doto p (.add  child) (java.util.Collections/reverse))
             (do (doto p (.add child))
                 (recur parent)))))))
-  
+
+(definline append [lst elem]
+    `(doto ~(with-meta lst {:tag 'java.util.ArrayList}) (.add ~elem)))
 ;;currently a bottleneck, although it may not matter since 
 ;;we "should" not be doing tons of augmentations.
 (defn cycle-path [preds from to]
-  (let [lca (least-common-ancestor preds from to)]
-        (spork.protocols.core/loop-reduce 
-         (fn [^java.util.ArrayList acc x] 
-           (doto acc (.add x))) 
-         (simple-path preds to lca)
-         (.next ^clojure.lang.ISeq (reversed-path preds from lca)))))
-
-(defn augment-flow-tree [the-net preds get-edge-flows from to]
   (let [lca (least-common-ancestor preds from to)
-        ^spork.cljgraph.flow.edge-flows ef (get-edge-flows the-net p)
+        ^java.util.ArrayList res 
+             (spork.protocols.core/loop-reduce 
+              (fn [^java.util.ArrayList acc x] 
+                (doto acc (.add x)))
+              (simple-path preds to lca)
+              (.next ^clojure.lang.ISeq (reversed-path preds from lca)))]    
+    (doto res (.add to))))
+         
+
+(defrecord flow-cycle [flow from to ancestor edge-flows]) 
+
+;;Computes a structure that contains the minimum flow across a forward
+;;flow path and a backward flow path.
+(defn ^flow-cycle derive-cycle [preds from to get-edge-flows]
+  (let [^spork.cljgraph.flow.edge-flows fs  (get-edge-flows rp)]
+    (flow-cycle. (min (.flow fwd) (.flow bwd))
+                 from to lca fwd bwd)))
+;;wip
+(defn augment-flow-tree [the-net preds get-edge-flows from to]
+  (let [^spork.cljgraph.flow.edge-flows ef (get-edge-flows the-net (cycle-path preds from to))
          flow (.flow ef)
          ^java.util.ArrayList xs   (.edges ef)
          n     (.size xs)]
@@ -284,42 +297,40 @@
           (recur (unchecked-inc idx)
                  (let [^spork.cljgraph.flow.directed-flow info (.get xs idx)]                  
                    (-push-flow acc (.edge info) (unchecked-multiply (.flowmult info) flow))))))))
-  
 
-(def preds 
-  {0 3 1 13 2 14 3 11 4 2 5 5 6 3 7 5 8 0 9 2 10 15 11 5 12 13 13 11 14 0 15 1})
-
-
-
-;;From sedgwick, pg 450
-(def the-arcs
-  [[0 1 3 3 0]
-   [0 2 3 1 0]
-   [1 3 2 1 0]
-   [1 4 2 1 0]
-   [2 3 1 4 0]
-   [2 4 2 2 0]
-   [3 5 2 2 0]
-   [4 5 2 1 0]])
-
-(def the-net (reduce (fn [acc [from to cap cost flow]]
-                          (let [n (flow/-conj-cap-arc acc from to cost cap)]
-                            (if (zero? flow)  n
-                                (flow/-push-flow n (flow/-edge-info n from to) flow))))
-                     flow/empty-network the-arcs))
- 
-(def predmap (reduce (fn [^java.util.HashMap acc [k v]] (doto acc (.put k v)))
-                     (java.util.HashMap.)
-                     (seq preds)))
-
-(defrecord simplex-net [net source sink st pt valids])
+(defn spanning-neighbor [net] 
+  (fn [_ nd st] 
+    (let [spt (:shortest st)]
+      (reduce (fn [^clojure.lang.ISeq acc k] 
+                   (if (contains? spt k) acc (.cons acc k)))
+                 empty-list (flow/flow-neighbors net nd)))))
 
 ;;compute a spanning tree in the residual network.
 ;;basically, we do a flow-flow, 
-(defn residual-spanning-tree [net from to]
-  (:shortest 
-   (spork.cljgraph.search/depth-walk (generic/-get-graph net) from 
-      {:neighborf  (fn [_ nd _] (flow/flow-neighbors net nd))})))
+;; (defn residual-spanning-tree 
+;;   [net from to]
+;;   (let [init-state (-> (spork.data.searchstate/empty-DFS from)
+;;                        (generic/relax 0 to from 0)
+;;                        (generic/visit-node to))]                     
+;;     (:shortest 
+;;      (spork.cljgraph.search/traverse (generic/-get-graph net) from ::no-node init-state
+;;        {:neighborf  (spanning-neighbor net)}))))
+
+(defn residual-spanning-tree 
+  [net from to]
+  (let [res (spork.cljgraph.search/depth-walk 
+             (generic/-get-graph net) from ::nonode
+              {:neighborf  (spanning-neighbor net)})]
+    (-> (:shortest res)
+        (assoc from to)
+        (assoc to to))))
+
+(defn add-dummy-edge [net from to]
+  (let [dummy-cap (flow/max-outflow net from)
+        init-flow (min (flow/max-inflow net to) dummy-cap)]
+   (-> net 
+       (flow/-conj-cap-arc from to flow/posinf dummy-cap)
+       (flow/-update-edge  from to #(flow/inc-flow % init-flow)))))
 
 ;;The potential of a node is equivalent to the 
 ;;potential of its predecessor - the cost of traversing predecessor
@@ -346,7 +357,8 @@
 ;;may only need to compute potentials for a portion of the tree, i.e. 
 ;;do it lazily...
 ;; (defn compute-potentials [preds costf])
- 
+(comment 
+
 (defn init-simplex [net from to]
   (let [dummy-cap (flow/max-outflow net from)
         init-flow (min (flow/max-inflow net to) dummy-cap)
@@ -356,6 +368,41 @@
         spanning  (residual-spanning-tree augnet from to)
         pots      (compute-potentials spanning (fn [from to] (flow/-flow-weight augnet from to))) ]
     (->simplex-net augnet from to spanning {} #{})))
+)
 
 
 
+(def preds 
+  {0 3 1 13 2 14 3 11 4 2 5 5 6 3 7 5 8 0 9 2 10 15 11 5 12 13 13 11 14 0 15 1})
+
+
+
+;;From sedgwick, pg 450
+(def the-arcs
+  [[0 1 3 3 0]
+   [0 2 3 1 0]
+   [1 3 2 1 0]
+   [1 4 2 1 0]
+   [2 3 1 4 0]
+   [2 4 2 2 0]
+   [3 5 2 2 0]
+   [4 5 2 1 0]])
+
+(def the-net (reduce (fn [acc [from to cap cost flow]]
+                          (let [n (flow/-conj-cap-arc acc from to cost cap)]
+                            (if (zero? flow)  n
+                                (flow/-push-flow n (flow/-edge-info n from to) flow))))
+                     flow/empty-network the-arcs))
+
+(def the-preds (residual-spanning-tree the-net 0 5))
+;;makes it consistent with sedgewick, for testing purposes.
+(def seg-preds  {0 5 
+                 1 0 
+                 2 0 
+                 3 1 
+                 4 1 
+                 5 5})
+
+(def predmap (reduce (fn [^java.util.HashMap acc [k v]] (doto acc (.put k v)))
+                     (java.util.HashMap.)
+                     (seq preds)))
