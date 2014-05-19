@@ -142,29 +142,6 @@
                       (when (not visitedv) (.add visited  v))
                       (recur pu pv))))))))
 
-;;More portable version.  We'll see if this is acceptable in a bit.
-(comment 
-(defn least-common-ancestor 
-  "Computes the least common ancestor in a predecessor tree.  Note: this 
-   will break if one of the nodes does not exist in the predecessor tree. We may 
-   want a sentinel on this to guard against that corner case."  
-  [preds s t]
-  (loop [u (get preds s)
-         v (get preds t)
-         visited  (-> (transient {}) (assoc! s true) (assoc! t true))]
-    (if (identical? u v) u
-        (let [pu (get preds u u)
-              pv (get preds v v)
-              visitedu (get visited u)
-              visitedv (get visited v)]
-          (cond (and (not (identical? pu u)) visitedu) u
-                (and (not (identical? pv v)) visitedv) v
-                :else
-                (recur pu pv (as-> visited vnext 
-                                   (if (not visitedu) (assoc! vnext  u true) vnext)
-                                   (if (not visitedv) (assoc! vnext  v true) vnext))))))))  
-)
-
 ;;Once we have the ability to find the least common ancestor in the
 ;;spanning tree, we need to be able to swap out edges.  One of the
 ;;edges on the cycle will be saturated (i.e. fully capacitated or 
@@ -194,8 +171,8 @@
   (loop [p      preds
          path   init-path]
     (if-let [remaining (.next  path)]
-      (let [new-child (.first path)
-            new-parent  (.first remaining)]
+      (let [new-child  (.first path)
+            new-parent (.first remaining)]
         (recur (assoc p new-child new-parent) 
                remaining))
       p)))  
@@ -207,15 +184,15 @@
 ;;then flipping the nodes between the to of the new edge and the 
 ;;to of the old edge
 
-(def ^:dynamic *debug* false)
-(def ^:dynamic *ubound* 10)
-
 (defn substitute-edges 
   "Traverses the nodes in preds between from and to"
-  [preds drop-from drop-to add-from add-to]           
-  (let [p (-> preds (drop-edge drop-from drop-to))
-        target drop-from
-        count (atom 0)]
+  [preds dropped added]           
+  (let [drop-from (flow/edge-from dropped)
+        drop-to   (flow/edge-to dropped)
+        add-from  (flow/edge-from added)
+        add-to    (flow/edge-to   added)
+        p (-> preds (drop-edge drop-from drop-to))
+        target drop-from]
     (loop [child add-from
            acc   empty-list]
       (if (identical? child target)
@@ -274,29 +251,27 @@
                 (doto acc (.add x)))
               (simple-path preds to lca)
               (.next ^clojure.lang.ISeq (reversed-path preds from lca)))]    
-    (doto res (.add to))))
-         
+    (doto res (.add to))))        
 
-(defrecord flow-cycle [flow from to ancestor edge-flows]) 
-
-;;Computes a structure that contains the minimum flow across a forward
-;;flow path and a backward flow path.
-(defn ^flow-cycle derive-cycle [preds from to get-edge-flows]
-  (let [^spork.cljgraph.flow.edge-flows fs  (get-edge-flows rp)]
-    (flow-cycle. (min (.flow fwd) (.flow bwd))
-                 from to lca fwd bwd)))
-;;wip
+;;Augments the flow between from and to, returning 
+;;the transformed tree and an edge that was capacitated.
 (defn augment-flow-tree [the-net preds get-edge-flows from to]
   (let [^spork.cljgraph.flow.edge-flows ef (get-edge-flows the-net (cycle-path preds from to))
-         flow (.flow ef)
+         flow                      (.flow ef)
          ^java.util.ArrayList xs   (.edges ef)
-         n     (.size xs)]
+         n                         (.size xs)
+         dropped                   (atom nil)]
     (loop [idx 0
            acc the-net]
-      (if (== idx n) acc
+      (if (== idx n) [acc @dropped]
           (recur (unchecked-inc idx)
-                 (let [^spork.cljgraph.flow.directed-flow info (.get xs idx)]                  
-                   (-push-flow acc (.edge info) (unchecked-multiply (.flowmult info) flow))))))))
+                 (let [^spork.cljgraph.flow.directed-flow info (.get xs idx)
+                       new-flow (unchecked-multiply (.flowmult info) flow)
+                       e (flow/inc-flow (.edge info) flow)
+                       _ (when (or (zero? (flow/edge-capacity e))
+                                   (zero? (flow/edge-flow e)))
+                           (reset! dropped e))]                  
+                   (flow/-set-edge acc e)))))))
 
 (defn spanning-neighbor [net] 
   (fn [_ nd st] 
@@ -304,17 +279,6 @@
       (reduce (fn [^clojure.lang.ISeq acc k] 
                    (if (contains? spt k) acc (.cons acc k)))
                  empty-list (flow/flow-neighbors net nd)))))
-
-;;compute a spanning tree in the residual network.
-;;basically, we do a flow-flow, 
-;; (defn residual-spanning-tree 
-;;   [net from to]
-;;   (let [init-state (-> (spork.data.searchstate/empty-DFS from)
-;;                        (generic/relax 0 to from 0)
-;;                        (generic/visit-node to))]                     
-;;     (:shortest 
-;;      (spork.cljgraph.search/traverse (generic/-get-graph net) from ::no-node init-state
-;;        {:neighborf  (spanning-neighbor net)}))))
 
 (defn residual-spanning-tree 
   [net from to]
@@ -336,8 +300,8 @@
 ;;potential of its predecessor - the cost of traversing predecessor
 ;;to node.
 (definline phi [costf pots u v]
-  `(- (get ~pots ~u) 
-      (~costf ~u ~v)))
+  `(unchecked-subtract (get ~pots ~u) 
+                       (~costf ~u ~v)))
 
 ;;we can replicate lazy potentials by only computing potentials on
 ;;the path we need.  Sedgewick does it recursively.  We just build 
@@ -371,11 +335,40 @@
 )
 
 
+;;we have to be able to find eligible arcs.
+;;Really, find the next eligible arc.  This is pretty huge.
+;;Naive implementations just scan the arcs that are NOT on 
+;;the basis tree, looking for arcs that have negative reduced 
+;;cost.  This is sedgewicks' method. Fortunately, we can 
+;;alter pivot strategies to allow for less naive implementations.
+
+;;An edge's residual cost is equivalent to the cost of the 
+;;edge, minus the difference between potentials for each directed 
+;;node.
+(defn residual-cost 
+  ([from to pots costf]
+     (unchecked-subtract (costf from to)
+                         (unchecked-subtract
+                          (get pots from)
+                          (get pots to))))
+  ([edge pots costf]
+     (let [from (flow/edge-from)
+           to   (flow/edge-to)]
+       (unchecked-subtract (costf from to)
+                           (unchecked-subtract 
+                            (get pots from)
+                            (get pots to))))))
+
+(defn eligible-arc [simplex] 
+  :pending)
+
+(defn pivot [tr entering-arc]
+  (let [new-tree 
+  [new-tree leaving-arc]
+  )
 
 (def preds 
   {0 3 1 13 2 14 3 11 4 2 5 5 6 3 7 5 8 0 9 2 10 15 11 5 12 13 13 11 14 0 15 1})
-
-
 
 ;;From sedgwick, pg 450
 (def the-arcs
@@ -406,3 +399,30 @@
 (def predmap (reduce (fn [^java.util.HashMap acc [k v]] (doto acc (.put k v)))
                      (java.util.HashMap.)
                      (seq preds)))
+
+
+;;OBE
+;;=======
+
+;;More portable version.  We'll see if this is acceptable in a bit.
+(comment 
+(defn least-common-ancestor 
+  "Computes the least common ancestor in a predecessor tree.  Note: this 
+   will break if one of the nodes does not exist in the predecessor tree. We may 
+   want a sentinel on this to guard against that corner case."  
+  [preds s t]
+  (loop [u (get preds s)
+         v (get preds t)
+         visited  (-> (transient {}) (assoc! s true) (assoc! t true))]
+    (if (identical? u v) u
+        (let [pu (get preds u u)
+              pv (get preds v v)
+              visitedu (get visited u)
+              visitedv (get visited v)]
+          (cond (and (not (identical? pu u)) visitedu) u
+                (and (not (identical? pv v)) visitedv) v
+                :else
+                (recur pu pv (as-> visited vnext 
+                                   (if (not visitedu) (assoc! vnext  u true) vnext)
+                                   (if (not visitedv) (assoc! vnext  v true) vnext))))))))  
+)
