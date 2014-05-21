@@ -36,6 +36,12 @@
   (time (dotimes [i n]
           (mincost-flow (transient-network the-net) :s :t))))
 
+(defn mf-test!! [& {:keys [n] :or {n 100000}}]
+  (let [tnet (transient-network the-net)]
+    (time (dotimes [i n]
+            (do (mincost-flow tnet :s :t)
+                (reset-flows :s tnet))))))
+
 (defn scaled-flow-test [& {:keys [n scalar] :or {n 100000 scalar 3}}]
   (with-scaled-flow scalar     
     (let [scaled-flow (eval (flow-fn *flow-options*))]

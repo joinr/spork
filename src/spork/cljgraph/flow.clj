@@ -133,7 +133,8 @@
   (set-capacity  [edge cap]      (do (set! capacity cap)  edge))
   (set-direction [edge d]        (do (set! dir d) edge))
   (inc-flow      [edge amt]      (do (set! capacity (unchecked-subtract capacity amt))
-                                     (set! flow     (unchecked-add flow amt))))
+                                     (set! flow     (unchecked-add flow amt))
+                                     edge))
   (edge-flow     [edge] flow)
   (edge-capacity [edge] capacity)
   (capacity-to   [edge v]   (if (identical? v to) capacity flow))
@@ -514,9 +515,21 @@
              0
              (-flow-sources net to)))
 
+(defn possible-outflow [net from]
+  (reduce-kv (fn [acc to v]
+               (+ acc (edge-capacity (-edge-info net from to))))
+             0
+             (-flow-sinks net from)))
+
+(defn possible-inflow [net to]
+  (reduce-kv (fn [acc from v]
+               (+ acc (edge-capacity (-edge-info net from to))))
+             0
+             (-flow-sources net to)))
+
 (defn theoretical-flow-bound [net from to]
-  (min (max-outflow net from)
-       (max-inflow  net to)))
+  (min (possible-outflow net from)
+       (possible-inflow  net to)))
  
   
 
@@ -590,6 +603,14 @@
        net get-children net))
   ([startnode f net] (edge-map-from startnode f spork.cljgraph.flow/-flow-sinks net)))           
 
+
+(defn reset-flows [startnode net]
+  (edge-map-from startnode (fn [e] (let [ef (edge-flow e)]
+                                     (if (zero? ef) e 
+                                         (inc-flow e (- (edge-flow e)))))) net))
+
+(defn zero-flows [startnode net]
+  (edge-map-from startnode (fn [e] (let [ef (edge-flow e)] (if (zero? ef) e (set-flow e 0)))) net))
 
 ;;Flows and Augmenting Paths
 ;;==========================
@@ -958,8 +979,9 @@
 (def default-flow  (flow-fn default-flow-opts))
 (def aug-flow      (flow-fn (assoc default-flow-opts :augmentations true)))
 
-(defn mincost-flow 
-  [net from to]  (default-flow net from to))  
+(let [mfc (flow-fn default-flow-opts)]
+  (defn mincost-flow 
+    [net from to]  (mfc net from to)))
 
 (def max-flow 
   (with-flow-options {:weightf (fn [n from to] 1) :state empty-breadthsearch}

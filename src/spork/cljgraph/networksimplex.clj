@@ -317,30 +317,46 @@
                  (phi costf ps (.get p idx) 
                                (.get p (unchecked-inc idx))))))))
 
+(defn update-path-potentials! [costf preds pots ^java.util.ArrayList p]
+  (let [bound (dec (.size p))]
+    (loop [idx 1
+           ps  pots]
+      (if (== idx bound) ps
+          (assoc! ps (.get p idx) 
+                  (phi costf ps (.get p idx) 
+                                (.get p (unchecked-inc idx))))))))
+
+;;if we have a potential, we are known.
+;;so, if we want to update the potentials for a node, we just 
+;;race up the parents until we find a known potential, then race 
+;;back down to update.    
+(defn update-potentials-from! [preds costf  child known-pots]
+  (let [parent     (get preds child)]
+    (let [ppot (or (get known-pots parent)
+                   (let [_ (update-potentials-from! preds costf parent known-pots)]
+                     (get known-pots parent)))]
+      (assoc! known-pots child (unchecked-subtract ppot (costf parent child))))))
+
+(defn update-all-potentials! [preds costf pots]
+  (reduce-kv (fn [ps child parent]
+               (if (identical? parent child) 
+                   (assoc! ps (get ps parent (- flow/posinf)))
+                   (let [ps       (if (get ps parent)
+                                    ps (update-potentials-from! preds costf parent ps))]
+                     (update-potentials-from! preds costf child ps))))
+               pots
+               preds))
 
 ;;By implication, all basic arcs WILL have forward arcs, so we only 
 ;;have to look them up via from-to, we can walk the tree and ignore 
 ;;arcs.
-(defn partition-arcs [net basis]
+;(defn partition-arcs [net basis]
   
 
 ;;We can compute potentials for an entire spanning tree (although we
 ;;may only need to compute potentials for a portion of the tree, i.e. 
 ;;do it lazily...
 ;; (defn compute-potentials [preds costf])
-(comment 
-
-(defn init-simplex [net from to]
-  (let [dummy-cap (flow/max-outflow net from)
-        init-flow (min (flow/max-inflow net to) dummy-cap)
-        augnet    (-> net 
-                      (flow/-conj-cap-arc from to flow/posinf dummy-cap)
-                      (flow/-update-edge  from to #(inc-flow % init-flow)))
-        spanning  (residual-spanning-tree augnet from to)
-        pots      (compute-potentials spanning (fn [from to] (flow/-flow-weight augnet from to)))]
-    (->simplex-net augnet from to spanning {} #{})))
-)
-
 
 ;;we have to be able to find eligible arcs.
 ;;Really, find the next eligible arc.  This is pretty huge.
@@ -385,6 +401,32 @@
 (defn in-basis? [spt edge]
   (identical? (get spt (flow/edge-from edge))
               (flow/edge-to edge)))
+
+(defn nonbasic-edges [net spt]
+  (filter #(not (in-basis? spt %)) (flow/einfos net)))
+
+(defn augmented-network [net from to] 
+  (let [dummy-cap (flow/max-outflow net from)
+        init-flow (min (flow/max-inflow net to) dummy-cap)]
+    (-> net 
+        (flow/-conj-cap-arc from to flow/posinf dummy-cap)
+        (flow/-update-edge  from to #(flow/inc-flow % init-flow)))))
+
+
+;(defn max-cost [net]
+;  (flow/edge-reduce (fn [acc 
+
+(defn init-potentials [root preds costf]
+  (persistent! (update-all-potentials! preds costf (transient {root (- flow/posinf)}))))
+
+(defn init-simplex [net from to]
+  (let [augnet    (augmented-network net from to)
+        spanning  (residual-spanning-tree augnet from to)
+        pots      (init-potentials from spanning (fn [from to] (flow/-flow-weight augnet from to)))
+        [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
+    (->simplex-net augnet from to spanning pots lower {} nil)))
+
+
 ;;Can we traverse lower and upper arcs? 
 ;;Lower arcs are arcs not on the basis that have no flow.
 ;;Upper arcs are arcs not on the basis that have no capacity.
@@ -462,6 +504,8 @@
                                 (flow/-push-flow n (flow/-edge-info n from to) flow))))
                      flow/empty-network the-arcs))
 
+(def aug-net (augmented-network the-net 0 5))
+
 (def the-preds (residual-spanning-tree the-net 0 5))
 ;;makes it consistent with sedgewick, for testing purposes.
 (def seg-preds  {0 5 
@@ -470,6 +514,7 @@
                  3 1 
                  4 1 
                  5 5})
+
 
 (def predmap (reduce (fn [^java.util.HashMap acc [k v]] (doto acc (.put k v)))
                      (java.util.HashMap.)
