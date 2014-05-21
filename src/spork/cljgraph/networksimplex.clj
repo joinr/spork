@@ -317,6 +317,13 @@
                  (phi costf ps (.get p idx) 
                                (.get p (unchecked-inc idx))))))))
 
+
+;;By implication, all basic arcs WILL have forward arcs, so we only 
+;;have to look them up via from-to, we can walk the tree and ignore 
+;;arcs.
+(defn partition-arcs [net basis]
+  
+
 ;;We can compute potentials for an entire spanning tree (although we
 ;;may only need to compute potentials for a portion of the tree, i.e. 
 ;;do it lazily...
@@ -330,7 +337,7 @@
                       (flow/-conj-cap-arc from to flow/posinf dummy-cap)
                       (flow/-update-edge  from to #(inc-flow % init-flow)))
         spanning  (residual-spanning-tree augnet from to)
-        pots      (compute-potentials spanning (fn [from to] (flow/-flow-weight augnet from to))) ]
+        pots      (compute-potentials spanning (fn [from to] (flow/-flow-weight augnet from to)))]
     (->simplex-net augnet from to spanning {} #{})))
 )
 
@@ -352,20 +359,88 @@
                           (get pots from)
                           (get pots to))))
   ([edge pots costf]
-     (let [from (flow/edge-from)
-           to   (flow/edge-to)]
+     (let [from (flow/edge-from edge)
+           to   (flow/edge-to edge)]
        (unchecked-subtract (costf from to)
                            (unchecked-subtract 
                             (get pots from)
                             (get pots to))))))
 
-(defn eligible-arc [simplex] 
-  :pending)
+;;Violating-arcs are arcs in L with negative reduced cost (we can 
+;;push flow along them to reduce objective), ;and arcs in U with
+;;positive reduced cost (we can retract flow from them to 
+;;reduce objective). 
 
-(defn pivot [tr entering-arc]
-  (let [new-tree 
-  [new-tree leaving-arc]
-  )
+;;One option is to traverse all the arcs, taking the first eligible
+;;Another option to traverse all the arcs, taking the best eligible
+;;Another option is to traverse some of the arcs, sometimes taking 
+;;the most eligible, 
+(defn eligible-arc [simplex] 
+  (let [l (get simplex :lower) 
+        u (get simplex :upper)] 
+    (
+    :pending)))
+
+
+(defn in-basis? [spt edge]
+  (identical? (get spt (flow/edge-from edge))
+              (flow/edge-to edge)))
+;;Can we traverse lower and upper arcs? 
+;;Lower arcs are arcs not on the basis that have no flow.
+;;Upper arcs are arcs not on the basis that have no capacity.
+
+;;If implement Danztig's rule, we scan all the arcs for the greatest 
+;;reduced price.  Note -> we have to do that anyway to determine
+;;optimality.
+
+;;Another option is to maintain two arc sets.  
+;;Since the residual network is stored implicitly, we can also 
+;;store our bounded arcs implicitly.  Either that, or we 
+;;can directly link to them.
+
+;;Since we only maintain forward arcs for the undirected network
+;;explicitly, backward (or residual) arcs are implied.  We store
+;;keys that assoc to them when they exist, but the pointer goes to the 
+;;forward arc. 
+
+;;So all arc modifications are done on forward arcs.  The API takes 
+;;care of understanding what it means to push a directional flow 
+;;along an arc (i.e. it will infer that the arc is backward based on 
+;;the direction we're going).
+
+;;So we can push arcs between L and U. 
+;;We can maintain three sets of forward arcs, T, L, U.
+;;Arcs in T are on the basis, (forward and residual)
+;;Arcs in L are zero-flow, off the basis. (not residual)
+;;Arcs in U are full-flow, off the basis. (not residual)
+
+;;Prior to pivoting, we need to identify the entering arc.
+;;Assume we can do this...(get-entering-arc s) 
+;;Then we identify the cycle.... 
+;;(find-cycle (get-entering-arc s) (get-spt s))
+;;Then we augment along the cycle, returning an augmentation:
+;;(augment-cycle s (find-cycle (get-entering-arc s) (get-spt s)))
+;;=> {:augmented-flow n :entering some-arc :leaving some-arc :net altered-network}
+
+
+;;So, the first cut is to collect arcs that are off the basis.
+;;We do this when we initially build the simplex.
+;;traverse the SPT and collect arcs that are off the basis.
+;;Initially, all non-basic arcs will be in L (zero flow). 
+
+;;The only changes to membership between T, L, and U will happen
+;;after augmentation, when an entering and leaving arcs are 
+;;identified. 
+
+;;One idea is to uniquely number all arcs, and only shift the 
+;;ints around.  We would need to store the int->arc mapping.
+;;This would allow us to have a nice hash-map though...
+
+
+;; (defn pivot [tr entering-arc]
+;;   (let [new-tree 
+;;         [new-tree leaving-arc] ]
+;;   ))
 
 (def preds 
   {0 3 1 13 2 14 3 11 4 2 5 5 6 3 7 5 8 0 9 2 10 15 11 5 12 13 13 11 14 0 15 1})
