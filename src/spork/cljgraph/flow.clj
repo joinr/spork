@@ -900,6 +900,51 @@
          :aug-path  aug#
          :path->edge-flows flows#})))
 
+;; (defprotocol IFlowProvider 
+;;   (-neighborf [provider v])
+;;   (-traverse  [provider startnode targetnode startstate])
+;;   (-aug-path  [provider from to])
+;;   (-path->edge-flows [provider p]))
+
+
+;; (defmacro defn-flow
+;;   "Defines a flow computation across net, originating at from and ending at to.  
+;;    Caller may supply flow options explicitly, or defer to the explicit 
+;;    *flow-options* dynamic binding, using  supporting macros ala with-flow-options 
+;;    or manual modification."
+;;   [name [netsym fromsym tosym & [opts]] & body]
+;;    `(let [net#  ~netsym
+;;           from# ~fromsym
+;;           to#   ~tosym
+;;           opts# (reduce-kv (fn [acc# k# v#] (assoc acc# k# (eval v#))) {} ~opts)
+;;           ~'_   (doseq [[k# v#] opts#] (when (not= k# :neighborf) (assert (not (nil? v#)) (println [k# :is :nil!]))))
+;;           {:keys [~'get-sinks ~'get-sources ~'get-edge ~'get-direction ~'neighborf ~'weightf ~'augmentations
+;;                   ~'forward-filter ~'backward-filter ~'state ~'alter-flow ~'unalter-flow]} opts#
+;;           neighborf# (fn neighbors# [flow-info# v#]
+;;                        (general-flow-neighbors flow-info# v#
+;;                                                :get-sinks       ~'get-sinks
+;;                                                :get-sources     ~'get-sources
+;;                                                :forward-filter  ~'forward-filter
+;;                                                :backward-filter ~'backward-filter
+;;                                                :get-edge        ~'get-edge))
+;;           traverse# (fn traversal# [net# startnode# targetnode# startstate#] 
+;;                       (general-flow-traverse net# startnode# targetnode# startstate#
+;;                                              :weightf ~'weightf   :neighborf neighborf#))
+;;           aug#     (fn aug-path# [g# from# to#] (aug-path g# from# to# traverse# ~'state))
+;;           flows#   (fn path->edge-flows# [flow-info# p#]
+;;                      (path-walk flow-info# p#
+;;                                 :alter-flow    ~'alter-flow
+;;                                 :unalter-flow  ~'unalter-flow
+;;                                 :get-edge      ~'get-edge
+;;                                 :get-direction ~'get-direction))]
+;;       (let [~'*neighbors*       neighborf#
+;;             ~'*traversal*       traverse#
+;;             ~'*aug-path         aug#
+;;             ~'*path->edge-flows flows#
+;;             ~'*options* opts# ]
+;;         ~@body)))
+
+;; (defn-flow blah-flow [source-net from to opts])
 
 ;; (defmacro defnflow [name args & {:keys [options pre-flow post-flow] 
 ;;                                  :or {options *flow-options* :pre-flow id :post-flow id}}]
