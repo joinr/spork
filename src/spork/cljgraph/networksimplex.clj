@@ -413,9 +413,12 @@
     (
     :pending)))
 
+;;In-basis? is flawed!
 (defn in-basis? [spt edge]
-  (identical? (get spt (flow/edge-from edge))
-              (flow/edge-to edge)))
+  (and  (get spt (flow/edge-from edge))
+        (get spt (flow/edge-to edge))))
+
+;  (get spt (flow/edge-to edge))))
 
 (defn nonbasic-edges [net spt]
   (filter #(not (in-basis? spt %)) (flow/einfos net)))
