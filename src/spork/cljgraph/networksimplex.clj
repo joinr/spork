@@ -75,7 +75,12 @@
 ;;every time.
 
 (def ^:constant empty-list (list))
-(def ^:constant neginf Long/MIN_VALUE)
+
+;;These are weak hacks to avoid some overflow problems for now....
+;;need to handle better.
+(def ^:constant neginf -9999999999)
+(def ^:constant posinf 9999999999)
+
 ;;All we have to do to compute potentials is start at any node, 
 ;;traverse up through its parents, then when we hit the root (a node 
 ;;with no parent), we assign a potential to the parent (typically
@@ -337,13 +342,22 @@
                      (get known-pots parent)))]
       (assoc! known-pots child (unchecked-subtract ppot (costf parent child))))))
 
+;; (defn print-pots! [st ps]
+;;   (reduce-kv (fn [acc child parent] 
+;;                (println [:parent  parent (get ps parent) :child child (get ps child)]))
+;;              nil 
+;;              st))
+
 (defn update-all-potentials! [preds costf pots]
   (reduce-kv (fn [ps child parent]
                (if (identical? parent child) 
-                   (assoc! ps (get ps parent (- flow/posinf)))
-                   (let [ps       (if (get ps parent)
-                                    ps (update-potentials-from! preds costf parent ps))]
-                     (update-potentials-from! preds costf child ps))))
+                   (assoc! ps parent (get ps parent neginf))
+                   (let [ps       (if (get ps parent) ps
+                                      (update-potentials-from! preds costf parent ps))]
+                     (let [res (update-potentials-from! preds costf child ps)]
+                       (do ;(println [:potentiating child parent])
+                           ;(print-pots! preds ps)
+                           res)))))
                pots
                preds))
 
@@ -397,7 +411,6 @@
     (
     :pending)))
 
-
 (defn in-basis? [spt edge]
   (identical? (get spt (flow/edge-from edge))
               (flow/edge-to edge)))
@@ -405,26 +418,34 @@
 (defn nonbasic-edges [net spt]
   (filter #(not (in-basis? spt %)) (flow/einfos net)))
 
-(defn augmented-network [net from to] 
-  (let [dummy-cap (flow/max-outflow net from)
-        init-flow (min (flow/max-inflow net to) dummy-cap)]
-    (-> net 
-        (flow/-conj-cap-arc from to flow/posinf dummy-cap)
-        (flow/-update-edge  from to #(flow/inc-flow % init-flow)))))
-
+(defn augmented-network 
+  ([net from to init-cost] 
+     (let [dummy-cap (flow/max-outflow net from)
+           init-flow (min (flow/max-inflow net to) dummy-cap)]
+       (-> net 
+           (flow/-conj-cap-arc from to init-cost dummy-cap)
+           (flow/-update-edge  from to #(flow/inc-flow % init-flow)))))
+  ([net from to] (augmented-network net from to posinf)))
 
 ;(defn max-cost [net]
 ;  (flow/edge-reduce (fn [acc 
 
-(defn init-potentials [root preds costf]
-  (persistent! (update-all-potentials! preds costf (transient {root (- flow/posinf)}))))
+(defn init-potentials 
+  ([root preds costf init-cost]
+     (persistent! (update-all-potentials! preds costf (transient {root init-cost}))))
+  ([root preds costf] 
+     (init-potentials root preds costf neginf)))
 
-(defn init-simplex [net from to]
-  (let [augnet    (augmented-network net from to)
-        spanning  (residual-spanning-tree augnet from to)
-        pots      (init-potentials from spanning (fn [from to] (flow/-flow-weight augnet from to)))
-        [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
-    (->simplex-net augnet from to spanning pots lower {} nil)))
+(defn init-simplex 
+  ([net from to dummycost]
+     (let [augnet    (augmented-network net from to dummycost)
+           spanning  (residual-spanning-tree augnet from to)
+           pots      (init-potentials from spanning (fn [from to] (flow/-flow-weight augnet from to)) dummycost)
+           [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
+       (->simplex-net augnet from to spanning pots lower {} nil)))
+  ([net from to] (init-simplex net from to posinf)))
+
+
 
 
 ;;Can we traverse lower and upper arcs? 
@@ -515,11 +536,17 @@
                  4 1 
                  5 5})
 
-
 (def predmap (reduce (fn [^java.util.HashMap acc [k v]] (doto acc (.put k v)))
                      (java.util.HashMap.)
                      (seq preds)))
 
+;;a simple simplex initializer for data from Sedgewick's book:
+(def seg-simplex 
+  (let [augnet    (augmented-network the-net 0 5 9)
+        spanning  seg-preds
+        pots      (init-potentials 0 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
+        [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
+    (->simplex-net augnet 0 5 spanning pots lower {} nil)))
 
 ;;OBE
 ;;=======
