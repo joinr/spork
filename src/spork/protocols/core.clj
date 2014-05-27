@@ -139,7 +139,10 @@
   (shorter-path [state source sink wnew wpast])
   (equal-path   [state source sink])
   (conj-visited [state source])
-  (best-known-distance [state x]))
+  (best-known-distance [state x])
+  (set-target   [state nd])
+  (set-start    [state nd])
+  (set-estimator [state estimator]))
 
 (definline visit-node
   "Record the node as having been visited, and remove it from the fringe."

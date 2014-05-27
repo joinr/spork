@@ -114,13 +114,16 @@
 (defrecord searchstate 
   [startnode targetnode shortest distance fringe estimator visited]
   generic/IGraphSearch
-	  (new-path     [state source sink w] (new-path* source sink w state))           
-	  (shorter-path [state source sink wnew wpast]
-	    (shorter-path* source sink wnew wpast state))
-	  (equal-path   [state source sink] (equal-path* source sink state))
-    (best-known-distance   [state nd] (get distance nd))
-    (conj-visited [state source] 
-      (assoc state :visited (conj visited source)))
+  (set-estimator [state e] (searchstate. startnode targetnode shortest distance fringe e visited))
+  (set-target   [state nd] (searchstate. startnode nd shortest distance fringe estimator visited))
+  (set-start    [state nd] (searchstate. nd targetnode shortest distance fringe estimator visited))
+  (new-path     [state source sink w] (new-path* source sink w state))           
+  (shorter-path [state source sink wnew wpast]
+    (shorter-path* source sink wnew wpast state))
+  (equal-path   [state source sink] (equal-path* source sink state))
+  (best-known-distance   [state nd] (get distance nd))
+  (conj-visited [state source] 
+    (assoc state :visited (conj visited source)))
   generic/IFringe 
 	  (conj-fringe [state n w] (assoc state :fringe 
                                    (generic/conj-fringe fringe n w)))
@@ -145,6 +148,9 @@
 (defrecord searchstate2 
   [startnode targetnode shortest distance fringe estimator visited]
   generic/IGraphSearch
+  (set-estimator [state e] (searchstate2. startnode targetnode shortest distance fringe e visited))
+  (set-target   [state nd] (searchstate2. startnode nd shortest distance fringe estimator visited))
+  (set-start    [state nd] (searchstate2. nd targetnode shortest distance fringe estimator visited))
   (new-path     [state source sink w]
     (update-searchstate  
      :shortest (assoc shortest sink source)
@@ -180,6 +186,9 @@
 (m/defmutable searchstate3
   [startnode targetnode shortest distance fringe estimator visited]
   generic/IGraphSearch
+  (set-estimator [state e] (do (set! estimator e) state))
+  (set-target   [state nd] (do (set! targetnode  nd) state))
+  (set-start    [state nd] (do (set! startnode  nd ) state))   
   (new-path     [state source sink w]
     (do (set! shortest (assoc shortest sink source))
         (set! distance (assoc distance sink w))
@@ -219,6 +228,9 @@
    ^spork.data.mutable.mutmap distance 
    fringe estimator visited]
   generic/IGraphSearch
+  (set-estimator [state e] (do (set! estimator e) state))
+  (set-target   [state nd] (do (set! targetnode  nd) state))
+  (set-start    [state nd] (do (set! startnode  nd ) state))   
   (new-path     [state source sink w]
     (do (set! shortest (assoc! shortest sink source))
         (set! distance (assoc! distance sink w))
@@ -262,6 +274,9 @@
    ^java.util.ArrayList visited
    multipath]
   generic/IGraphSearch
+  (set-estimator [state e] (do (set! estimator e) state))
+  (set-target   [state nd] (do (set! targetnode  nd) state))
+  (set-start    [state nd] (do (set! startnode  nd ) state))            
   (new-path     [state source sink w]
     (do (.put shortest sink source)
         (.put distance sink w)
@@ -463,6 +478,16 @@
                     (doto (HashMap. ) (.put ~startnode ~startnode))
                     (doto (HashMap. ) (.put ~startnode 0))
                     (fr/make-pq)
+                    nil
+                    (java.util.ArrayList.)
+                    nil))
+
+(definline mempty-RFS [startnode] 
+  `(msearchstate2.  ~startnode 
+                    nil
+                    (doto (HashMap. ) (.put ~startnode ~startnode))
+                    (doto (HashMap. ) (.put ~startnode 0))
+                    fr/random-fringe
                     nil
                     (java.util.ArrayList.)
                     nil))

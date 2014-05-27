@@ -81,6 +81,10 @@
 (def ^:constant neginf -9999999999)
 (def ^:constant posinf 9999999999)
 
+;;A weak hack, should unify hashmaps and persistent maps behind a protocol.
+(defn assoc!! [^java.util.HashMap m k v]
+  (doto m (.put k v)))
+
 ;;All we have to do to compute potentials is start at any node, 
 ;;traverse up through its parents, then when we hit the root (a node 
 ;;with no parent), we assign a potential to the parent (typically
@@ -290,9 +294,7 @@
   (let [res (spork.cljgraph.search/depth-walk 
              (generic/-get-graph net) from ::nonode
               {:neighborf  (spanning-neighbor net)})]
-    (-> (:shortest res)
-        (assoc from to)
-        (assoc to to))))
+    (into {from to to to} (:shortest res) )))
 
 (defn add-dummy-edge [net from to]
   (let [dummy-cap (flow/max-outflow net from)
@@ -439,8 +441,8 @@
 (defn init-simplex 
   ([net from to dummycost]
      (let [augnet    (augmented-network net from to dummycost)
-           spanning  (residual-spanning-tree augnet from to)
-           pots      (init-potentials from spanning (fn [from to] (flow/-flow-weight augnet from to)) dummycost)
+           spanning  (residual-spanning-tree augnet from to )
+           pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
            [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
        (->simplex-net augnet from to spanning pots lower {} nil)))
   ([net from to] (init-simplex net from to posinf)))
@@ -544,7 +546,7 @@
 (def seg-simplex 
   (let [augnet    (augmented-network the-net 0 5 9)
         spanning  seg-preds
-        pots      (init-potentials 0 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
+        pots      (init-potentials 5 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
         [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
     (->simplex-net augnet 0 5 spanning pots lower {} nil)))
 

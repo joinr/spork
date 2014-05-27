@@ -125,7 +125,7 @@
     (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
                           (fn [nd s] (nodefilter (neighborf g nd s)))
                           (fn [source state] (neighborf g source state)))]
-      (loop [state   (-> (assoc startstate :targetnode targetnode)
+      (loop [state   (-> (generic/set-target startstate targetnode)
                          (generic/conj-fringe startnode 0))]
         (if-let [source    (generic/next-fringe state)] ;next node to visit
           (let  [visited   (generic/visit-node state source)] ;record visit.
@@ -155,7 +155,7 @@
        ([g# startnode# endnode# user-opts#] 
           (let [clean-opts# 
                 (if (or (not (identical? user-opts# defaults#)) (pos? (count user-opts#)))
-                  (merge defaults# user-opts#)
+                  (reduce-kv (fn [m# k# v#] (assoc m# k# v#)) defaults# user-opts#)
                   defaults#)]
             (traverse g# startnode# endnode# (~state-ctor startnode#) clean-opts#))))))
      
@@ -163,39 +163,39 @@
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight." 
-  searchstate/empty-DFS walk-defaults)
+  searchstate/mempty-DFS walk-defaults)
   
 (defwalk breadth-walk
   "Returns a function that explores all of graph g in a breadth-first 
    topological order from startnode.  This is not a search, any paths returned 
    will be relative to unit-weight."
-  searchstate/empty-BFS walk-defaults)  
+  searchstate/mempty-BFS walk-defaults)  
  
 (defwalk ordered-walk
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  searchstate/empty-DFS
+  searchstate/mempty-DFS
   (merge walk-defaults {:neighborf visit-ordered-once :weightf unit-weight}))
 
 (defwalk random-walk
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  searchstate/empty-RFS walk-defaults)
+  searchstate/mempty-RFS walk-defaults)
 
 (defwalk undirected-walk
   "Returns a function that explores all of graph g in depth-first topological 
    order from startnode.  This is not a search.  Any paths returned will be 
    relative to unit-weight."
-  searchstate/empty-RFS
+  searchstate/mempty-RFS
   (merge walk-defaults {:neighborf visit-neighbors-once :weightf unit-weight}))
 
 (defwalk priority-walk
   "Returns a function that explores all of graph g in a priority-first 
   topological order from a startnode. Weights returned will be in terms of the 
   edge weights in the graph."
- searchstate/empty-PFS search-defaults)
+ searchstate/mempty-PFS search-defaults)
 
 ;;explicit searches, merely enforces a walk called with an actual destination
 ;;node.
@@ -268,7 +268,7 @@
    added to the actual weight.  Note, the estimated value must be non-negative."
   [g heuristic-func startnode endnode]
   (traverse g startnode endnode 
-    (assoc (searchstate/empty-PFS startnode) :estimator heuristic-func)))
+    (generic/set-estimator (searchstate/mempty-PFS startnode) heuristic-func)))
 
 ;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
 
