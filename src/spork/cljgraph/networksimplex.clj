@@ -74,6 +74,20 @@
 ;;still good), so we can avoid recomputing all vertex potentials 
 ;;every time.
 
+;;Pivoting and Searching the Simplex
+;;==================================
+
+(comment 
+(defprotocol ISimplexState
+  (simplex-pivot [smplx])
+  (entering-arc  [smplx])
+  (leaving-arc   [smplx])
+  (find-entering [smplx]))
+)
+
+;;I think we want some data in here...
+;(defrecord simplex-state [simplex leaving-arc n find-arc]) 
+
 (def ^:constant empty-list (list))
 
 ;;These are weak hacks to avoid some overflow problems for now....
@@ -286,15 +300,15 @@
   (fn [_ nd st] 
     (let [spt (:shortest st)]
       (reduce (fn [^clojure.lang.ISeq acc k] 
-                   (if (contains? spt k) acc (.cons acc k)))
-                 empty-list (flow/flow-neighbors net nd)))))
+                (if (contains? spt k) acc (.cons acc k)))
+              empty-list (flow/flow-neighbors net nd)))))
 
 (defn residual-spanning-tree 
   [net from to]
   (let [res (spork.cljgraph.search/depth-walk 
              (generic/-get-graph net) from ::nonode
               {:neighborf  (spanning-neighbor net)})]
-    (into {from to to to} (:shortest res) )))
+    (persistent! (reduce-kv (fn [m k v] (assoc! m k v)) (transient {from to to to}) (:shortest res)))))
 
 (defn add-dummy-edge [net from to]
   (let [dummy-cap (flow/max-outflow net from)
@@ -427,6 +441,7 @@
           (when-let [rparent (get spt from)]
             (identical? to rparent))))))
 
+;;THis is weak, creates intermediate colls.
 (defn nonbasic-edges 
   ([net spt]
      (filter #(not (in-basis? spt %)) (flow/einfos net)))
@@ -457,12 +472,59 @@
   ([root preds costf] 
      (init-potentials root preds costf neginf)))
 
+(defprotocol IEdgePartition 
+  (enter-edge [p n])
+  (leave-edge [p n flow cap]))
+
+(defrecord transient-edge-partition 
+    [^java.util.HashSet basic 
+     ^java.util.HashSet lower 
+     ^java.util.HashSet upper]
+  IEdgePartition 
+  (enter-edge [p n] (do (.add basic n)
+                        (if (.contains lower n) 
+                            (.remove lower n) 
+                            (.remove upper n))
+                        p))
+  (lower-edge [p n] (do (.remove basic n)
+                        (.add lower n)
+                        p))
+  (upper-edge [p n]  (do (.remove basic n)
+                         (.add    upper n)
+                         p)))
+
+(defrecord edge-partition [basic lower upper]
+  IEdgePartition 
+  (basic-edge [p n] 
+    (if (contains? lower n) 
+      (edge-partition. (conj basic n)
+                       (disj lower n) 
+                       upper)
+      (edge-partition. (conj basic n)
+                       lower
+                       (disj upper n))))
+  (lower-edge [p n] 
+    (edge-partition. (disj basic n) (conj lower n) upper))
+  (upper-edge [p n]  
+    (edge-partition. (disj basic n) lower (disj upper  n))))
+
+(defn swap-edge [edge-part entering leaving]
+  (-> (if (== (flow/edge-flow leaving) 0)
+        (lower-edge edge-part leaving)
+        (upper-edge edge-part leaving))
+      (basic-edge entering))) 
+
 (defn init-simplex 
   ([net from to dummycost]
      (let [augnet    (augmented-network net from to dummycost)
-           spanning  (residual-spanning-tree augnet from to )
+           spanning  (residual-spanning-tree augnet from to  )
            pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
-           [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
+           edges     (flow/einfos augnet)
+           n         (count  edges)
+           basic     (boolean-array n)
+           lower     (boolean-array n)
+           upper     (boolean-array n)
+           [basic lower] (partition-by #(in-basis? spanning %) edges)]
        (->simplex-net augnet from to spanning pots basic lower '() nil)))
   ([net from to] (init-simplex net from to posinf)))
 
