@@ -28,7 +28,7 @@
 
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
-(defrecord simplex-net [net source sink tree potentials lower upper valids])
+(defrecord simplex-net [net source sink tree potentials basic lower upper valids])
 
 ;;Our basis-tree is a minimum spanning tree, with the property 
 ;;that edges in the tree have a reduced cost of 0 (they are basic 
@@ -384,7 +384,7 @@
 ;;An edge's residual cost is equivalent to the cost of the 
 ;;edge, minus the difference between potentials for each directed 
 ;;node.
-(defn residual-cost 
+(defn reduced-cost 
   ([from to pots costf]
      (unchecked-subtract (costf from to)
                          (unchecked-subtract
@@ -413,16 +413,32 @@
     (
     :pending)))
 
-;;In-basis? is flawed!
+;;We can detect if an edge is on the basis if the following 
+;;conditions hold true: 
+
+;;Both it's from and to nodes are on the basis.
+;;From is the parent of to, or to is the parent of from 
+
 (defn in-basis? [spt edge]
-  (and  (get spt (flow/edge-from edge))
-        (get spt (flow/edge-to edge))))
+  (let [from (flow/edge-from edge)
+        to   (flow/edge-to edge)]
+    (when-let [parent (get spt to)]
+      (or (identical? from parent)
+          (when-let [rparent (get spt from)]
+            (identical? to rparent))))))
 
-;  (get spt (flow/edge-to edge))))
+(defn nonbasic-edges 
+  ([net spt]
+     (filter #(not (in-basis? spt %)) (flow/einfos net)))
+  ([smplx]
+     (concat (get smplx :lower) (get smplx :upper))))
 
-(defn nonbasic-edges [net spt]
-  (filter #(not (in-basis? spt %)) (flow/einfos net)))
-
+(defn reduced-costs [smplx]
+  (let [ps  (get smplx :potentials)
+        net (get smplx :net)]            
+    (for [e (nonbasic-edges smplx)]
+      (reduced-cost e ps #(flow/-flow-weight net %1 %2)))))
+    
 (defn augmented-network 
   ([net from to init-cost] 
      (let [dummy-cap (flow/max-outflow net from)
@@ -447,10 +463,18 @@
            spanning  (residual-spanning-tree augnet from to )
            pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
            [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
-       (->simplex-net augnet from to spanning pots lower {} nil)))
+       (->simplex-net augnet from to spanning pots basic lower '() nil)))
   ([net from to] (init-simplex net from to posinf)))
 
+;;There's probably a nice way to abstract this out, pivot rules and
+;;whatnot, but we'll do that later.
+(defn find-entering-arc [smplx]
+  )
 
+
+;;The result of a pivot should be the updated simplex, and a leaving arc.
+(defn pivot [smplx entering leaving]
+)
 
 
 ;;Can we traverse lower and upper arcs? 
@@ -551,7 +575,7 @@
         spanning  seg-preds
         pots      (init-potentials 5 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
         [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
-    (->simplex-net augnet 0 5 spanning pots lower {} nil)))
+    (->simplex-net augnet 0 5 spanning pots basic lower '() nil)))
 
 ;;OBE
 ;;=======
@@ -578,3 +602,5 @@
                                    (if (not visitedu) (assoc! vnext  u true) vnext)
                                    (if (not visitedv) (assoc! vnext  v true) vnext))))))))  
 )
+
+
