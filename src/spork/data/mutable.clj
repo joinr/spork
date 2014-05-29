@@ -6,6 +6,36 @@
   (:require [spork.protocols [core :as generic]])
   (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
 
+(extend-type  java.util.HashMap 
+  clojure.core.protocols/IKVReduce 
+  (kv-reduce [amap f init] 
+    (let [^java.util.Set es (.entrySet ^java.util.HashMap amap)
+          ^java.util.Iterator it (.iterator es)]
+      (loop [acc init]
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry e (.next it)]
+            (recur (f acc (.getKey e) (.getValue e))))
+          acc))))
+  clojure.core.protocols/CollReduce  
+  (coll-reduce 
+    ([coll f]     
+       (let [^java.util.Set es (.entrySet ^java.util.HashMap coll)
+             ^java.util.Iterator it (.iterator es)]
+         (when (.hasNext it) 
+           (loop [acc (.next it)]
+             (if (.hasNext it)
+               (let [^java.util.Map$Entry e (.next it)]
+                 (recur (f acc  e)))
+               acc))))) 
+    ([coll f val]
+       (let [^java.util.Set es (.entrySet ^java.util.HashMap coll)
+             ^java.util.Iterator it (.iterator es)]
+         (loop [acc val]
+           (if (.hasNext it)
+             (let [^java.util.Map$Entry e (.next it)]
+               (recur (f acc  e)))
+             acc))))))
+
 ;;Some notes on performance....
 ;;We can mimic field access by creating an interface that correponds
 ;;to the type.  The only difference is that the interface methods
