@@ -7,6 +7,10 @@
             [spork.data.mutable]
             [clojure.core [reducers :as r]]))
 
+;;The foundation of a network simplex algo is the fact that 
+;;we have a partitioning of all edges.
+
+
 ;;Applying the simplex method to the mincost flow 
 ;;problem requires a few extra bits of plumbing.
 
@@ -36,11 +40,13 @@
 ;;we can have a flat network representation....we lose the ability to 
 ;;modify the underlying network using the same api though.
 
+;(defrecord edge-cell [from to valid?])
+  
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
-(defrecord simplex-net [net source sink tree potentials basic lower upper valids]
+(defrecord simplex-net [net edge-index source sink tree partition potentials]
   generic/IGraphable 
-  (-get-graph      [s] (generic/-get-graph g))
+  (-get-graph      [s] (generic/-get-graph net))
   flow/IFlowNet
   (-edge-info      [s from to] (flow/-edge-info net from to))
   (einfos [s]                  (flow/einfos net))
@@ -67,99 +73,8 @@
                     source sink tree potentials basic lower upper valids))
   (-active-flows [s] (flow/-active-flows net)))
 
-;;The foundation of a network simplex algo is the fact that 
-;;we have a partitioning of all edges.
-
-;;This may be too much....we'll rethink, but the API is nice.
-(defprotocol IEdgePartition 
-  (basic-edge [p n])
-  (lower-edge [p n])
-  (upper-edge [p n])
-  (get-basic-edges [p])
-  (get-lower-edges [p])
-  (get-upper-edges [p]))
-
-(defrecord edge-partition [basic lower upper]
-  IEdgePartition 
-  (basic-edge [p n] 
-    (if (contains? lower n) 
-      (edge-partition. (conj basic n)
-                       (disj lower n) 
-                       upper)
-      (edge-partition. (conj basic n)
-                       lower
-                       (disj upper n))))
-  (lower-edge [p n] 
-    (edge-partition. (disj basic n) (conj lower n) upper))
-  (upper-edge [p n]  
-    (edge-partition. (disj basic n) lower (disj upper  n)))
-  (get-basic-edges [p] basic)
-  (get-lower-edges [p] lower)
-  (get-upper-edges [p] upper))
-
-(defrecord transient-edge-partition 
-    [^java.util.HashSet basic 
-     ^java.util.HashSet lower 
-     ^java.util.HashSet upper]
-  IEdgePartition 
-  (basic-edge [p n] (do (.add basic n)
-                        (if (.contains lower n) 
-                            (.remove lower n) 
-                            (.remove upper n))
-                        p))
-  (lower-edge [p n] (do (.remove basic n)
-                        (.add lower n)
-                        p))
-  (upper-edge [p n]  (do (.remove basic n)
-                         (.add    upper n)
-                         p))
-  (get-basic-edges [p] basic)
-  (get-lower-edges [p] lower)
-  (get-upper-edges [p] upper))
 
 
-(def ^:constant +basic+ 0)
-(def ^:constant +lower+ -1)
-(def ^:constant +upper+ 1)
-
-;;this is ass, but fastish.
-(defn filter-longs [pred ^longs a]
-  (let [res  (java.util.ArrayList.)]
-    (areduce a idx acc res (let [v (aget a idx)] (if (pred v) (doto acc (.add v)) acc)))))
-(defn where-flag [flag xs]
-  (filter-longs #(== flag %) xs))
-
-(defrecord array-edge-partition  [^longs flags]
-  IEdgePartition 
-  (basic-edge [p n] (do (aset  flags n ^long +basic+) p))
-  (lower-edge [p n] (do (aset  flags n ^long +lower+) p))
-  (upper-edge [p n] (do (aset  flags n ^long +upper+) p))
-  (get-basic-edges [p] (where-flag  +basic+  flags))
-  (get-lower-edges [p] (where-flag  +lower+ flags))
-  (get-upper-edges [p] (where-flag  +upper+ flags)))
-
-(defn swap-edge [edge-part entering leaving]
-  (-> (if (== (flow/edge-flow leaving) 0)
-        (lower-edge edge-part leaving)
-        (upper-edge edge-part leaving))
-      (basic-edge entering)))
-
-(defn partition-edges 
-  ([es spt part]
-     (let [next-count (let [counter (atom 0)]
-                        (fn [] (do (swap! counter inc)
-                                   @counter)))]
-       (reduce (fn [acc e]
-                 (let [idx (next-count)]
-                   (cond  (zero? (flow/edge-flow e))     (lower-edge acc idx)
-                          (zero? (flow/edge-capacity e)) (upper-edge acc idx)
-                          :else  (basic-edge acc idx))))            
-               part
-               es)))
-  ([es spt] (partition-edges (->array-edge-partition (long-array (count es))))))
-
-  
-  
 ;;Our basis-tree is a minimum spanning tree, with the property 
 ;;that edges in the tree have a reduced cost of 0 (they are basic 
 ;;in simplex parlance). 
@@ -576,7 +491,10 @@
   ([net spt]
      (filter #(not (in-basis? spt %)) (flow/einfos net)))
   ([smplx]
-     (concat (get smplx :lower) (get smplx :upper))))
+     (let [p (get smplx :partitioning)]
+       (get-nonbasic-edges p (get smplx :net)))))
+
+
 
 (defn reduced-costs [smplx]
   (let [ps  (get smplx :potentials)
@@ -593,8 +511,100 @@
            (flow/-update-edge  from to #(flow/inc-flow % init-flow)))))
   ([net from to] (augmented-network net from to posinf)))
 
-;(defn max-cost [net]
-;  (flow/edge-reduce (fn [acc 
+
+;;Edge Partitioning
+;;=================
+
+;;This may be too much....we'll rethink, but the API is nice.
+(defprotocol IEdgePartition 
+  (basic-edge [p n])
+  (lower-edge [p n])
+  (upper-edge [p n])
+  (get-basic-edges [p])
+  (get-lower-edges [p])
+  (get-upper-edges [p])
+  (get-nonbasic-edges [p]))
+
+(defrecord edge-partition [basic lower upper]
+  IEdgePartition 
+  (basic-edge [p n] 
+    (if (contains? lower n) 
+      (edge-partition. (conj basic n)
+                       (disj lower n) 
+                       upper)
+      (edge-partition. (conj basic n)
+                       lower
+                       (disj upper n))))
+  (lower-edge [p n] 
+    (edge-partition. (disj basic n) (conj lower n) upper))
+  (upper-edge [p n]  
+    (edge-partition. (disj basic n) lower (disj upper  n)))
+  (get-basic-edges [p] basic)
+  (get-lower-edges [p] lower)
+  (get-upper-edges [p] upper))
+
+(defrecord transient-edge-partition 
+    [^java.util.HashSet basic 
+     ^java.util.HashSet lower 
+     ^java.util.HashSet upper]
+  IEdgePartition 
+  (basic-edge [p n] (do (.add basic n)
+                        (if (.contains lower n) 
+                            (.remove lower n) 
+                            (.remove upper n))
+                        p))
+  (lower-edge [p n] (do (.remove basic n)
+                        (.add lower n)
+                        p))
+  (upper-edge [p n]  (do (.remove basic n)
+                         (.add    upper n)
+                         p))
+  (get-basic-edges [p] basic)
+  (get-lower-edges [p] lower)
+  (get-upper-edges [p] upper))
+
+
+(def ^:constant +basic+ 0)
+(def ^:constant +lower+ -1)
+(def ^:constant +upper+ 1)
+
+;;this is ass, but fastish.
+(defn filter-longs [pred ^longs a]
+  (let [res  (java.util.ArrayList.)]
+    (areduce a idx acc res (let [v (aget a idx)] (if (pred v) (doto acc (.add v)) acc)))))
+(defn where-flag [flag xs]
+  (filter-longs #(== flag %) xs))
+
+
+(defrecord array-edge-partition  [^objects edges]
+  IEdgePartition 
+  (basic-edge [p n] (do (aset  flags n ^long +basic+) p))
+  (lower-edge [p n] (do (aset  flags n ^long +lower+) p))
+  (upper-edge [p n] (do (aset  flags n ^long +upper+) p))
+  (get-basic-edges [p] (where-flag  +basic+  flags))
+  (get-lower-edges [p] (where-flag  +lower+ flags))
+  (get-upper-edges [p] (where-flag  +upper+ flags)))
+
+(defn swap-edge [edge-part entering leaving]
+  (-> (if (== (flow/edge-flow leaving) 0)
+        (lower-edge edge-part leaving)
+        (upper-edge edge-part leaving))
+      (basic-edge entering)))
+
+(defn partition-edges 
+  ([es spt part]
+     (let [next-count (let [counter (atom 0)]
+                        (fn [] (do (swap! counter inc)
+                                   @counter)))]
+       (reduce (fn [acc e]
+                 (let [idx (next-count)]
+                   (cond  (in-basis? spt e)              (basic-edge acc idx)
+                          (zero? (flow/edge-flow e))     (lower-edge acc idx)
+                          :else                          (upper-edge acc idx))))            
+               part
+               es)))
+  ([es spt] (partition-edges es spt (->array-edge-partition (long-array (count es))))))  
+  
 
 (defn init-potentials 
   ([root preds costf init-cost]
@@ -602,19 +612,14 @@
   ([root preds costf] 
      (init-potentials root preds costf neginf)))
 
-
 (defn init-simplex 
   ([net from to dummycost]
      (let [augnet    (augmented-network net from to dummycost)
            spanning  (residual-spanning-tree augnet from to  )
            pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
            edges     (flow/einfos augnet)
-           n         (count  edges)
-           basic     (boolean-array n)
-           lower     (boolean-array n)
-           upper     (boolean-array n)
-           [basic lower] (partition-by #(in-basis? spanning %) edges)]
-       (->simplex-net augnet from to spanning pots basic lower '() nil)))
+           part      (partition-edges spanning edges)]
+       (->simplex-net augnet from to spanning part pots)))
   ([net from to] (init-simplex net from to posinf)))
 
 ;;There's probably a nice way to abstract this out, pivot rules and
