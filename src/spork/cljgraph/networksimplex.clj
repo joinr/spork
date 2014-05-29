@@ -30,9 +30,34 @@
 
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
-(defrecord simplex-net [net source sink tree potentials basic lower upper valids])
+(defrecord simplex-net [net source sink tree potentials basic lower upper valids]
+  generic/IGraphable 
+  (-get-graph [net] (generic/-get-graph g))
+  flow/IFlowNet
+  (-edge-info      [s from to] (flow/-edge-info net from to))
+  (einfos [s]                  (flow/einfos net))
+  (-get-direction  [s from to] (flow/-get-direction net from to))
+  (-flow-weight    [s from to] (flow/-flow-weight net from to))
+  (-set-edge       [s edge]    
+      (simplex-net. (flow/-set-edge net from to)
+                    source sink tree potentials basic lower upper valids))
+  (-flow-sinks     [s x] (flow/-flow-sinks net x))
+  (-flow-sources   [s x] (flow/-flow-sinks net x))
+  (-push-flow      [s edge flow] 
+      (simplex-net. (flow/-push-flow net edge flow)
+                    source sink tree potentials basic lower upper valids))
+  flow/IDynamicFlow 
+  (-update-edge  [s from to f]                  
+      (simplex-net. (flow/-update-edge net from to f) 
+                    source sink tree potentials basic lower upper valids))
 
-
+  (-disj-cap-arc   [s from to]  
+      (simplex-net. (flow/disj-cap-arc net from to) 
+                    source sink tree potentials basic lower upper valids))
+  (-conj-cap-arc [s from to w cap]                 
+      (simplex-net. (flow/-conj-cap-arc net from to w cap)
+                    source sink tree potentials basic lower upper valids))
+  (-active-flows [s] (flow/-active-flows net)))
 
 ;;The foundation of a network simplex algo is the fact that 
 ;;we have a partitioning of all edges.
@@ -110,6 +135,22 @@
         (upper-edge edge-part leaving))
       (basic-edge entering)))
 
+(defn partition-edges 
+  ([es spt part]
+     (let [next-count (let [counter (atom 0)]
+                        (fn [] (do (swap! counter inc)
+                                   @counter)))]
+       (reduce (fn [acc e]
+                 (let [idx (next-count)]
+                   (cond  (zero? (flow/edge-flow e))     (lower-edge acc idx)
+                          (zero? (flow/edge-capacity e)) (upper-edge acc idx)
+                          :else  (basic-edge acc idx))))            
+               part
+               es)))
+  ([es spt] (partition-edges (->array-edge-partition (long-array (count es))))))
+
+  
+  
 ;;Our basis-tree is a minimum spanning tree, with the property 
 ;;that edges in the tree have a reduced cost of 0 (they are basic 
 ;;in simplex parlance). 
