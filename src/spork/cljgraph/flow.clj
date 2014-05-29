@@ -95,26 +95,26 @@
 (defprotocol IEdgeInfo
   (set-flow      [e flow])
   (set-capacity  [e cap])
-  (set-direction [e d])
+  (set-data      [e d])
   (inc-flow      [e amt])
   (edge-flow     [e])
   (edge-capacity [e])
   (capacity-to   [e v])
   (edge-from     [e])
   (edge-to       [e])
-  (edge-dir      [e])
-  (edge-pair [e]))
+  (edge-data     [e])
+  (edge-pair     [e]))
 
 ;;Edge Data Types
 ;;===============
 
 ;;We define a persistent record to capture capacitated flow
 ;;information across edges.
-(defrecord einfo [from to capacity flow dir]
+(defrecord einfo [from to capacity flow data]
   IEdgeInfo
   (set-flow      [edge new-flow] (einfo. from to  capacity new-flow dir))
   (set-capacity  [edge cap]      (einfo. from to cap flow dir))
-  (set-direction [edge d]   (einfo. from to capacity flow d))
+  (set-data      [edge d]   (einfo. from to capacity flow d))
   (inc-flow      [edge amt] (einfo. from to   (unchecked-subtract capacity amt)  
                                               (unchecked-add flow amt) dir))
   (edge-flow     [edge] flow)
@@ -122,16 +122,16 @@
   (capacity-to   [edge v]   (if (identical? v to) capacity flow))
   (edge-from     [e] from)
   (edge-to       [e] to)
-  (edge-dir      [e] dir)
+  (edge-data     [e] data)
   (edge-pair [e] (clojure.lang.MapEntry. from to)))
 
 ;;A mutable edge list.  For mutable stuff.  Mutation.  Mutants.
 ;;This ought to be good for small graphs.
-(m/defmutable meinfo [from to capacity flow dir]
+(m/defmutable meinfo [from to capacity flow data]
   IEdgeInfo
   (set-flow      [edge new-flow] (do (set! flow new-flow) edge))
   (set-capacity  [edge cap]      (do (set! capacity cap)  edge))
-  (set-direction [edge d]        (do (set! dir d) edge))
+  (set-data      [edge d]        (do (set! data d) edge))
   (inc-flow      [edge amt]      (do (set! capacity (unchecked-subtract capacity amt))
                                      (set! flow     (unchecked-add flow amt))
                                      edge))
@@ -140,7 +140,7 @@
   (capacity-to   [edge v]   (if (identical? v to) capacity flow))
   (edge-from     [d]    from)
   (edge-to       [d]    to)
-  (edge-dir      [e]    dir)
+  (edge-data     [e]   data)
   (edge-pair [d]    (clojure.lang.MapEntry. from to)))
 
 ;;Inline functions for constructing edges.  We adopt the convention 
@@ -149,28 +149,28 @@
 ;;These are each 10x faster then the original varargs implementation.
 (definline ->edge-info2 
   [from to]
-  `(einfo. ~from  ~to posinf 0 :forward))
+  `(einfo. ~from  ~to posinf 0 nil))
 
 (definline ->edge-info3
-  [from to dir]
-  `(einfo. ~from  ~to posinf 0 ~dir))
+  [from to data]
+  `(einfo. ~from  ~to posinf 0 ~data))
 
 (definline ->edge-info4 
   [from to capacity flow]
-  `(einfo. ~from ~to ~capacity ~flow :forward))
+  `(einfo. ~from ~to ~capacity ~flow nil))
 
 ;;Constructors for mutable edges.
 (definline ->medge-info2 
   [from to]
-  `(meinfo. ~from  ~to posinf 0 :forward))
+  `(meinfo. ~from  ~to posinf 0 nil))
 
 (definline ->medge-info3 
-  [from to dir]
-  `(meinfo. ~from  ~to posinf 0 ~dir))
+  [from to data]
+  `(meinfo. ~from  ~to posinf 0 ~data))
 
 (definline ->medge-info4 
   [from to capacity flow]
-  `(meinfo. ~from ~to ~capacity ~flow :forward))    
+  `(meinfo. ~from ~to ~capacity ~flow nil))    
 
 (defmacro edge-hint [e] 
   `(vary-meta ~e assoc :tag 'spork.cljgraph.flow.IEdgeInfo))
@@ -183,10 +183,10 @@
 ;;it out entirely.
 
 (defn  edge->medge [^einfo edge]
-  (meinfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.dir edge)))
+  (meinfo. (.from edge) (.to edge) (.capacity edge) (.flow edge) (.data edge)))
 
 (defn ^einfo medge->edge [^meinfo edge]
-  (einfo. (.edge-from edge) (.edge-to edge) (.edge-capacity edge) (.edge-flow edge) (.edge-dir edge)))
+  (einfo. (.edge-from edge) (.edge-to edge) (.edge-capacity edge) (.edge-flow edge) (.edge-data edge)))
 
 ;;Shared inline definitions for network topology.
 ;;This is currently a bit slow due to some overhead.
@@ -237,7 +237,7 @@
   `(assoc ~g :flow-info                  
      (assoc2 (get ~g :flow-info {})
        ~from ~to 
-       (einfo. ~from ~to ~cap ~flow :forward))))
+       (einfo. ~from ~to ~cap ~flow nil))))
 
 (defmacro alter-edge [sym g from to & expr]
   `(let [~(vary-meta sym assoc :tag 'spork.cljgraph.IEdgeInfo) (-edge-info ~g ~from ~to)]
@@ -316,7 +316,7 @@
         fwd
         (if-let [bwd (get2 finfo to from nil)]
           bwd
-          (->edge-info3 from to (direction net from to))))))
+          (->edge-info2 from to)))))
   (einfos         [n]             (get-edge-infos n))
   (-get-direction [net from to]   (direction net from to))
   (-flow-weight   [net from to]   (forward-flow net from to))
@@ -370,7 +370,7 @@
       fwd
       (if-let [^meinfo bwd (get2 flow-info to from nil)]
         bwd
-        (let [edge (->medge-info3 from to (direction g from to))]
+        (let [edge (->medge-info2 from to)]
           (do (assoc2! flow-info from to edge)
               edge)))))
   (einfos [n]     (get-edge-infos! n))
@@ -402,7 +402,7 @@
              (set! flow-info
                    (assoc2! flow-info
                             from to  
-                            (meinfo. from to cap 0 :forward)))
+                            (meinfo. from to cap 0 nil)))
              net))
   (-active-flows [net] 
     (let [^java.util.ArrayList xs  (get-edge-infos! net)

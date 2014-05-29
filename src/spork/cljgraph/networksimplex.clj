@@ -28,11 +28,19 @@
 ;;a node, shipping from the node to another, then 
 ;;selling (i.e. recouping cost) at the other node.
 
+
+;;Edges exist in the net...
+;;If we need random access to the edges, we can always add a 
+;;list or vector of edges...
+;;If we don't care about adjacency (with network simplex, we don't)
+;;we can have a flat network representation....we lose the ability to 
+;;modify the underlying network using the same api though.
+
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
 (defrecord simplex-net [net source sink tree potentials basic lower upper valids]
   generic/IGraphable 
-  (-get-graph [net] (generic/-get-graph g))
+  (-get-graph      [s] (generic/-get-graph g))
   flow/IFlowNet
   (-edge-info      [s from to] (flow/-edge-info net from to))
   (einfos [s]                  (flow/einfos net))
@@ -62,6 +70,7 @@
 ;;The foundation of a network simplex algo is the fact that 
 ;;we have a partitioning of all edges.
 
+;;This may be too much....we'll rethink, but the API is nice.
 (defprotocol IEdgePartition 
   (basic-edge [p n])
   (lower-edge [p n])
