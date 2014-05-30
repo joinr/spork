@@ -489,6 +489,28 @@
   (get-upper-edges [p] upper)
   (get-nonbasic-edges [p] (concat lower upper)))
 
+(defrecord linear-edge-partition
+    [^java.util.ArrayList items 
+     ^long last-basic 
+     ^long last-lower 
+     ^long last-upper]
+  IEdgePartition 
+  (basic-edge [p n] (do (.add basic n)
+                        (if (.contains lower n) 
+                            (.remove lower n) 
+                            (.remove upper n))
+                        p))
+  (lower-edge [p n] (do (.remove basic n)
+                        (.add lower n)
+                        p))
+  (upper-edge [p n]  (do (.remove basic n)
+                         (.add    upper n)
+                         p))
+  (get-basic-edges [p] basic)
+  (get-lower-edges [p] lower)
+  (get-upper-edges [p] upper)
+  (get-nonbasic-edges [p] (concat lower upper)))
+
 ;;Exchanging an edge in a partition is simply swapping it out from 
 ;;the basis and pushing it either into the upper or lower set
 ;;depending on whether the edge is empty.
