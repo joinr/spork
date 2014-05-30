@@ -553,8 +553,11 @@
 (defn edge-map
   [f net]
   (edge-reduce 
-   (fn [acc e] (let [res  (f e)]
-                 (if (identical? e res) acc (-set-edge acc e))))
+   (fn [acc e] 
+     (let [res  (f e)]
+       (if (identical? e res) 
+         acc 
+         (-set-edge acc res))))
    net
    net))
 

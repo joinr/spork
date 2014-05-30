@@ -21,6 +21,7 @@
   (get-upper-edges [p])
   (get-nonbasic-edges [p]))
 
+
 ;;Applying the simplex method to the mincost flow 
 ;;problem requires a few extra bits of plumbing.
 
@@ -91,10 +92,13 @@
                                   source sink tree potentials (lower-edge parts n)))
   (upper-edge [p n] (simplex-net. augnet  edges
                                   source sink tree potentials (upper-edge parts n)))
-  (get-basic-edges [p]    (select-edges edges (get-basic-edges parts)))
-  (get-lower-edges [p]    (select-edges edges (get-lower-edges parts)))
-  (get-upper-edges [p]    (select-edges edges (get-upper-edges parts)))
-  (get-nonbasic-edges [p] (select-edges edges (get-nonbasic-edges parts))))
+  (get-basic-edges [p]    (map #(nth p %) (get-basic-edges parts)))
+  (get-lower-edges [p]    (map #(nth p %) (get-lower-edges parts)))
+  (get-upper-edges [p]    (map #(nth p %) (get-upper-edges parts)))
+  (get-nonbasic-edges [p] (map #(nth p %) (get-nonbasic-edges parts)))
+  clojure.lang.Indexed
+  (nth [coll n] (nth edges n))
+  (nth [coll n not-found] (if-let [res  (nth edges n)] res not-found)))
 
 ;;Our basis-tree is a minimum spanning tree, with the property 
 ;;that edges in the tree have a reduced cost of 0 (they are basic 
@@ -150,6 +154,18 @@
   (leaving-arc   [smplx])
   (find-entering [smplx]))
 )
+
+;; (defprotocol ISimplexEdge
+;;   (edge-cost [e])
+;;   (edge-index [e]))
+  
+(comment 
+  (defrecord sdata [idx rcost])
+  
+  (defn edge-index [e]
+    (.idx ^sdata s (flow/edge-data e)))
+  (defn edge-cost  [e]
+    (.idx ^sdata s (flow/edge-data e))))
 
 ;;I think we want some data in here...
 ;(defrecord simplex-state [simplex leaving-arc n find-arc]) 
@@ -394,14 +410,32 @@
   ([net spt]
      (filter #(not (in-basis? spt %)) (flow/einfos net)))
   ([smplx]
-     (let [p (get smplx :parts)]
-       (get-nonbasic-edges p))))
+     (get-nonbasic-edges smplx)))
 
 (defn reduced-costs [smplx]
   (let [ps  (get smplx :potentials)
         net (get smplx :net)]            
-    (for [e (nonbasic-edges smplx)]
+    (for [e (get-nonbasic-edges smplx)]
       (reduced-cost e ps #(flow/-flow-weight net %1 %2)))))
+
+;;edges outside the basis are either full or empty;
+;;Empty edges are eligible if their reduced cost is negative - pushing
+;;flow will reduce the cost of flow; 
+;;Full edges are eligible if their reduced cost is positive - removing
+;;flow with reduce the cost of flow;
+(definline eligible-edge? [non-basic-edge costf]
+  `(let [c# (~costf ~non-basic-edge)]
+     (if (zero? (flow/edge-flow ~non-basic-edge))
+       (neg? c#)
+       (pos? c#))))
+
+;;Eligible edges are edges in L that have Negative reduced cost, 
+;;and edges in U that have Positive reduced cost.
+(defn eligible-edges [smplx]
+  (let [ps  (get smplx :potentials)
+        net (get smplx :net)
+        costf (fn [e] (reduced-cost e ps #(flow/-flow-weight net %1 %2)))]
+    (filter (fn [e] (eligible-edge? e costf)) (get-nonbasic-edges smplx))))  
 
 ;;We can simplify initializing our simplex algo by creating 
 ;;a dummy arc from source to sink, with a sufficiently large capacity 
@@ -482,7 +516,12 @@
 
 (defn init-simplex 
   ([net from to dummycost]
-     (let [augnet    (augmented-network net from to dummycost)
+     (let [idx       (atom 0)
+           augnet    (flow/edge-map (fn [e] 
+                                      (let [i @idx
+                                            _ (swap! idx inc)]
+                                        (flow/set-data e i))) 
+                                    (augmented-network net from to dummycost))
            spanning  (residual-spanning-tree augnet from to  )
            pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
            edges     (flow/einfos augnet)
@@ -595,7 +634,12 @@
 
 ;;a simple simplex initializer for data from Sedgewick's book:
 (def seg-simplex 
-  (let [augnet    (augmented-network the-net 0 5 9)
+  (let [idx       (atom 0)
+        augnet    (flow/edge-map (fn [e] 
+                                   (let [i @idx
+                                         _ (swap! idx inc)]
+                                     (flow/set-data e i))) 
+                                 (augmented-network the-net 0 5 9))
         spanning  seg-preds
         pots      (init-potentials 5 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
         edges     (flow/einfos augnet)
