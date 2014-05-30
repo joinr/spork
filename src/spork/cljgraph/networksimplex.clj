@@ -11,6 +11,15 @@
 ;;The foundation of a network simplex algo is the fact that 
 ;;we have a partitioning of all edges.
 
+;;This may be too much....we'll rethink, but the API is nice.
+(defprotocol IEdgePartition 
+  (basic-edge [p n])
+  (lower-edge [p n])
+  (upper-edge [p n])
+  (get-basic-edges [p])
+  (get-lower-edges [p])
+  (get-upper-edges [p])
+  (get-nonbasic-edges [p]))
 
 ;;Applying the simplex method to the mincost flow 
 ;;problem requires a few extra bits of plumbing.
@@ -40,6 +49,10 @@
 ;;If we don't care about adjacency (with network simplex, we don't)
 ;;we can have a flat network representation....we lose the ability to 
 ;;modify the underlying network using the same api though.
+
+(defmacro select-edges [edges xs]
+  `(for [idx# ~xs]
+     (nth ~edges idx#)))
   
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
@@ -70,7 +83,18 @@
   (-conj-cap-arc [s from to w cap]                 
       (simplex-net. (flow/-conj-cap-arc net from to w cap) edges
                     source sink tree potentials parts))
-  (-active-flows [s] (flow/-active-flows net)))
+  (-active-flows [s] (flow/-active-flows net))
+  IEdgePartition 
+  (basic-edge [p n] (simplex-net. augnet  edges
+                                 source sink tree potentials (basic-edge parts n)))
+  (lower-edge [p n] (simplex-net. augnet  edges
+                                  source sink tree potentials (lower-edge parts n)))
+  (upper-edge [p n] (simplex-net. augnet  edges
+                                  source sink tree potentials (upper-edge parts n)))
+  (get-basic-edges [p]    (select-edges edges (get-basic-edges parts)))
+  (get-lower-edges [p]    (select-edges edges (get-lower-edges parts)))
+  (get-upper-edges [p]    (select-edges edges (get-upper-edges parts)))
+  (get-nonbasic-edges [p] (select-edges edges (get-nonbasic-edges parts))))
 
 ;;Our basis-tree is a minimum spanning tree, with the property 
 ;;that edges in the tree have a reduced cost of 0 (they are basic 
@@ -195,15 +219,22 @@
 (defn cycle-path [preds from to]
   (let [lca (sptree/least-common-ancestor preds from to)
         ^java.util.ArrayList res 
-             (spork.protocols.core/loop-reduce 
-              (fn [^java.util.ArrayList acc x] 
-                (doto acc (.add x)))
-              (sptree/simple-path preds to lca)
-              (.next ^clojure.lang.ISeq (sptree/reversed-path preds from lca)))]    
+        (spork.protocols.core/loop-reduce 
+         (fn [^java.util.ArrayList acc x] 
+           (doto acc (.add x)))
+         (sptree/simple-path preds to lca)
+         (.next ^clojure.lang.ISeq (sptree/reversed-path preds from lca)))]    
     (doto res (.add to))))        
 
-;;Augments the flow between from and to, returning 
-;;the transformed tree and an edge that was capacitated.
+(defn substitute-edges 
+  [preds dropped added]
+  (sptree/substitute-edges (flow/edge-from dropped)
+                           (flow/edge-to dropped)
+                           (flow/edge-from added)
+                           (flow/edge-to   added)))
+  
+;;Augments the flow between from and to, returning the transformed
+;;tree and an edge that was capacitated.
 (defn augment-flow-tree [the-net preds get-edge-flows from to]
   (let [^spork.cljgraph.flow.edge-flows ef (get-edge-flows the-net (cycle-path preds from to))
          flow                      (.flow ef)
@@ -363,8 +394,8 @@
   ([net spt]
      (filter #(not (in-basis? spt %)) (flow/einfos net)))
   ([smplx]
-     (let [p (get smplx :partitioning)]
-       (get-nonbasic-edges p (get smplx :net)))))
+     (let [p (get smplx :parts)]
+       (get-nonbasic-edges p))))
 
 (defn reduced-costs [smplx]
   (let [ps  (get smplx :potentials)
@@ -392,15 +423,6 @@
 ;;We will store indices here.  The edge partition handles the 
 ;;lower level drudgery of moving edges between partitions as we pivot.
 
-;;This may be too much....we'll rethink, but the API is nice.
-(defprotocol IEdgePartition 
-  (basic-edge [p n])
-  (lower-edge [p n])
-  (upper-edge [p n])
-  (get-basic-edges [p])
-  (get-lower-edges [p])
-  (get-upper-edges [p])
-  (get-nonbasic-edges [p]))
 
 (defrecord transient-edge-partition 
     [^java.util.HashSet basic 
@@ -437,8 +459,9 @@
 (defn partition-edges 
   ([es spt part]
      (let [next-count (let [counter (atom 0)]
-                        (fn [] (do (swap! counter inc)
-                                   @counter)))]
+                        (fn [] (let [c @counter]
+                                 (do (swap! counter inc)
+                                     c))))]
        (reduce (fn [acc e]
                  (let [idx (next-count)]
                    (cond  (in-basis? spt e)              (basic-edge acc idx)
@@ -576,8 +599,8 @@
         spanning  seg-preds
         pots      (init-potentials 5 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
         edges     (flow/einfos augnet)
-        part          (partition-edges spanning edges)]
-    (->simplex-net augnet edges 0 5 spanning pots part nil)))
+        part      (partition-edges  edges spanning)]
+    (->simplex-net augnet edges 0 5 spanning  part pots)))
 
 ;;OBE
 ;;=======
