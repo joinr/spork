@@ -5,6 +5,7 @@
                             [core :as graph]]
             [spork.protocols [core :as generic]]
             [spork.data.mutable]
+            [spork.data [sptree :as sptree]]
             [clojure.core [reducers :as r]]))
 
 ;;The foundation of a network simplex algo is the fact that 
@@ -39,12 +40,10 @@
 ;;If we don't care about adjacency (with network simplex, we don't)
 ;;we can have a flat network representation....we lose the ability to 
 ;;modify the underlying network using the same api though.
-
-;(defrecord edge-cell [from to valid?])
   
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
-(defrecord simplex-net [net edge-index source sink tree partition potentials]
+(defrecord simplex-net [net edges source sink tree parts potentials]
   generic/IGraphable 
   (-get-graph      [s] (generic/-get-graph net))
   flow/IFlowNet
@@ -53,27 +52,25 @@
   (-get-direction  [s from to] (flow/-get-direction net from to))
   (-flow-weight    [s from to] (flow/-flow-weight net from to))
   (-set-edge       [s edge]    
-      (simplex-net. (flow/-set-edge net from to)
-                    source sink tree potentials basic lower upper valids))
+      (simplex-net. (flow/-set-edge net edge) edges
+                    source sink tree potentials parts))
   (-flow-sinks     [s x] (flow/-flow-sinks net x))
   (-flow-sources   [s x] (flow/-flow-sinks net x))
   (-push-flow      [s edge flow] 
-      (simplex-net. (flow/-push-flow net edge flow)
-                    source sink tree potentials basic lower upper valids))
+      (simplex-net. (flow/-push-flow net edge flow) edges
+                    source sink tree potentials parts))
   flow/IDynamicFlow 
   (-update-edge  [s from to f]                  
-      (simplex-net. (flow/-update-edge net from to f) 
-                    source sink tree potentials basic lower upper valids))
+      (simplex-net. (flow/-update-edge net from to f) edges
+                    source sink tree potentials parts))
 
   (-disj-cap-arc   [s from to]  
-      (simplex-net. (flow/disj-cap-arc net from to) 
-                    source sink tree potentials basic lower upper valids))
+      (simplex-net. (flow/-disj-cap-arc net from to) edges
+                    source sink tree potentials parts))
   (-conj-cap-arc [s from to w cap]                 
-      (simplex-net. (flow/-conj-cap-arc net from to w cap)
-                    source sink tree potentials basic lower upper valids))
+      (simplex-net. (flow/-conj-cap-arc net from to w cap) edges
+                    source sink tree potentials parts))
   (-active-flows [s] (flow/-active-flows net)))
-
-
 
 ;;Our basis-tree is a minimum spanning tree, with the property 
 ;;that edges in the tree have a reduced cost of 0 (they are basic 
@@ -159,25 +156,7 @@
 ;;any edeg (u,v) within the basis tree is:
 ;;     phi(v) = phi(u) - cost(u,v) 
 
-;;There is a chance to optimize this bad-boy too; We can recompute 
-;;potentials lazily.
-(comment 
 
-(defn compute-potentials [v preds costfunc potentials valid]
-  (loop [child v
-         acc empty-list]
-    (if-let [parent (get preds child)]
-      (recur parent (cons [parent child] acc))
-      (reduce (fn [ps edge] 
-                (let [parent (nth edge 0)
-                      child  (nth edge 1)
-                      parent-potential (get potentials parent)
-                      cost   (costfunc parent child)
-                      child-potential (- parent-potential cost)]
-                  (assoc ps child child-potential)))
-              (assoc potentials parent neginf)
-              acc))))        
-)
 ;;Since we are working with trees, when we add an edge to the basis
 ;;tree, we create a cycle between the two vertices on the edge (by 
 ;;virtue of the fact that the tree is in fact a MSP).  Since we 
@@ -190,25 +169,6 @@
 ;;root of the smallest subtree that contains both nodes. Basically 
 ;;just trace up the parents until we find a common node, i.e. until 
 ;;we run into the first node that's already been visited.
-(defn least-common-ancestor
-  "Computes the least common ancestor in a predecessor tree.  Note: this 
-   will break if one of the nodes does not exist in the predecessor tree. We may 
-   want a sentinel on this to guard against that corner case."  
-  [preds s t]
-  (let  [visited  (doto (java.util.HashSet.) (.add s) (.add t))]
-    (loop [u (get preds s)
-           v (get preds t)]
-      (if (identical? u v) u
-          (let [pu       (get preds u u)
-                pv       (get preds v v)
-                visitedu (.contains visited u)
-                visitedv (.contains visited v)]
-            (cond (and (not (identical? pu u)) visitedu) u
-                  (and (not (identical? pv v)) visitedv) v
-                  :else
-                  (do (when (not visitedu) (.add visited  u))
-                      (when (not visitedv) (.add visited  v))
-                      (recur pu pv))))))))
 
 ;;Once we have the ability to find the least common ancestor in the
 ;;spanning tree, we need to be able to swap out edges.  One of the
@@ -226,99 +186,20 @@
 ;;Given a minimum spanning tree, an edge to add, and a edge to be dropped, can we 
 ;;alter the tree? 
 
-(defn between? 
-  "Given a predecessor tree, determines if target is on a path between start node and 
-   stop node."
-  [preds start stop target]
-  (loop [parent (get preds start)]
-    (cond (identical? parent target) true
-          (identical? parent stop)  false
-          :else      (recur (get preds parent)))))
-
-(defn flip [preds ^clojure.lang.ISeq init-path]
-  (loop [p      preds
-         path   init-path]
-    (if-let [remaining (.next  path)]
-      (let [new-child  (.first path)
-            new-parent (.first remaining)]
-        (recur (assoc p new-child new-parent) 
-               remaining))
-      p)))  
-
-(definline drop-edge [preds from to]   `(dissoc ~preds ~from))
-(definline insert-edge [preds from to] `(assoc ~preds ~from ~to))
-
 ;;a substitution is just dropping the edge, adding the new edge, 
 ;;then flipping the nodes between the to of the new edge and the 
 ;;to of the old edge
 
-(defn substitute-edges 
-  "Traverses the nodes in preds between from and to"
-  [preds dropped added]           
-  (let [drop-from (flow/edge-from dropped)
-        drop-to   (flow/edge-to dropped)
-        add-from  (flow/edge-from added)
-        add-to    (flow/edge-to   added)
-        p (-> preds (drop-edge drop-from drop-to))
-        target drop-from]
-    (loop [child add-from
-           acc   empty-list]
-      (if (identical? child target)
-        (insert-edge (flip p (cons child acc)) add-from add-to) 
-        (if (identical? child (first acc)) (throw (Exception. "No path to target"))
-            (recur (get p child) 
-                     (cons child acc)))))))
-
-(defn simple-path [preds from to]
-  (let [p (java.util.ArrayList.)]
-        (loop [child from]
-          (do (.add p child)
-              (if (identical? child to) p
-                  (recur (get preds child)))))))                 
-
-(defn reversed-path [preds from to]
-  (loop [child from
-         p     empty-list]
-    (if (identical? child to) (cons child p)
-        (recur (get preds child)
-               (cons child p)))))
-
-(defn path-to-root [preds from]
-  (loop [child from
-         p     empty-list]
-    (let [parent (get preds child)]
-      (if (identical? child parent) (cons child p)
-          (recur parent
-                 (cons child p))))))
-
-(defn path-from-root [preds to]
-  (let [p     (java.util.ArrayList.)]
-    (loop [child to]
-      (let [parent (get preds child)]
-        (if (identical? child parent) (doto p (.add  child) (java.util.Collections/reverse))
-            (do (doto p (.add child))
-                (recur parent)))))))
-
-(defn path-from-valid [preds to valid?]
-  (let [p     (java.util.ArrayList.)]
-    (loop [child to]
-      (let [parent (get preds child)]
-        (if (or (valid? parent) (identical? child parent)) (doto p (.add  child) (java.util.Collections/reverse))
-            (do (doto p (.add child))
-                (recur parent)))))))
-
-(definline append [lst elem]
-    `(doto ~(with-meta lst {:tag 'java.util.ArrayList}) (.add ~elem)))
 ;;currently a bottleneck, although it may not matter since 
 ;;we "should" not be doing tons of augmentations.
 (defn cycle-path [preds from to]
-  (let [lca (least-common-ancestor preds from to)
+  (let [lca (sptree/least-common-ancestor preds from to)
         ^java.util.ArrayList res 
              (spork.protocols.core/loop-reduce 
               (fn [^java.util.ArrayList acc x] 
                 (doto acc (.add x)))
-              (simple-path preds to lca)
-              (.next ^clojure.lang.ISeq (reversed-path preds from lca)))]    
+              (sptree/simple-path preds to lca)
+              (.next ^clojure.lang.ISeq (sptree/reversed-path preds from lca)))]    
     (doto res (.add to))))        
 
 ;;Augments the flow between from and to, returning 
@@ -403,12 +284,6 @@
                      (get known-pots parent)))]
       (assoc! known-pots child (unchecked-subtract ppot (costf parent child))))))
 
-;; (defn print-pots! [st ps]
-;;   (reduce-kv (fn [acc child parent] 
-;;                (println [:parent  parent (get ps parent) :child child (get ps child)]))
-;;              nil 
-;;              st))
-
 (defn update-all-potentials! [preds costf pots]
   (reduce-kv (fn [ps child parent]
                (if (identical? parent child) 
@@ -425,13 +300,10 @@
 ;;By implication, all basic arcs WILL have forward arcs, so we only 
 ;;have to look them up via from-to, we can walk the tree and ignore 
 ;;arcs.
-;(defn partition-arcs [net basis]
-  
 
 ;;We can compute potentials for an entire spanning tree (although we
 ;;may only need to compute potentials for a portion of the tree, i.e. 
 ;;do it lazily...
-;; (defn compute-potentials [preds costf])
 
 ;;we have to be able to find eligible arcs.
 ;;Really, find the next eligible arc.  This is pretty huge.
@@ -440,7 +312,7 @@
 ;;cost.  This is sedgewicks' method. Fortunately, we can 
 ;;alter pivot strategies to allow for less naive implementations.
 
-;;An edge's residual cost is equivalent to the cost of the 
+;;An edge's reduced cost is equivalent to the cost of the 
 ;;edge, minus the difference between potentials for each directed 
 ;;node.
 (defn reduced-cost 
@@ -494,14 +366,15 @@
      (let [p (get smplx :partitioning)]
        (get-nonbasic-edges p (get smplx :net)))))
 
-
-
 (defn reduced-costs [smplx]
   (let [ps  (get smplx :potentials)
         net (get smplx :net)]            
     (for [e (nonbasic-edges smplx)]
       (reduced-cost e ps #(flow/-flow-weight net %1 %2)))))
-    
+
+;;We can simplify initializing our simplex algo by creating 
+;;a dummy arc from source to sink, with a sufficiently large capacity 
+;;and cost.
 (defn augmented-network 
   ([net from to init-cost] 
      (let [dummy-cap (flow/max-outflow net from)
@@ -511,9 +384,13 @@
            (flow/-update-edge  from to #(flow/inc-flow % init-flow)))))
   ([net from to] (augmented-network net from to posinf)))
 
-
 ;;Edge Partitioning
 ;;=================
+;;Edge partitions are simple data structures that support queries on 
+;;edges based on an edge's membership in either the basis tree set,
+;;the zero-flow or lower set, and the capacitated or upper set. 
+;;We will store indices here.  The edge partition handles the 
+;;lower level drudgery of moving edges between partitions as we pivot.
 
 ;;This may be too much....we'll rethink, but the API is nice.
 (defprotocol IEdgePartition 
@@ -524,24 +401,6 @@
   (get-lower-edges [p])
   (get-upper-edges [p])
   (get-nonbasic-edges [p]))
-
-(defrecord edge-partition [basic lower upper]
-  IEdgePartition 
-  (basic-edge [p n] 
-    (if (contains? lower n) 
-      (edge-partition. (conj basic n)
-                       (disj lower n) 
-                       upper)
-      (edge-partition. (conj basic n)
-                       lower
-                       (disj upper n))))
-  (lower-edge [p n] 
-    (edge-partition. (disj basic n) (conj lower n) upper))
-  (upper-edge [p n]  
-    (edge-partition. (disj basic n) lower (disj upper  n)))
-  (get-basic-edges [p] basic)
-  (get-lower-edges [p] lower)
-  (get-upper-edges [p] upper))
 
 (defrecord transient-edge-partition 
     [^java.util.HashSet basic 
@@ -561,36 +420,20 @@
                          p))
   (get-basic-edges [p] basic)
   (get-lower-edges [p] lower)
-  (get-upper-edges [p] upper))
+  (get-upper-edges [p] upper)
+  (get-nonbasic-edges [p] (concat lower upper)))
 
-
-(def ^:constant +basic+ 0)
-(def ^:constant +lower+ -1)
-(def ^:constant +upper+ 1)
-
-;;this is ass, but fastish.
-(defn filter-longs [pred ^longs a]
-  (let [res  (java.util.ArrayList.)]
-    (areduce a idx acc res (let [v (aget a idx)] (if (pred v) (doto acc (.add v)) acc)))))
-(defn where-flag [flag xs]
-  (filter-longs #(== flag %) xs))
-
-
-(defrecord array-edge-partition  [^objects edges]
-  IEdgePartition 
-  (basic-edge [p n] (do (aset  flags n ^long +basic+) p))
-  (lower-edge [p n] (do (aset  flags n ^long +lower+) p))
-  (upper-edge [p n] (do (aset  flags n ^long +upper+) p))
-  (get-basic-edges [p] (where-flag  +basic+  flags))
-  (get-lower-edges [p] (where-flag  +lower+ flags))
-  (get-upper-edges [p] (where-flag  +upper+ flags)))
-
-(defn swap-edge [edge-part entering leaving]
-  (-> (if (== (flow/edge-flow leaving) 0)
+;;Exchanging an edge in a partition is simply swapping it out from 
+;;the basis and pushing it either into the upper or lower set
+;;depending on whether the edge is empty.
+(defn swap-edge [edge-part entering leaving empty-edge?]
+  (-> (if empty-edge?
         (lower-edge edge-part leaving)
         (upper-edge edge-part leaving))
       (basic-edge entering)))
 
+;;Split a seq of edges into a partitioning based on presence in
+;;the basic spanning tree spt.
 (defn partition-edges 
   ([es spt part]
      (let [next-count (let [counter (atom 0)]
@@ -603,8 +446,10 @@
                           :else                          (upper-edge acc idx))))            
                part
                es)))
-  ([es spt] (partition-edges es spt (->array-edge-partition (long-array (count es))))))  
-  
+  ([es spt] (partition-edges es spt 
+              (->transient-edge-partition (java.util.HashSet.) 
+                                          (java.util.HashSet.) 
+                                          (java.util.HashSet.)))))
 
 (defn init-potentials 
   ([root preds costf init-cost]
@@ -619,7 +464,7 @@
            pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
            edges     (flow/einfos augnet)
            part      (partition-edges spanning edges)]
-       (->simplex-net augnet from to spanning part pots)))
+       (->simplex-net augnet edges from to spanning part pots)))
   ([net from to] (init-simplex net from to posinf)))
 
 ;;There's probably a nice way to abstract this out, pivot rules and
@@ -730,8 +575,9 @@
   (let [augnet    (augmented-network the-net 0 5 9)
         spanning  seg-preds
         pots      (init-potentials 5 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
-        [basic lower] (partition-by #(in-basis? spanning %) (flow/einfos augnet))]
-    (->simplex-net augnet 0 5 spanning pots basic lower '() nil)))
+        edges     (flow/einfos augnet)
+        part          (partition-edges spanning edges)]
+    (->simplex-net augnet edges 0 5 spanning pots part nil)))
 
 ;;OBE
 ;;=======
@@ -760,3 +606,71 @@
 )
 
 
+;;There is a chance to optimize this bad-boy too; We can recompute 
+;;potentials lazily.
+(comment 
+
+(defn compute-potentials [v preds costfunc potentials valid]
+  (loop [child v
+         acc empty-list]
+    (if-let [parent (get preds child)]
+      (recur parent (cons [parent child] acc))
+      (reduce (fn [ps edge] 
+                (let [parent (nth edge 0)
+                      child  (nth edge 1)
+                      parent-potential (get potentials parent)
+                      cost   (costfunc parent child)
+                      child-potential (- parent-potential cost)]
+                  (assoc ps child child-potential)))
+              (assoc potentials parent neginf)
+              acc))))        
+)
+
+
+;;Pending performance implementation.  May not need it.
+(comment 
+
+(defrecord edge-partition [basic lower upper]
+  IEdgePartition 
+  (basic-edge [p n] 
+    (if (contains? lower n) 
+      (edge-partition. (conj basic n)
+                       (disj lower n) 
+                       upper)
+      (edge-partition. (conj basic n)
+                       lower
+                       (disj upper n))))
+  (lower-edge [p n] 
+    (edge-partition. (disj basic n) (conj lower n) upper))
+  (upper-edge [p n]  
+    (edge-partition. (disj basic n) lower (disj upper  n)))
+  (get-basic-edges [p] basic)
+  (get-lower-edges [p] lower)
+  (get-upper-edges [p] upper)
+  (get-nonbasic-edges [p] (clojure.set/union lower upper)))
+
+(def ^:constant +basic+ 0)
+(def ^:constant +lower+ -1)
+(def ^:constant +upper+ 1)
+
+;;this is ass, but fastish.
+(defn filter-longs [pred ^longs a]
+  (let [res  (java.util.ArrayList.)]
+    (areduce a idx acc res (let [v (aget a idx)] (if (pred v) (doto acc (.add v)) acc)))))
+
+(defn where-flag [flag xs]
+  (filter-longs #(== flag %) xs))
+
+(defn except-flag [flag xs]
+  (filter-longs #(not (== flag %)) xs))
+
+(defrecord array-edge-partition  [^longs edges]
+  IEdgePartition 
+  (basic-edge [p n] (do (aset  flags n ^long +basic+) p))
+  (lower-edge [p n] (do (aset  flags n ^long +lower+) p))
+  (upper-edge [p n] (do (aset  flags n ^long +upper+) p))
+  (get-basic-edges [p] (where-flag  +basic+  flags))
+  (get-lower-edges [p] (where-flag  +lower+ flags))
+  (get-upper-edges [p] (where-flag  +upper+ flags))
+  (get-nonbasic-edges [p] (except-flag +basic+ edges)))
+)

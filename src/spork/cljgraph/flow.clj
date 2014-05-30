@@ -124,10 +124,10 @@
   (edge-data     [e] data)
   (edge-pair [e] (clojure.lang.MapEntry. from to))
   IFlowEdgeInfo
-  (set-flow      [edge new-flow] (einfo. from to  capacity new-flow dir))
-  (set-capacity  [edge cap]      (einfo. from to cap flow dir))
+  (set-flow      [edge new-flow] (einfo. from to  capacity new-flow data))
+  (set-capacity  [edge cap]      (einfo. from to cap flow data))
   (inc-flow      [edge amt] (einfo. from to   (unchecked-subtract capacity amt)  
-                                              (unchecked-add flow amt) dir))
+                                              (unchecked-add flow amt) data))
   (edge-flow     [edge] flow)
   (edge-capacity [edge] capacity)  
   (capacity-to   [edge v]   (if (identical? v to) capacity flow)))

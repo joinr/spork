@@ -286,7 +286,6 @@
     ~init
     ~coll))
 
-
 ;;Filters over a 2-deep nested collection, ala reduce, using a
 ;;function taking 3 arguments: l r v.
 (definline kv-filter2 [f coll]
@@ -365,23 +364,41 @@
         _     (assert (> arity 1) "need at least one key and one value")]
     `(get ~m (tup/tuple ~@idxs))
     ))
-  
+
+;;Weakish.  
 
 (definterface IIntegerPair
   (^long fst [])
   (^long snd []))
+
+(binding [*unchecked-math* true]
   
-(deftype intPair [^long x ^long y ^:unsynchronized-mutable ^int hashcode]
-  IIntegerPair 
-  (^long fst [n] x)
-  (^long snd [n] y)
-  Object 
-  (hashCode [this]
-    (when (== -1 hashcode)
-      (set! hashcode (int (+ (* 31 (+ 31 x)) y))))
-    hashcode)
-  (equals  [this that]
-    (or (identical? this that)
-        (and (instance? spork.util.general.IIntegerPair that)             
-             (== x (.fst ^spork.util.general.IIntegerPair that))
-             (== y (.snd ^spork.util.general.IIntegerPair that))))))
+  (defmacro pair-hash [x y] 
+    `(+  (* 31 (+ 31 ~x)) ~y))
+
+  (deftype intPair [^long x ^long y  ^int hashcode]
+    IIntegerPair 
+    (^long fst [n] x)
+    (^long snd [n] y)
+    Object 
+    (hashCode [this] hashcode)
+    (equals  [this that] (== (.hashCode this) (.hashCode that))))
+  (defmacro coord [x y]
+    `(intPair. ~x ~y (pair-hash ~x ~y)))
+    
+)
+
+
+;;Note -> nth-binding actually works okay...it's not preferable, 
+;;but it will not kill performance.  This may work out okay for nd 
+;;keys.
+
+(defmacro apply-n [n f coll]
+  `(~f ~@(for [i (range n)]
+               `(nth ~coll ~i))))
+
+(defmacro apply-2 [f args] `(apply-n 2 ~f ~args))
+(defmacro apply-3 [f args] `(apply-n 3 ~f ~args))
+(defmacro apply-4 [f args] `(apply-n 4 ~f ~args))
+(defmacro apply-5 [f args] `(apply-n 5 ~f ~args))
+(defmacro apply-6 [f args] `(apply-n 6 ~f ~args))
