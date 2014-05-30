@@ -412,6 +412,7 @@
   ([smplx]
      (get-nonbasic-edges smplx)))
 
+;;Might be able to move this inline to simplex definition.
 (defn reduced-costs [smplx]
   (let [ps  (get smplx :potentials)
         net (get smplx :net)]            
@@ -437,6 +438,16 @@
         costf (fn [e] (reduced-cost e ps #(flow/-flow-weight net %1 %2)))]
     (filter (fn [e] (eligible-edge? e costf)) (get-nonbasic-edges smplx))))  
 
+(defn eligible-edges! [smplx]
+  (let [ps  (get smplx :potentials)
+        net (get smplx :net)
+        costf (fn [e] (reduced-cost e ps #(flow/-flow-weight net %1 %2)))]
+    (reduce (fn [^java.util.ArrayList acc e]
+              (if (eligible-edge? e costf)
+                  (doto acc (.add e)) 
+                  acc)) 
+            (java.util.ArrayList.) (get-nonbasic-edges smplx))))
+
 ;;We can simplify initializing our simplex algo by creating 
 ;;a dummy arc from source to sink, with a sufficiently large capacity 
 ;;and cost.
@@ -456,7 +467,6 @@
 ;;the zero-flow or lower set, and the capacitated or upper set. 
 ;;We will store indices here.  The edge partition handles the 
 ;;lower level drudgery of moving edges between partitions as we pivot.
-
 
 (defrecord transient-edge-partition 
     [^java.util.HashSet basic 
@@ -508,6 +518,8 @@
                                           (java.util.HashSet.) 
                                           (java.util.HashSet.)))))
 
+;;Simplex Initialization
+;;======================
 (defn init-potentials 
   ([root preds costf init-cost]
      (persistent! (update-all-potentials! preds costf (transient {root init-cost}))))
@@ -530,13 +542,18 @@
   ([net from to] (init-simplex net from to posinf)))
 
 ;;There's probably a nice way to abstract this out, pivot rules and
-;;whatnot, but we'll do that later.
-(defn find-entering-arc [smplx]
-  )
+;;whatnot, but we'll do that later.  We're selecting a random eligible
+;;arc here.
+(defn find-entering-edge! [smplx]  
+  (let [^java.util.ArrayList es (eligible-edges! smplx)]    
+    (.get es (rand-int (.size es)))))
+
+(defn find-entering-edge [smplx] (rand-nth (eligible-edges smplx)))
 
 
 ;;The result of a pivot should be the updated simplex, and a leaving arc.
 (defn pivot [smplx entering leaving]
+  
 )
 
 
