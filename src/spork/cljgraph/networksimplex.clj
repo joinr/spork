@@ -86,12 +86,14 @@
                     source sink tree potentials parts))
   (-active-flows [s] (flow/-active-flows net))
   IEdgePartition 
-  (basic-edge [p n] (simplex-net. augnet  edges
+  (basic-edge [p n] (simplex-net. net  edges
                                  source sink tree potentials (basic-edge parts n)))
-  (lower-edge [p n] (simplex-net. augnet  edges
+  (lower-edge [p n] (simplex-net. net  edges
                                   source sink tree potentials (lower-edge parts n)))
-  (upper-edge [p n] (simplex-net. augnet  edges
+  (upper-edge [p n] (simplex-net. net  edges
                                   source sink tree potentials (upper-edge parts n)))
+  ;;This is not necessary...and leads to slowdown.  While nice for
+  ;;debugging, we really don't want to query these guys in practice.
   (get-basic-edges [p]    (map #(nth p %) (get-basic-edges parts)))
   (get-lower-edges [p]    (map #(nth p %) (get-lower-edges parts)))
   (get-upper-edges [p]    (map #(nth p %) (get-upper-edges parts)))
@@ -419,6 +421,10 @@
     (for [e (get-nonbasic-edges smplx)]
       (reduced-cost e ps #(flow/-flow-weight net %1 %2)))))
 
+
+;;Edge Queries / Pricing
+;;======================
+
 ;;edges outside the basis are either full or empty;
 ;;Empty edges are eligible if their reduced cost is negative - pushing
 ;;flow will reduce the cost of flow; 
@@ -447,6 +453,25 @@
                   (doto acc (.add e)) 
                   acc)) 
             (java.util.ArrayList.) (get-nonbasic-edges smplx))))
+
+;;Performance Issues: 
+;;We want edge selection (.i.e Pivoting) to be efficient.  Really
+;;efficient.
+;;Some implementations (ala Sedgewick) just blast through the 
+;;edges in an array and find the first eligible edge, or they 
+;;implement Dantzig's rule and find the best.  Either way, they
+;;ignore (do not cache) the edge topology and use O(n) searches 
+;;to find the next eligible edge.
+
+;;In my desire to implement a simple, yet efficient pivot rule, 
+;;I would like to find eligible edges fast.  I'd also like to 
+;;inject some randomness into the pivot selection.
+;;We can go about this a couple of ways....
+
+;;1) Select edges randomly
+;;2) Block-Scan edges according to 
+
+
 
 ;;We can simplify initializing our simplex algo by creating 
 ;;a dummy arc from source to sink, with a sufficiently large capacity 
@@ -489,6 +514,9 @@
   (get-upper-edges [p] upper)
   (get-nonbasic-edges [p] (concat lower upper)))
 
+;;WIP
+(comment 
+
 (defrecord linear-edge-partition
     [^java.util.ArrayList items 
      ^long last-basic 
@@ -510,6 +538,7 @@
   (get-lower-edges [p] lower)
   (get-upper-edges [p] upper)
   (get-nonbasic-edges [p] (concat lower upper)))
+)
 
 ;;Exchanging an edge in a partition is simply swapping it out from 
 ;;the basis and pushing it either into the upper or lower set
