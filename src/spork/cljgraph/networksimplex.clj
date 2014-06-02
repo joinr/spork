@@ -22,8 +22,10 @@
   (get-nonbasic-edges [p])
   (basic? [p e]))
 
-(defprotocol IEdgeHueristic
-  (possibly-eligible? [smplx e]))
+(defprotocol IPricing
+  (edge-cost      [smplx  e])
+  (get-node-potential [smplx nd])
+  (set-node-potential [smplex nd pot]))
 
 ;;Applying the simplex method to the mincost flow 
 ;;problem requires a few extra bits of plumbing.
@@ -32,7 +34,6 @@
 ;;using matrics in linear programming, except we have 
 ;;the ability to take advantage of special structures in 
 ;;the network representation for extra efficiency.
-
 
 ;;We need to compute node potentials. 
 ;;Node potentials form a heuristic for defining 
@@ -45,7 +46,6 @@
 ;;We can interpret RC as the cost of buying at 
 ;;a node, shipping from the node to another, then 
 ;;selling (i.e. recouping cost) at the other node.
-
 
 ;;Edges exist in the net...
 ;;If we need random access to the edges, we can always add a 
@@ -60,7 +60,7 @@
   
 ;;Thus, reduced cost informs how much we may improve 
 ;;the objective, based on potentials.
-(defrecord simplex-net [net edges source sink tree parts potentials]
+(defrecord simplex-net [net nodes edges source sink tree potentials parts costs]
   generic/IGraphable 
   (-get-graph      [s] (generic/-get-graph net))
   flow/IFlowNet
@@ -69,32 +69,32 @@
   (-get-direction  [s from to] (flow/-get-direction net from to))
   (-flow-weight    [s from to] (flow/-flow-weight net from to))
   (-set-edge       [s edge]    
-      (simplex-net. (flow/-set-edge net edge) edges
-                    source sink tree potentials parts))
+      (simplex-net. (flow/-set-edge net edge) nodes edges
+                    source sink tree potentials parts costs))
   (-flow-sinks     [s x] (flow/-flow-sinks net x))
   (-flow-sources   [s x] (flow/-flow-sinks net x))
   (-push-flow      [s edge flow] 
-      (simplex-net. (flow/-push-flow net edge flow) edges
-                    source sink tree potentials parts))
+      (simplex-net. (flow/-push-flow net edge flow) nodes edges
+                    source sink tree potentials parts costs))
   flow/IDynamicFlow 
   (-update-edge  [s from to f]                  
-      (simplex-net. (flow/-update-edge net from to f) edges
-                    source sink tree potentials parts))
+      (simplex-net. (flow/-update-edge net from to f) nodes edges
+                    source sink tree potentials parts costs))
 
   (-disj-cap-arc   [s from to]  
-      (simplex-net. (flow/-disj-cap-arc net from to) edges
-                    source sink tree potentials parts))
+      (simplex-net. (flow/-disj-cap-arc net from to) nodes edges
+                    source sink tree potentials parts costs))
   (-conj-cap-arc [s from to w cap]                 
-      (simplex-net. (flow/-conj-cap-arc net from to w cap) edges
-                    source sink tree potentials parts))
+      (simplex-net. (flow/-conj-cap-arc net from to w cap) nodes edges
+                    source sink tree potentials parts costs))
   (-active-flows [s] (flow/-active-flows net))
   IEdgePartition 
-  (basic-edge [p n] (simplex-net. net  edges
-                                 source sink tree potentials (basic-edge parts n)))
-  (lower-edge [p n] (simplex-net. net  edges
-                                  source sink tree potentials (lower-edge parts n)))
-  (upper-edge [p n] (simplex-net. net  edges
-                                  source sink tree potentials (upper-edge parts n)))
+  (basic-edge [p n] (simplex-net. net  nodes edges
+                                 source sink tree potentials (basic-edge parts n) costs))
+  (lower-edge [p n] (simplex-net. net  nodes edges
+                                  source sink tree potentials (lower-edge parts n) costs))
+  (upper-edge [p n] (simplex-net. net  nodes edges
+                                  source sink tree potentials (upper-edge parts n) costs))
   ;;This is not necessary...and leads to slowdown.  While nice for
   ;;debugging, we really don't want to query these guys in practice.
   (get-basic-edges [p]    (map #(nth p %) (get-basic-edges parts)))
@@ -102,6 +102,10 @@
   (get-upper-edges [p]    (map #(nth p %) (get-upper-edges parts)))
   (get-nonbasic-edges [p] (map #(nth p %) (get-nonbasic-edges parts)))
   (basic? [p e]           (basic? parts  e))
+  IPricing
+  (edge-cost          [smplx e]     (nth costs (flow/edge-data e)))
+  (get-node-potential [smplx nd]    (get potentials nd))
+  (set-node-potential [smplex nd p] (assoc potentials nd p))
   clojure.lang.Indexed
   (nth [coll n] (nth edges n))
   (nth [coll n not-found] (if-let [res  (nth edges n)] res not-found)))
@@ -261,7 +265,7 @@
   (let [^spork.cljgraph.flow.edge-flows ef (get-edge-flows the-net (cycle-path preds from to))
          flow                      (.flow ef)
          ^java.util.ArrayList xs   (.edges ef)
-         n                         (.size xs)
+         n                         (long (.size xs))
          dropped                   (atom nil)]
     (loop [idx 0
            acc the-net]
@@ -383,12 +387,11 @@
                             (get pots to)))))
   ([edge smplx] 
      (let [from (flow/edge-from edge)
-           to   (flow/edge-to edge)
-           pots (get smplx :potentials)]
-       (unchecked-subtract (flow/-flow-weight smplx from to)
+           to   (flow/edge-to edge)]
+       (unchecked-subtract (edge-cost smplx edge)
                            (unchecked-subtract 
-                            (get pots from)
-                            (get pots to))))))
+                            (get-node-potential smplx from)
+                            (get-node-potential smplx  to))))))
 
 ;;Violating-arcs are arcs in L with negative reduced cost (we can 
 ;;push flow along them to reduce objective), ;and arcs in U with
@@ -428,10 +431,8 @@
 
 ;;Might be able to move this inline to simplex definition.
 (defn reduced-costs [smplx]
-  (let [ps  (get smplx :potentials)
-        net (get smplx :net)]            
-    (for [e (get-nonbasic-edges smplx)]
-      (reduced-cost e ps #(flow/-flow-weight net %1 %2)))))
+  (for [e (get-nonbasic-edges smplx)]
+    (reduced-cost e  smplx)))
 
 
 ;;Edge Queries / Pricing
@@ -668,11 +669,18 @@
                                             _ (swap! idx inc)]
                                         (flow/set-data e i))) 
                                     (augmented-network net from to dummycost))
+           [augnet nodes!] 
+                     (reduce-kv (fn [[g idxs] nd data] 
+                                  [(graph/relabel-node g nd (count idxs))
+                                   (conj! idxs nd)])
+                                [augnet (transient [])] (graph/nodes augnet))
+           node-map  (persistent! nodes!)
            spanning  (residual-spanning-tree augnet from to  )
            pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
            edges     (into [] (flow/einfos augnet))
+           costs     (mapv #(flow/-flow-weight augnet (flow/edge-from %) (flow/edge-to %)) edges)
            part      (partition-edges spanning edges)]
-       (->simplex-net augnet edges from to spanning part pots)))
+       (->simplex-net augnet node-map edges from to spanning  pots part costs)))
   ([net from to] (init-simplex net from to posinf)))
 
 ;;There's probably a nice way to abstract this out, pivot rules and
@@ -762,11 +770,15 @@
    [3 5 2 2 0]
    [4 5 2 1 0]])
 
+
+
 (def the-net (reduce (fn [acc [from to cap cost flow]]
                           (let [n (flow/-conj-cap-arc acc from to cost cap)]
                             (if (zero? flow)  n
                                 (flow/-push-flow n (flow/-edge-info n from to) flow))))
                      flow/empty-network the-arcs))
+
+
 
 (def aug-net (augmented-network the-net 0 5))
 
@@ -778,6 +790,8 @@
                  3 1 
                  4 1 
                  5 5})
+
+
 
 (def predmap (reduce (fn [^java.util.HashMap acc [k v]] (doto acc (.put k v)))
                      (java.util.HashMap.)
@@ -791,11 +805,19 @@
                                          _ (swap! idx inc)]
                                      (flow/set-data e i))) 
                                  (augmented-network the-net 0 5 9))
+        [augnet nodes] 
+                  (reduce-kv (fn [[g idxs] nd data] 
+                               [(graph/relabel-node g nd (count idxs))
+                                (conj! idxs nd)])
+                             [augnet (transient [])] (graph/nodes augnet))
+        node-map  (persistent! nodes)
         spanning  seg-preds
         pots      (init-potentials 5 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
         edges     (into [] (flow/einfos augnet))
+        costs     (mapv #(flow/-flow-weight augnet (flow/edge-from %) (flow/edge-to %)) edges)
         part      (partition-edges  edges spanning)]
-    (->simplex-net augnet edges 0 5 spanning  part pots)))
+    (->simplex-net augnet node-map edges 0 5 spanning pots part  costs)))
+
 
 ;;OBE
 ;;=======
@@ -891,4 +913,45 @@
   (get-lower-edges [p] (where-flag  +lower+ flags))
   (get-upper-edges [p] (where-flag  +upper+ flags))
   (get-nonbasic-edges [p] (except-flag +basic+ edges)))
+)
+
+
+(comment 
+
+
+(def the-arcs2
+  [[:zero  :one    3 3 0]
+   [:zero  :two    3 1 0]
+   [:one   :three  2 1 0]
+   [:one   :four   2 1 0]
+   [:two   :three  1 4 0]
+   [:two   :four   2 2 0]
+   [:three :five   2 2 0]
+   [:four  :five   2 1 0]])
+
+(def the-net2 (reduce (fn [acc [from to cap cost flow]]
+                          (let [n (flow/-conj-cap-arc acc from to cost cap)]
+                            (if (zero? flow)  n
+                                (flow/-push-flow n (flow/-edge-info n from to) flow))))
+                     flow/empty-network the-arcs2))
+
+(def seg-preds2  {:zero :five 
+                 :one :zero 
+                 :two :zero 
+                 :three :one 
+                 :four :one 
+                 :five :five})
+(def seg-simplex2 
+  (let [idx       (atom 0)
+        augnet    (flow/edge-map (fn [e] 
+                                   (let [i @idx
+                                         _ (swap! idx inc)]
+                                     (flow/set-data e i))) 
+                                 (augmented-network the-net2 :zero :five 9))
+        spanning  seg-preds2
+        pots      (init-potentials :five spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
+        edges     (into [] (flow/einfos augnet))
+        costs     (mapv #(flow/-flow-weight augnet (flow/edge-from %) (flow/edge-to %)) edges)
+        part      (partition-edges  edges spanning)]
+    (->simplex-net augnet edges :zero :five spanning pots part  costs)))
 )
