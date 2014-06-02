@@ -19,8 +19,11 @@
   (get-basic-edges [p])
   (get-lower-edges [p])
   (get-upper-edges [p])
-  (get-nonbasic-edges [p]))
+  (get-nonbasic-edges [p])
+  (basic? [p e]))
 
+(defprotocol IEdgeHueristic
+  (possibly-eligible? [smplx e]))
 
 ;;Applying the simplex method to the mincost flow 
 ;;problem requires a few extra bits of plumbing.
@@ -98,6 +101,7 @@
   (get-lower-edges [p]    (map #(nth p %) (get-lower-edges parts)))
   (get-upper-edges [p]    (map #(nth p %) (get-upper-edges parts)))
   (get-nonbasic-edges [p] (map #(nth p %) (get-nonbasic-edges parts)))
+  (basic? [p e]           (basic? parts  e))
   clojure.lang.Indexed
   (nth [coll n] (nth edges n))
   (nth [coll n not-found] (if-let [res  (nth edges n)] res not-found)))
@@ -376,6 +380,14 @@
        (unchecked-subtract (costf from to)
                            (unchecked-subtract 
                             (get pots from)
+                            (get pots to)))))
+  ([edge smplx] 
+     (let [from (flow/edge-from edge)
+           to   (flow/edge-to edge)
+           pots (get smplx :potentials)]
+       (unchecked-subtract (flow/-flow-weight smplx from to)
+                           (unchecked-subtract 
+                            (get pots from)
                             (get pots to))))))
 
 ;;Violating-arcs are arcs in L with negative reduced cost (we can 
@@ -396,7 +408,7 @@
 ;;We can detect if an edge is on the basis if the following 
 ;;conditions hold true: 
 
-;;Both it's from and to nodes are on the basis.
+;;Both its from and to nodes are on the basis.
 ;;From is the parent of to, or to is the parent of from 
 
 (defn in-basis? [spt edge]
@@ -436,6 +448,12 @@
        (neg? c#)
        (pos? c#))))
 
+;; (definline eligible-edge-cost? [non-basic-edge costf]
+;;   `(let [c# (~costf ~non-basic-edge)]
+;;      (if (zero? (flow/edge-flow ~non-basic-edge))
+;;        (neg? c#)
+;;        (pos? c#))))
+
 ;;Eligible edges are edges in L that have Negative reduced cost, 
 ;;and edges in U that have Positive reduced cost.
 (defn eligible-edges [smplx]
@@ -469,9 +487,72 @@
 ;;We can go about this a couple of ways....
 
 ;;1) Select edges randomly
-;;2) Block-Scan edges according to 
+;;2) Block-search edges according 
+;;3) Retain candidate list of edges 
+;;4) Mix and match.
+
+;;Most schemes will typically revolve around the block scanning
+;;mechanism.
+;;Let's create a data structure for performing block scans.
+;;A block scan maintains a block of edges to look at for eligibility.
+;;The block is a fixed-width.  At each iteration, we start from the 
+;;previous entering arc.  We examine a "block" of arcs, where the 
+;;block are the arcs indexed-adjacent to the entering index in 
+;;a random-access edge collection.  We scan out the block, 
+;;looking to find an eligible arc.  If we do, we pick the best one.
+;;It's like applying Dantzig's rule to a smaller portion of the 
+;;arcs at each iteration.  Once we update, the block is extended 
+;;to start at the last entering arc.
 
 
+
+;;This an implementation of Grigoriadis' block search.  We just 
+;;search a block at a time, looking for the "best" arc in the block.
+;;If we find an arc, great.  Otherwise, we continue searching.  
+;;If we roll over to the original index, we have exhausted all 
+;;blocks, and can find no eligible arcs.
+(defn search-by-blocks 
+  [init-arc block-width indexed-edges costf eligible?]
+  (let [bound (count indexed-edges)]
+    (loop [idx     (unchecked-inc init-arc)
+           width   block-width
+           mincost posinf
+           best     nil]
+      (cond (or (== idx init-arc)
+                (and (zero? width) min))    best ;either found an arc
+                                        ;or ran out
+                (== idx bound)        (recur 0  width mincost best) ;rollover
+                (not (eligible? idx)) (recur (unchecked-inc idx) (unchecked-dec width) 
+                                             mincost best) ;skip 
+                :else ;price the arc
+                (let [e     (nth indexed-edges idx)
+                      ecost (costf e)]              
+                  (if (< ecost mincost)
+                    (recur (unchecked-inc idx)
+                           (unchecked-dec width)                       
+                           ecost 
+                           e)
+                    (recur (unchecked-inc idx)
+                           (unchecked-dec width)                       
+                           mincost
+                           best)))))))
+
+(defn search-simplex-blocks [smplx init-arc block-width]
+  (search-by-blocks init-arc block-width (get smplx :edges) 
+                    #(reduced-cost % smplx) #(not (basic? smplx %))))
+
+(defn compute-block-width [smplx]
+  (let [count (count (get smplx :edges))]
+    (long (Math/sqrt count))))
+
+(comment
+
+(search-by-blocks 0 100 es 
+                  #(reduced-cost % (:potentials seg-simplex) 
+                                 (flow/-flow-weight seg-simplex 
+                                                    (flow/edge-from %) 
+                                                    (flow/edge-to %) )) identity)
+)
 
 ;;We can simplify initializing our simplex algo by creating 
 ;;a dummy arc from source to sink, with a sufficiently large capacity 
@@ -512,7 +593,8 @@
   (get-basic-edges [p] basic)
   (get-lower-edges [p] lower)
   (get-upper-edges [p] upper)
-  (get-nonbasic-edges [p] (concat lower upper)))
+  (get-nonbasic-edges [p] (concat lower upper))
+  (basic? [p e]           (.contains basic e)))
 
 ;;WIP
 (comment 
@@ -537,7 +619,8 @@
   (get-basic-edges [p] basic)
   (get-lower-edges [p] lower)
   (get-upper-edges [p] upper)
-  (get-nonbasic-edges [p] (concat lower upper)))
+  (get-nonbasic-edges [p] (concat lower upper))
+  (basic? [p e]           (.contains basic e)))
 )
 
 ;;Exchanging an edge in a partition is simply swapping it out from 
@@ -587,7 +670,7 @@
                                     (augmented-network net from to dummycost))
            spanning  (residual-spanning-tree augnet from to  )
            pots      (init-potentials to spanning (fn [from to] (flow/-flow-weight augnet from to)) (- dummycost))
-           edges     (flow/einfos augnet)
+           edges     (into [] (flow/einfos augnet))
            part      (partition-edges spanning edges)]
        (->simplex-net augnet edges from to spanning part pots)))
   ([net from to] (init-simplex net from to posinf)))
@@ -710,7 +793,7 @@
                                  (augmented-network the-net 0 5 9))
         spanning  seg-preds
         pots      (init-potentials 5 spanning (fn [from to] (flow/-flow-weight augnet from to)) -9)
-        edges     (flow/einfos augnet)
+        edges     (into [] (flow/einfos augnet))
         part      (partition-edges  edges spanning)]
     (->simplex-net augnet edges 0 5 spanning  part pots)))
 
