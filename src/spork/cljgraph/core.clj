@@ -70,6 +70,14 @@
    topograph g."
   [g] (keys (nodes g)))
 
+(defn get-graph-data 
+  "Returns any non-graph data associated with the graph g."
+  [g] (-get-graph-data g))
+
+(defn set-graph-data 
+  "Associates some data d with the graph."
+  [g d] (-set-graph-data g d))
+
 ;;Arc Operations
 ;;==============
 

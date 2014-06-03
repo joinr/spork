@@ -204,28 +204,7 @@
 (definline forward? [g from to] 
   `(contains? (get (:sinks ~g)  ~from) ~to))
 
-;;Current function, should be replaced by the commented one below.
-;; (definline get-edge-infos [n]
-;;   `(for [[from# vs#] (:flow-info ~n)
-;;          [to# info#] vs#]
-;;      info#))
 
-;;should be faster.
-;;================
-(definline get-edge-infos [n]
-  (let [acc (with-meta (gensym "acc") {:tag 'clojure.lang.ISeq})]
-    `(kv-reduce2 (fn [~acc from# to# v#] (.cons ~acc v#)) empty-list (get ~n :flow-info))))
-
-(definline get-edge-infos! [n]
-  `(let [infos# (:flow-info ~n)
-         finfo# (:flow-info (meta ~n))]     
-     (reduce-kv (fn [acc# from# tomap#]
-                  (reduce-kv (fn [acc2# to# v#]
-                               (m/push-arraylist acc# (get2 infos# from# to# nil)))
-                             acc#
-                             tomap#))
-                (java.util.ArrayList.)
-                finfo#)))
 
 ;;Operations on Map-backed Networks.
 ;;=================================
@@ -241,28 +220,51 @@
 ;;actually records, or defmutables, which can act like records 
 ;;and provide key-based access.
 
+
+;;Flow information is now stored in generic graph data in for 
+;;persistent graphs.
+(definline get-flow-info [g]   `(get (generic/-get-graph-data ~g) :flow-info {}))
+(definline set-flow-info [g finfo] `(generic/-set-graph-data ~g ~finfo))
+(defmacro update-flow-info [[finfo net] & body]
+  `(let [~finfo (get (generic/-get-graph-data ~net) :flow-info {})]
+     (generic/-set-graph-data ~net
+        (assoc ~finfo :flow-info ~@body))))
+
+;;Current function, should be replaced by the commented one below.
+;; (definline get-edge-infos [n]
+;;   `(for [[from# vs#] (:flow-info ~n)
+;;          [to# info#] vs#]
+;;      info#))
+
+;;should be faster.
+;;================
+(definline get-edge-infos [n]
+  (let [acc (with-meta (gensym "acc") {:tag 'clojure.lang.ISeq})]
+    `(kv-reduce2 (fn [~acc from# to# v#] (.cons ~acc v#)) empty-list (get-flow-info ~n))))
+
+(definline get-edge-infos! [n]
+  `(let [infos# (get-flow-info ~n)
+         finfo# (get-flow-info (meta ~n))]     
+     (reduce-kv (fn [acc# from# tomap#]
+                  (reduce-kv (fn [acc2# to# v#]
+                               (m/push-arraylist acc# (get2 infos# from# to# nil)))
+                             acc#
+                             tomap#))
+                (java.util.ArrayList.)
+                finfo#)))
+
 ;;This should be a bit faster.  We can get even faster if we 
 ;;insert some kind of mutable record container.
 (definline update-edge2*  
   [g from to cap flow]
-  `(assoc ~g :flow-info                  
-     (assoc2 (get ~g :flow-info {})
-       ~from ~to 
+  `(update-flow-info [finfo# ~g]                  
+     (assoc2 finfo# ~from ~to 
        (einfo. ~from ~to ~cap ~flow nil))))
 
 (defmacro alter-edge [sym g from to & expr]
   `(let [~(vary-meta sym assoc :tag 'spork.cljgraph.IEdgeInfo) (-edge-info ~g ~from ~to)]
-     (assoc ~g :flow-info
-            (assoc2 (get ~g :flow-info {})
-                    ~from ~to 
-                    ~@expr))))    
-;;transient op 
-(defmacro alter-edge! [sym g from to & expr]
-  `(let [~(vary-meta sym assoc :tag 'spork.cljgraph.IEdgeInfo) (-edge-info ~g ~from ~to)]
-     (assoc! ~g :flow-info
-            (assoc2! (get ~g :flow-info {})
-                    ~from ~to 
-                    ~@expr))))
+     (update-flow-info [finfo# ~g]
+        (assoc2 finfo# ~from ~to  ~@expr))))
 
 (defn current-capacity 
   ([^einfo info] (- (.capacity info) (.flow info)))
@@ -311,6 +313,7 @@
   `(if (forward? ~g ~from ~to)
      :forward
      :backward))
+ 
 
 ;;Network Data Types
 ;;==================
@@ -322,7 +325,7 @@
 (extend-type spork.data.digraph.digraph    
   IFlowNet
   (-edge-info     [net from to]  
-    (let [finfo (get net :flow-info)]
+    (let [finfo (get-flow-info net)]
       (if-let [fwd (get2 finfo from to nil)]
         fwd
         (if-let [bwd (get2 finfo to from nil)]
@@ -332,10 +335,10 @@
   (-get-direction [net from to]   (direction net from to))
   (-flow-weight   [net from to]   (forward-flow net from to))
   (-set-edge      [net edge]         
-    (assoc net :flow-info                  
-           (assoc2 (get net :flow-info {})
-                   (.from ^einfo edge) (.to ^einfo edge) 
-                   edge)))
+    (update-flow-info [finfo net]         
+      (assoc2 finfo
+              (.from ^einfo edge) (.to ^einfo edge) 
+              edge)))
   (-flow-sinks     [net x] (get2 net :sinks   x nil))
   (-flow-sources   [net x] (get2 net :sources x nil))
   (-push-flow      [net edge flow] (-set-edge net 
@@ -343,17 +346,17 @@
   IDynamicFlow
   (-update-edge  [net from to f] 
     (let [edge (-edge-info net from to)]
-      (assoc net :flow-info                  
-             (assoc2 (get net :flow-info {})
-                     from to  (f edge)))))
+      (update-flow-info [finfo net]
+        (assoc2 finfo
+                from to  (f edge)))))
   (-disj-cap-arc   [net from to]  
-    (let [finfo (dissoc2 (get net :flow-info) from to)]
+    (let [finfo (dissoc2 (get-flow-info net) from to)]
            (-> (graph/disj-arc net from to)
-               (assoc :flow-info finfo))))               
+               (set-flow-info finfo))))               
   (-conj-cap-arc [net from to w cap]  
-         (let [finfo (get net :flow-info)]
+         (let [finfo (get-flow-info net)]
            (-> (graph/conj-arc net from to w)
-               (assoc :flow-info finfo)
+               (set-flow-info finfo)
                (update-edge2* from to cap 0))))
   (-active-flows [net]  (generic/loop-reduce 
                          (fn [acc ^einfo info] 
@@ -1308,5 +1311,13 @@
 
 (defn ^einfo medge->edge [^meinfo edge]
   (einfo. (.edge-from edge) (.edge-to edge) (.edge-capacity edge) (.edge-flow edge) (.edge-data edge)))
+
+;;transient op 
+(defmacro alter-edge! [sym g from to & expr]
+  `(let [~(vary-meta sym assoc :tag 'spork.cljgraph.IEdgeInfo) (-edge-info ~g ~from ~to)]
+     (assoc! ~g :flow-info
+            (assoc2! (get ~g :flow-info {})
+                    ~from ~to 
+                    ~@expr))))
 
 )

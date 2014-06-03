@@ -318,7 +318,9 @@
   (-get-arc   [tg source sink] "Fetches the weight of the arc from source to sink.")
   (-arc-weight [tg source sink] "Returns the weight of the arc from source to sink.")
   (-get-sources [tg k] "Returns a sequence of nodes that have arcs to node k.")
-  (-get-sinks [tg k] "Returns a sequence of nodes that k has an arc to."))
+  (-get-sinks [tg k] "Returns a sequence of nodes that k has an arc to.")
+  (-get-graph-data [tg]   "Returns supplemental data associated with the graph.")
+  (-set-graph-data [tg d] "Sets supplemental data associated with the graph."))
 
 (defn topograph? [x] (satisfies? ITopograph x))
 
