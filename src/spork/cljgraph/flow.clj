@@ -39,6 +39,11 @@
 ;;Network Protocols
 ;;=================
 
+;;Protocol to abstract how we access our flow information.
+(defprotocol IFlowContainer 
+  (get-flow-info [net])
+  (set-flow-info [net d]))
+
 ;;Abstract container for networks.
 (defprotocol IFlowNet
   (-edge-info      [net from to])
@@ -49,6 +54,7 @@
   (-flow-sinks     [net x])
   (-flow-sources   [net x])
   (-push-flow      [net edge flow]))
+
 
 (defprotocol IDynamicFlow
   (-update-edge    [net from to f])
@@ -142,7 +148,7 @@
   (edge-from     [d]    from)
   (edge-to       [d]    to)
   (edge-data     [e]   data)
-  (edge-pair [d]    (clojure.lang.MapEntry. from to))
+  (edge-pair     [d]  (clojure.lang.MapEntry. from to))
   IFlowEdgeInfo
   (set-flow      [edge new-flow] (do (set! flow new-flow) edge))
   (set-capacity  [edge cap]      (do (set! capacity cap)  edge))
@@ -223,12 +229,25 @@
 
 ;;Flow information is now stored in generic graph data in for 
 ;;persistent graphs.
-(definline get-flow-info [g]   `(get (generic/-get-graph-data ~g) :flow-info {}))
-(definline set-flow-info [g finfo] `(generic/-set-graph-data ~g ~finfo))
-(defmacro update-flow-info [[finfo net] & body]
-  `(let [~finfo (get (generic/-get-graph-data ~net) :flow-info {})]
-     (generic/-set-graph-data ~net
-        (assoc ~finfo :flow-info ~@body))))
+
+;;Note -> definline (and defmacro) are complaining about the
+;;-get-graph-data  stuff in the API because it thinks it's a field 
+;;access.  Ugh.
+
+;;move this out to protocols.core.
+(defmacro update-graph-data [[gdata g] & body]
+  `(let [~gdata (generic/-get-graph-data ~g)]
+     (generic/-set-graph-data ~g ~@body)))
+
+;; (defmacro  update-flow-info [[finfo net] & body]
+;;   `(let [gd#    (generic/-get-graph-data ~net)
+;;          ~finfo (get gd# :flow-info {})]
+;;      (generic/-set-graph-data ~net
+;;        (assoc gd# :flow-info ~@body))))
+
+(defmacro  update-flow-info [[finfo net] & body]
+  `(let [~finfo (get-flow-info ~net)]
+     (set-flow-info ~net ~@body)))
 
 ;;Current function, should be replaced by the commented one below.
 ;; (definline get-edge-infos [n]
@@ -244,7 +263,7 @@
 
 (definline get-edge-infos! [n]
   `(let [infos# (get-flow-info ~n)
-         finfo# (get-flow-info (meta ~n))]     
+         finfo# (get (meta ~n) :flow-info)]     
      (reduce-kv (fn [acc# from# tomap#]
                   (reduce-kv (fn [acc2# to# v#]
                                (m/push-arraylist acc# (get2 infos# from# to# nil)))
@@ -302,7 +321,8 @@
 
 ;;add multiple capacitated arcs to the network.
 (defn conj-cap-arcs [g arcs]
-  (reduce (fn [gr [from to w cap]]  (-conj-cap-arc  gr from to w cap)) g arcs))
+  (reduce (fn [gr [from to w cap]]  
+            (-conj-cap-arc  gr from to w cap)) g arcs))
 
 (defmacro forward-flow [g from to]
   `(if (forward? ~g ~from ~to) 
@@ -365,7 +385,11 @@
                                (cons  [[(.from info) (.to info)]  (.flow info)] acc) 
                                acc))) 
                          '()
-                         (get-edge-infos net)))) 
+                         (get-edge-infos net)))
+   IFlowContainer 
+   (get-flow-info [g]   (get (generic/-get-graph-data g) :flow-info {}))
+   (set-flow-info [g d] (update-graph-data [gdata g]
+                          (assoc gdata :flow-info  d))))
 
 ;;A transient network that uses mutable edges.
 ;;This will knock off costs to assoc.  We just 
@@ -429,7 +453,10 @@
                (recur (unchecked-inc idx)
                      (if (pos? f)
                          (cons (clojure.lang.MapEntry. (edge-pair info)  f) acc)
-                         acc))))))))
+                         acc)))))))
+  IFlowContainer 
+   (get-flow-info [g]   flow-info)
+   (set-flow-info [g d] (do (set! flow-info d) g)))
   
 ;;Constructors for various networks.
 ;;=================================
@@ -441,7 +468,7 @@
 
 ;A simple set of helper functions let us embed flow data
 ;;in a spork.data.digraph record.
-(def empty-network (assoc graph/empty-graph :flow-info {}))
+(def empty-network (generic/-set-graph-data graph/empty-graph {:flow-info {}}))
 
 ;;We can create transient networks from existing networks to 
 ;;speed up ex. mincost flow computations, or even a series of 
@@ -458,24 +485,24 @@
                         (fn [acc from to v] 
                           (assoc2! acc from to (edge->medge v)))
                         (transient {})
-                        (get g :flow-info))]        
-  (transient-net.  g  flow-info! {:flow-info (:flow-info g)})))
+                        (get-flow-info g))]        
+  (transient-net.  g  flow-info! {:flow-info (get-flow-info g)})))
 
 (defn persistent-network! [^transient-net the-net]
   (let [g (:g the-net)]
-    (assoc g
-           :flow-info (kv-map2 (fn [_ _ v] (medge->edge v)) (persistent2! (get the-net :flow-info))))))
+    (set-flow-info
+       g (kv-map2 (fn [_ _ v] (medge->edge v)) (persistent2! (get-flow-info the-net))))))
 
 ;;THe API prizes edge-update by accessing edge infos 
 ;;directly.  Consequently, we only want to pay the cost 
 ;;of looking up an edge once.  
 (defn flows [g] 
-  (for [[from vs] (:flow-info g)
+  (for [[from vs] (get-flow-info g)
         [to info] vs]
     [[from to] (select-keys info [:capacity :flow])]))
 
 (defn enumerate-edges [g]
-  (let [infos (get g :flow-info)
+  (let [infos (get-flow-info g)
         ks    (keys infos)]
     (for [k ks]
       (let [m (get infos k)
@@ -586,28 +613,7 @@
                               acc# (get-children net from#))))))))
   ([startnode f net] (edge-reduce-from startnode f net  spork.cljgraph.flow/-flow-sinks net)))
 
-;;persistent version....slower but more portable.
-;; (defn edge-reduce-from 
-;;   ([startnode f init  get-children net]
-;;      (let [visited# (atom (transient {}))
-;;            visited?# (fn [from# to#]
-;;                        (spork.util.general/get2 @visited# from# to# nil))
-;;            visit!#   (fn [from# to#]
-;;                        (reset! visited# (spork.util.general/assoc2! @visited# from# to# 1)))]
-;;        (loop [fringe# #{startnode}
-;;               acc#     init] 
-;;          (if (zero? (.count fringe#)) acc#
-;;              (let [from# (first fringe#)
-;;                    children# (reduce-kv
-;;                               (fn [acc# k# v#] (conj acc# k#)) #{} (get-children net from#))]
-;;                (recur (clojure.set/union (disj fringe# from#) children#)
-;;                       (reduce (fn [inner-acc# to#]
-;;                                 (if (visited?# from# to#)  inner-acc#
-;;                                     (let [_   (visit!# from# to#)
-;;                                           e#  (spork.cljgraph.flow/-edge-info net from# to#)]
-;;                                       (f inner-acc# e#))))
-;;                               acc# children#)))))))
-;;   ([startnode f net] (edge-reduce-from startnode f net  spork.cljgraph.flow/-flow-sinks net)))
+
 
 (defn edge-map-from 
   ([startnode f get-children net]
@@ -704,7 +710,7 @@
   "Custom macro to walk a transient flow network."
   [net startnode targetnode startstate & {:keys [weightf neighborf]}]
   (let [xs (tagged 'java.util.ArrayList "xs")]
-    `(loop [state#   (-> (assoc! ~startstate :targetnode ~targetnode)
+    `(loop [state#   (-> (generic/set-target ~startstate  ~targetnode)
                          (generic/conj-fringe ~startnode 0))]
        (if-let [source#    (generic/next-fringe state#)] ;next node to visit
          (let  [visited#   (generic/visit-node state# source#)] ;record visit.
@@ -1321,3 +1327,27 @@
                     ~@expr))))
 
 )
+
+
+;;persistent version....slower but more portable.
+;; (defn edge-reduce-from 
+;;   ([startnode f init  get-children net]
+;;      (let [visited# (atom (transient {}))
+;;            visited?# (fn [from# to#]
+;;                        (spork.util.general/get2 @visited# from# to# nil))
+;;            visit!#   (fn [from# to#]
+;;                        (reset! visited# (spork.util.general/assoc2! @visited# from# to# 1)))]
+;;        (loop [fringe# #{startnode}
+;;               acc#     init] 
+;;          (if (zero? (.count fringe#)) acc#
+;;              (let [from# (first fringe#)
+;;                    children# (reduce-kv
+;;                               (fn [acc# k# v#] (conj acc# k#)) #{} (get-children net from#))]
+;;                (recur (clojure.set/union (disj fringe# from#) children#)
+;;                       (reduce (fn [inner-acc# to#]
+;;                                 (if (visited?# from# to#)  inner-acc#
+;;                                     (let [_   (visit!# from# to#)
+;;                                           e#  (spork.cljgraph.flow/-edge-info net from# to#)]
+;;                                       (f inner-acc# e#))))
+;;                               acc# children#)))))))
+;;   ([startnode f net] (edge-reduce-from startnode f net  spork.cljgraph.flow/-flow-sinks net)))
