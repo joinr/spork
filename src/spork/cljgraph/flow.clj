@@ -1009,9 +1009,10 @@
      ~@body))
 
 
-(let [mcf (flow-fn default-flow-opts)]
-  (defn mincost-flow 
-    [net from to]  (compute-flow mcf net from to)))
+
+(let [mcf (flow-fn default-flow-opts)] 
+  (defn mincost-flow [net from to]  
+    (compute-flow mcf net from to)))
 
 (let [aug-flow (flow-fn (assoc default-flow-opts :augmentations true))]
   (defn augmentations [net from to]

@@ -426,9 +426,9 @@
   ([state] (get-paths state (:targetnode state))))
 
 (defn first-path [state]  
-  (let [startnode  (:startnode state)
-        targetnode (:targetnode state)
-        spt        (:shortest state)]
+  (let [startnode  (get state :startnode )
+        targetnode (get state :targetnode )
+        spt        (get state :shortest)]
     (when (generic/best-known-distance state targetnode)
       (loop [node   targetnode
              path   (cons targetnode nil)]
