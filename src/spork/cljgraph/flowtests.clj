@@ -44,9 +44,9 @@
 
 (defn scaled-flow-test [& {:keys [n scalar] :or {n 100000 scalar 3}}]
   (with-scaled-flow scalar     
-    (let [scaled-flow (eval (flow-fn *flow-options*))]
+    (let [scaled-flow (flow-fn *flow-options*)]
       (time (dotimes [i n]
-            (scaled-flow (transient-network the-net) :s :t))))))
+            (compute-flow scaled-flow (transient-network the-net) :s :t))))))
 
 (defn pflow-test [& {:keys [n] :or {n 100000}}]
   (time (doseq [i (pmap (fn [i] (mincost-flow the-net :s :t)) (range n))]

@@ -185,7 +185,7 @@
    to indices.  Internal graph operations are performed on primitive arrays."
   [supply-net]
   (let [^objects node-template (index-nodes supply-net)
-        nodemap (into {} (map-indexed vector node-template))
+        nodemap   (into {} (map-indexed vector node-template))
         node->num (into {} (map-indexed (fn [i r] [r i]) node-template))
         nodes     (alength node-template)
         fill-node  (unchecked-dec nodes)
