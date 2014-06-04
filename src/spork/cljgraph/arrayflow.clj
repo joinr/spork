@@ -60,7 +60,7 @@
 ;  (let [a (with-meta axp {:tag 'spork.cljgraph.arrayflow.IArrayNet})]
 (defmacro do-edges [arr a i j expr]
   `(let [~a ~arr
-         bound# (_n ~a)]
+         bound# (long (_n ~a))]
      (loop [~i 0]
        (if (== ~i bound#) ~a
            (do (loop [~j 0]
@@ -358,10 +358,10 @@
         state))))
 
 (defn first-path [^arraysearch a]
-  (let [^long target (:targetnode a)]
-    (when (generic/best-known-distance a (:targetnode a))
-      (let [^long source (:startnode a)
-            ^longs spt   (:shortest a)]
+  (let [^long target (get a :targetnode )]
+    (when (generic/best-known-distance a target)
+      (let [^long source (get a :startnode )
+            ^longs spt   (get a :shortest )]
         (loop [idx target
                acc '()]
           (if (== idx source) (cons source acc)

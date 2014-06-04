@@ -827,10 +827,10 @@
 ;;Persistent augmentation actually sets the edge to the result 
 ;;of increasing flow.
 (defn augment-flow [the-net p get-edge-flows]
-  (let [^edge-flows ef (get-edge-flows the-net p)
-         flow (.flow ef)
+  (let [^edge-flows ef             (get-edge-flows the-net p)
+         flow                      (.flow  ef)
          ^java.util.ArrayList xs   (.edges ef)
-         n     (.size xs)]
+         n                         (.size  xs)]
     (loop [idx 0
            acc the-net]
       (if (== idx n) acc
@@ -934,9 +934,6 @@
                      (throw (Exception. (str "unknown aug type" 
                                              (:augmentations opts#))))))))
 
-(defn ->flow [options]
-  (with-flow-options options
-    (flow-fn *flow-options*)))
 
 ;;High level API
 ;;==============
@@ -1008,6 +1005,11 @@
          ~'neighborf (:neighborf ~ctx)]
      ~@body))
 
+
+
+(defn ->flow [options]
+  (with-flow-options options
+    (flow-fn *flow-options*)))
 
 
 (let [mcf (flow-fn default-flow-opts)] 
