@@ -119,7 +119,7 @@
 (declare array-sinks array-sources)
 
 (defrecord array-net  [g ^objects nodes nodenum nodemap ^long n 
-                         ^objects flows ^objects capacities ^objects costs scaling]
+                         ^objects flows ^objects capacities ^objects costs scaling ]
   IArrayNet
   (_flows      [net] flows)
   (_capacities [net] capacities)
@@ -165,7 +165,7 @@
                        (when (pos? flow)                           
                          (.add xs (spork.cljgraph.flow.einfo. i j 
                                   (arr/deep-aget longs capacities i j) 
-                                  flow  :increment) )))))
+                                  flow  nil) )))))
        xs)))
 
 (defn ^array-net clone-network [^array-net an]
@@ -227,33 +227,35 @@
       ;;scaled
       (do 
         (loop [to 0] ;forward arcs
-          (when (not (== to bound))
+          (if  (== to bound) nil
             (if (== to v) (recur (unchecked-inc to))
                 (do (when (> (flow/scale scaling (arr/deep-aget longs capacities v to)) 0)
                       (.add acc to))
                     (recur (unchecked-inc to))))))
         (loop [from 0]
-          (when (not (== from bound))
+          (if (== from bound) nil
             (if (== from v) (recur (unchecked-inc from))
-                (do (when (and (not (zero? (flow/scale scaling (arr/deep-aget longs flows from v))))
-                               (not (neg?  (flow/scale scaling (arr/deep-aget longs capacities from v)))))
+                (do (if (or (zero? (flow/scale scaling (arr/deep-aget longs flows from v)))
+                            (neg?  (flow/scale scaling (arr/deep-aget longs capacities from v))))
+                      nil
                       (.add acc from))
                     (recur (unchecked-inc from))))))
         acc)
       ;;unscaled
       (do 
         (loop [to 0] ;forward arcs
-          (when (not (== to bound))
+          (if (== to bound) nil
             (if (== to v) (recur (unchecked-inc to))
                 (do (when (> (arr/deep-aget longs capacities v to) 0)
                       (.add acc to))
                     (recur (unchecked-inc to))))))
         (loop [from 0]
-          (when (not (== from bound))
+          (if  (== from bound) nil
             (if (== from v) (recur (unchecked-inc from))
-                (do (when (and (not (zero? (arr/deep-aget longs flows from v)))
-                               (not (neg?  (arr/deep-aget longs capacities from v))))
-                      (.add acc from))
+                (do (if (or  (zero? (arr/deep-aget longs flows from v))
+                             (neg?  (arr/deep-aget longs capacities from v))) 
+                        nil
+                        (.add acc from))
                     (recur (unchecked-inc from))))))
         acc))))
 
@@ -360,7 +362,7 @@
 (defn first-path [^arraysearch a]
   (let [^long target (get a :targetnode )]
     (when (generic/best-known-distance a target)
-      (let [^long source (get a :startnode )
+      (let [source (get a :startnode )
             ^longs spt   (get a :shortest )]
         (loop [idx target
                acc '()]
@@ -397,6 +399,22 @@
 
 ;;There's an optimization here.  WE can avoid the intermediate
 ;;long-array conversion cost if we use the list methods.
+;; (defn array-augment-flow [^array-net the-net ^clojure.lang.ISeq p]
+;;   (let [^objects flows (.flows the-net)
+;;         ^objects capacities (.capacities the-net)
+;;         ^long flow  (if-not  (.scaling the-net)
+;;                       ^long (array-max-flow flows capacities p)
+;;                       ^long (array-max-flow flows capacities p (.scaling the-net)))]
+;;     (do (loop [^long from (.first p)
+;;                ^clojure.lang.ISeq xs (.next p)]
+;;           (when-let [^long to (.first xs)] 
+;;             (if (< from to)
+;;               (do (array-inc-flow! the-net from to ^long flow)
+;;                   (recur to (.next xs)))
+;;               (do (array-dec-flow! the-net to from ^long flow)
+;;                   (recur to (.next xs))))))))
+;;         the-net)  
+
 (defn array-augment-flow [^array-net the-net p]
   (let [^longs xs (long-array p)
         ^objects flows (.flows the-net)
@@ -414,7 +432,8 @@
                       (recur (unchecked-inc idx)))
                   (do (array-dec-flow! the-net to from ^long flow)
                       (recur (unchecked-inc idx)))))))
-        the-net)))       
+        the-net)))
+
 
 (defn array-mincost-flow! [^array-net the-net ^long from ^long to]
   (loop [acc the-net]
