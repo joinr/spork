@@ -141,7 +141,9 @@
   (conj-visited [state source])
   (best-known-distance [state x])
   (set-target   [state nd])
+  (get-target   [state])
   (set-start    [state nd])
+  (get-start    [state])
   (set-estimator [state estimator]))
 
 (definline visit-node

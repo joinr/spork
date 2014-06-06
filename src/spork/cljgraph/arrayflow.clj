@@ -25,7 +25,7 @@
 ;;quick hash into any arc....
 ;;Rather than traversing every arc for neighbor queries, we 
 ;;cache active arcs. 
-;;If the arc is inactive, skip it.
+
 
 
 (def ^:const posinf Long/MAX_VALUE)
@@ -53,12 +53,32 @@
   (do (arr/deep-aset longs (_capacities a) from to cap)
       a))
 
-(defn  array-inc-flow! [a ^long from ^long to ^long flow]
-  (let [flows      (_flows a)
-        capacities (_capacities a)]
-    (do (arr/deep-aset longs flows from to (unchecked-add (arr/deep-aget longs flows from to) flow))
-        (arr/deep-aset longs capacities from to (unchecked-subtract (arr/deep-aget longs capacities from to) flow))
-        a)))
+;; (defn  array-inc-flow! [a ^long from ^long to ^long flow]
+;;   (let [flows      (_flows a)
+;;         capacities (_capacities a)]
+;;     (do (arr/deep-aset longs flows from to (unchecked-add (arr/deep-aget longs flows from to) flow))
+;;         (arr/deep-aset longs capacities from to (unchecked-subtract (arr/deep-aget longs capacities from to) flow))
+;;         a)))
+
+(definline  array-inc-flow! [a from to flow]
+  `(let [flows#      (_flows ~a)
+         capacities# (_capacities ~a)
+         from# (long ~from)
+         to#   (long ~to)
+         flow# (long ~flow)]
+     (do (arr/deep-aset ~'longs flows# from# to# (unchecked-add (arr/deep-aget ~'longs flows# from# to#) flow#))
+         (arr/deep-aset ~'longs capacities# from# to# (unchecked-subtract (arr/deep-aget ~'longs capacities# from# to#) flow#))
+         ~a)))
+
+;; (definline  array-inc-flow! [a from to flow]
+;;   `(let [flows#      (_flows ~a)
+;;          capacities# (_capacities ~a)
+;;          from#  ~from
+;;          to#    ~to
+;;          flow#  ~flow]
+;;      (do (arr/deep-aset ~'longs flows# from# to# (unchecked-add (arr/deep-aget ~'longs flows# from# to#) flow#))
+;;          (arr/deep-aset ~'longs capacities# from# to# (unchecked-subtract (arr/deep-aget ~'longs capacities# from# to#) flow#))
+;;          ~a)))
 
 (defn  array-dec-flow! [a ^long from ^long to ^long flow]
   (let [flows (_flows a)
@@ -296,6 +316,10 @@
                       state)))
   (equal-path [state source sink] state)
   (conj-visited [state source] state)
+  (set-target   [state nd] (do (set! targetnode (long nd)) state))
+  (get-target   [state]         targetnode)
+  (set-start    [state nd] (do (set! startnode (long nd)) state))
+  (get-start    [state]         startnode)
   (best-known-distance [state x] (if (aget known x) (aget distance x) nil))
   IFlowSearch
   (newPath [state ^long source ^long sink ^long w]
@@ -370,9 +394,9 @@
         state))))
 
 (defn first-path [^arraysearch a]
-  (let [^long target (get a :targetnode )]
+  (let [target (.get-target a)]
     (when (generic/best-known-distance a target)
-      (let [source (get a :startnode )
+      (let [source (.get-start a)
             ^longs spt   (get a :shortest )]
         (loop [idx target
                acc '()]

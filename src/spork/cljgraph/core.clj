@@ -106,7 +106,6 @@
   [g from to]
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
   (-arc-weight g from to))
-    
 
 ;;Graph Construction
 ;;==================
@@ -120,24 +119,17 @@
 (defn neighbors "Nodes with arcs to or from k" [g k]  
   (vec (distinct (mapcat #(% g k) [sources sinks]))))
 
-(defn- get-degree [g nd f]
-  (if-let [itms (f g nd)]
-    (if (contains? itms  nd)
-      (inc (count itms))
-      (count itms))
-    0))
-
 (defn get-indegree
   "What is the in-degree of the node?  For directed graphs, how many incident 
    arcs does this node serve as the sink for?  Self-loops count twice."
   [g nd]
-  (get-degree g nd sources))
+  (count (sources g nd)))
       
 (defn get-outdegree
   "What is the in-degree of the node?  For directed graphs, how many incident 
    arcs does this node serve as the sink for?  Self-loops count twice."
   [g nd]
-  (get-degree g nd sinks))
+  (count (sinks get-degree g nd)))
 
 (def missing-node? (comp not has-node?))
 
@@ -171,12 +163,12 @@
 (defn arcs-from
   "Returns a vector of arcs sourced by nd, of the form [nd to weight]."
   [g nd]  
-  (vec (map (partial -get-arc g nd) (sinks g nd))))
+  (mapv #(-get-arc g nd %) (sinks g nd)))
 
 (defn arcs-to
   "Returns a vector of arcs terminated by nd, of the form [from nd weight]."
   [g nd]  
-  (vec (map #(-get-arc g % nd) (sources g nd))))
+  (mapv #(-get-arc g % nd) (sources g nd)))
 
 (defn arc-seq 
   "Return a sequence of directed arcs the consitute the graph."
@@ -218,22 +210,22 @@
   "A wrapper around the more thorough traversals defined in
    spork.cljgraph.search  .  Performs a depth traversal of the graph, starting 
    at startnode.  Used to define other higher order graph queries."
-  [g startnode & {:keys [neighborf]}]
-  (search/depth-walk g startnode :neighborf neighborf))
+  [g startnode opts]
+  (search/depth-walk g startnode ::undefined opts))
  
 (defn breadth-walk
   "A wrapper around the more thorough traversals defined in
    spork.cljgraph.search  .  Performs a breadth traversal of the graph, starting 
    at startnode.  Used to define other higher order graph queries."
-  [g startnode & {:keys [neighborf]}]
-  (search/breadth-walk g startnode :neighborf neighborf))
+  [g startnode opts]
+  (search/breadth-walk g startnode ::undefined opts))
 
 (defn random-walk
   "A wrapper around the more thorough traversals defined in
    spork.cljgraph.search  .  Performs a random traversal of the graph, starting 
    at startnode.  Used to define other higher order graph queries."
-  [g startnode & {:keys [neighborf]}]
-  (search/random-walk g startnode :neighborf neighborf))
+  [g startnode opts]
+  (search/random-walk g startnode ::undefined opts))
 
 (defn ordered-walk
   "A wrapper around the more thorough traversals defined in
@@ -241,14 +233,14 @@
    the neighbors are visited in the order they were appended to the graph.
    Starts walking from  startnode.  Used to define other higher order graph 
    queries."
-  [g startnode & {:keys [neighborf]}]
-  (search/ordered-walk g startnode :neighborf neighborf))
+  [g startnode opts]
+  (search/ordered-walk g startnode ::undefined opts))
 
 (defn undirected-walk
   "Performs a depth-first traversal of the graph, treating the directed graph 
    as an undirected graph.  Starts walking from  startnode."
   [g startnode]
-  (search/depth-walk g startnode :neighborf (neighbor-by neighbors)))
+  (search/depth-walk g startnode ::undefined {:neighborf (neighbor-by neighbors)}))
 
 ;;Node Orderings
 ;;==============
@@ -258,26 +250,26 @@
 (defn depth-nodes
   "Returns the nodes visited in a depth traversal of the graph, starting 
    at startnode."  
-  [g startnode & {:keys [neighborf]}] 
-  (:visited (depth-walk g startnode :neighborf neighborf)))
+  [g startnode opts] 
+  (:visited (depth-walk g startnode opts)))
 
 (defn breadth-nodes
   "Returns the nodes visited in a breadth traversal of the graph, starting 
    at startnode."  
-  [g startnode & {:keys [neighborf]}] 
-  (:visited (breadth-walk g startnode :neighborf neighborf)))
+  [g startnode opts] 
+  (:visited (breadth-walk g startnode  opts)))
 
 (defn random-nodes
   "Returns the nodes visited in a random traversal of the graph, starting 
    at startnode."  
-  [g startnode & {:keys [neighborf]}] 
-  (:visited (random-walk g startnode :neighborf neighborf)))
+  [g startnode opts] 
+  (:visited (random-walk g startnode  opts)))
 
 (defn ordered-nodes
   "Returns the nodes visited in an ordered traversal of the graph, starting 
    at startnode."  
-  [g startnode & {:keys [neighborf]}] 
-  (:visited (ordered-walk g startnode :neighborf neighborf)))
+  [g startnode opts] 
+  (:visited (ordered-walk g startnode  opts)))
 
 (defn undirected-nodes
   "Returns the nodes visited in a depth-first traversal of the graph, starting 

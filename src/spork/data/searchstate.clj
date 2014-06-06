@@ -117,6 +117,8 @@
   (set-estimator [state e] (searchstate. startnode targetnode shortest distance fringe e visited))
   (set-target   [state nd] (searchstate. startnode nd shortest distance fringe estimator visited))
   (set-start    [state nd] (searchstate. nd targetnode shortest distance fringe estimator visited))
+  (get-target   [state] targetnode)
+  (get-start    [state] startnode)
   (new-path     [state source sink w] (new-path* source sink w state))           
   (shorter-path [state source sink wnew wpast]
     (shorter-path* source sink wnew wpast state))
@@ -151,6 +153,8 @@
   (set-estimator [state e] (searchstate2. startnode targetnode shortest distance fringe e visited))
   (set-target   [state nd] (searchstate2. startnode nd shortest distance fringe estimator visited))
   (set-start    [state nd] (searchstate2. nd targetnode shortest distance fringe estimator visited))
+  (get-target   [state] targetnode)
+  (get-start    [state] startnode)
   (new-path     [state source sink w]
     (update-searchstate  
      :shortest (assoc shortest sink source)
@@ -189,6 +193,8 @@
   (set-estimator [state e] (do (set! estimator e) state))
   (set-target   [state nd] (do (set! targetnode  nd) state))
   (set-start    [state nd] (do (set! startnode  nd ) state))   
+  (get-target   [state] targetnode)
+  (get-start    [state] startnode)
   (new-path     [state source sink w]
     (do (set! shortest (assoc shortest sink source))
         (set! distance (assoc distance sink w))
@@ -231,6 +237,8 @@
   (set-estimator [state e] (do (set! estimator e) state))
   (set-target   [state nd] (do (set! targetnode  nd) state))
   (set-start    [state nd] (do (set! startnode  nd ) state))   
+  (get-target   [state] targetnode)
+  (get-start    [state] startnode)
   (new-path     [state source sink w]
     (do (set! shortest (assoc! shortest sink source))
         (set! distance (assoc! distance sink w))
@@ -277,6 +285,8 @@
   (set-estimator [state e] (do (set! estimator e) state))
   (set-target   [state nd] (do (set! targetnode  nd) state))
   (set-start    [state nd] (do (set! startnode  nd ) state))            
+  (get-target   [state] targetnode)
+  (get-start    [state] startnode)
   (new-path     [state source sink w]
     (do (.put shortest sink source)
         (.put distance sink w)
