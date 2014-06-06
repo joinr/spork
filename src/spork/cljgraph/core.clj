@@ -287,16 +287,16 @@
 (defn succs
   "Returns the a set of all the nodes reachable starting from node k."
   [g k] 
-  (disj (set (depth-nodes g k :neighborf (neighbor-by sinks))) k))
+  (disj (set (depth-nodes g k {:neighborf (neighbor-by sinks)})) k))
 
 (defn preds
   "Returns the set of all the nodes that can reach node k."
   [g k] 
-  (disj (set (depth-nodes g k :neighborf (neighbor-by sources))) k))
+  (disj (set (depth-nodes g k {:neighborf (neighbor-by sources)})) k))
 
 (defn component
   "Returns the set of nodes that can reach or can be reached through node k."  
-  [g k] (set (depth-nodes g k :neighborf (neighbor-by neighbors))))
+  [g k] (set (depth-nodes g k {:neighborf (neighbor-by neighbors)})))
 
 (defn components
   "Finds all components in the topograh, returning a mapping of component size 
@@ -314,7 +314,7 @@
 (defn islands
   "Returns a sequence of nodes that are unreachable."
   [g] 
-  (filter (partial island? g)  (get-node-labels g)))
+  (filter #(island? g %)  (get-node-labels g)))
 
 (defn get-roots
   "Fetch the roots for graph g, where roots are nodes that have no inbound or 
@@ -365,7 +365,6 @@
 
 ;;Topological Sorting
 ;;=================================
-
 (defn topsort
   "Topologically sort the graph, returning a sequence of sets of topological 
    roots.  Multiple valid topological orderings may be returned from the
@@ -389,12 +388,39 @@
   (persistent! 
     (reduce (fn [acc xs] (reduce conj! acc xs)) (transient []) (topsort g)))) 
 
+(comment
+(fn-curried-options 
+  [g start end {default-options {}}]
+(defmacro fn-curried-options [args & body]
+  (let [[xs & [opts]] args
+        [opt-name opt-val] opts
+        xargs  (conj (vec xs) opt-name)]
+    `(let [default-opts# ~opt-val]
+       (fn ([~@xs]
+              (let [~opt-name ~opt-val] ~@body))
+         ([~@[xs & [opt-name]]
+           (let [~opt-name (if (identical? ~opt-name default-opts#)
+                             (
+
+
+  )
 ;;Searches
 ;;========
+(defmacro defsearch 
+  ([name doc [g start end] [default-opts opts-map] body]
+     `(defn ~name ~doc  
+        ([~g ~start ~end opts#] 
+           (let [opts# (if (identical? ~default-opts) opts# 
+                           (reduce-kv (fn [m# k# v#] 
+                                        (assoc m# k# v#)) ~default-opts opts#))]
+             ~body))
+        ([~g ~start ~end] (~name ~g ~start ~end 
+                                   
+(defsearch depth-first-search [g startnode endnode] [default-options {}]
 
+                                            
 ;;Explicit searches, merely enforces a walk called with an actual destination
 ;;node.  Return the common searchstate data that the walks utilize.
-
 (defn depth-first-search
   "Starting from startnode, explores g using a depth-first strategy, looking for
    endnode.  Returns a search state, which contains the shortest path tree or 
@@ -402,7 +428,7 @@
    not guaranteed to find the actual shortest path, thus the shortest path tree
    may be invalid."
   [g startnode endnode]
-  (search/dfs g startnode endnode))
+  (search/depth-walk g startnode endnode {}))
 
 (defn breadth-first-search
   "Starting from startnode, explores g using a breadth-first strategy, looking 
@@ -411,7 +437,7 @@
    is not guaranteed to find the actual shortest path, thus the shortest path 
    tree may be invalid."
   [g startnode endnode]
-  (search/bfs g startnode endnode))
+  (search/breadth-walk g startnode endnode {}))
 
 (defn priority-first-search
   "Starting from startnode, explores g using a priority-first strategy, looking 
@@ -420,19 +446,22 @@
    algorithm.  Note: Requires that arc weights are non-negative.  For negative 
    arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode]
-  (search/pfs g startnode endnode))
+  (search/priority-walk g startnode endnode {}))
 
-(defn random-search 
-  "Starting from startnode, explores g using random choices, looking 
-   for endnode. Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
-   algorithm.  Note: Requires that arc weights are non-negative.  For negative 
-   arc weights, use Bellman-Ford, or condition the graph."
+(defn random-search
+  "Starting from startnode, explores g using random choice, looking for endnode. 
+   Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree."
   [g startnode endnode]
-  (search/rfs g startnode endnode))
+  (search/random-walk g startnode endnode {}))
 
 ;;Single Source Shortest Paths
 ;;============================
+
+;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
+;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
+;;automatically switches to A*.
+
 (defn dijkstra
   "Starting from startnode, explores g using dijkstra's algorithm, looking for
    endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
@@ -440,8 +469,18 @@
    search state, which contains the shortest path tree or precedence tree, the 
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode] 
-  (search/dijkstra g startnode endnode))
+  [g startnode endnode  {:keys [weightf neighborf] 
+                         :or   {weightf   (get-weightf g) 
+                                neighborf (get-neighborf g)}}]
+  (search/priority-walk g startnode endnode
+   {:weightf  (fn [g source sink]
+                (let [w (weightf g source sink)]
+                  (if (>= w 0)  w ;positive only
+                      (throw 
+                       (Exception. 
+                        (str "Negative Arc Weight Detected in Dijkstra: " 
+                             [source sink w]))))))
+    :neighborf neighborf}))                                            
 
 ;;__TODO__ Check implementation of a-star, I think this is generally correct.
 (defn a-star
@@ -452,7 +491,24 @@
    a source node and target node, and returns an estimated weight to be 
    added to the actual weight.  Note, the estimated value must be non-negative."
   [g heuristic-func startnode endnode]
-  (search/a* g heuristic-func startnode endnode))
+  (search/traverse g startnode endnode 
+    (generic/set-estimator (searchstate/mempty-PFS startnode) heuristic-func)))
+
+;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
+
+(defn negative-cycles?
+  "Predicate for determining if the spt in the search state resulted in negative
+   cycles."
+  [g final-search-state weightf]
+  (let [distance  (:distance final-search-state)
+        ;we violate the triangle inequality if we can improve any distance.
+        improvement? (fn [arc]
+                       (let [[u v] arc]
+                         (when (< (+ (get distance u) (weightf g u v)) 
+                                  (get distance v))    u)))
+        nodes (keys (generic/-get-nodes g))]
+    (filter improvement? (for [u nodes
+                             v (generic/-get-sinks g u)]  [u v]))))
 
 (defn bellman-ford
   "The Bellman-Ford algorithm can be represented as a generic search similar
@@ -460,11 +516,29 @@
    we allow negative edge weights, and non-negative cycles.  The search uses 
    a queue for the fringe, rather than a priority queue.  Other than that, 
    the search steps are almost identical."
-  [g startnode endnode & {:keys [weightf neighborf]
-                          :or   {weightf   arc-weight
-                                 neighborf (neighbor-by sinks)}}]
-  (search/bellman-ford g startnode endnode :weightf weightf 
-                                           :neighborf neighborf))
+  [g startnode endnode {:keys [weightf neighborf] 
+                         :or   {weightf   (get-weightf g) 
+                                neighborf (get-neighborf g)}}]
+  (throw (Exception. "Bellman-ford is currently not verified.  Tests are not passing."))
+  (let [startstate    (assoc (searchstate/empty-BFS startnode) 
+                             :targetnode endnode)
+        bound         (dec (count (generic/-get-nodes g))) ;v - 1 
+        get-neighbors (partial neighborf g)
+        validate      (fn [s] (if-let [res (first 
+                                             (negative-cycles? g s weightf))]
+                                (assoc s :negative-cycles res)
+                                  s))]
+    (loop [state (generic/conj-fringe startstate startnode 0)
+           idx   0]
+        (if (or  (= idx bound) (generic/empty-fringe? state))
+          (validate state) 
+          (let [source     (generic/next-fringe state)]  ;next node to visit   
+            (recur (generic/loop-reduce 
+                       (fn [acc sink] 
+                         (generic/relax acc (weightf g source sink) source sink))
+                       (generic/visit-node state source) 
+                       (get-neighbors source state))
+                   (unchecked-inc idx)))))))
 
 (defn bellman-ford-DAG 
   "If we know that graph g is a Directed Acyclic Graph before hand, we can 
