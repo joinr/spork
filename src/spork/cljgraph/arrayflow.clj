@@ -18,6 +18,16 @@
 ;;Thus, we can define a dynamic graph and use mutation to get a huge
 ;;speed boost.  Plus, neighbor searches should be friggin' fast.
 
+
+
+;;Another speed boost -> 
+;;Since nodes are ordered as consecutive integers, we have a
+;;quick hash into any arc....
+;;Rather than traversing every arc for neighbor queries, we 
+;;cache active arcs. 
+;;If the arc is inactive, skip it.
+
+
 (def ^:const posinf Long/MAX_VALUE)
 (def ^:const neginf Long/MIN_VALUE)
 
