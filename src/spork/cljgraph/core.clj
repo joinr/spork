@@ -3,7 +3,7 @@
 ;;queries, generic walks, searches, and single-source shortest path
 ;;algorithms.  
 (ns spork.cljgraph.core
-  (:require [spork.protocols.core :refer :all]
+  (:require [spork.protocols [core :as generic]]
             [spork.cljgraph [search :as search]]
             [spork.data     [digraph :as dig] [searchstate :as sstate]] 
             [spork.util     [topographic :as top]]))
@@ -32,27 +32,27 @@
 
 (defn nodes
   "Returns a persistent map - of node keys to node data - used by topograph."
-  [g] (-get-nodes g))
+  [g] (generic/-get-nodes g))
 
-(defn has-node? [g nd] (-has-node? g nd))
-(defn has-arc?  [g source sink] (-has-arc? g source sink))
+(defn has-node? [g nd] (generic/-has-node? g nd))
+(defn has-arc?  [g source sink] (generic/-has-arc? g source sink))
 
 ;;This could be a bit destructive.  It allows changing existing nodes.
 (defn set-node
   "Allows the data mapped to an existing node to be replaced."
   [g k v]
   (assert (has-node? g k) (str "Cannot set a non-existent node: " k))
-  (-set-nodes g (assoc (-get-nodes g) k v)))
+  (generic/-set-nodes g (assoc (generic/-get-nodes g) k v)))
 
 ;;Fixed to prevent losing neighborhoods.  When nodes are conjoined, if they 
 ;;already exist, the neighborhood is maintained, only the value is conjoined.
 (defn conj-node 
-  ([g k v]   (if (-has-node? g k) (set-node g k v) (-conj-node g k v)))
-  ([g k]     (conj-node g k (count (-get-nodes g)))))
+  ([g k v]   (if (generic/-has-node? g k) (set-node g k v) (generic/-conj-node g k v)))
+  ([g k]     (conj-node g k (count (generic/-get-nodes g)))))
 
 (defn disj-node
   "Removes node k, and any arcs incident to node k are also removed."
-  [g k] (-disj-node g k))
+  [g k] (generic/-disj-node g k))
 
 (defn drop-nodes
   "Disjoins all nodes in coll from the g, including incident arcs."
@@ -63,7 +63,7 @@
 
 (defn get-node
   "Fetches the data associated with k in the topograph's node map."
-  [g k] (get (-get-nodes g) k)) 
+  [g k] (get (generic/-get-nodes g) k)) 
 
 (defn get-node-labels
   "Fetches the keys, implied to be node labels, associated with the nodes in 
@@ -72,11 +72,11 @@
 
 (defn get-graph-data 
   "Returns any non-graph data associated with the graph g."
-  [g] (-get-graph-data g))
+  [g] (generic/-get-graph-data g))
 
 (defn set-graph-data 
   "Associates some data d with the graph."
-  [g d] (-set-graph-data g d))
+  [g d] (generic/-set-graph-data g d))
 
 ;;Arc Operations
 ;;==============
@@ -85,12 +85,12 @@
   "Adds an arc from source to sink, with an optional weight w.  If neither node
    exists, nodes are created implicity.  This allows easy inline construction of 
    graphs."  
-  ([g source sink w] (-conj-arc (ensure-nodes g [source sink]) source sink w))
+  ([g source sink w] (generic/-conj-arc (ensure-nodes g [source sink]) source sink w))
   ([g source sink] (conj-arc g source sink 1)))
 
 (defn disj-arc
   "Drops the arc from source to sink, if one exists in the topograph."
-  [g source sink] (-disj-arc g source sink))
+  [g source sink] (generic/-disj-arc g source sink))
 
 (defn add-arcs
   "Adds a sequence of arcs, xs, where xs are [from to & [w]]."
@@ -105,7 +105,7 @@
   "The weight of an arc [from to] in g."
   [g from to]
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
-  (-arc-weight g from to))
+  (generic/-arc-weight g from to))
 
 ;;Graph Construction
 ;;==================
@@ -114,8 +114,8 @@
 
 ;;Neighborhood operations
 ;;=======================
-(defn sinks   "Nodes with arcs from k"  [g k]  (-get-sinks g k))
-(defn sources "Nodes with arcs to   k"  [g k]  (-get-sources g k))
+(defn sinks   "Nodes with arcs from k"  [g k]  (generic/-get-sinks g k))
+(defn sources "Nodes with arcs to   k"  [g k]  (generic/-get-sources g k))
 (defn neighbors "Nodes with arcs to or from k" [g k]  
   (vec (distinct (mapcat #(% g k) [sources sinks]))))
 
@@ -129,7 +129,7 @@
   "What is the in-degree of the node?  For directed graphs, how many incident 
    arcs does this node serve as the sink for?  Self-loops count twice."
   [g nd]
-  (count (sinks get-degree g nd)))
+  (count (sinks  g nd)))
 
 (def missing-node? (comp not has-node?))
 
@@ -163,12 +163,12 @@
 (defn arcs-from
   "Returns a vector of arcs sourced by nd, of the form [nd to weight]."
   [g nd]  
-  (mapv #(-get-arc g nd %) (sinks g nd)))
+  (mapv #(generic/-get-arc g nd %) (sinks g nd)))
 
 (defn arcs-to
   "Returns a vector of arcs terminated by nd, of the form [from nd weight]."
   [g nd]  
-  (mapv #(-get-arc g % nd) (sources g nd)))
+  (mapv #(generic/-get-arc g % nd) (sources g nd)))
 
 (defn arc-seq 
   "Return a sequence of directed arcs the consitute the graph."
@@ -388,36 +388,27 @@
   (persistent! 
     (reduce (fn [acc xs] (reduce conj! acc xs)) (transient []) (topsort g)))) 
 
-(comment
-(fn-curried-options 
-  [g start end {default-options {}}]
-(defmacro fn-curried-options [args & body]
-  (let [[xs & [opts]] args
-        [opt-name opt-val] opts
-        xargs  (conj (vec xs) opt-name)]
-    `(let [default-opts# ~opt-val]
-       (fn ([~@xs]
-              (let [~opt-name ~opt-val] ~@body))
-         ([~@[xs & [opt-name]]
-           (let [~opt-name (if (identical? ~opt-name default-opts#)
-                             (
-
-
-  )
 ;;Searches
 ;;========
 (defmacro defsearch 
-  ([name doc [g start end] [default-opts opts-map] body]
-     `(defn ~name ~doc  
-        ([~g ~start ~end opts#] 
-           (let [opts# (if (identical? ~default-opts) opts# 
-                           (reduce-kv (fn [m# k# v#] 
-                                        (assoc m# k# v#)) ~default-opts opts#))]
-             ~body))
-        ([~g ~start ~end] (~name ~g ~start ~end 
-                                   
-(defsearch depth-first-search [g startnode endnode] [default-options {}]
-
+  "Defines a search function with two declarations:  Assumes the last arg in the 
+   init-args declaration is a default argument map for spork.cljgraph.search/traverse, and 
+   sets it up so that those are piped in.  Caller can override any options traverse uses, 
+   providing keys for :weight :neighborf :halt?"
+  [name doc init-args body]
+  (let [args (subvec init-args 0 (dec (count init-args)))
+        default-options (last init-args)
+        default-values  (get default-options :or)]
+    (let [opts          (get default-options :or default-options)
+          default-binds (reduce (fn [acc [k v]] (-> acc (conj k) (conj v))) [] opts)
+          user-options  'user-options ;(gensym "user-options")
+          user-binds    (reduce (fn [acc [k v]] (-> acc (conj k) (conj `(get ~user-options ~(keyword k) ~v)))) [] opts)]    
+      `(let [~@default-binds]
+         (defn ~name ~doc 
+           (~args ~body)
+           ([~@args ~user-options]
+              (let ~user-binds
+                 ~body)))))))     
                                             
 ;;Explicit searches, merely enforces a walk called with an actual destination
 ;;node.  Return the common searchstate data that the walks utilize.
@@ -427,8 +418,8 @@
    precedence tree, the shortest distance tree.  Note: depth first search is 
    not guaranteed to find the actual shortest path, thus the shortest path tree
    may be invalid."
-  [g startnode endnode]
-  (search/depth-walk g startnode endnode {}))
+  ([g startnode endnode]      (search/depth-walk g startnode endnode))
+  ([g startnode endnode opts] (search/depth-walk g startnode endnode opts)))
 
 (defn breadth-first-search
   "Starting from startnode, explores g using a breadth-first strategy, looking 
@@ -436,8 +427,8 @@
    or precedence tree, the shortest distance tree.  Note: breadth first search 
    is not guaranteed to find the actual shortest path, thus the shortest path 
    tree may be invalid."
-  [g startnode endnode]
-  (search/breadth-walk g startnode endnode {}))
+  ([g startnode endnode]      (search/breadth-walk g startnode endnode))
+  ([g startnode endnode opts] (search/breadth-walk g startnode endnode opts)))
 
 (defn priority-first-search
   "Starting from startnode, explores g using a priority-first strategy, looking 
@@ -445,15 +436,15 @@
    precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
    algorithm.  Note: Requires that arc weights are non-negative.  For negative 
    arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode]
-  (search/priority-walk g startnode endnode {}))
+  ([g startnode endnode]      (search/priority-walk g startnode endnode))
+  ([g startnode endnode opts] (search/priority-walk g startnode endnode opts)))
 
 (defn random-search
   "Starting from startnode, explores g using random choice, looking for endnode. 
    Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree."
-  [g startnode endnode]
-  (search/random-walk g startnode endnode {}))
+  ([g startnode endnode]      (search/random-walk g startnode endnode))
+  ([g startnode endnode opts] (search/random-walk g startnode endnode opts)))
 
 ;;Single Source Shortest Paths
 ;;============================
@@ -470,12 +461,12 @@
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
   [g startnode endnode  {:keys [weightf neighborf] 
-                         :or   {weightf   (get-weightf g) 
-                                neighborf (get-neighborf g)}}]
+                         :or   {weightf   (search/get-weightf g) 
+                                neighborf (search/get-neighborf g)}}]
   (search/priority-walk g startnode endnode
    {:weightf  (fn [g source sink]
                 (let [w (weightf g source sink)]
-                  (if (>= w 0)  w ;positive only
+                  (if (pos? w)  w ;positive only
                       (throw 
                        (Exception. 
                         (str "Negative Arc Weight Detected in Dijkstra: " 
@@ -492,7 +483,7 @@
    added to the actual weight.  Note, the estimated value must be non-negative."
   [g heuristic-func startnode endnode]
   (search/traverse g startnode endnode 
-    (generic/set-estimator (searchstate/mempty-PFS startnode) heuristic-func)))
+    (generic/set-estimator (sstate/mempty-PFS startnode) heuristic-func)))
 
 ;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
 
@@ -517,27 +508,28 @@
    a queue for the fringe, rather than a priority queue.  Other than that, 
    the search steps are almost identical."
   [g startnode endnode {:keys [weightf neighborf] 
-                         :or   {weightf   (get-weightf g) 
-                                neighborf (get-neighborf g)}}]
-  (throw (Exception. "Bellman-ford is currently not verified.  Tests are not passing."))
-  (let [startstate    (assoc (searchstate/empty-BFS startnode) 
-                             :targetnode endnode)
-        bound         (dec (count (generic/-get-nodes g))) ;v - 1 
-        get-neighbors (partial neighborf g)
+                         :or   {weightf   (search/get-weightf g) 
+                                neighborf (search/get-neighborf g)}}]
+;  (throw (Exception. "Bellman-ford is currently not verified.  Tests are not passing."))
+  (let [startstate    (-> (sstate/mempty-BFS startnode)
+                          (generic/set-start startnode)
+                          (generic/set-target endnode))
+        bound          (dec (count (generic/-get-nodes g))) ;v - 1 
         validate      (fn [s] (if-let [res (first 
                                              (negative-cycles? g s weightf))]
                                 (assoc s :negative-cycles res)
                                   s))]
     (loop [state (generic/conj-fringe startstate startnode 0)
            idx   0]
-        (if (or  (= idx bound) (generic/empty-fringe? state))
+        (if (or  (== idx bound) (generic/empty-fringe? state))
           (validate state) 
-          (let [source     (generic/next-fringe state)]  ;next node to visit   
+          (let [source     (generic/next-fringe state)
+                _ (println [:visiting source])]  ;next node to visit   
             (recur (generic/loop-reduce 
                        (fn [acc sink] 
                          (generic/relax acc (weightf g source sink) source sink))
                        (generic/visit-node state source) 
-                       (get-neighbors source state))
+                       (neighborf g source state))
                    (unchecked-inc idx)))))))
 
 (defn bellman-ford-DAG 
@@ -546,9 +538,9 @@
    and endnode, and bellman-ford just those nodes.  This is faster, as it can 
    eliminate many vertices, and only performs one pass through the vertices to 
    compute the shortest path tree."
-  [g startnode endnode & {:keys [weightf neighborf]
-                          :or   {weightf   arc-weight
-                                 neighborf (neighbor-by sinks)}}]
+  [g startnode endnode  {:keys [weightf neighborf]
+                         :or   {weightf   arc-weight
+                                neighborf (neighbor-by sinks)}}]
   (if-let [ordered-nodes (->> (topsort-nodes g)
                               (drop-while #(not= % startnode))
                               (take-while #(not= % endnode)))]

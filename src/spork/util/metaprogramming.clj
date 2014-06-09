@@ -91,3 +91,73 @@
 
 
    
+(comment 
+(defmacro defn-curried-options
+  [name doc args [user-opts opts-val] body]
+  (let [folded-body (clojure.walk/postwalk-replace {user-opts opts-val} body)]
+    `(defn ~name ~doc  
+       ([~@args ~user-opts] 
+          ~body)
+       ([~@args] 
+          ~folded-body))))
+
+(defn symbolize [k] 
+  (cond (symbol? k)  k
+        (keyword? k) (symbol (subs  (str k) 1))
+        (string? k)  (symbol k)
+        :else (throw (Exception. (str "No way to make a symbol from " k)))))
+
+(defmacro with-keys [ks env & body]
+  `(let [~'*env* ~env
+         ~@(mapcat (fn [k] `(~(symbolize k) (get ~'*env* ~(if (symbol? k) (list 'quote k) 
+                                                                       k)))) ks)]
+     ~@body))    
+
+;;This provides a much faster alternative to the RestFn generating,
+;;yet "idiomatic" form of defn, where optional args are elided as 
+;;maps or vectors.  Here, we imply that the optional args will
+;;definitely take the form of a finite map as a final arg. 
+;;Otherwise, a normal function body with pre-evaluated defaults is used.
+(defmacro defn-curried-options
+  [name doc args opts-map body]
+  (let [locals (vec (keys opts-map))]
+    `(with-keys  ~locals  ~opts-map
+      (defn ~name ~doc  
+        ([~@args ~'user-env] 
+           (with-keys ~locals ~'user-env
+             ~body))
+        ([~@args]  ~body)))))
+
+(defn split-args-by [symb coll ]
+  (loop [xs coll
+         acc []]
+    (if (empty? xs) [acc nil]
+        (let [x  (first xs)
+              ys (rest  xs)]
+          (if (= x symb) [acc (first ys)]
+            (recur ys 
+                   (conj acc x)))))))
+
+(defn options->spec [m]
+  (let [vars     (get m :keys)
+        defaults (get m :or)
+        name     (get m :as 'options)]
+    [vars defaults name]))
+        
+;;the easiest thing to do is to over-ride the 
+;;defn behavior and augment it...
+;;something like, with-curried-varargs 
+(defmacro defn-curried-options
+  [name doc args body]
+  (let [[args opts-map]           (split-args-by '&optional args)
+        [locals defaults mapname] (options->spec opts-map)]
+    `(let [~mapname  ~defaults
+           ~opts-map ~mapname]
+         (defn ~name ~doc  
+           ([~@args ~'user-env]  
+              (let [~mapname (reduce-kv (fn [m# k# v#] (assoc m# k# (get ~'user-env v#)))
+                                        ~defaults ~locals)
+                    ~opts-map ~mapname]
+                ~body))              
+           ([~@args]  ~body)))))
+)

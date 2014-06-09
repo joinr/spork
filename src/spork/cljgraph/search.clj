@@ -152,6 +152,8 @@
      (defn ~name ~docstring 
        ([~'g ~'startnode]
             (traverse ~'g ~'startnode ::undefined (~state-ctor ~'startnode) defaults#))
+       ([~'g ~'startnode ~'endnode]
+            (traverse ~'g ~'startnode ~'endnode (~state-ctor ~'startnode) defaults#))
        ([~'g ~'startnode ~'endnode ~'user-opts] 
           (let [clean-opts# 
                 (if (or (not (identical? ~'user-opts defaults#)) (pos? (count ~'user-opts)))
