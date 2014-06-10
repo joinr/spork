@@ -485,6 +485,8 @@
   (search/traverse g startnode endnode 
     (generic/set-estimator (sstate/mempty-PFS startnode) heuristic-func)))
 
+
+
 ;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
 
 (defn negative-cycles?
@@ -493,13 +495,16 @@
   [g final-search-state weightf]
   (let [distance  (:distance final-search-state)
         ;we violate the triangle inequality if we can improve any distance.
-        improvement? (fn [arc]
-                       (let [[u v] arc]
+        improvement? (fn [x]
+                       (let [u (nth x 0)
+                             v (nth x 1)]
                          (when (< (+ (get distance u) (weightf g u v)) 
                                   (get distance v))    u)))
-        nodes (keys (generic/-get-nodes g))]
-    (filter improvement? (for [u nodes
-                             v (generic/-get-sinks g u)]  [u v]))))
+        nodes (:visited final-search-state)]
+    (->> 
+         (for [u nodes
+               v (generic/-get-sinks g u)]  [u v])
+         (filter improvement?))))
 
 (defn bellman-ford
   "The Bellman-Ford algorithm can be represented as a generic search similar
@@ -510,7 +515,6 @@
   [g startnode endnode {:keys [weightf neighborf] 
                          :or   {weightf   (search/get-weightf g) 
                                 neighborf (search/get-neighborf g)}}]
-;  (throw (Exception. "Bellman-ford is currently not verified.  Tests are not passing."))
   (let [startstate    (-> (sstate/mempty-BFS startnode)
                           (generic/set-start startnode)
                           (generic/set-target endnode))
@@ -519,12 +523,11 @@
                                              (negative-cycles? g s weightf))]
                                 (assoc s :negative-cycles res)
                                   s))]
-    (loop [state (generic/conj-fringe startstate startnode 0)
+    (loop [state (generic/conj-fring startstate startnode 0)
            idx   0]
         (if (or  (== idx bound) (generic/empty-fringe? state))
-          (validate state) 
-          (let [source     (generic/next-fringe state)
-                _ (println [:visiting source])]  ;next node to visit   
+          (validate state)
+          (let [source     (generic/next-fringe state)]  ;next node to visit   
             (recur (generic/loop-reduce 
                        (fn [acc sink] 
                          (generic/relax acc (weightf g source sink) source sink))
@@ -544,11 +547,12 @@
   (if-let [ordered-nodes (->> (topsort-nodes g)
                               (drop-while #(not= % startnode))
                               (take-while #(not= % endnode)))]
-      (let [node-filter (hash-set ordered-nodes)
+      (let [node-filter (into #{endnode} ordered-nodes)
             filtered-neighbors (fn [g nd state] 
-                                 (filter node-filter (neighborf g nd state)))]
-        (bellman-ford g startnode endnode :weightf weightf 
-                                          :neighborf filtered-neighbors))
+                                 (filter node-filter (neighborf g nd state)))
+            _ (println [ordered-nodes node-filter])]
+        (bellman-ford g startnode endnode {:weightf weightf 
+                                           :neighborf filtered-neighbors}))
       ;startnode does not precede endnode in the topological order.
       nil))
 
@@ -570,6 +574,8 @@
    node is pulled from the search state."
   ([state target] (sstate/get-paths state target))
   ([state] (get-paths state (:targetnode state))))
+
+(defn first-path [state] (sstate/first-path state))
 
 (defn get-weighted-paths 
   "Given a search state and a target node, returns a lazy sequence of 
