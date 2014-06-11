@@ -7,7 +7,40 @@
             [spork.cljgraph [search :as search]]
             [spork.data     [digraph :as dig] [searchstate :as sstate]] 
             [spork.util     [topographic :as top]]))
- 
+
+;;Helpful infrastructure, maybe move this guy over to
+;;spork.utils.metaprogramming
+;;I wrote these to address a current weakness in clojure's idiomatic 
+;;varargs implementation:  any RestFn objects that are created - via 
+;;partial or having a varargs function declaration, injects a serious 
+;;performance penalty in practice.  Clojure defaults to array-seq'ing 
+;;the args every time, which injects a ton of bottlenecks.  So, 
+;;my way around it is to provide some forms for defining functions 
+;;that look similar to the variadic forms.  Users supply a single
+;;value for the optional args, else a lower-arity function will 
+;;be invoked and use defaults at no cost.  In practice, this is 
+;;much more efficient.  Anything you can do to avoid RestFn 
+;;generation is really important for efficiency.
+(defmacro defn-curried-options [name doc args opt-map & body]
+  (let [opts (gensym "opt-map")
+        args+opts (conj args opt-map)
+        args+nil  (conj args nil)]
+    `(defn ~name ~doc 
+       ([~@args] (~name ~@args+nil))
+       ([~@args+opts] ~@body))))
+
+(defmacro implicitly-curried-options 
+  [name doc args body]
+  `(defn-curried-options ~name ~doc ~(vec (butlast args)) ~(last args) ~body))
+
+(defmacro with-implicitly-curried-options [& exprs]
+  `(do ~@(map (fn [expr] 
+            (if (not= (first expr) 'defn) expr
+                (cons 'implicitly-curried-options (rest expr)))) exprs)))
+
+;;Graph API
+;;=========
+
 (def empty-graph dig/empty-digraph)
 (def empty-ordered-graph dig/empty-ordered-digraph)
 
@@ -206,76 +239,79 @@
 ;;We build more mundane queries, like the depth-first ordering of nodes, out 
 ;;of the walks, simply yielding the order of visitation.
 
-(defn depth-walk
-  "A wrapper around the more thorough traversals defined in
-   spork.cljgraph.search  .  Performs a depth traversal of the graph, starting 
-   at startnode.  Used to define other higher order graph queries."
-  [g startnode opts]
-  (search/depth-walk g startnode ::undefined opts))
- 
-(defn breadth-walk
-  "A wrapper around the more thorough traversals defined in
-   spork.cljgraph.search  .  Performs a breadth traversal of the graph, starting 
-   at startnode.  Used to define other higher order graph queries."
-  [g startnode opts]
-  (search/breadth-walk g startnode ::undefined opts))
+(with-implicitly-curried-options
+  (defn depth-walk
+    "A wrapper around the more thorough traversals defined in
+     spork.cljgraph.search  .  Performs a depth traversal of the graph, starting 
+     at startnode.  Used to define other higher order graph queries."
+    [g startnode opts]
+    (search/depth-walk g startnode ::undefined opts))
+  
+  (defn breadth-walk
+    "A wrapper around the more thorough traversals defined in
+     spork.cljgraph.search  .  Performs a breadth traversal of the graph, starting 
+     at startnode.  Used to define other higher order graph queries."
+    [g startnode opts]
+    (search/breadth-walk g startnode ::undefined opts))
 
-(defn random-walk
-  "A wrapper around the more thorough traversals defined in
-   spork.cljgraph.search  .  Performs a random traversal of the graph, starting 
-   at startnode.  Used to define other higher order graph queries."
-  [g startnode opts]
-  (search/random-walk g startnode ::undefined opts))
+  (defn random-walk
+    "A wrapper around the more thorough traversals defined in
+     spork.cljgraph.search  .  Performs a random traversal of the graph, starting 
+     at startnode.  Used to define other higher order graph queries."
+    [g startnode opts]
+    (search/random-walk g startnode ::undefined opts))
 
-(defn ordered-walk
-  "A wrapper around the more thorough traversals defined in
-   spork.cljgraph.search  .  Performs an ordered traversal of the graph, where 
-   the neighbors are visited in the order they were appended to the graph.
-   Starts walking from  startnode.  Used to define other higher order graph 
-   queries."
-  [g startnode opts]
-  (search/ordered-walk g startnode ::undefined opts))
+  (defn ordered-walk
+    "A wrapper around the more thorough traversals defined in
+     spork.cljgraph.search  .  Performs an ordered traversal of the graph, where 
+     the neighbors are visited in the order they were appended to the graph.
+     Starts walking from  startnode.  Used to define other higher order graph 
+     queries."
+    [g startnode opts]
+    (search/ordered-walk g startnode ::undefined opts)))
 
 (defn undirected-walk
   "Performs a depth-first traversal of the graph, treating the directed graph 
    as an undirected graph.  Starts walking from  startnode."
   [g startnode]
-  (search/depth-walk g startnode ::undefined {:neighborf (neighbor-by neighbors)}))
+  (search/depth-walk g startnode ::undefined  {:neighborf (neighbor-by neighbors)}))
 
 ;;Node Orderings
 ;;==============
 ;;Node Orderings yield a vector of the nodes visited during traversal, including
 ;;the startnode. 
 
-(defn depth-nodes
-  "Returns the nodes visited in a depth traversal of the graph, starting 
-   at startnode."  
-  [g startnode opts] 
-  (:visited (depth-walk g startnode opts)))
+(with-implicitly-curried-options
+  (defn depth-nodes
+    "Returns the nodes visited in a depth traversal of the graph, starting 
+     at startnode."  
+    [g startnode opts] 
+    (:visited (depth-walk g startnode opts)))
 
-(defn breadth-nodes
-  "Returns the nodes visited in a breadth traversal of the graph, starting 
-   at startnode."  
-  [g startnode opts] 
-  (:visited (breadth-walk g startnode  opts)))
+  (defn breadth-nodes
+    "Returns the nodes visited in a breadth traversal of the graph, starting 
+     at startnode."  
+    [g startnode opts] 
+    (:visited (breadth-walk g startnode  opts)))
 
-(defn random-nodes
-  "Returns the nodes visited in a random traversal of the graph, starting 
-   at startnode."  
-  [g startnode opts] 
-  (:visited (random-walk g startnode  opts)))
+  (defn random-nodes
+    "Returns the nodes visited in a random traversal of the graph, starting 
+     at startnode."  
+    [g startnode opts] 
+    (:visited (random-walk g startnode  opts)))
 
-(defn ordered-nodes
-  "Returns the nodes visited in an ordered traversal of the graph, starting 
-   at startnode."  
-  [g startnode opts] 
-  (:visited (ordered-walk g startnode  opts)))
+  (defn ordered-nodes
+    "Returns the nodes visited in an ordered traversal of the graph, starting 
+     at startnode."  
+    [g startnode opts] 
+    (:visited (ordered-walk g startnode  opts))))
 
 (defn undirected-nodes
   "Returns the nodes visited in a depth-first traversal of the graph, starting 
    at startnode.  Treats graph g as undirected."  
   [g startnode] 
   (:visited (undirected-walk g startnode)))
+
 
 ;;Simple Connectivity Queries
 ;;===========================
@@ -388,98 +424,6 @@
   (persistent! 
     (reduce (fn [acc xs] (reduce conj! acc xs)) (transient []) (topsort g)))) 
 
-(defmacro defn-curried-options [name doc args opt-map & body]
-  (let [opts (gensym "opt-map")
-        args+opts (conj args opt-map)
-        args+nil  (conj args nil)]
-    `(defn ~name ~doc 
-       ([~@args] (~name ~@args+nil))
-       ([~@args+opts] ~@body))))
-
-;;Searches
-;;========
-(defmacro defsearch 
-  "Defines a search function with two declarations:  Assumes the last arg in the 
-   init-args declaration is a default argument map for spork.cljgraph.search/traverse, and 
-   sets it up so that those are piped in.  Caller can override any options traverse uses, 
-   providing keys for :weight :neighborf :halt?"
-  [name doc init-args body]
-  `(defn-curried-options ~name ~doc ~(vec (butlast init-args)) ~(last init-args) ~body)) 
-                                            
-;;Explicit searches, merely enforces a walk called with an actual destination
-;;node.  Return the common searchstate data that the walks utilize.
-(defsearch depth-first-search
-  "Starting from startnode, explores g using a depth-first strategy, looking for
-   endnode.  Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree.  Note: depth first search is 
-   not guaranteed to find the actual shortest path, thus the shortest path tree
-   may be invalid."
-  [g startnode endnode opts] (search/depth-walk g startnode endnode opts))
-
-(defsearch breadth-first-search
-  "Starting from startnode, explores g using a breadth-first strategy, looking 
-   for endnode. Returns a search state, which contains the shortest path tree 
-   or precedence tree, the shortest distance tree.  Note: breadth first search 
-   is not guaranteed to find the actual shortest path, thus the shortest path 
-   tree may be invalid."
-  [g startnode endnode opts] (search/breadth-walk g startnode endnode opts))
-
-(defsearch priority-first-search
-  "Starting from startnode, explores g using a priority-first strategy, looking 
-   for endnode. Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
-   algorithm.  Note: Requires that arc weights are non-negative.  For negative 
-   arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode opts] (search/priority-walk g startnode endnode opts))
-
-(defsearch random-search
-  "Starting from startnode, explores g using random choice, looking for endnode. 
-   Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree."
-  [g startnode endnode opts] (search/random-walk g startnode endnode opts))
-
-;;Single Source Shortest Paths
-;;============================
-
-;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
-;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
-;;automatically switches to A*.
-
-(defsearch dijkstra
-  "Starting from startnode, explores g using dijkstra's algorithm, looking for
-   endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
-   If a relaxation provides a shorter path, the new path is recorded.  Returns a 
-   search state, which contains the shortest path tree or precedence tree, the 
-   shortest distance tree.  Note: Requires that arc weights are non-negative.  
-   For negative arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode  {:keys [weightf neighborf] 
-                         :or   {weightf   (search/get-weightf g) 
-                                neighborf (search/get-neighborf g)}}]
-  (search/priority-walk g startnode endnode
-   {:weightf  (fn [g source sink]
-                (let [w (weightf g source sink)]
-                  (if (>= w 0)  w ;positive only
-                      (throw 
-                       (Exception. 
-                        (str "Negative Arc Weight Detected in Dijkstra: " 
-                             [source sink w]))))))
-    :neighborf neighborf}))                                            
-
-;;__TODO__ Check implementation of a-star, I think this is generally correct.
-(defsearch a-star
-  "Given a heuristic function, searches graph g for the shortest path from 
-   start node to end node.  Operates similarly to dijkstra or 
-   priority-first-search, but uses a custom weight function that applies the 
-   hueristic to the weight.  heuristic should be a function that takes a 
-   a source node and target node, and returns an estimated weight to be 
-   added to the actual weight.  Note, the estimated value must be non-negative."
-  [g heuristic-func startnode endnode {:keys [weightf neighborf] 
-                                        :or   {weightf   (search/get-weightf g) 
-                                               neighborf (search/get-neighborf g)}}]
-     (let [graph-weight weightf
-           weightf (fn [g from to] (+ (graph-weight g from to) (heuristic-func from to)))]
-       (search/traverse g startnode endnode 
-                        (sstate/mempty-PFS startnode) {:weightf weightf})))
 
 (defn find-improving-arcs
   "Predicate for determining if any of the directed arcs in the node set have further improvement.  If 
@@ -492,63 +436,146 @@
                          (when (< (+ (get distance u) (weightf g u v)) 
                                   (get distance v))    u)))]
     (->> 
-         (for [u nodes
-               v (generic/-get-sinks g u)]  [u v])
-         (filter improvement?))))
+     (for [u nodes
+           v (generic/-get-sinks g u)]  [u v])
+     (filter improvement?))))
 
-;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
-(defsearch bellman-ford
-  "The Bellman-Ford algorithm can be represented as a generic search similar
+;;Searches
+;;========
+
+;;Defines a search function with two declarations:  Assumes the last arg in the 
+;;init-args declaration is a default argument map for spork.cljgraph.search/traverse, and 
+;;sets it up so that those are piped in.  Caller can override any options traverse uses, 
+;;providing keys for :weight :neighborf :halt?
+
+
+(with-implicitly-curried-options                                             
+  (defn depth-first-search
+    "Starting from startnode, explores g using a depth-first strategy, looking for
+     endnode.  Returns a search state, which contains the shortest path tree or 
+     precedence tree, the shortest distance tree.  Note: depth first search is 
+     not guaranteed to find the actual shortest path, thus the shortest path tree
+     may be invalid."
+    [g startnode endnode opts] (search/depth-walk g startnode endnode opts))
+
+  (defn breadth-first-search
+    "Starting from startnode, explores g using a breadth-first strategy, looking 
+   for endnode. Returns a search state, which contains the shortest path tree 
+   or precedence tree, the shortest distance tree.  Note: breadth first search 
+   is not guaranteed to find the actual shortest path, thus the shortest path 
+   tree may be invalid."
+    [g startnode endnode opts] (search/breadth-walk g startnode endnode opts))
+
+  (defn priority-first-search
+    "Starting from startnode, explores g using a priority-first strategy, looking 
+   for endnode. Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
+   algorithm.  Note: Requires that arc weights are non-negative.  For negative 
+   arc weights, use Bellman-Ford, or condition the graph."
+    [g startnode endnode opts] (search/priority-walk g startnode endnode opts))
+
+  (defn random-search
+    "Starting from startnode, explores g using random choice, looking for endnode. 
+   Returns a search state, which contains the shortest path tree or 
+   precedence tree, the shortest distance tree."
+    [g startnode endnode opts] (search/random-walk g startnode endnode opts)))
+
+
+
+;;Single Source Shortest Paths
+;;============================
+(with-implicitly-curried-options 
+  (defn dijkstra
+    "Starting from startnode, explores g using Dijkstra's algorithm, looking for
+   endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
+   If a relaxation provides a shorter path, the new path is recorded.  Returns a 
+   search state, which contains the shortest path tree or precedence tree, the 
+   shortest distance tree.  Note: Requires that arc weights are non-negative.  
+   For negative arc weights, use Bellman-Ford, or condition the graph."
+    [g startnode endnode  {:keys [weightf neighborf] 
+                           :or   {weightf   (search/get-weightf g) 
+                                  neighborf (search/get-neighborf g)}}]
+    (search/priority-walk g startnode endnode
+                          {:weightf  (fn [g source sink]
+                                       (let [w (weightf g source sink)]
+                                         (if (>= w 0)  w ;positive only
+                                             (throw 
+                                              (Exception. 
+                                               (str "Negative Arc Weight Detected in Dijkstra: " 
+                                                    [source sink w]))))))
+                           :neighborf neighborf}))                                            
+
+  ;;__TODO__ Check implementation of a-star, I think this is generally correct.
+  (defn a-star
+    "Given a heuristic function, searches graph g for the shortest path from 
+   start node to end node.  Operates similarly to dijkstra or 
+   priority-first-search, but uses a custom weight function that applies the 
+   hueristic to the weight.  heuristic should be a function that takes a 
+   a source node and target node, and returns an estimated weight to be 
+   added to the actual weight.  Note, the estimated value must be non-negative."
+    [g heuristic-func startnode endnode {:keys [weightf neighborf] 
+                                         :or   {weightf   (search/get-weightf g) 
+                                                neighborf (search/get-neighborf g)}}]
+    (let [graph-weight weightf
+          weightf (fn [g from to] (+ (graph-weight g from to) (heuristic-func from to)))]
+      (search/traverse g startnode endnode 
+                       (sstate/mempty-PFS startnode) {:weightf weightf})))
+
+
+  ;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
+  (defn bellman-ford
+    "The Bellman-Ford algorithm can be represented as a generic search similar
    to the relaxation steps from dijkstra's algorithm.  The difference is that
    we allow negative edge weights, and non-negative cycles.  The search uses 
    a queue for the fringe, rather than a priority queue.  Other than that, 
    the search steps are almost identical."
-  [g startnode endnode {:keys [weightf neighborf] 
-                         :or   {weightf   (search/get-weightf g) 
-                                neighborf (search/get-neighborf g)}}]
-  (let [startstate    (-> (sstate/mempty-BFS startnode)
-                          (generic/set-start startnode)
-                          (generic/set-target endnode))
-        bound          (dec (count (generic/-get-nodes g))) ;v - 1 
-        validate (fn [s] (if-let [res (first (find-improving-arcs g 
-                                               (:distance s)
-                                               (:visited s) weightf))]
-                                (assoc s :negative-cycles res)
-                                  s))]
-    (loop [state (generic/conj-fringe startstate startnode 0)
-           idx   0]
+    [g startnode endnode {:keys [weightf neighborf] 
+                          :or   {weightf   (search/get-weightf g) 
+                                 neighborf (search/get-neighborf g)}}]
+    (let [startstate    (-> (sstate/mempty-BFS startnode)
+                            (generic/set-start startnode)
+                            (generic/set-target endnode))
+          bound          (dec (count (generic/-get-nodes g))) ;v - 1 
+          validate (fn [s] (if-let [res (first (find-improving-arcs g 
+                                                                    (:distance s)
+                                                                    (:visited s) weightf))]
+                             (throw (Exception. (str "Possible negative cycles in Bellman Ford!" res)))
+                             s))]
+      (loop [state (generic/conj-fringe startstate startnode 0)
+             idx   0]
         (if (or  (== idx bound) (generic/empty-fringe? state))
           (validate state)
           (let [source     (generic/next-fringe state)]  ;next node to visit   
             (recur (generic/loop-reduce 
-                       (fn [acc sink] 
-                         (generic/relax acc (weightf g source sink) source sink))
-                       (generic/visit-node state source) 
-                       (neighborf g source state))
+                    (fn [acc sink] 
+                      (generic/relax acc (weightf g source sink) source sink))
+                    (generic/visit-node state source) 
+                    (neighborf g source state))
                    (unchecked-inc idx)))))))
 
 
-;;__TODO__ Convert filter
-(defsearch bellman-ford-DAG 
-  "If we know that graph g is a Directed Acyclic Graph before hand, we can 
+  ;;__TODO__ Convert filter
+  (defn bellman-ford-DAG 
+    "If we know that graph g is a Directed Acyclic Graph before hand, we can 
    topologically sort the graph, find the dependent nodes between startnode
    and endnode, and bellman-ford just those nodes.  This is faster, as it can 
    eliminate many vertices, and only performs one pass through the vertices to 
    compute the shortest path tree."
-  [g startnode endnode  {:keys [weightf neighborf]
-                         :or   {weightf   arc-weight
-                                neighborf (neighbor-by sinks)}}]
-  (if-let [ordered-nodes (->> (topsort-nodes g)
-                              (drop-while #(not= % startnode))
-                              (take-while #(not= % endnode)))]
+    [g startnode endnode  {:keys [weightf neighborf]
+                           :or   {weightf   arc-weight
+                                  neighborf (neighbor-by sinks)}}]
+    (if-let [ordered-nodes (->> (topsort-nodes g)
+                                (drop-while #(not= % startnode))
+                                (take-while #(not= % endnode)))]
       (let [node-filter (into #{endnode} ordered-nodes)
             filtered-neighbors (fn [g nd state] 
                                  (reduce (fn [acc x] (if (node-filter x) (cons x acc) acc)) '()
                                          (neighborf g nd state)))]
         (bellman-ford g startnode endnode {:weightf weightf 
                                            :neighborf filtered-neighbors}))
-      ;startnode does not precede endnode in the topological order.
-      nil))
+                                        ;startnode does not precede endnode in the topological order.
+      nil)))
+
 
 ;;Paths
 ;;=====
@@ -620,7 +647,6 @@
     `(let [graph# (transform-graph ~the-graph  ~weight+neighbors)
            ~sym graph#]
        ~@body)))
-
 
 ;;Testing/Examples
 (comment 

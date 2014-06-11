@@ -17,7 +17,7 @@
   ;         k l  m n o  p q
   ;                        r s t u v w x y z a1 a2 a3 
 (defn ->tree-arc [from to] [from to 1])
-(defn tree-arcs [from xs] (map #(->tree-arc from %) xs))
+(defn tree-arcs  [from xs] (map #(->tree-arc from %) xs))
 (def  the-tree (-> empty-graph
                   (add-arcs (tree-arcs :a [:b :c :d]))
                   (add-arcs (conj (tree-arcs :b [:e :f]) (->tree-arc :d :g)))
