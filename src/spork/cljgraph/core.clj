@@ -4,12 +4,15 @@
 ;;algorithms.  
 (ns spork.cljgraph.core
   (:require [spork.protocols [core :as generic]]
-            [spork.cljgraph [search :as search]]
-            [spork.data     [digraph :as dig] [searchstate :as sstate]] 
-            [spork.util     [topographic :as top]]))
+            [spork.cljgraph  [search :as search]]
+            [spork.data      [digraph :as dig] [searchstate :as sstate]]))
 
+
+;;Macrology
+;;=========
 ;;Helpful infrastructure, maybe move this guy over to
 ;;spork.utils.metaprogramming
+
 ;;I wrote these to address a current weakness in clojure's idiomatic 
 ;;varargs implementation:  any RestFn objects that are created - via 
 ;;partial or having a varargs function declaration, injects a serious 
@@ -29,10 +32,13 @@
        ([~@args] (~name ~@args+nil))
        ([~@args+opts] ~@body))))
 
+;;interprets a function declaration's argument vector as if the 
+;;last argument is implicitly curried.
 (defmacro implicitly-curried-options 
   [name doc args body]
   `(defn-curried-options ~name ~doc ~(vec (butlast args)) ~(last args) ~body))
 
+;;Traverses an expression, replacing defns with curried macros.
 (defmacro with-implicitly-curried-options [& exprs]
   `(do ~@(map (fn [expr] 
             (if (not= (first expr) 'defn) expr
@@ -179,7 +185,6 @@
   [g n] (and (terminal-node? g n) (source-node? g n)))
 
 ;;Borrowed idea from Data.Graph.Inductive 
-
 (defn node-context
   "Provides a lens, or a focus, of all the graph data for a particular node."
   [g k] 
@@ -286,25 +291,25 @@
     "Returns the nodes visited in a depth traversal of the graph, starting 
      at startnode."  
     [g startnode opts] 
-    (:visited (depth-walk g startnode opts)))
+    (generic/visited-nodes (depth-walk g startnode opts)))
 
   (defn breadth-nodes
     "Returns the nodes visited in a breadth traversal of the graph, starting 
      at startnode."  
     [g startnode opts] 
-    (:visited (breadth-walk g startnode  opts)))
+    (generic/visited-nodes (breadth-walk g startnode  opts)))
 
   (defn random-nodes
     "Returns the nodes visited in a random traversal of the graph, starting 
      at startnode."  
     [g startnode opts] 
-    (:visited (random-walk g startnode  opts)))
+    (generic/visited-nodes (random-walk g startnode  opts)))
 
   (defn ordered-nodes
     "Returns the nodes visited in an ordered traversal of the graph, starting 
      at startnode."  
     [g startnode opts] 
-    (:visited (ordered-walk g startnode  opts))))
+    (generic/visited-nodes (ordered-walk g startnode  opts))))
 
 (defn undirected-nodes
   "Returns the nodes visited in a depth-first traversal of the graph, starting 
@@ -377,7 +382,7 @@
    retained."
   ([g node-filter-func root-key]
     (let [retained-keys (set (node-filter-func g root-key))
-          valid?   (partial contains? retained-keys)
+          valid?   #(contains? retained-keys %)
           arcs-to-clone (fn [k] 
                           (distinct 
                             (concat 
@@ -390,7 +395,7 @@
                   empty-graph retained-keys)
           (reduce (fn [acc x] (disj-node acc x)) g 
                   (clojure.set/difference old-keys retained-keys)))))
-  ([g root-key] (subgraph g depth-walk root-key)))
+  ([g root-key] (subgraph g depth-nodes root-key)))
 
 (defn decompose
   "Maps the topograph into one or more subgraphs, one for each component."
@@ -479,7 +484,6 @@
    Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree."
     [g startnode endnode opts] (search/random-walk g startnode endnode opts)))
-
 
 
 ;;Single Source Shortest Paths

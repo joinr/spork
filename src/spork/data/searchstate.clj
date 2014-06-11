@@ -41,6 +41,7 @@
   (set-start    [state nd] (do (set! startnode  nd ) state))            
   (get-target   [state] targetnode)
   (get-start    [state] startnode)
+  (visited-nodes [state] visited)
   (new-path     [state source sink w]
     (do (.put shortest sink source)
         (.put distance sink w)

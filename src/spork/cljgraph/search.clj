@@ -1,7 +1,8 @@
 ;;Generic graph search libraries, with default implementations for depth,
 ;;breadth, priority, random searches and traversals (walks).
 (ns spork.cljgraph.search
-  (:require [spork.protocols [core :as generic]]
+  (:require [clojure.core [reducers :as r]]
+            [spork.protocols [core :as generic]]
             [spork.data      [searchstate :as searchstate]]))
 
 ;;minor duplication here, due to some copying around.
@@ -36,31 +37,33 @@
 ;;Note: We could probably refactor these guys.  The only thing that's different
 ;;about them is the function generating neighbors.
 
+(definline visited? [state nd] `(generic/best-known-distance ~state ~nd))
+
 (defn- visit-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
    at least once, they will show up in the shortest path tree."
-  [g nd {:keys [shortest] :as state}] 
-  (filter #(not (contains? shortest %)) (generic/-get-sinks g nd))) 
+  [g nd state] 
+  (into '() (r/filter #(not (visited? state %)) (generic/-get-sinks g nd))))
 
 (defn- visit-ordered-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
    at least once, they will show up in the shortest path tree.  Additionally, 
    this will visit the nodes in the order the incident arcs were appended to the 
    graph, if the underlying the graph supports it."
-  [g nd {:keys [shortest] :as state}] 
-  (filter #(not (contains? shortest %)) (reverse (generic/-get-sinks g nd))))
+  [g nd state] 
+  (into '() (r/filter #(not (visited? state %)) (reverse (generic/-get-sinks g nd)))))
 
 (defn- visit-neighbors-once
   "Treats the graph as if it's undirected.  Screen nodes that have already been 
    visited.  If we have visited any nodes at least once, they will show up in 
    the shortest path tree."
-  [g nd {:keys [shortest] :as state}] 
-  (filter #(not (contains? shortest %)) (neighbors* g nd)))
+  [g nd state] 
+  (into '() (r/filter #(not (visited? state %)) (neighbors* g nd))))
 
 ;;Removed empty-fringe? from check, since we already cover it in the
 ;;traversal loop.
-(defn- default-halt?  [state nextnode]
-  (= (:targetnode state) nextnode))
+(definline default-halt?  [state nextnode]
+  `(identical? (generic/get-target ~state) ~nextnode))
 
 ;;_POSSIBLE OPTIMIZATION__ Maintain the open set explicitly in the search state
 ;;vs explicitly computing __unexplored__ .
@@ -97,16 +100,19 @@
 
 ;;__TODO__ Think about relocating these from meta to the search
 ;;state....might be a better place..
-(defn get-weightf   [g]   
-  (or (get (meta g) :weightf   arc-weight)
-      (throw (Exception. "No weight function defined!"))))
+(definline get-weightf   [g]   
+  `(or (get (meta ~g) :weightf)
+       (get ~'spork.cljgraph.search/search-defaults :weightf)
+       (throw (Exception. "No weight function defined!"))))
 
-(defn get-neighborf [g]   
-  (or (get (meta g) :neighborf (:neighborf search-defaults))
-      (throw (Exception. "No neighborhood function defined!"))))
+(definline get-neighborf [g]   
+  `(or (get (meta ~g) :neighborf) 
+       (get ~'spork.cljgraph.search/search-defaults :neighborf)
+       (throw (Exception. "No neighborhood function defined!"))))
 
 ;;Allows us to add a hook for node filtering during search.
-(defn get-nodefilter [g]  (get (meta g) :nodefilter nil))
+(definline get-nodefilter [g]  
+  `(get (meta ~g) :nodefilter))
 
 
 ;;This should be an altogether faster version of traverse.  Most of
@@ -198,131 +204,3 @@
   topological order from a startnode. Weights returned will be in terms of the 
   edge weights in the graph."
  searchstate/mempty-PFS search-defaults)
-
-
-(comment
-;;explicit searches, merely enforces a walk called with an actual destination
-;;node.
-
-(defn dfs
-  "Starting from startnode, explores g using a depth-first strategy, looking for
-   endnode.  Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree.  Note: depth first search is 
-   not guaranteed to find the actual shortest path, thus the shortest path tree
-   may be invalid."
-  [g startnode endnode]
-  (depth-walk g startnode endnode {}))
-
-(defn bfs
-  "Starting from startnode, explores g using a breadth-first strategy, looking 
-   for endnode. Returns a search state, which contains the shortest path tree 
-   or precedence tree, the shortest distance tree.  Note: breadth first search 
-   is not guaranteed to find the actual shortest path, thus the shortest path 
-   tree may be invalid."
-  [g startnode endnode]
-  (breadth-walk g startnode endnode {}))
-
-(defn pfs
-  "Starting from startnode, explores g using a priority-first strategy, looking 
-   for endnode. Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
-   algorithm.  Note: Requires that arc weights are non-negative.  For negative 
-   arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode]
-  (priority-walk g startnode endnode {}))
-
-(defn rfs
-  "Starting from startnode, explores g using random choice, looking for endnode. 
-   Returns a search state, which contains the shortest path tree or 
-   precedence tree, the shortest distance tree."
-  [g startnode endnode]
-  (random-walk g startnode endnode {}))
-
-;;__TODO__ Consolidate these guys into a unified SSP function that defaults to 
-;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
-;;automatically switches to A*.
-
-(defn dijkstra
-  "Starting from startnode, explores g using dijkstra's algorithm, looking for
-   endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
-   If a relaxation provides a shorter path, the new path is recorded.  Returns a 
-   search state, which contains the shortest path tree or precedence tree, the 
-   shortest distance tree.  Note: Requires that arc weights are non-negative.  
-   For negative arc weights, use Bellman-Ford, or condition the graph."
-  [g startnode endnode  {:keys [weightf neighborf] 
-                         :or   {weightf   (get-weightf g) 
-                                neighborf (get-neighborf g)}}]
-  (priority-walk g startnode endnode
-   {:weightf  (fn [g source sink]
-                (let [w (weightf g source sink)]
-                  (if (>= w 0)  w ;positive only
-                      (throw 
-                       (Exception. 
-                        (str "Negative Arc Weight Detected in Dijkstra: " 
-                             [source sink w]))))))
-    :neighborf neighborf}))                                            
-
-;;__TODO__ Check implementation of a-star, I think this is generally correct.
-(defn a*
-  "Given a heuristic function, searches graph g for the shortest path from 
-   start node to end node.  Operates similarly to dijkstra or 
-   priority-first-search, but uses a custom weight function that applies the 
-   hueristic to the weight.  heuristic should be a function that takes a 
-   a source node and target node, and returns an estimated weight to be 
-   added to the actual weight.  Note, the estimated value must be non-negative."
-  [g heuristic-func startnode endnode]
-  (traverse g startnode endnode 
-    (generic/set-estimator (searchstate/mempty-PFS startnode) heuristic-func)))
-
-;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
-
-(defn negative-cycles?
-  "Predicate for determining if the spt in the search state resulted in negative
-   cycles."
-  [g final-search-state weightf]
-  (let [distance  (:distance final-search-state)
-        ;we violate the triangle inequality if we can improve any distance.
-        improvement? (fn [arc]
-                       (let [[u v] arc]
-                         (when (< (+ (get distance u) (weightf g u v)) 
-                                  (get distance v))    u)))
-        nodes (keys (generic/-get-nodes g))]
-    (filter improvement? (for [u nodes
-                             v (generic/-get-sinks g u)]  [u v]))))
-
-(defn bellman-ford
-  "The Bellman-Ford algorithm can be represented as a generic search similar
-   to the relaxation steps from dijkstra's algorithm.  The difference is that
-   we allow negative edge weights, and non-negative cycles.  The search uses 
-   a queue for the fringe, rather than a priority queue.  Other than that, 
-   the search steps are almost identical."
-  [g startnode endnode {:keys [weightf neighborf] 
-                         :or   {weightf   (get-weightf g) 
-                                neighborf (get-neighborf g)}}]
-  (throw (Exception. "Bellman-ford is currently not verified.  Tests are not passing."))
-  (let [startstate    (assoc (searchstate/empty-BFS startnode) 
-                             :targetnode endnode)
-        bound         (dec (count (generic/-get-nodes g))) ;v - 1 
-        get-neighbors (partial neighborf g)
-        validate      (fn [s] (if-let [res (first 
-                                             (negative-cycles? g s weightf))]
-                                (assoc s :negative-cycles res)
-                                  s))]
-    (loop [state (generic/conj-fringe startstate startnode 0)
-           idx   0]
-        (if (or  (= idx bound) (generic/empty-fringe? state))
-          (validate state) 
-          (let [source     (generic/next-fringe state)]  ;next node to visit   
-            (recur (generic/loop-reduce 
-                       (fn [acc sink] 
-                         (generic/relax acc (weightf g source sink) source sink))
-                       (generic/visit-node state source) 
-                       (get-neighbors source state))
-                   (unchecked-inc idx)))))))
-
-)
-;;with-dropped-edges 
-;;with-dropped-nodes 
-;;with-added-edges 
-;;with-added-nodes 
-

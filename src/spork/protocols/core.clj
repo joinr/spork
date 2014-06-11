@@ -24,7 +24,7 @@
 (definline loop-reduce [f init coll]
   `(loop [acc# ~init 
           xs#  ~coll]
-     (if (empty? xs#) acc#
+     (if (not (seq xs#)) acc#
          (recur (~f acc# (first xs#)) (rest xs#)))))
 
 (definline loop-reducei [f init coll]
@@ -146,12 +146,12 @@
   (set-target   [state nd])
   (get-target   [state])
   (set-start    [state nd])
-  (get-start    [state]))
+  (get-start    [state])
+  (visited-nodes [state]))
 
 (definline visit-node
   "Record the node as having been visited, and remove it from the fringe."
   [s nd] `(pop-fringe (conj-visited ~s ~nd)))
-
 
 (defmacro relax
   "Given a shortest path map, a distance map, a source node, sink node, 
@@ -188,8 +188,6 @@
            :else ~state)            
           ;if sink doesn't exist in distance, sink is new...
           (new-path ~state ~source ~sink relaxed#)))))
-
-
 
 (defmacro int-relax
   "Given a shortest path map, a distance map, a source node, sink node, 
