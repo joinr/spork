@@ -481,31 +481,31 @@
    hueristic to the weight.  heuristic should be a function that takes a 
    a source node and target node, and returns an estimated weight to be 
    added to the actual weight.  Note, the estimated value must be non-negative."
-  [g heuristic-func startnode endnode]
-  (search/traverse g startnode endnode 
-    (generic/set-estimator (sstate/mempty-PFS startnode) heuristic-func)))
+  ([g heuristic-func startnode endnode {:keys [weightf neighborf] 
+                                        :or   {weightf   (search/get-weightf g) 
+                                               neighborf (search/get-neighborf g)}}]
+     (let [graph-weight weightf
+           weightf (fn [g from to] (+ (graph-weight g from to) (heuristic-func from to)))]
+       (search/traverse g startnode endnode 
+                        (sstate/mempty-PFS startnode) {:weightf weightf})))
+  ([g heuristic-func startnode endnode] (a-star g heuristic-func startnode endnode {})))
 
-
-
-;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
-
-(defn negative-cycles?
-  "Predicate for determining if the spt in the search state resulted in negative
-   cycles."
-  [g final-search-state weightf]
-  (let [distance  (:distance final-search-state)
-        ;we violate the triangle inequality if we can improve any distance.
+(defn find-improving-arcs
+  "Predicate for determining if any of the directed arcs in the node set have further improvement.  If 
+   their distance can be improved, then we have a negative cycle somewhere."
+  [g distance nodes weightf]
+  (let [;we violate the triangle inequality if we can improve any distance.
         improvement? (fn [x]
                        (let [u (nth x 0)
                              v (nth x 1)]
                          (when (< (+ (get distance u) (weightf g u v)) 
-                                  (get distance v))    u)))
-        nodes (:visited final-search-state)]
+                                  (get distance v))    u)))]
     (->> 
          (for [u nodes
                v (generic/-get-sinks g u)]  [u v])
          (filter improvement?))))
 
+;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
 (defn bellman-ford
   "The Bellman-Ford algorithm can be represented as a generic search similar
    to the relaxation steps from dijkstra's algorithm.  The difference is that
@@ -519,11 +519,12 @@
                           (generic/set-start startnode)
                           (generic/set-target endnode))
         bound          (dec (count (generic/-get-nodes g))) ;v - 1 
-        validate      (fn [s] (if-let [res (first 
-                                             (negative-cycles? g s weightf))]
+        validate (fn [s] (if-let [res (first (find-improving-arcs g 
+                                               (:distance s)
+                                               (:visited s) weightf))]
                                 (assoc s :negative-cycles res)
                                   s))]
-    (loop [state (generic/conj-fring startstate startnode 0)
+    (loop [state (generic/conj-fringe startstate startnode 0)
            idx   0]
         (if (or  (== idx bound) (generic/empty-fringe? state))
           (validate state)
@@ -535,6 +536,8 @@
                        (neighborf g source state))
                    (unchecked-inc idx)))))))
 
+
+;;__TODO__ Convert filter
 (defn bellman-ford-DAG 
   "If we know that graph g is a Directed Acyclic Graph before hand, we can 
    topologically sort the graph, find the dependent nodes between startnode
@@ -549,8 +552,8 @@
                               (take-while #(not= % endnode)))]
       (let [node-filter (into #{endnode} ordered-nodes)
             filtered-neighbors (fn [g nd state] 
-                                 (filter node-filter (neighborf g nd state)))
-            _ (println [ordered-nodes node-filter])]
+                                 (reduce (fn [acc x] (if (node-filter x) (cons x acc) acc)) '()
+                                         (neighborf g nd state)))]
         (bellman-ford g startnode endnode {:weightf weightf 
                                            :neighborf filtered-neighbors}))
       ;startnode does not precede endnode in the topological order.
@@ -612,10 +615,6 @@
   [pred g]
   (transform-graph g {:nodefilter #(filter pred %)}))
 
-;; (with-graph-transform [g the-graph] 
-;;   {:weightf    (fn [g from to]    1)
-;;    :neighborf (fn [g nd state] (graph/sinks g nd))}
-;;   (search g :s :t))
 
 (defmacro with-graph-transform 
   "User provides a map of {weightf f, neighborf f} to be merged 
