@@ -17,6 +17,9 @@
 (defn entry? [e] (= (type e) clojure.lang.MapEntry))
 (defn nested-entry? [^clojure.lang.MapEntry e] (entry? (val e)))
 
+;;__Note__ Check the performance implications here.  I think on
+;;microbenchmarks loop-reduce was seemingly faster, but I'm not so
+;;sure.  __Verify__
 ;;Unrolling a reduce.
 (definline loop-reduce [f init coll]
   `(loop [acc# ~init 

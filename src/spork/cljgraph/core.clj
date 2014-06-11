@@ -388,6 +388,14 @@
   (persistent! 
     (reduce (fn [acc xs] (reduce conj! acc xs)) (transient []) (topsort g)))) 
 
+(defmacro defn-curried-options [name doc args opt-map & body]
+  (let [opts (gensym "opt-map")
+        args+opts (conj args opt-map)
+        args+nil  (conj args nil)]
+    `(defn ~name ~doc 
+       ([~@args] (~name ~@args+nil))
+       ([~@args+opts] ~@body))))
+
 ;;Searches
 ;;========
 (defmacro defsearch 
@@ -396,55 +404,39 @@
    sets it up so that those are piped in.  Caller can override any options traverse uses, 
    providing keys for :weight :neighborf :halt?"
   [name doc init-args body]
-  (let [args (subvec init-args 0 (dec (count init-args)))
-        default-options (last init-args)
-        default-values  (get default-options :or)]
-    (let [opts          (get default-options :or default-options)
-          default-binds (reduce (fn [acc [k v]] (-> acc (conj k) (conj v))) [] opts)
-          user-options  'user-options ;(gensym "user-options")
-          user-binds    (reduce (fn [acc [k v]] (-> acc (conj k) (conj `(get ~user-options ~(keyword k) ~v)))) [] opts)]    
-      `(let [~@default-binds]
-         (defn ~name ~doc 
-           (~args ~body)
-           ([~@args ~user-options]
-              (let ~user-binds
-                 ~body)))))))     
+  `(defn-curried-options ~name ~doc ~(vec (butlast init-args)) ~(last init-args) ~body)) 
                                             
 ;;Explicit searches, merely enforces a walk called with an actual destination
 ;;node.  Return the common searchstate data that the walks utilize.
-(defn depth-first-search
+(defsearch depth-first-search
   "Starting from startnode, explores g using a depth-first strategy, looking for
    endnode.  Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree.  Note: depth first search is 
    not guaranteed to find the actual shortest path, thus the shortest path tree
    may be invalid."
-  ([g startnode endnode]      (search/depth-walk g startnode endnode))
-  ([g startnode endnode opts] (search/depth-walk g startnode endnode opts)))
+  [g startnode endnode opts] (search/depth-walk g startnode endnode opts))
 
-(defn breadth-first-search
+(defsearch breadth-first-search
   "Starting from startnode, explores g using a breadth-first strategy, looking 
    for endnode. Returns a search state, which contains the shortest path tree 
    or precedence tree, the shortest distance tree.  Note: breadth first search 
    is not guaranteed to find the actual shortest path, thus the shortest path 
    tree may be invalid."
-  ([g startnode endnode]      (search/breadth-walk g startnode endnode))
-  ([g startnode endnode opts] (search/breadth-walk g startnode endnode opts)))
+  [g startnode endnode opts] (search/breadth-walk g startnode endnode opts))
 
-(defn priority-first-search
+(defsearch priority-first-search
   "Starting from startnode, explores g using a priority-first strategy, looking 
    for endnode. Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree.  The is equivalent to dijkstra's
    algorithm.  Note: Requires that arc weights are non-negative.  For negative 
    arc weights, use Bellman-Ford, or condition the graph."
-  ([g startnode endnode]      (search/priority-walk g startnode endnode))
-  ([g startnode endnode opts] (search/priority-walk g startnode endnode opts)))
+  [g startnode endnode opts] (search/priority-walk g startnode endnode opts))
 
-(defn random-search
+(defsearch random-search
   "Starting from startnode, explores g using random choice, looking for endnode. 
    Returns a search state, which contains the shortest path tree or 
    precedence tree, the shortest distance tree."
-  ([g startnode endnode]      (search/random-walk g startnode endnode))
-  ([g startnode endnode opts] (search/random-walk g startnode endnode opts)))
+  [g startnode endnode opts] (search/random-walk g startnode endnode opts))
 
 ;;Single Source Shortest Paths
 ;;============================
@@ -453,7 +445,7 @@
 ;;dijkstra's algorithm, but allows user to supply a heuristic function, and 
 ;;automatically switches to A*.
 
-(defn dijkstra
+(defsearch dijkstra
   "Starting from startnode, explores g using dijkstra's algorithm, looking for
    endnode.  Gradually relaxes the shortest path tree as new nodes are found.  
    If a relaxation provides a shorter path, the new path is recorded.  Returns a 
@@ -466,7 +458,7 @@
   (search/priority-walk g startnode endnode
    {:weightf  (fn [g source sink]
                 (let [w (weightf g source sink)]
-                  (if (pos? w)  w ;positive only
+                  (if (>= w 0)  w ;positive only
                       (throw 
                        (Exception. 
                         (str "Negative Arc Weight Detected in Dijkstra: " 
@@ -474,21 +466,20 @@
     :neighborf neighborf}))                                            
 
 ;;__TODO__ Check implementation of a-star, I think this is generally correct.
-(defn a-star
+(defsearch a-star
   "Given a heuristic function, searches graph g for the shortest path from 
    start node to end node.  Operates similarly to dijkstra or 
    priority-first-search, but uses a custom weight function that applies the 
    hueristic to the weight.  heuristic should be a function that takes a 
    a source node and target node, and returns an estimated weight to be 
    added to the actual weight.  Note, the estimated value must be non-negative."
-  ([g heuristic-func startnode endnode {:keys [weightf neighborf] 
+  [g heuristic-func startnode endnode {:keys [weightf neighborf] 
                                         :or   {weightf   (search/get-weightf g) 
                                                neighborf (search/get-neighborf g)}}]
      (let [graph-weight weightf
            weightf (fn [g from to] (+ (graph-weight g from to) (heuristic-func from to)))]
        (search/traverse g startnode endnode 
                         (sstate/mempty-PFS startnode) {:weightf weightf})))
-  ([g heuristic-func startnode endnode] (a-star g heuristic-func startnode endnode {})))
 
 (defn find-improving-arcs
   "Predicate for determining if any of the directed arcs in the node set have further improvement.  If 
@@ -506,7 +497,7 @@
          (filter improvement?))))
 
 ;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
-(defn bellman-ford
+(defsearch bellman-ford
   "The Bellman-Ford algorithm can be represented as a generic search similar
    to the relaxation steps from dijkstra's algorithm.  The difference is that
    we allow negative edge weights, and non-negative cycles.  The search uses 
@@ -538,7 +529,7 @@
 
 
 ;;__TODO__ Convert filter
-(defn bellman-ford-DAG 
+(defsearch bellman-ford-DAG 
   "If we know that graph g is a Directed Acyclic Graph before hand, we can 
    topologically sort the graph, find the dependent nodes between startnode
    and endnode, and bellman-ford just those nodes.  This is faster, as it can 
