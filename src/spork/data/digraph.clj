@@ -63,6 +63,58 @@
   (-set-graph-data [tg d] 
     (gen/clone-meta tg (digraph. nodes sources sinks d))))
 
+(comment
+(defrecord sparsedigraph [nodes sources sinks data]
+  IGraphable 
+  (-get-graph [g] g)
+  ITopograph
+  (-get-nodes [tg] nodes)
+  (-set-nodes [tg m] (digraph. m sources sinks data))
+  (-conj-node [tg k v] 
+    (gen/clone-meta tg
+      (digraph.
+       (assoc nodes   k v)
+       (assoc sources k {})
+       (assoc sinks   k {})
+       data)))
+  (-disj-node [tg k]
+    (assert (contains? nodes k) (str "Node " k " does not exist!")) 
+    (let [new-sources (reduce-kv (fn [acc src _] (update-in acc [src] dissoc k))
+                                 (dissoc sources k)  (get sinks k))
+          new-sinks   (reduce-kv (fn [acc snk _] (update-in acc [snk] dissoc k))
+                                 (dissoc sinks k) (get sources k))]
+      (gen/clone-meta tg  
+        (digraph. 
+         (dissoc nodes k)
+         new-sources
+         new-sinks
+         data))))
+  (-has-node? [tg k]  (contains? nodes k))
+  (-conj-arc  [tg source sink w]
+    (let [w (or w 0)] ;ensure arcs have numeric weight, not nil
+      (gen/clone-meta tg 
+        (digraph. nodes 
+           (gen/assoc2 sources sink source w)
+           (gen/assoc2 sinks   source sink w)
+           data))))
+  (-disj-arc  [tg source sink]   
+    (gen/clone-meta tg
+                (digraph. 
+                 nodes
+                 (gen/dissoc2 sources sink source)
+                 (gen/dissoc2 sinks source sink)
+                 data)))
+  (-has-arc?    [tg source sink] (contains?   (get sources sink) source))
+  (-arc-weight  [tg source sink] (when-let [snks (get sinks source)]
+                                  (get snks sink)))
+  (-get-arc     [tg source sink] [source sink (gen/get2 sinks source sink 0)])
+  (-get-sources [tg k]   (eager/keys! (get sources k)))
+  (-get-sinks   [tg k]   (eager/keys! (get sinks   k)))
+  (-get-graph-data [tg]  data)
+  (-set-graph-data [tg d] 
+    (gen/clone-meta tg (digraph. nodes sources sinks d))))
+)
+
 (defrecord ordered-digraph [nodes sources sinks data]
   IGraphable 
   (-get-graph [g] g)
