@@ -31,9 +31,9 @@
 ;;I use a sorted-map, due to the need for ordered-maps to be able to change 
 ;;orderings effeciently.  A vector would be more efficient, but at the moment, 
 ;;the sorted map is doing the job.
-(deftype ordered-map [n ^clojure.lang.IPersistentMap basemap 
-                        ^clojure.lang.IPersistentMap idx->key 
-                        ^clojure.lang.IPersistentMap key->idx _meta]
+(deftype ordered-map [^long n ^clojure.lang.IPersistentMap basemap 
+                      ^clojure.lang.IPersistentMap idx->key 
+                      ^clojure.lang.IPersistentMap key->idx _meta]
   Object
   (toString [this] (str (.seq this)))
   generic/IOrderedMap
@@ -47,8 +47,8 @@
   clojure.lang.IPersistentMap
   (count [this] (.count basemap))
   (assoc [this k v]     ;;revisit        
-   (let [new-order (inc n)]
-     (if (contains? basemap k) 
+   (let [new-order (unchecked-inc n)]
+     (if (.containsKey basemap k) 
        (ordered-map. n (.assoc basemap k v) idx->key key->idx _meta)
        (ordered-map. new-order 
                      (.assoc basemap k v)
@@ -63,7 +63,7 @@
   (equals [this o] (or (identical? this o) (.equals basemap o)))
   
   ;containsKey implements (contains? pm k) behavior
-  (containsKey [this k] (contains? basemap k))
+  (containsKey [this k] (.containsKey basemap k))
   (entryAt [this k]
     (let [v (.valAt this k this)]
       (when-not (identical? v this) ;might need to yank this guy.

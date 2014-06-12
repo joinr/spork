@@ -9,9 +9,6 @@
                              [mutable :as m]]
             [spork.util      [array :as arr]]))
 
-
-
-
 ;;This is an attempt to get back to some simple, performant, data
 ;;structures that fill a variety of roles.
 
