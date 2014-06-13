@@ -32,8 +32,8 @@
 ;;orderings effeciently.  A vector would be more efficient, but at the moment, 
 ;;the sorted map is doing the job.
 (deftype ordered-map [^long n ^clojure.lang.IPersistentMap basemap 
-                      ^clojure.lang.IPersistentMap idx->key 
-                      ^clojure.lang.IPersistentMap key->idx _meta]
+                              ^clojure.lang.IPersistentMap idx->key 
+                              ^clojure.lang.IPersistentMap key->idx _meta]
   Object
   (toString [this] (str (.seq this)))
   generic/IOrderedMap
@@ -47,13 +47,13 @@
   clojure.lang.IPersistentMap
   (count [this] (.count basemap))
   (assoc [this k v]     ;;revisit        
-   (let [new-order (unchecked-inc n)]
+   (let [new-order (inc n)]
      (if (.containsKey basemap k) 
        (ordered-map. n (.assoc basemap k v) idx->key key->idx _meta)
        (ordered-map. new-order 
-                     (.assoc basemap k v)
-                     (.assoc idx->key n k)
-                     (.assoc key->idx k n)
+                     (.assoc basemap  k v)
+                     (assoc idx->key n k)
+                     (assoc key->idx k  n)
                      _meta))))
   (empty [this] (ordered-map. 0 {} (sorted-map) {} {}))  
   ;cons defines conj behavior
@@ -73,12 +73,13 @@
                      (eager/vals! idx->key))))  
   ;without implements (dissoc pm k) behavior
   (without [this k] 
-    (if (not (contains? basemap k)) this
+    (if (.valAt basemap k) 
         (ordered-map. n
                       (.without basemap k) 
                       (.without idx->key (.valAt key->idx k))
                       (.without key->idx k)
-                      _meta)))
+                      _meta)
+        this))
     
   clojure.lang.Indexed
   (nth [this i] (if (and (>= i 0) 
@@ -129,3 +130,7 @@
 (comment ;testing 
   (def the-map (into empty-ordered-map [[:a 1] [:b 2] [:c 3]]))
 )         
+
+
+;;another way to do this...is to use persistent array maps...
+;;they seem to be pretty damn fast...
