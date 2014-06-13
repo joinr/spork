@@ -295,15 +295,15 @@
 ;;This is waaaay faster...
 (defn linear-indexed-lookup! 
   ([^java.util.ArrayList entries k eq?]
-     (lil entries k :get '.get 
+     (lil entries k :get .get 
                     :eq?  eq?
                     :map-type 'java.util.ArrayList
-                    :get-bound '.size))
+                    :get-bound .size))
   ([entries k] (linear-indexed-lookup! entries k =)))
 
 (defn linear-indexed-find! 
   ([^java.util.ArrayList entries k eq?]
-     (lif entries k :get '.get 
+     (lif entries k :get .get 
                     :eq?  eq?
                     :map-type 'java.util.ArrayList
                     :get-bound .size))
