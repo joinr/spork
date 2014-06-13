@@ -4,6 +4,8 @@
   (:require [clojure.core [reducers :as r]])
   (:import [clojure.lang MapEntry]))
 
+(defn tag! [sym type]
+  (vary-meta sym assoc :tag type))
 
 (defn naive-lookup [entries k]
   (r/fold (fn ([] nil)
@@ -24,68 +26,130 @@
           nil
           entries))
 
+(defmacro lil
+  [entries k &  {:keys [get eq? entry-type get-bound map-type
+                        entry-key entry-val] 
+                 :or {get '.nth 
+                      eq? '= 
+                      entry-type 'clojure.lang.MapEntry
+                      get-bound '.count
+                      entry-key '.key 
+                      entry-val '.val}}]
+  (let [entries (if map-type (tag! entries map-type) entries)
+        entry   (tag! (gensym "entry") entry-type)]    
+    `(let [bound# (~get-bound ~entries)]
+       (loop [idx# 0]
+         (if (== idx# bound#) nil
+             (let [~entry (~get ~entries idx#)]
+               (if  (~eq? (~entry-key ~entry) ~k) ~entry
+                    (recur (unchecked-inc idx#)))))))))
+
+(defmacro lif
+  [entries k &  {:keys [get eq? entry-type get-bound map-type
+                        entry-key entry-val] 
+                 :or {get '.nth 
+                      eq? '= 
+                      entry-type 'clojure.lang.MapEntry
+                      get-bound '.count
+                      entry-key '.key 
+                      entry-val '.val}}]
+  (let [entries (if map-type (tag! entries map-type) entries)
+        entry   (tag! (gensym "entry") entry-type)]    
+    `(let [bound# (~get-bound ~entries)]
+       (loop [idx# 0]
+         (if (== idx# bound#) nil
+             (let [~entry (~get ~entries idx#)]
+               (if  (~eq? (~entry-key ~entry) ~k) idx#
+                    (recur (unchecked-inc idx#)))))))))
+
+(defmacro ld
+  [entries k &  {:keys [eq? entry-type  map-type entry-key target-container] 
+                 :or {eq? '= 
+                      entry-type 'clojure.lang.MapEntry
+                      entry-key '.key}}]
+  (let [entries (if map-type (tag! entries map-type) entries)
+        entry   (tag! (gensym "entry") entry-type)]    
+    `(into ~target-container 
+           (r/filter (fn [~entry]
+                       (if (~eq? (~entry-key ~entry) ~k)
+                         false 
+                         true))
+                     ~entries))))
+
 ;;This is waaaay faster...
 (defn linear-indexed-lookup 
   ([^clojure.lang.PersistentVector entries k eq?]
-     (let [bound (.count entries)]
-       (loop [idx 0]
-         (if (== idx bound) nil
-             (let [^MapEntry itm (.nth entries idx)]
-               (if  (eq? (.key itm) k) itm
-                    (recur (unchecked-inc idx))))))))
+     (lil entries k :eq? eq? :map-type 'clojure.lang.PersistentVector))
+
   ([entries k] (linear-indexed-lookup entries k =)))
 
 (defn linear-indexed-find 
   ([^clojure.lang.PersistentVector entries k eq?]
-     (let [bound (.count entries)]
-       (loop [idx 0]
-         (if (== idx bound) nil
-             (let [^MapEntry itm (.nth entries idx)]
-               (if  (eq? (.key itm) k) idx
-                    (recur (unchecked-inc idx))))))))
+     (lif entries k :eq? eq? :map-type 'clojure.lang.PersistentVector))                   
   ([entries k] (linear-indexed-find entries k =)))
+
+
 
 ;;THis is o(n)....inefficient.
 ;;Another option here is to maintain a set of dropped slots...
 (defn linear-indexed-drop
   ([^clojure.lang.PersistentVector entries k eq?]
-     (into [] (r/filter (fn [^MapEntry itm]
-                          (if (eq? (.key itm) k)
-                            false 
-                            true))
-                        entries)))                         
+     (ld entries k :eq? eq? 
+                   :map-type 'clojure.lang.PersistentVector
+                   :target-container []))                        
   ([entries k] (linear-indexed-drop entries k =)))
+
+(defmacro ll
+  [entries k &  {:keys [get eq? entry-type  map-type
+                        entry-key entry-val] 
+                 :or {get '.nth 
+                      eq? '= 
+                      map-type 'clojure.lang.ISeq
+                      entry-type 'clojure.lang.MapEntry
+                      entry-key '.key 
+                      entry-val '.val}}]
+  (let [entries (if map-type (tag! entries map-type) entries)
+        entry   (tag! (gensym "entry") entry-type)]    
+    `(loop [xs# ~entries]
+       (if (empty? xs#) nil
+           (let [~entry (.first xs#)]
+             (if  (~eq?  (~entry-key ~entry) ~k) ~entry
+                  (recur (.rest xs#))))))))
+
+(defmacro lf
+  [entries k &  {:keys [get eq? entry-type  map-type
+                        entry-key entry-val] 
+                 :or {get '.nth 
+                      eq? '= 
+                      map-type 'clojure.lang.ISeq
+                      entry-type 'clojure.lang.MapEntry
+                      entry-key '.key 
+                      entry-val '.val}}]
+  (let [entries (if map-type (tag! entries map-type) entries)
+        entry   (tag! (gensym "entry") entry-type)]    
+    `(loop [xs# ~entries
+            idx# 0]
+       (if (empty? xs#) nil
+           (let [~entry (.first xs#)]
+             (if  (~eq?  (~entry-key ~entry) ~k) idx#
+                  (recur (.next xs#) (unchecked-inc idx#))))))))
 
 
 ;;This is waaaay faster...
 (defn linear-lookup 
-  ([entries k eq?]
-     (loop [^clojure.lang.ISeq xs entries]
-       (if (empty? xs) nil
-           (let [^MapEntry itm (.first xs)]
-             (if  (eq? (.key itm) k) itm
-                  (recur (.rest xs)))))))
+  ([entries k eq?]  (ll entries k :eq? eq?))
   ([entries k] (linear-lookup entries k =)))
 
+
 (defn linear-find 
-  ([ entries k eq?]
-     (loop [^clojure.lang.ISeq xs entries
-            idx  0]
-         (if (empty? xs) nil
-             (let [^MapEntry itm (.first entries)]
-               (if  (eq? (.key itm) k) idx 
-                    (recur (.next xs) (unchecked-inc idx)))))))
+  ([ entries k eq?]   (lf entries k :eq eq?))
   ([entries k] (linear-find entries k =)))
 
 ;;THis is o(n)....inefficient.
 ;;Another option here is to maintain a set of dropped slots...
 (defn linear-drop
   ([^clojure.lang.ISeq entries k eq?]
-     (into '() (r/filter (fn [^MapEntry itm]
-                           (if (eq? (.key itm) k)
-                             false 
-                             true))
-                         entries)))                         
+     (ld entries k :eq? eq? :target-container '()))
   ([entries k] (linear-drop entries k =)))
                
 ;;One easy way to do this is to just use chunked Persistent Array Maps 
@@ -225,25 +289,24 @@
   (values [this] (map val entries))
   (entrySet [this] (set entries)))
 
+
+
+ 
 ;;This is waaaay faster...
 (defn linear-indexed-lookup! 
   ([^java.util.ArrayList entries k eq?]
-     (let [bound (.size entries)]
-       (loop [idx 0]
-         (if (== idx bound) nil
-             (let [^MapEntry itm (.get entries idx)]
-               (if  (eq? (.key itm) k) itm
-                    (recur (unchecked-inc idx))))))))
+     (lil entries k :get '.get 
+                    :eq?  eq?
+                    :map-type 'java.util.ArrayList
+                    :get-bound '.size))
   ([entries k] (linear-indexed-lookup! entries k =)))
 
 (defn linear-indexed-find! 
   ([^java.util.ArrayList entries k eq?]
-     (let [bound (.size entries)]
-       (loop [idx 0]
-         (if (== idx bound) nil
-             (let [^MapEntry itm (.get entries idx)]
-               (if  (eq? (.key itm) k) idx
-                    (recur (unchecked-inc idx))))))))
+     (lif entries k :get '.get 
+                    :eq?  eq?
+                    :map-type 'java.util.ArrayList
+                    :get-bound .size))
   ([entries k] (linear-indexed-find! entries k =)))
 
 ;;THis is o(n)....inefficient.
@@ -321,10 +384,10 @@
   (values [this] (map val entries))
   (entrySet [this] (set entries)))
 
-(defn avec [& xs]
+(defn make-avec [& xs]
   (into (->avec []) xs))
 
-(defn alist [& xs]
+(defn make-alist [& xs]
   (into (->alist []) xs))
 
 (defn mlist [& xs]
