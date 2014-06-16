@@ -40,6 +40,14 @@
   (get-ordering [m] [idx->key key->idx])
   (set-ordering [m idx->k k->idx] 
     (ordered-map. n basemap idx->k k->idx _meta))
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [amap f init] 
+    (clojure.core.protocols/kv-reduce idx->key 
+       (fn [acc idx  k] 
+           (f acc k (.valAt basemap k)))  init))
+  clojure.core.protocols/CollReduce 
+  (coll-reduce [coll f]     (clojure.core.protocols/coll-reduce basemap f))
+  (coll-reduce [coll f val] (clojure.core.protocols/coll-reduce basemap f val))
   clojure.lang.ILookup
   ; valAt gives (get pm key) and (get pm key not-found) behavior
   (valAt [this k] (.valAt basemap k))
@@ -52,8 +60,8 @@
        (ordered-map. n (.assoc basemap k v) idx->key key->idx _meta)
        (ordered-map. new-order 
                      (.assoc basemap  k v)
-                     (assoc idx->key n k)
-                     (assoc key->idx k  n)
+                     (.assoc idx->key n k)
+                     (.assoc key->idx k  n)
                      _meta))))
   (empty [this] (ordered-map. 0 {} (sorted-map) {} {}))  
   ;cons defines conj behavior
@@ -64,12 +72,9 @@
   
   ;containsKey implements (contains? pm k) behavior
   (containsKey [this k] (.containsKey basemap k))
-  (entryAt [this k]
-    (let [v (.valAt this k this)]
-      (when-not (identical? v this) ;might need to yank this guy.
-        (generic/entry k v))))
-  (seq [this] (if (zero? (count basemap)) (seq {})
-                (map (fn [k] (generic/entry k (.valAt basemap k))) 
+  (entryAt [this k]      (.entryAt basemap k ))
+  (seq [this] (if (zero? (.count basemap)) (seq {})
+                (map (fn [k] (.entryAt  basemap k)) 
                      (eager/vals! idx->key))))  
   ;without implements (dissoc pm k) behavior
   (without [this k] 
@@ -83,13 +88,13 @@
     
   clojure.lang.Indexed
   (nth [this i] (if (and (>= i 0) 
-                         (< i (.count basemap))) 
+                         (< i (.count basemap)))
                   (let [k (.valAt idx->key i)]
-                    (generic/entry k (.valAt basemap k)))
+                    (.entryAt  basemap k))
                   (throw (Exception. (str "Index out of range " i )))))
   (nth [this i not-found] 
     (if (and (< i (.count basemap)) (>= i 0))
-        (.valAt basemap (.valAt idx->key i))        
+        (.entryAt basemap (.valAt idx->key i))        
          not-found))  
   Iterable
   (iterator [this] (clojure.lang.SeqIterator. (seq this)))
@@ -105,9 +110,8 @@
   (withMeta [this m] (ordered-map. n basemap idx->key key->idx m))
       
   clojure.lang.Reversible
-  (rseq [this]
-    (seq (map (fn [k] (clojure.lang.MapEntry. k (.valAt basemap k))) 
-              (reverse (eager/vals! idx->key)))))
+  (rseq [this] (map (fn [k] (.entryAt basemap k))
+                    (reverse (eager/vals! idx->key))))
 
   java.io.Serializable ;Serialization comes for free with the other things implemented
   clojure.lang.MapEquivalence
@@ -115,20 +119,32 @@
   java.util.Map ;Makes this compatible with java's map
   (size [this] (.count basemap))
   (isEmpty [this] (zero? (.count basemap)))
-  (containsValue [this v] (some #{v} (eager/vals! (basemap this)) v))
-  (get [this k] (.valAt this k))
+  (containsValue [this v] (.containsValue basemap v))
+  (get [this k] (.valAt basemap k))
   (put [this k v] (throw (UnsupportedOperationException.)))
   (remove [this k] (throw (UnsupportedOperationException.)))
   (putAll [this m] (throw (UnsupportedOperationException.)))
   (clear [this] (throw (UnsupportedOperationException.)))
-  (keySet [this] (set (eager/keys! basemap))) ;;modify
+  (keySet [this] (.keySet basemap)) ;;modify
   (values [this] (map val (.seq this)))
-  (entrySet [this] (set (.seq this))))
+  (entrySet [this] (.entrySet basemap)))
 
 (def empty-ordered-map (->ordered-map 0 {} (sorted-map) {} {}))
 
 (comment ;testing 
-  (def the-map (into empty-ordered-map [[:a 1] [:b 2] [:c 3]]))
+  (def the-map (into empty-ordered-map (map vector (map #(keyword (str "A" %)) (range 1000)) (range 1000))) )
+  (assert (= (take 10 the-map)
+             '([:A0 0] [:A1 1] [:A2 2] [:A3 3] [:A4 4] [:A5 5] [:A6 6] [:A7 7] [:A8 8] [:A9 9])))
+  (assert (= (nth the-map 999)
+             [:A999 999]))
+  (assert (= (reduce-kv (fn [acc k v] (+ acc v)) 0 the-map)
+             499500))
+  (assert (= (reduce (fn [acc [k v]] (+ acc v)) 0 the-map)
+             499500))
+  (assert (= (take 3 (keys the-map))
+             '(:A0 :A1 :A2)))
+  (assert (= (take 3 (vals the-map))
+             (0 1 2)))
 )         
 
 

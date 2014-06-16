@@ -130,9 +130,15 @@
        data)))
  (-disj-node [tg k]
     (assert (contains? nodes k) (str "Node " k " does not exist!")) 
-    (let [new-sources (reduce-kv (fn [acc src _] (update-in acc [src] dissoc k))
+    (let [new-sources (reduce-kv (fn [acc src _] 
+                                   (let [m (get acc src)]
+                                     (assoc acc k
+                                            (dissoc m k))))
                                  (dissoc sources k)  (get sinks k))
-          new-sinks   (reduce-kv (fn [acc snk _] (update-in acc [snk] dissoc k))
+          new-sinks   (reduce-kv (fn [acc snk _] 
+                                   (let [m (get acc snk)]
+                                     (assoc acc k 
+                                            (dissoc m k))))
                                  (dissoc sinks k) (get sources k))]
       (gen/clone-meta tg  (digraph. 
                            (dissoc nodes k)
