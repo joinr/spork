@@ -39,11 +39,34 @@
 
 (definline visited? [state nd] `(generic/best-known-distance ~state ~nd))
 
+;;performance macro.
+(definline collect-except [pred xs]
+  `(reduce (fn [acc# x#]
+             (if (~pred x#) acc#
+                 (cons x# acc#)))
+           '()
+           ~xs))
+
+;;For some reason...this is way faster.  The reducer version is about
+;;200 ms slower over 10^5 runs.
 (defn- visit-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
    at least once, they will show up in the shortest path tree."
   [g nd state] 
-  (into '() (r/filter #(not (visited? state %)) (generic/-get-sinks g nd))))
+  (collect-except #(visited? state %)
+                  (generic/-get-sinks g nd)))
+(comment 
+
+(defn- visit-once
+  "Screen nodes that have already been visited.  If we have visited any nodes 
+   at least once, they will show up in the shortest path tree."
+  [g nd state] 
+  (reduce (fn [acc x] (cons x acc))
+          '()
+        (r/filter #(if (visited? state %) nil true)
+                  (generic/-get-sinks g nd))))
+
+)
 
 (defn- visit-ordered-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
@@ -51,14 +74,14 @@
    this will visit the nodes in the order the incident arcs were appended to the 
    graph, if the underlying the graph supports it."
   [g nd state] 
-  (filterv  #(not (visited? state %)) (reverse (generic/-get-sinks g nd))))
+  (collect-except  #(visited? state %) (reverse (generic/-get-sinks g nd))))
 
 (defn- visit-neighbors-once
   "Treats the graph as if it's undirected.  Screen nodes that have already been 
    visited.  If we have visited any nodes at least once, they will show up in 
    the shortest path tree."
   [g nd state] 
-  (into '() (r/filter #(not (visited? state %)) (neighbors* g nd))))
+  (filterv #(not (visited? state %)) (neighbors* g nd)))
 
 ;;Removed empty-fringe? from check, since we already cover it in the
 ;;traversal loop.
@@ -177,14 +200,7 @@
   "Returns a function that explores all of graph g in a breadth-first 
    topological order from startnode.  This is not a search, any paths returned 
    will be relative to unit-weight."
-  searchstate/mempty-BFS walk-defaults)  
- 
-(defwalk ordered-walk
-  "Returns a function that explores all of graph g in depth-first topological 
-   order from startnode.  This is not a search.  Any paths returned will be 
-   relative to unit-weight."
-  searchstate/mempty-DFS
-  (merge walk-defaults {:neighborf visit-ordered-once :weightf unit-weight}))
+  searchstate/mempty-BFS walk-defaults)   
 
 (defwalk random-walk
   "Returns a function that explores all of graph g in depth-first topological 

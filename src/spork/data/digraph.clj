@@ -3,7 +3,8 @@
   (:require [spork.protocols.core :refer :all]
             [spork.data [orderedmap :as om]]
             [spork.util [eager :as eager]
-                        [general :as gen]]))
+                        [general :as gen]])
+  (:import [clojure.lang IPersistentMap]))
 
 
 ;;The topograph Data Structure, and Implementation of ITopograph
@@ -13,7 +14,9 @@
 ;;maintain two edge maps for each node: 
 ;;sources : {nd {sink nodes}}
 ;;sinks   : {nd {source nodes}}
-(defrecord digraph [nodes sources sinks data]
+(defrecord digraph [^IPersistentMap nodes 
+                    ^IPersistentMap sources 
+                    ^IPersistentMap sinks data]
   IGraphable 
   (-get-graph [g] g)
   ITopograph
@@ -54,11 +57,11 @@
                  (gen/dissoc2 sinks source sink)
                  data)))
   (-has-arc?    [tg source sink] (contains?   (get sources sink) source))
-  (-arc-weight  [tg source sink] (when-let [snks (get sinks source)]
-                                  (get snks sink)))
+  (-arc-weight  [tg source sink] (when-let [snks (.valAt sinks source nil)]
+                                  (.valAt snks sink)))
   (-get-arc     [tg source sink] [source sink (gen/get2 sinks source sink 0)])
-  (-get-sources [tg k]   (eager/keys! (get sources k)))
-  (-get-sinks   [tg k]   (eager/keys! (get sinks   k)))
+  (-get-sources [tg k]   (eager/keys! (.valAt sources k nil)))
+  (-get-sinks   [tg k]   (eager/keys! (.valAt sinks   k nil)))
   (-sink-map    [tg k]   (get sinks k))
   (-source-map  [tg k]   (get sources k))
   (-get-graph-data [tg]  data)
@@ -112,8 +115,8 @@
   (-get-arc     [tg source sink] [source sink (gen/get2 sinks source sink 0)])
   (-get-sources [tg k]   (eager/keys! (get sources k)))
   (-get-sinks   [tg k]   (eager/keys! (get sinks   k)))
-  (-sink-map    [tg k] (.valAt sinks k))
-  (-source-map  [tg k] (.valAt sources k))
+  (-sink-map    [tg k] (.valAt sinks k nil))
+  (-source-map  [tg k] (.valAt sources k nil))
   (-get-graph-data [tg]  data)
   (-set-graph-data [tg d] 
     (gen/clone-meta tg (digraph. nodes sources sinks d))))
@@ -125,7 +128,9 @@
 (definline ordered-update2 [m from to v f]
   `(assoc ~m ~from (assoc (get ~m ~from om/empty-ordered-map) ~to ~v)))
 
-(defrecord ordered-digraph [nodes sources sinks data]
+(defrecord ordered-digraph [^IPersistentMap nodes 
+                            ^IPersistentMap sources 
+                            ^IPersistentMap sinks data]
   IGraphable 
   (-get-graph [g] g)
   ITopograph

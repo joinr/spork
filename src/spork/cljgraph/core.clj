@@ -267,16 +267,7 @@
      spork.cljgraph.search  .  Performs a random traversal of the graph, starting 
      at startnode.  Used to define other higher order graph queries."
     [g startnode opts]
-    (search/random-walk g startnode ::undefined opts))
-
-  (defn ordered-walk
-    "A wrapper around the more thorough traversals defined in
-     spork.cljgraph.search  .  Performs an ordered traversal of the graph, where 
-     the neighbors are visited in the order they were appended to the graph.
-     Starts walking from  startnode.  Used to define other higher order graph 
-     queries."
-    [g startnode opts]
-    (search/ordered-walk g startnode ::undefined opts)))
+    (search/random-walk g startnode ::undefined opts)))
 
 (defn undirected-walk
   "Performs a depth-first traversal of the graph, treating the directed graph 
@@ -306,13 +297,7 @@
     "Returns the nodes visited in a random traversal of the graph, starting 
      at startnode."  
     [g startnode opts] 
-    (generic/visited-nodes (random-walk g startnode  opts)))
-
-  (defn ordered-nodes
-    "Returns the nodes visited in an ordered traversal of the graph, starting 
-     at startnode."  
-    [g startnode opts] 
-    (generic/visited-nodes (ordered-walk g startnode  opts))))
+    (generic/visited-nodes (random-walk g startnode  opts))))
 
 (defn undirected-nodes
   "Returns the nodes visited in a depth-first traversal of the graph, starting 
