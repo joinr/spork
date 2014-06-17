@@ -6,7 +6,7 @@
 (defn keys! 
   "Optimized replacement for clojure.core/keys"
   [^clojure.lang.IPersistentMap m]
-  (reduce-kv (fn [^java.util.ArrayList acc k v] (doto acc (.add k)))
+  (.kvreduce (fn [^java.util.ArrayList acc k v] (doto acc (.add k)))
              (java.util.ArrayList.)
              m))
 

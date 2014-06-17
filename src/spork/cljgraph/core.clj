@@ -262,6 +262,14 @@
     [g startnode opts]
     (search/breadth-walk g startnode ::undefined opts))
 
+  (defn ordered-walk 
+    "A wrapper around the more thorough traversals defined in
+     spork.cljgraph.search  .  Performs an ordered traversal of the graph, starting 
+     at startnode.  Used to define other higher order graph queries."
+    [g startnode opts]    
+    (search/ordered-walk g startnode ::undefined opts))
+    
+
   (defn random-walk
     "A wrapper around the more thorough traversals defined in
      spork.cljgraph.search  .  Performs a random traversal of the graph, starting 
@@ -292,6 +300,12 @@
      at startnode."  
     [g startnode opts] 
     (generic/visited-nodes (breadth-walk g startnode  opts)))
+
+  (defn ordered-nodes
+    "Returns the nodes visited in a breadth traversal of the graph, starting 
+     at startnode."  
+    [g startnode opts] 
+    (generic/visited-nodes (ordered-walk g startnode  opts)))
 
   (defn random-nodes
     "Returns the nodes visited in a random traversal of the graph, starting 

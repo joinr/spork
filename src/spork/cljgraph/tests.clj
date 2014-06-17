@@ -38,10 +38,6 @@
          [:a :b :e :h :k :l :f :i :m :n :o :c :d :g :j :p :q 
           :r :s :t :u :v :w :x :y :z :a1 :a2 :a3])
       "depth first node ordering")  
-  (is (= (ordered-nodes the-tree :a)
-         [:a :b :e :h :k :l :f :i :m :n :o :c :d :g :j :p :q :r :s :t :u :v 
-          :w :x :y :z :a1 :a2 :a3])
-      "conj-ordered node ordering")  
   (is (= (breadth-nodes the-tree :a)
          [:a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p :q :r :s :t :u :v 
           :w :x :y :z :a1 :a2 :a3])

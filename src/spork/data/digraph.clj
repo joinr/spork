@@ -56,9 +56,9 @@
                  (gen/dissoc2 sources sink source)
                  (gen/dissoc2 sinks source sink)
                  data)))
-  (-has-arc?    [tg source sink] (contains?   (get sources sink) source))
-  (-arc-weight  [tg source sink] (when-let [snks (.valAt sinks source nil)]
-                                  (.valAt snks sink)))
+  (-has-arc?    [tg source sink] (contains?   (.valAt sources sink nil) source))
+  (-arc-weight  [tg source sink] (when-let [^clojure.lang.IPersistentMap snks (.valAt sinks source nil)]
+                                  (.valAt snks sink nil)))
   (-get-arc     [tg source sink] [source sink (gen/get2 sinks source sink 0)])
   (-get-sources [tg k]   (eager/keys! (.valAt sources k nil)))
   (-get-sinks   [tg k]   (eager/keys! (.valAt sinks   k nil)))

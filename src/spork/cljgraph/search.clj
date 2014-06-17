@@ -6,9 +6,9 @@
             [spork.data      [searchstate :as searchstate]]))
 
 ;;minor duplication here, due to some copying around.
-(defn arc-weight [tg from to]
-  (assert (generic/-has-arc? tg from to) (str "Arc does not exist " [from to]))
-  (generic/-arc-weight tg from to))
+(definline arc-weight [tg from to]
+;  (assert (generic/-has-arc? tg from to) (str "Arc does not exist " [from to]))
+  `(generic/-arc-weight ~tg ~from ~to))
 
 (defn get-node-labels  [tg] (keys (generic/-get-nodes tg)))
 
@@ -49,24 +49,28 @@
 
 ;;For some reason...this is way faster.  The reducer version is about
 ;;200 ms slower over 10^5 runs.
+(comment
 (defn- visit-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
    at least once, they will show up in the shortest path tree."
-  [g nd state] 
-  (collect-except #(visited? state %)
-                  (generic/-get-sinks g nd)))
-(comment 
-
-(defn- visit-once
-  "Screen nodes that have already been visited.  If we have visited any nodes 
-   at least once, they will show up in the shortest path tree."
-  [g nd state] 
-  (reduce (fn [acc x] (cons x acc))
-          '()
-        (r/filter #(if (visited? state %) nil true)
-                  (generic/-get-sinks g nd))))
-
+  [g nd state]   
+  (reduce (fn [^java.util.ArrayList acc x]
+            (if (visited? state x) acc
+                (do (.add acc x) acc)))
+          (java.util.ArrayList.)
+          (generic/-get-sinks g nd)))
 )
+
+(defn- visit-once
+  "Screen nodes that have already been visited.  If we have visited any nodes 
+   at least once, they will show up in the shortest path tree."
+  [g nd state]   
+  (reduce (fn [acc x] 
+            (if (visited? state x) acc
+                (conj acc x)))
+          []
+          (generic/-get-sinks g nd)))
+
 
 (defn- visit-ordered-once
   "Screen nodes that have already been visited.  If we have visited any nodes 
@@ -74,7 +78,11 @@
    this will visit the nodes in the order the incident arcs were appended to the 
    graph, if the underlying the graph supports it."
   [g nd state] 
-  (collect-except  #(visited? state %) (reverse (generic/-get-sinks g nd))))
+  (reduce (fn [acc x]
+            (if (visited? state x) acc
+                (cons x acc)))
+          '()
+          (generic/-get-sinks g nd)))
 
 (defn- visit-neighbors-once
   "Treats the graph as if it's undirected.  Screen nodes that have already been 
@@ -201,6 +209,12 @@
    topological order from startnode.  This is not a search, any paths returned 
    will be relative to unit-weight."
   searchstate/mempty-BFS walk-defaults)   
+
+(defwalk ordered-walk
+  "Returns a function that explores all of graph g in a breadth-first 
+   topological order from startnode.  This is not a search, any paths returned 
+   will be relative to unit-weight."
+  searchstate/mempty-DFS (assoc walk-defaults :neighborf visit-ordered-once))
 
 (defwalk random-walk
   "Returns a function that explores all of graph g in depth-first topological 

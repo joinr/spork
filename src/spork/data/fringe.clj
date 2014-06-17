@@ -45,9 +45,9 @@
   (next-fringe [fringe]  nil)
   (pop-fringe  [fringe]  nil) 
   clojure.lang.PersistentQueue
-  (conj-fringe [fringe n w] (conj  fringe n))
-  (next-fringe [fringe]     (first fringe))
-  (pop-fringe  [fringe]     (pop   fringe))
+  (conj-fringe [fringe n w] (.cons  fringe n))
+  (next-fringe [fringe]     (.peek fringe))
+  (pop-fringe  [fringe]     (.pop   fringe))
   clojure.lang.PersistentList
   (conj-fringe [fringe n w] (conj fringe n))
   (next-fringe [fringe]     (.first fringe))
@@ -57,9 +57,9 @@
   (next-fringe [fringe]     nil)
   (pop-fringe  [fringe]     nil)
   spork.data.randq.randomq
-  (conj-fringe [fringe n w] (conj fringe n))
-  (next-fringe [fringe]     (peek fringe))
-  (pop-fringe  [fringe]     (pop fringe))
+  (conj-fringe [fringe n w] (.cons fringe n))
+  (next-fringe [fringe]     (.peek fringe))
+  (pop-fringe  [fringe]     (.pop fringe))
   java.util.PriorityQueue
   (conj-fringe [fringe n w] (doto fringe (.add (generic/entry w n))))
   (next-fringe [fringe]     (when-let [^clojure.lang.MapEntry e (.peek ^PriorityQueue fringe)] (.val e)))
