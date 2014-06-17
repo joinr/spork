@@ -20,8 +20,6 @@
 ;;Hence, the ordered map.  This allows us to perform walks in a deterministic 
 ;;fashion, which is important for tree structures.  We only use ordered maps for
 ;;the parent->child (sink) and child->parent (source) data.  
-
-
 (declare empty-ordered-map)
 
 ;;The ordered map acts, for all intents and purposes, like a normal persistent

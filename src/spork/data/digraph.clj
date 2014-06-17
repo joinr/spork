@@ -59,6 +59,8 @@
   (-get-arc     [tg source sink] [source sink (gen/get2 sinks source sink 0)])
   (-get-sources [tg k]   (eager/keys! (get sources k)))
   (-get-sinks   [tg k]   (eager/keys! (get sinks   k)))
+  (-sink-map    [tg k]   (get sinks k))
+  (-source-map  [tg k]   (get sources k))
   (-get-graph-data [tg]  data)
   (-set-graph-data [tg d] 
     (gen/clone-meta tg (digraph. nodes sources sinks d))))
@@ -110,10 +112,18 @@
   (-get-arc     [tg source sink] [source sink (gen/get2 sinks source sink 0)])
   (-get-sources [tg k]   (eager/keys! (get sources k)))
   (-get-sinks   [tg k]   (eager/keys! (get sinks   k)))
+  (-sink-map    [tg k] (.valAt sinks k))
+  (-source-map  [tg k] (.valAt sources k))
   (-get-graph-data [tg]  data)
   (-set-graph-data [tg d] 
     (gen/clone-meta tg (digraph. nodes sources sinks d))))
 )
+
+(definline ordered-assoc2 [m from to v]
+  `(assoc ~m ~from (assoc (get ~m ~from om/empty-ordered-map) ~to ~v)))
+
+(definline ordered-update2 [m from to v f]
+  `(assoc ~m ~from (assoc (get ~m ~from om/empty-ordered-map) ~to ~v)))
 
 (defrecord ordered-digraph [nodes sources sinks data]
   IGraphable 
@@ -123,7 +133,7 @@
   (-set-nodes [tg m]  (ordered-digraph.  m sources sinks data))
   (-conj-node [tg k v] 
     (gen/clone-meta tg
-      (digraph.
+      (ordered-digraph.
        (assoc nodes   k v)
        (assoc sources k om/empty-ordered-map)
        (assoc sinks   k om/empty-ordered-map)
@@ -149,11 +159,11 @@
   (-conj-arc  [tg source sink w]
     (let [w (or w 0)] ;ensure arcs have numeric weight, not nil
       (-> tg 
-          (assoc :sources (update-in sources [sink]   assoc source w))
-          (assoc :sinks   (update-in sinks   [source] assoc sink   w)))))
+          (assoc :sources (ordered-assoc2 sources sink   source w))
+          (assoc :sinks   (ordered-assoc2 sinks   source sink   w)))))
   (-disj-arc  [tg source sink]   
     (gen/clone-meta tg
-      (digraph. 
+      (ordered-digraph. 
        nodes
        (gen/dissoc2 sources sink source)
        (gen/dissoc2 sinks source sink)
@@ -161,9 +171,11 @@
   (-has-arc?    [tg source sink] (contains?   (get sources sink) source))
   (-arc-weight  [tg source sink] (when-let [snks (get sinks source)]
                                   (get snks sink)))
-  (-get-arc     [tg source sink] [source sink (get-in sinks [source sink])])
+  (-get-arc     [tg source sink] [source sink (gen/get2 sinks source sink 0)])
   (-get-sources [tg k]   (eager/keys! (get sources k)))
   (-get-sinks   [tg k]   (eager/keys! (get sinks   k)))
+  (-sink-map    [tg k]   (get sinks k))
+  (-source-map  [tg k]   (get sources k))
   (-get-graph-data [tg]   data)
   (-set-graph-data [tg d] 
     (gen/clone-meta tg (ordered-digraph. nodes sources sinks d))))

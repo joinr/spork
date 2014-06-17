@@ -51,7 +51,7 @@
    this will visit the nodes in the order the incident arcs were appended to the 
    graph, if the underlying the graph supports it."
   [g nd state] 
-  (into '() (r/filter #(not (visited? state %)) (reverse (generic/-get-sinks g nd)))))
+  (filterv  #(not (visited? state %)) (reverse (generic/-get-sinks g nd))))
 
 (defn- visit-neighbors-once
   "Treats the graph as if it's undirected.  Screen nodes that have already been 

@@ -153,10 +153,13 @@
 
 ;;Neighborhood operations
 ;;=======================
-(defn sinks   "Nodes with arcs from k"  [g k]  (generic/-get-sinks g k))
-(defn sources "Nodes with arcs to   k"  [g k]  (generic/-get-sources g k))
+(defn sinks     "Nodes with arcs from k"  [g k]  (generic/-get-sinks g k))
+(defn sources   "Nodes with arcs to   k"  [g k]  (generic/-get-sources g k))
 (defn neighbors "Nodes with arcs to or from k" [g k]  
   (vec (distinct (mapcat #(% g k) [sources sinks]))))
+
+(defn sink-map   "A  map of node->weight for every node with arcs from k"  [g k]  (generic/-sink-map g k))
+(defn source-map  "A map of node->weight for every node with arcs to k"    [g k]  (generic/-get-sources g k))
 
 (defn get-indegree
   "What is the in-degree of the node?  For directed graphs, how many incident 

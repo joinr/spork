@@ -127,7 +127,9 @@
       (filter (fn [v] (not (contains? source-drops v))))))
   (-get-sinks [tg k]  
     (->> (coord->neighbors k)
-      (filter (fn [v] (not (contains? sink-drops v)))))))
+      (filter (fn [v] (not (contains? sink-drops v))))))
+  (-sink-map [tg k] (throw (Exception. "Operation -sink-map not supported for sparse grids.")))
+  (-source-map [tg k] (throw (Exception. "Operation -source-map not supported for sparse grids."))))
 
 (defn ->grid2d [width height]         
   (sparse-grid. {} #{} #{} 
