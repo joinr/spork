@@ -147,7 +147,12 @@
   (get-target   [state])
   (set-start    [state nd])
   (get-start    [state])
+  (set-multipath [state mp])
   (visited-nodes [state]))
+
+(defprotocol IInsertionOrdered )
+(definline ordered? [g] 
+  `(satisfies? spork.protocols.core/IInsertionOrdered ~g))
 
 (definline visit-node
   "Record the node as having been visited, and remove it from the fringe."

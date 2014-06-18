@@ -155,14 +155,16 @@
    function, or criteria for filtering candidates.  Returns a searchstate 
    of the walk, which contains the shortest path trees, distances, etc. for 
    multiple kinds of walks, depending on the searchstate's fringe structure."
-  [g startnode targetnode startstate  {:keys [halt? weightf neighborf] 
+  [g startnode targetnode startstate  {:keys [halt? weightf neighborf multipath] 
                                         :or  {halt?     default-halt?
                                               weightf   (get-weightf g)
-                                              neighborf (get-neighborf g)}}]
+                                              neighborf (get-neighborf g)
+                                              multipath nil}}]
     (let [get-neighbors (if-let [nodefilter (get-nodefilter g)]
                           (fn [nd s] (nodefilter (neighborf g nd s)))
                           (fn [source state] (neighborf g source state)))]
       (loop [state   (-> (generic/set-target startstate targetnode)
+                         (generic/set-multipath multipath)
                          (generic/conj-fringe startnode 0))]
         (if-let [source    (generic/next-fringe state)] ;next node to visit
           (let  [visited   (generic/visit-node state source)] ;record visit.

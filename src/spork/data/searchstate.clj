@@ -41,6 +41,7 @@
   (set-start    [state nd] (do (set! startnode  nd ) state))            
   (get-target   [state] targetnode)
   (get-start    [state] startnode)
+  (set-multipath [state mp] (do (set! multipath mp) state))
   (visited-nodes [state] visited)
   (new-path     [state source sink w]
     (do (.put shortest sink source)
@@ -55,9 +56,10 @@
   (equal-path   [state source sink] 
      (do (when multipath
            (let [current  (.get shortest sink)]
-             (do (.put shortest sink 
-                       (-> (if (branch? current) current (->branch current))
-                           (push-branch source))))))
+             (when (not= current source)
+               (do (.put shortest sink 
+                         (-> (if (branch? current) current (->branch current))
+                             (push-branch source)))))))
          state))
   (best-known-distance   [state nd] (.get distance nd))
   (conj-visited [state source] 

@@ -50,6 +50,7 @@
 (def empty-graph dig/empty-digraph)
 (def empty-ordered-graph dig/empty-ordered-digraph)
 
+
 ;;Graph-Backed Operations
 ;;=======================
 (defn u-arcbound [nodecount] 
@@ -302,8 +303,9 @@
     (generic/visited-nodes (breadth-walk g startnode  opts)))
 
   (defn ordered-nodes
-    "Returns the nodes visited in a breadth traversal of the graph, starting 
-     at startnode."  
+    "Returns the nodes visited in an ordered traversal of the graph, starting 
+     at startnode.  Implementation-wise, this is the fastest means of traversal, 
+     since it uses a simple list to collect the nodes ala stack fashion."  
     [g startnode opts] 
     (generic/visited-nodes (ordered-walk g startnode  opts)))
 
@@ -498,7 +500,7 @@
    search state, which contains the shortest path tree or precedence tree, the 
    shortest distance tree.  Note: Requires that arc weights are non-negative.  
    For negative arc weights, use Bellman-Ford, or condition the graph."
-    [g startnode endnode  {:keys [weightf neighborf] 
+    [g startnode endnode  {:keys [weightf neighborf multipath] 
                            :or   {weightf   (search/get-weightf g) 
                                   neighborf (search/get-neighborf g)}}]
     (search/priority-walk g startnode endnode
@@ -509,7 +511,8 @@
                                               (Exception. 
                                                (str "Negative Arc Weight Detected in Dijkstra: " 
                                                     [source sink w]))))))
-                           :neighborf neighborf}))                                            
+                           :neighborf neighborf
+                           :multipath multipath}))                                            
 
   ;;__TODO__ Check implementation of a-star, I think this is generally correct.
   (defn a-star
@@ -519,13 +522,14 @@
    hueristic to the weight.  heuristic should be a function that takes a 
    a source node and target node, and returns an estimated weight to be 
    added to the actual weight.  Note, the estimated value must be non-negative."
-    [g heuristic-func startnode endnode {:keys [weightf neighborf] 
+    [g heuristic-func startnode endnode {:keys [weightf neighborf multipath] 
                                          :or   {weightf   (search/get-weightf g) 
                                                 neighborf (search/get-neighborf g)}}]
     (let [graph-weight weightf
           weightf (fn [g from to] (+ (graph-weight g from to) (heuristic-func from to)))]
       (search/traverse g startnode endnode 
-                       (sstate/mempty-PFS startnode) {:weightf weightf})))
+                       (sstate/mempty-PFS startnode) {:weightf weightf 
+                                                      :multipath multipath})))
 
 
   ;;__TODO__ Check implementation of Bellman-Ford.  Looks okay, but not tested.
@@ -535,13 +539,14 @@
    we allow negative edge weights, and non-negative cycles.  The search uses 
    a queue for the fringe, rather than a priority queue.  Other than that, 
    the search steps are almost identical."
-    [g startnode endnode {:keys [weightf neighborf] 
+    [g startnode endnode {:keys [weightf neighborf multipath] 
                           :or   {weightf   (search/get-weightf g) 
                                  neighborf (search/get-neighborf g)}}]
     (let [startstate    (-> (sstate/mempty-BFS startnode)
+                            (generic/set-multipath multipath)
                             (generic/set-start startnode)
                             (generic/set-target endnode))
-          bound          (dec (count (generic/-get-nodes g))) ;v - 1 
+          bound            (count (generic/-get-nodes g)) 
           validate (fn [s] (if-let [res (first (find-improving-arcs g 
                                                                     (:distance s)
                                                                     (:visited s) weightf))]
@@ -549,7 +554,8 @@
                              s))]
       (loop [state (generic/conj-fringe startstate startnode 0)
              idx   0]
-        (if (or  (== idx bound) (generic/empty-fringe? state))
+        (if (or  (== idx bound)  ;v - 1  iterations
+                 (generic/empty-fringe? state)) 
           (validate state)
           (let [source     (generic/next-fringe state)]  ;next node to visit   
             (recur (generic/loop-reduce 
@@ -567,7 +573,7 @@
    and endnode, and bellman-ford just those nodes.  This is faster, as it can 
    eliminate many vertices, and only performs one pass through the vertices to 
    compute the shortest path tree."
-    [g startnode endnode  {:keys [weightf neighborf]
+    [g startnode endnode  {:keys [weightf neighborf multipath]
                            :or   {weightf   arc-weight
                                   neighborf (neighbor-by sinks)}}]
     (if-let [ordered-nodes (->> (topsort-nodes g)
@@ -578,7 +584,8 @@
                                  (reduce (fn [acc x] (if (node-filter x) (cons x acc) acc)) '()
                                          (neighborf g nd state)))]
         (bellman-ford g startnode endnode {:weightf weightf 
-                                           :neighborf filtered-neighbors}))
+                                           :neighborf filtered-neighbors
+                                           :multipath multipath}))
                                         ;startnode does not precede endnode in the topological order.
       nil)))
 
