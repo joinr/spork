@@ -33,6 +33,20 @@
                   (add-arcs (tree-arcs :q  
                                        [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
 
+(def unordered-tree 
+  (-> empty-graph
+      (add-arcs (tree-arcs :a [:b :c :d]))
+      (add-arcs (conj (tree-arcs :b [:e :f]) (->tree-arc :d :g)))
+      (add-arcs [(->tree-arc :e :h) 
+                 (->tree-arc :f :i) 
+                 (->tree-arc :g :j)])
+      (add-arcs [(->tree-arc :h :k) (->tree-arc :h :l) 
+                 (->tree-arc :i :m) (->tree-arc :i :n) 
+                 (->tree-arc :i :o) (->tree-arc :j :p) 
+                 (->tree-arc :j :q)])
+      (add-arcs (tree-arcs :q  
+                           [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
+
 (deftest graph-walks
   (is (= (depth-nodes the-tree :a)
          [:a :b :e :h :k :l :f :i :m :n :o :c :d :g :j :p :q 
