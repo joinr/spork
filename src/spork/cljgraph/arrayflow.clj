@@ -1,3 +1,5 @@
+;;An extension to the network flow libs from spork.cljgraph 
+;;I use 
 (ns spork.cljgraph.arrayflow
   (:require [spork.cljgraph [core :as graph]
                             [flow :as flow]
