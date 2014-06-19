@@ -1,7 +1,7 @@
-;(ns spork.cljgui.replbox
-;  (:import [javax.swing JTextPane JTextArea])
-;  (:require [cljgui [gui :as gui
-;                    asnycdrawing :as async]]))
+(ns spork.cljgui.replbox
+  (:import [javax.swing JTextPane JTextArea])
+  (:require [cljgui [gui :as gui
+                    asnycdrawing :as async]]))
 ;
 ;(defn textpane [] 
 ;  (JTextPane.))
