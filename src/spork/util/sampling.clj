@@ -319,6 +319,19 @@
                                            (rest xs) (rest ds)))))]
     (fn [ctx] ((choose) ctx))))
 
+(defn tree-mapcat
+  "Collects all elements in xs, as projected by function f.  If an element 
+   is atomic, "
+  ([tree? f xs]    
+     (persistent! 
+      (reduce 
+       (fn [acc x] 
+         (let [res (f x)]
+           (if (tree? res) 
+             (reduce conj! acc res)
+             (conj! acc res)))) (transient []) xs)))
+  ([f xs] (tree-mapcat  sequential? f xs)))
+
 ;;The problem is in concatenate.
 ;;We're trying to apply nested vectors, drawn from replications, as 
 ;;functions - per concatenate.
@@ -327,13 +340,8 @@
    concatenates the result into a vector."
   [nodes]
   (fn [ctx] 
-   (persistent! 
-    (reduce 
-     (fn [acc f] 
-       (let [res (f ctx)]
-         (if (sequential? res) 
-           (reduce conj! acc res)
-           (conj! acc res)))) (transient []) nodes))))
+    (tree-mapcat (fn [nd] (nd ctx)) nodes)))
+  
                                   
 ;; (defn replications
 ;;   "replicate - takes an positive integer, n, and performs n traversals of the 
@@ -354,7 +362,9 @@
   (let [rep (fn [ctx f]  
               (map (fn [i] (f ctx)) (range n)))]
     (fn [ctx] 
-      (vec  (mapcat #(rep ctx %) (if (sequential? nodes) nodes [nodes]))))))
+      (if (sequential? nodes) 
+        (vec  (tree-mapcat #(rep ctx %) nodes)) 
+        (vec  (rep ctx  nodes))))))
 
 (defn transform
   "given a function, applies the function to each child, returning the
@@ -398,7 +408,7 @@
     (fn [ctx]
       (->> (stats/with-seed seed (flatten (nodes ctx)))
            (constrain) 
-           (filter (complement nil?))))))    
+           (filter identity)))))    
 
 (defn merge-context
   "Merges the value of rec into the context, effectively altering the evaluation
@@ -453,6 +463,9 @@
 (defn ->constrain    
   [constraints nodes] 
   (->node :constrain {:constraints constraints :children nodes}))
+(defn ->flatten 
+  [nodes]
+  (->transform flatten nodes))
 
 ;;Evaluation Semantics for Sampling Rules
 ;;=======================================
@@ -549,8 +562,7 @@
     ((with-constraints constraints (lift children)) ctx)))
 
 (defmethod sample-node :concatenate [node ctx]
-  (let [{:keys [children]} (node-data node)
-        _ (println children)]
+  (let [{:keys [children]} (node-data node)]
       ((concatenate (lift-children children)) ctx)))
 
 ;;Sampling API
@@ -590,6 +602,7 @@
                              {:start (stats/uniform-dist 0 20000)
                               :duration (stats/normal-dist 500 150)}) %)
                      (->choice (vec (keys population-context))))]))
+
 ;These are our primitive nodes....
 ;If we don't have a set of primitive nodes, we need a way to generate them.
 (def p1 {:bar1 {:name "bar1" :start 10 :duration 1}
@@ -624,8 +637,8 @@
                    (->concatenate 
                     (->replications 3 :case1)))})
 
-(def p5 {:sample2
-         (->concatenate 
+(def p5 {:sample2 
+         (->flatten
           (->replications 3 (->constrain {:tfinal 5000 
                                           :duration-max 5000} :case1)))})
 ;;We can compose p1..p4 into a database of rules just using clojure.core/merge
@@ -704,7 +717,37 @@
 
 )
 
+(defn sample-data []
+  ;These are our primitive nodes....
+;If we don't have a set of primitive nodes, we need a way to generate them.
+  (let [p1 {:bar1 {:name "bar1" :start 10 :duration 1}
+            :bar2 {:name "bar2" :start 11 :duration 10}
+            :bar3 {:name "bar3" :start 21 :duration 5}
+            :bill {:name "bill" :start 30 :duration 30}
+            :cat  {:name "cat" :start 2  :duration 1}
+            :qux  {:name "qux" :start 50 :duration 1000}}
+        p2 {:bar (->choice [:bar1 :bar2 :bar3])
+            :baz (->choice [:bill 
+                            (->transform 
+                             {:start    (stats/exponential-dist 10)
+                              :duration (stats/exponential-dist 2000)}
+                             :cat)])
+            :foo (->transform  {:start (stats/normal-dist 10 1)}
+                               (->choice  {:bar (/ 1 3)
+                                           :baz (/ 1 3)
+                                           :qux (/ 1 3)}))}  
 
-
-
+        p3 {:case1 (->concatenate 
+                    [(->replications 2  :foo)
+                     (->replications 10 :qux)
+                     (->replications 3  :baz)])}
+        p4 {:sample (->constrain {:tfinal 5000 
+                                  :duration-max 5000}
+                                 (->concatenate 
+                                  (->replications 3 :case1)))}
+        p5 {:sample2 
+            (->flatten
+             (->replications 3 (->constrain {:tfinal 5000 
+                                             :duration-max 5000} :case1)))}]
+    (merge p1 p2 p3 p4 p5)))
 

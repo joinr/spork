@@ -168,18 +168,21 @@
                                 [[] 0] sorted)
         hscale 0.5
         pad    (when (> (:start (first sorted)) 0)
-                  (->rectangle :white 0 0 (:start (first sorted)) track-height))               
+                  (->rectangle :white 0 0 (:start (first sorted)) track-height))
         ] ;(/ track-height hmax)]        
      (beside [(->rectangle :lightgray 0 0 lwidth (/ hmax 2.0))
               label] 
-             (scale 1.0 hscale (cartesian 
-                                (into (conj [] pad) elevated))))))
+             (outline
+              (scale 1.0 hscale (cartesian 
+                                (into (conj [] pad) elevated)))))))
 
 (defn ->tracks [track-seq]
-  (->> (for [[name records] track-seq]
-         (->track records :track-name name))
-       (vec)
-       (stack)))
+;  (let [hline (->line :black 0 0 0 200)]
+    (->> (for [[name records] track-seq]
+           (->track records :track-name name))
+ ;        (interleave (repeat hline))
+         (vec)
+         (stack)))
 
 
 ;;testing
@@ -188,5 +191,33 @@
 (sketch-image (stack [(->track random-track) (->track simple-track)]))
 
 (require '[spork.util [sampling :as s]])
+(require '[spork.util [stats :as stats]])
+
+(def sampler (s/sample-data))
+
+(def random-tracks 
+  {:SAMPLE (s/sample-from sampler (s/->constrain {:tfinal 1000} :sample))
+   :CASE1  (s/sample-from sampler (s/->constrain {:tfinal 1000} :case1))})
+
+(let [sampler {:foo {:name "foo" :start 0 :duration 1}
+               :bar {:name "bar" :start 0 :duration 10}
+               :baz {:name "baz" :start 0 :duration 5}
+               :random-records  (s/->transform 
+                                 {:start    (stats/uniform-dist 0 2000)
+                                  :duration (stats/normal-dist 100 50)}
+                                 (s/->choice [:foo :bar :baz]))
+               :clamped-records  (s/->constrain {:tfinal 5000 
+                                                 :duration-max 5000}
+                                                 [:random-records])}]  
+  (defn random-track! [& {:keys [n] :or {n 10}}]
+    (->> :clamped-records
+         (s/->replications n)
+         (s/->flatten)
+         (s/sample-from sampler))))
+
+(defn random-tracks! [& {:keys [n] :or {n 4}}]
+  (sketch-image
+   (above (->rectangle :white 0 0 300 300)
+          (->tracks (zipmap (map #(str "Track" %) (range n)) (repeatedly random-track!))))))
 
 )
