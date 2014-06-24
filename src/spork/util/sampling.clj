@@ -319,19 +319,42 @@
                                            (rest xs) (rest ds)))))]
     (fn [ctx] ((choose) ctx))))
 
+;;The problem is in concatenate.
+;;We're trying to apply nested vectors, drawn from replications, as 
+;;functions - per concatenate.
 (defn concatenate
   "Takes an arbitray number of nodes, applies them to a context, and 
    concatenates the result into a vector."
   [nodes]
-  (fn [ctx] (reduce conj [] (map (fn [f] (f ctx)) nodes))))
+  (fn [ctx] 
+   (persistent! 
+    (reduce 
+     (fn [acc f] 
+       (let [res (f ctx)]
+         (if (sequential? res) 
+           (reduce conj! acc res)
+           (conj! acc res)))) (transient []) nodes))))
+                                  
+;; (defn replications
+;;   "replicate - takes an positive integer, n, and performs n traversals of the 
+;;    children, implicitly concatenating the results." 
+;;   [n nodes]
+;;   (let [rep (fn [ctx f]  (reduce conj [] (map (fn [i] (f ctx)) (range n))))]
+;;     (fn [ctx] 
+;;       (vec (map #(rep ctx %) (if (sequential? nodes) nodes [nodes]))))))
 
+
+;;should always return a vector of samples.  We concatenate samples
+;;together explicitly.
+;;int -> [node] -> (ctx -> [sample])
 (defn replications
   "replicate - takes an positive integer, n, and performs n traversals of the 
    children, implicitly concatenating the results." 
   [n nodes]
-  (let [rep (fn [ctx f]  (reduce conj [] (map (fn [i] (f ctx)) (range n))))]
+  (let [rep (fn [ctx f]  
+              (map (fn [i] (f ctx)) (range n)))]
     (fn [ctx] 
-      (vec (map (partial rep ctx) (if (sequential? nodes) nodes [nodes]))))))
+      (vec  (mapcat #(rep ctx %) (if (sequential? nodes) nodes [nodes]))))))
 
 (defn transform
   "given a function, applies the function to each child, returning the
@@ -344,7 +367,6 @@
    resolves to a record expression."
   [rec nodes]
   (transform #(merge % rec) nodes))
-
 
 (defn truncate-record
   "Uses the boundary set by base-record to truncate target-record.
@@ -413,7 +435,7 @@
 (defn ->chain [nodes]    
   (->node :chain {:children nodes}))
 (defn ->replications [n nodes] 
-  (->node :replications {:reps n :children nodes}))
+  (->node :replications {:reps n :children (if (sequential? nodes) nodes [nodes])}))
 (defn ->choice 
   ([nodes]    
      (->node :choice {:sample-func sample-nth :children nodes}))
@@ -427,7 +449,7 @@
   (->node :transform {:f  f :children nodes})) 
 (defn ->concatenate  
   [nodes]    
-  (->node :concatenate {:children nodes}))
+  (->node :concatenate {:children (if (sequential? nodes) nodes [nodes])}))
 (defn ->constrain    
   [constraints nodes] 
   (->node :constrain {:constraints constraints :children nodes}))
@@ -449,6 +471,17 @@
    step."
   (fn [node ctx] (node-type node)))
 
+;; (defn lift-children
+;;   "Helper function to allow us to ensure that values we need to pass the 
+;;    rendering context to are able to be evaluated.  Things that are keywords 
+;;    or functions are fine already, where anything else - like a node - needs to 
+;;    be lifted using node rendering.  The only reason for this is to allow 
+;;    inlining node definitions anywhere in the sample graph, but it's useful 
+;;    enough to justify the overhead."
+;;   [xs] 
+;;   (into [] (map (fn [x] (if (or (keyword? x) (fn? x)) x 
+;;                           (fn [ctx] (sample-node x ctx)))) xs)))
+
 (defn lift-children
   "Helper function to allow us to ensure that values we need to pass the 
    rendering context to are able to be evaluated.  Things that are keywords 
@@ -457,7 +490,7 @@
    inlining node definitions anywhere in the sample graph, but it's useful 
    enough to justify the overhead."
   [xs] 
-  (into [] (map (fn [x] (if (or (keyword? x) (fn? x)) x 
+  (into [] (map (fn [x] (if (fn? x) x 
                           (fn [ctx] (sample-node x ctx)))) xs)))
 
 (defn lift [x] (fn [ctx] (sample-node x ctx)))
@@ -507,15 +540,18 @@
       ((transform func (lift children)) ctx)))
 
 (defmethod sample-node :replications [node ctx]
-  (let [{:keys [reps children]} (node-data node)]
-    ((replications reps (lift-children children)) ctx)))
+  (let [{:keys [reps children]} (node-data node)
+        lifted                  (lift-children children)]
+    ((replications reps lifted) ctx)))
 
 (defmethod sample-node :constrain [node ctx]
   (let [{:keys [constraints children]} (node-data node)]
     ((with-constraints constraints (lift children)) ctx)))
 
 (defmethod sample-node :concatenate [node ctx]
-  ((concatenate (node-data node)) ctx))
+  (let [{:keys [children]} (node-data node)
+        _ (println children)]
+      ((concatenate (lift-children children)) ctx)))
 
 ;;Sampling API
 ;;============
@@ -583,11 +619,17 @@
                    (->replications 3  :baz)])})
 
 ;Rules for composing everything into a sample. 
-(def p4 {:sample (->replications 3 [(->constrain {:tfinal 5000 
-                                                  :duration-max 5000}
-                                                  :case1)])})
+(def p4 {:sample (->constrain {:tfinal 5000 
+                               :duration-max 5000}
+                   (->concatenate 
+                    (->replications 3 :case1)))})
+
+(def p5 {:sample2
+         (->concatenate 
+          (->replications 3 (->constrain {:tfinal 5000 
+                                          :duration-max 5000} :case1)))})
 ;;We can compose p1..p4 into a database of rules just using clojure.core/merge
-(def sample-graph (merge p1 p2 p3 p4))
+(def sample-graph (merge p1 p2 p3 p4 p5))
 
 (sample-from sample-graph :case1)
 
@@ -603,7 +645,7 @@
 ;nodes take the form {:node-type some-type :node-data  some-data}
 (def sampler1 
   (->node :start 
-    (->replications 3 :bar1)))
+    (->replications 3 [:bar1])))
   
 (def sampler2 
   (->node :start 

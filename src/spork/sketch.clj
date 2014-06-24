@@ -66,12 +66,13 @@
     (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
     (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
 
-(defn spin [theta shp]
-  (let [bounds (shape-bounds shp)
-        centerx (:x 
-  (reify IShape 
-    (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
-    (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
+
+;; (defn spin [theta shp]
+;;   (let [bounds (shape-bounds shp)
+;;         centerx (:x 
+;;   (reify IShape 
+;;     (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
+;;     (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
 
 
 (defn scale [xscale yscale shp]
@@ -157,7 +158,7 @@
                           :or   {track-name (str (gensym "Track ")) 
                                  track-height 10 
                                  track-width  800}}]
-  (let [label  (->label track-name 0 0)
+  (let [label  (->label (str track-name) 0 0)
         lwidth (:width (shape-bounds label))
         sorted (sort-by (juxt :start :duration) records)
         [elevated hmax] (reduce (fn [[xs height] x] 
@@ -169,13 +170,23 @@
         pad    (when (> (:start (first sorted)) 0)
                   (->rectangle :white 0 0 (:start (first sorted)) track-height))               
         ] ;(/ track-height hmax)]        
-    (outline (beside [(->rectangle :lightgray 0 0 lwidth (/ hmax 2.0))
-                      label] 
-                     (scale 1.0 hscale (cartesian 
-                                         (into (conj [] pad) elevated)))))))  
+     (beside [(->rectangle :lightgray 0 0 lwidth (/ hmax 2.0))
+              label] 
+             (scale 1.0 hscale (cartesian 
+                                (into (conj [] pad) elevated))))))
 
 (defn ->tracks [track-seq]
   (->> (for [[name records] track-seq]
          (->track records :track-name name))
        (vec)
        (stack)))
+
+
+;;testing
+(comment 
+
+(sketch-image (stack [(->track random-track) (->track simple-track)]))
+
+(require '[spork.util [sampling :as s]])
+
+)
