@@ -15,7 +15,7 @@
            [java.awt GridBagConstraints GridBagLayout BorderLayout FlowLayout 
                      GridLayout Component Graphics2D Dimension Insets]           
            [java.awt.event ActionListener MouseListener ComponentListener 
-                           MouseAdapter MouseEvent]))
+                           MouseAdapter MouseEvent WindowAdapter WindowEvent]))
 
  
 (defn get-events [obj]  (:event-stream (meta obj)))
@@ -621,7 +621,7 @@
                         (stack (label "Input")
                                input))
               {:eval (->> (obs/make-observable)
-                       (obs/subscribe (fn [form] (print! (eval- form)))))
+                          (obs/subscribe (fn [form] (print! (eval- form)))))
                :clear (:clear-text terminal)})]
     (do (obs/notify! (-> mvc :control :eval) 
                      `(~'do (~'ns ~name-space)
@@ -718,6 +718,12 @@
 ;;__TODO__ Rewrite paintpanel using the mvc stuff and reactives.  It's an old 
 ;;implementation
 
+
+(defn close-listener [closef]
+  (proxy [WindowAdapter] []
+    (windowClosing [^WindowEvent e]
+      (closef))))
+
 (defn paintpanel
   "Create a JPanel with its paint method overriden by paintf, which will be 
    called using g.  We can get mutable behavior by passing a function that 
@@ -726,8 +732,8 @@
    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
    simple situations where you have fixed dimensions."
   ([width height paintf]
-     (let [^BufferedImage buffer  (jgraphics/make-imgbuffer  width height)
-           ^Graphics2D bg         (j2d/bitmap-graphics buffer)
+     (let [buffer  (jgraphics/make-imgbuffer  width height)
+           bg      (j2d/bitmap-graphics buffer)
            
            p (fn [^Graphics2D g]
                (do                   
@@ -742,10 +748,17 @@
                                      (str (str (System/getProperty "user.home") 
                                                "\\" "SavedBuffer.png")) ]
                                (do (j2d/write-image buffer savepath nil)
-                                 (alert (str "Saved image to " savepath)))))))]                                      
+                                 (alert (str "Saved image to " savepath)))))))
+           closelistener (proxy [WindowAdapter] []
+                           (windowClosing [^WindowEvent e]
+                             (do (.dispose buffer)
+                                 (.dispose bg)  
+                                 (.dispose buffer)                               
+                                 (.dispose panel))))]                                      
          (doto panel                                                     
            (.setPreferredSize (Dimension. width height))
-           (.addMouseListener savelistener))))
+           (.addMouseListener  savelistener)
+           (.addWindowListener closelistener))))
   ([paintf] (paintpanel 250 250 paintf)))
 
 (defmethod display :shape [^JFrame frm s]
@@ -798,7 +811,13 @@
                                                    (double (/ hnew hprev))
                                            )))
                              (.setPreferredSize panel (Dimension. wnew hnew))
-                             ))))))]
+                             ))))))
+           closelistener (proxy [WindowAdapter] []
+                           (windowClosing [^WindowEvent e]
+                             (do (.flush buffer)
+                                 (.dispose bg)  
+                                 (.dispose buffer)                               
+                                 (.dispose panel))))]
        (doto (JPanel. (GridBagLayout.))
                                                                                                          
          (grid-bag-layout (JPanel. (GridBagLayout.)) 
@@ -822,7 +841,8 @@
                                               (* aspect w))
                                           (resize h
                                               (/ h aspect)))))))                                   
-                                (componentShown [e] nil))))))))
+                                (componentShown [e] nil)))
+                            (.addWindowListener closelistener))))))
   ([paintf] (stretchable-panel 250 250 paintf)))
 
 

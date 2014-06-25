@@ -217,7 +217,6 @@
 
 (defn random-tracks! [& {:keys [n] :or {n 4}}]
   (sketch-image
-   (above (->rectangle :white 0 0 300 300)
-          (->tracks (zipmap (map #(str "Track" %) (range n)) (repeatedly random-track!))))))
+   (->tracks (zipmap (map #(str "Track" %) (range n)) (repeatedly random-track!)))))
 
 )
