@@ -66,11 +66,31 @@
     (app)
     (SwingUtilities/invokeAndWait app)))
 
-
 ;;Composable gui components....
+;; (defn ^JFrame empty-frame 
+;;   ([] (JFrame.))
+;;   ([^String title] (JFrame. title)))
+
 (defn ^JFrame empty-frame 
-  ([] (JFrame.))
-  ([^String title] (JFrame. title)))
+  ([] (empty-frame ""))
+  ([^String title] 
+     (let [frm (if (= title "") 
+                 (JFrame.) 
+                 (JFrame. title))]
+;            onclose (proxy [WindowAdapter] []
+ ;                     (windowClosing [^WindowEvent e]
+ ;                       (.dipose frm)))]        
+        (doto frm  (.setDefaultCloseOperation javax.swing.WindowConstants/DISPOSE_ON_CLOSE)
+            ))))
+
+;; (defn ^JFrame still-frame 
+;;   ([] (let [frm (JFrame.)
+;;             onclose (proxy [WindowAdapter] []
+;;                       (windowClosing [^WindowEvent e]
+;;                         (.dipose)))]
+        
+;;         (doto frm (.addWindowListener onclose))))
+;;   ([^String title] (JFrame. title)))
 
 (defn ^JFrame add-menu [^JMenuBar mb  ^JFrame frm]
   (do (.setJMenuBar frm mb)
@@ -426,10 +446,10 @@
   ([name data] (shelf (label name)
                       (as-JTable data :sorted true))))
 
-(defn ^JFrame ->scrollable-view [content & {:keys [title width height]}] 
-  (doto (JFrame. title)
+(defn ^JFrame ->scrollable-view [content & {:keys [title width height] :or {title "" width 400 height 600}}] 
+  (doto (empty-frame title)
     (.add (JScrollPane. content))
-    (.setSize (or width 400) (or height 600))
+    (.setSize width  height)
     (.setVisible true)))
 
 (defn choose-from
@@ -724,6 +744,16 @@
     (windowClosing [^WindowEvent e]
       (closef))))
 
+;;loses type info..
+(defn dispose-all! [xs]
+  (doseq [x xs]
+    (.dispose x)))
+
+(defmacro window-disposer [xs]  
+  `(proxy [WindowAdapter] []
+     (windowClosing [^WindowEvent e]
+       (do ~@(map (fn [x] `(.dispose ~x)) xs)))))
+
 (defn paintpanel
   "Create a JPanel with its paint method overriden by paintf, which will be 
    called using g.  We can get mutable behavior by passing a function that 
@@ -732,15 +762,47 @@
    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
    simple situations where you have fixed dimensions."
   ([width height paintf]
+     (let [panel  (proxy [JPanel] []
+                    (paint [g]  (do (paintf g)))
+                    (removeNotify [] (do (println "removing!")
+                                         (proxy-super removeAll)
+                                         (proxy-super removeNotify))))
+           savelistener (proxy [MouseAdapter] []
+                          (mouseClicked [^MouseEvent e]
+                             (if (= (.getButton e) MouseEvent/BUTTON3)
+                               (let [savepath 
+                                     (str (str (System/getProperty "user.home") 
+                                               "\\" "SavedBuffer.png")) ]
+                                 (do (let [buffer (jgraphics/make-imgbuffer width height)
+                                           bg     (j2d/bitmap-graphics buffer)]
+                                       (j2d/write-image buffer savepath nil))
+                                     (alert (str "Saved image to " savepath)))))))]                                      
+          (doto panel                                                     
+            (.setPreferredSize (Dimension. width height))
+            (.addMouseListener  savelistener))))
+  ([paintf] (paintpanel 250 250 paintf)))
+
+(defn cached-paintpanel
+  "Create a JPanel with its paint method overriden by paintf, which will be 
+   called using g.  We can get mutable behavior by passing a function that 
+   evals and applies a ref'd function for paintf, or we can keep the painting 
+   static.  Note, paintpanel is static, in that resize behavior will not scale
+   the original coordinate system.  It will NOT stretch.  Use paintpanel for 
+   simple situations where you have fixed dimensions."
+  ([width height paintf]
      (let [buffer  (jgraphics/make-imgbuffer  width height)
-           bg      (j2d/bitmap-graphics buffer)
-           
+           bg      (j2d/bitmap-graphics buffer)           
            p (fn [^Graphics2D g]
                (do                   
-                 (paintf bg) 
-                 (j2d/draw-image g buffer :opaque 0 0)))
+                (paintf bg) 
+                (j2d/draw-image g buffer :opaque 0 0)))
            panel  (proxy [JPanel] []
-                    (paint [g]  (p g)))                    
+                    (paint [g]  (p g))
+                    (removeNotify [] (do (println "removing!")
+                                         (proxy-super removeAll)
+                                         (.dispose bg)
+                                         (.flush buffer)
+                                         (proxy-super removeNotify))))
            savelistener (proxy [MouseAdapter] []
                           (mouseClicked [^MouseEvent e]
                              (if (= (.getButton e) MouseEvent/BUTTON3)
@@ -748,17 +810,10 @@
                                      (str (str (System/getProperty "user.home") 
                                                "\\" "SavedBuffer.png")) ]
                                (do (j2d/write-image buffer savepath nil)
-                                 (alert (str "Saved image to " savepath)))))))
-           closelistener (proxy [WindowAdapter] []
-                           (windowClosing [^WindowEvent e]
-                             (do (.dispose buffer)
-                                 (.dispose bg)  
-                                 (.dispose buffer)                               
-                                 (.dispose panel))))]                                      
+                                 (alert (str "Saved image to " savepath)))))))]                                      
          (doto panel                                                     
            (.setPreferredSize (Dimension. width height))
-           (.addMouseListener  savelistener)
-           (.addWindowListener closelistener))))
+           (.addMouseListener  savelistener))))
   ([paintf] (paintpanel 250 250 paintf)))
 
 (defmethod display :shape [^JFrame frm s]
@@ -811,13 +866,7 @@
                                                    (double (/ hnew hprev))
                                            )))
                              (.setPreferredSize panel (Dimension. wnew hnew))
-                             ))))))
-           closelistener (proxy [WindowAdapter] []
-                           (windowClosing [^WindowEvent e]
-                             (do (.flush buffer)
-                                 (.dispose bg)  
-                                 (.dispose buffer)                               
-                                 (.dispose panel))))]
+                             ))))))]
        (doto (JPanel. (GridBagLayout.))
                                                                                                          
          (grid-bag-layout (JPanel. (GridBagLayout.)) 
@@ -841,8 +890,7 @@
                                               (* aspect w))
                                           (resize h
                                               (/ h aspect)))))))                                   
-                                (componentShown [e] nil)))
-                            (.addWindowListener closelistener))))))
+                                (componentShown [e] nil)))  )))))
   ([paintf] (stretchable-panel 250 250 paintf)))
 
 
@@ -863,7 +911,11 @@
 (defmethod view :default [s & {:keys [title] :or {title "Shape"}}] 
   (if (satisfies? j2d/IShape s)
     ;(->scrollable-view s :title title)))
-    (view (empty-frame) s)))
+;    (view (empty-frame) s)))
+    (let [{:keys [x y width height]} (j2d/shape-bounds s)]
+      (->scrollable-view (cached-paintpanel (inc (+ x width)) ;;check this...for duplicate.
+                                     (inc (+ y height))
+                                     #(j2d/draw-shape s %)) :title title))))
 
 (defn swing-canvas [width height] 
   (let [frm (empty-frame)
