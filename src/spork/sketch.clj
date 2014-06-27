@@ -104,10 +104,11 @@
 
 (defn delineate [xs] 
   (let [group-bounds (shape-bounds xs)
-        width        (:width group-bounds)
+        width        (- (:width group-bounds) 3)
         separator    (->line :black (:x group-bounds)
-                                    (:y group-bounds)
-                                    width 1)]
+                                    (dec (:y group-bounds))
+                                    width 
+                                    (dec (:y group-bounds)))]
     (stack (interleave xs (repeat separator)))))
 
 (defn stack [shapes] (reduce above  shapes))
@@ -187,18 +188,14 @@
                   (->rectangle :white 0 0 (:start (first sorted)) track-height))
         ] ;(/ track-height hmax)]        
      (beside [(->rectangle :lightgray 0 0 lwidth (/ hmax 2.0))
-              label] 
-             (outline
+              label]              
               (scale 1.0 hscale (cartesian 
-                                (into (conj [] pad) elevated)))))))
+                                (into (conj [] pad) elevated))))))
 
 (defn ->tracks [track-seq]
-  (let [hline (->line :black 0 0 0 200)]
-    (->> (for [[name records] track-seq]           
-           (->track records :track-name name))
-         
-         (vec)
-         (stack)))
+  (->> (delineate 
+        (into [] (for [[name records] track-seq]           
+                   (->track records :track-name name))))))
 
 
 (defn colored-rects [n]
