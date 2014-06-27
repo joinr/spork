@@ -26,16 +26,17 @@
          (s/sample-from sampler))))
 
 
-(let [normal    (stats/normal-dist 0 50)
-      ramptime  (stats/uniform-dist 1 3000)
+(let [ubound     1500
+      normal    (stats/normal-dist 0 50)
+      ramptime  (stats/uniform-dist 1 ubound)
       add-noise (fn [x] (+ x (normal)))
       corpus   {:Big        {:name "Big"    :start 0 :duration 1095 :quantity 1000}                
                 :Medium     {:name "Medium" :start 0 :duration 365  :quantity 500}
                 :Small      {:name "Small"  :start 0 :duration 30   :quantity 100}
                 :Sporadic   {:name "Tiny"   :start 0 :duration 4    :quantity 20}
-                :Year-Round {:name "Year round demand" :start 0 :duration 5000 :quantity 15}}
+                :Year-Round {:name "Year round demand" :start 0 :duration ubound :quantity 15}}
       sampling-rules {:random-surge   (s/->transform                                       
-                                        {:start      (stats/uniform-dist 1 3000)}
+                                        {:start      (stats/uniform-dist 1 ubound)}
                                         (s/->without-replacement [:Big :Small :Medium]))                      
                       :ramp            (s/->chain [:Small :Medium :Big])
                       :random-buildup  (s/->transform 
@@ -43,10 +44,10 @@
                                                      (map #(update-in % [:start] + offset) xs)))
                                           :ramp)
                       :smallish-surge   (s/->transform 
-                                           {:start    (stats/uniform-dist 1 4000)}
+                                           {:start    (stats/uniform-dist 1 ubound)}
                                         (s/->choice [:Small :Small :Small :Medium]))
                       :random-sporadic  (s/->transform 
-                                          {:start    (stats/uniform-dist 1 4500)}
+                                          {:start    (stats/uniform-dist 1 ubound)}
                                           :Sporadic)
                       :random-case      (s/->concatenate [(s/->replications 2  :random-surge)
                                                           (s/->replications 4  :smallish-surge)
@@ -55,7 +56,7 @@
                                                           :Year-Round])}
       sampler (merge sampling-rules corpus)]  
   (defn random-track! [& {:keys [n entry-case] :or {n 1 entry-case :random-case}}]
-    (->> (s/->constrain {:tfinal 1500 
+    (->> (s/->constrain {:tfinal ubound 
                          :duration-max 1500}
                         [entry-case])
          (s/->replications n)
