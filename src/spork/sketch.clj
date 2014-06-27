@@ -94,6 +94,22 @@
     [s
      (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
 
+
+
+;; (defn underline [s & {:keys [color] :or {color :black}}]
+;;   (let [bounds (shape-bounds s)]
+;;     [s
+;;      (->line color (:x bounds) (:y bounds) (:width bounds) (:height
+;;   bounds))]))
+
+(defn delineate [xs] 
+  (let [group-bounds (shape-bounds xs)
+        width        (:width group-bounds)
+        separator    (->line :black (:x group-bounds)
+                                    (:y group-bounds)
+                                    width 1)]
+    (stack (interleave xs (repeat separator)))))
+
 (defn stack [shapes] (reduce above  shapes))
 (defn shelf [shapes] (reduce beside shapes))
 
@@ -177,14 +193,12 @@
                                 (into (conj [] pad) elevated)))))))
 
 (defn ->tracks [track-seq]
-;  (let [hline (->line :black 0 0 0 200)]
-    (->> (for [[name records] track-seq]
-           
-           (image/shape->img (->track records :track-name name)))
- ;        (interleave (repeat hline))
+  (let [hline (->line :black 0 0 0 200)]
+    (->> (for [[name records] track-seq]           
+           (->track records :track-name name))
+         
          (vec)
-         ;(stack)
-         ))
+         (stack)))
 
 
 (defn colored-rects [n]
@@ -195,14 +209,19 @@
                     (map image/shape->img))]
     (image/shape->img (reduce beside
                                 (take n (cycle rects))))))
-
 (defn colored-rects! [n]
   (into []
     (take n
      (map-indexed
       (fn [i clr]
         (spork.geometry.shapes/->rectangle clr
-          (+ 0 (* i 100)) 0 100 100)) (cycle [:red :blue :green])))))
+          (+ 0 (+ (* i 100) 10)) 0 80 100)) (cycle [:red :blue :green])))))
+
+(defn colored-paper [w h]
+  (let [xs (colored-rects w)]
+    (delineate (into [] (take h (repeat xs))))))
+    
+
 ;;testing
 (comment 
 

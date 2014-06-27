@@ -758,6 +758,9 @@
 ;(add-watch logger :gui (fn ()))
 (defn log! [msg] (swap! logger conj msg))
 
+;;Note -> if we don't call the parent's paintcomponent, swing will not 
+;;repaint the component like it should, which messes up scrollpanes
+;;and introduces graphical artifacts.
 (defn paintpanel
   "Create a JPanel with its paint method overriden by paintf, which will be 
    called using g.  We can get mutable behavior by passing a function that 
@@ -767,7 +770,8 @@
    simple situations where you have fixed dimensions."
   ([width height paintf]
      (let [panel  (proxy [JPanel] []
-                    (paint [g]  (do (log! "painting!") (paintf g)))
+                    (paintComponent [g]  (do (proxy-super paintComponent g)
+                                             (paintf g)))
                     (removeNotify [] (do (println "removing!")
                                          (proxy-super removeAll)
                                          (proxy-super removeNotify))))
@@ -797,12 +801,11 @@
      (let [buffer  (jgraphics/make-imgbuffer  width height)
            bg      (j2d/bitmap-graphics buffer)           
            p (fn [^Graphics2D g]
-               (do (log! "painting"
-                    )                  
-                   (paintf bg) 
+               (do (paintf bg) 
                    (j2d/draw-image g buffer :opaque 0 0)))
            panel  (proxy [JPanel] []
-                    (paint [g]  (p g))
+                    (paintComponent [g]  (do (proxy-super paintComponent g) 
+                                             (p g)))
                     (removeNotify [] (do (println "removing!")
                                          (proxy-super removeAll)
                                          (.dispose bg)
@@ -851,7 +854,14 @@
                  (paintf @bg) ;paint to the buffer
                  (j2d/draw-image g @buffer :opaque 0 0))) ;draw buffer to any graphics.
            panel (doto 
-                   (proxy [JPanel] [] (paint [g]  (p g)))
+                   (proxy [JPanel] [] 
+                     (paintComponent [g]  (do  (proxy-super paintComponent g)  
+                                               (p g)))
+                     (removeNotify [] (do (println "removing!")
+                                          (proxy-super removeAll)
+                                          (.dispose bg)
+                                          (.flush buffer)
+                                          (proxy-super removeNotify))))
                    (.setPreferredSize (Dimension. iwidth iheight)))
            resize (fn [wnew hnew] ;if w and h have changed, need to change the buffer
                     (let [wprev @w
@@ -926,7 +936,7 @@
   (let [frm (empty-frame)
         painter (atom (fn [g] nil))        
         panel   (doto 
-                  (proxy [JPanel] [] (paint [g]  (@painter g)))
+                  (proxy [JPanel] [] (paintComponent [g]  (@painter g)))
                   (.setPreferredSize (Dimension. width height)))
         _       (add-watch painter :repaint (fn [k r o n]
                                              (repaint panel)))]
