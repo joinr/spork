@@ -442,8 +442,7 @@
 ;;traversed.
 (defn ->node  [type data] 
   {:node-type type :node-data data})
-(defn ->chain [nodes]    
-  (->node :chain {:children nodes}))
+
 (defn ->replications [n nodes] 
   (->node :replications {:reps n :children (if (sequential? nodes) nodes [nodes])}))
 (defn ->choice 
@@ -466,6 +465,9 @@
 (defn ->flatten 
   [nodes]
   (->transform flatten nodes))
+(defn ->chain [nodes]    
+  (->transform following-recs (->flatten nodes)))
+
 
 ;;Evaluation Semantics for Sampling Rules
 ;;=======================================
@@ -643,7 +645,7 @@
          (->flatten
           (->replications 3 (->constrain {:tfinal 5000 
                                           :duration-max 5000} :case1)))})
-(def p6 {:foobarbaz (->chain (->flatten [(->replications 2 :foo) :bar :baz]))})
+(def p6 {:foobarbaz (->chain [(->replications 2 :foo) :bar :baz])})
 
 ;;We can compose p1..p4 into a database of rules just using clojure.core/merge
 (def sample-graph (merge p1 p2 p3 p4 p5 p6))
