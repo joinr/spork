@@ -754,6 +754,10 @@
      (windowClosing [^WindowEvent e]
        (do ~@(map (fn [x] `(.dispose ~x)) xs)))))
 
+(def logger (atom nil))
+;(add-watch logger :gui (fn ()))
+(defn log! [msg] (swap! logger conj msg))
+
 (defn paintpanel
   "Create a JPanel with its paint method overriden by paintf, which will be 
    called using g.  We can get mutable behavior by passing a function that 
@@ -763,7 +767,7 @@
    simple situations where you have fixed dimensions."
   ([width height paintf]
      (let [panel  (proxy [JPanel] []
-                    (paint [g]  (do (paintf g)))
+                    (paint [g]  (do (log! "painting!") (paintf g)))
                     (removeNotify [] (do (println "removing!")
                                          (proxy-super removeAll)
                                          (proxy-super removeNotify))))
@@ -793,9 +797,10 @@
      (let [buffer  (jgraphics/make-imgbuffer  width height)
            bg      (j2d/bitmap-graphics buffer)           
            p (fn [^Graphics2D g]
-               (do                   
-                (paintf bg) 
-                (j2d/draw-image g buffer :opaque 0 0)))
+               (do (log! "painting"
+                    )                  
+                   (paintf bg) 
+                   (j2d/draw-image g buffer :opaque 0 0)))
            panel  (proxy [JPanel] []
                     (paint [g]  (p g))
                     (removeNotify [] (do (println "removing!")

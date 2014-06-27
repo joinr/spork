@@ -114,7 +114,7 @@
 
 ;;Drawing events and tracks.
 
-(def simple-activity {:start 0 :duration 100 :name "The Activity!" :quantity 10})
+(def simple-activity {:start 0 :duration 100 :name "The Activity!" :quantity 10} )
 (def simple-track
   [{:start 15 :duration 25   :name "A" :quantity 10}
    {:start 200 :duration 250 :name "B" :quantity 10}
@@ -179,17 +179,35 @@
 (defn ->tracks [track-seq]
 ;  (let [hline (->line :black 0 0 0 200)]
     (->> (for [[name records] track-seq]
-           (->track records :track-name name))
+           
+           (image/shape->img (->track records :track-name name)))
  ;        (interleave (repeat hline))
          (vec)
-         (stack)))
+         ;(stack)
+         ))
 
 
+(defn colored-rects [n]
+  (let [rects  (->> [:red :blue :green]
+                    (map (fn [clr]
+                           (spork.geometry.shapes/->rectangle clr
+                                                              0  0 100 100)))
+                    (map image/shape->img))]
+    (image/shape->img (reduce beside
+                                (take n (cycle rects))))))
+
+(defn colored-rects! [n]
+  (into []
+    (take n
+     (map-indexed
+      (fn [i clr]
+        (spork.geometry.shapes/->rectangle clr
+          (+ 0 (* i 100)) 0 100 100)) (cycle [:red :blue :green])))))
 ;;testing
 (comment 
 
 
-;;THis guy fails, should not.
-(sketch-image (reduce beside (take 10 (map-indexed (fn [i clr] (spork.geometry.shapes/->rectangle clr (+ 0 (* i 100)) 0 (+ 0 (* i 100)) 100)) (cycle [:red :blue :green]) ))))
+
+  
 
 )
