@@ -161,7 +161,7 @@
         centerx    (+ x 1)
         half-width (* (/ (count txt) 2.0) *font-width*)        
         scalex     1.0 ;(if (< half-width half-dur) 1.0  (/ half-dur half-width))
-        centery    10
+        centery    0
         label      (scale scalex 1.0 (uncartesian (->label txt centerx centery :color label-color)))]
     (reify IShape 
       (shape-bounds [s]   (shape-bounds r))
@@ -169,7 +169,7 @@
   
 (defn ->activity 
   [{:keys [start duration name quantity]} & {:keys [color-map label-color] 
-                                             :or {color-map {} label-color :black}}]
+                                             :or {color-map {} label-color :white}}]
   (let [h  10 ;(* quantity 10)
         b  (->labeled-box name label-color (get color-map name :blue) start 0 duration h)]
     (outline b)))
@@ -190,7 +190,7 @@
                                  track-height 100 
                                  track-width  800}}]
   (let [label  (->label (str track-name) 0 0)
-        lwidth (:width (shape-bounds label))
+        lwidth 100 ; (:width (shape-bounds label))
         sorted (sort-by (juxt :start :duration) records)
         [elevated hmax wmax] (reduce (fn [[xs height width] x] 
                                        (let [act (->activity x)]
@@ -200,17 +200,17 @@
                                      [[] 0 0] sorted)
         hscale 0.5
         background    ;(when (> (:start (first sorted)) 0)
-               (->rectangle :green 0 0  wmax track-height)
+               (->rectangle :lightgray 0 0  wmax track-height)
         vscale (/ track-height hmax)
         ] ;(/ track-height hmax)]        
-     (beside [(->rectangle :lightgray 0 0 lwidth hmax)
+     (beside [(->rectangle :white 0 0 lwidth hmax)
               label]
              [background
               (scale 1.0 vscale (cartesian (into [] elevated)))])))
 
 (defn ->tracks [track-seq]
   (->> (delineate 
-        (into [] (for [[name records] track-seq]           
+        (into [] (for [[name records] (sort-by first track-seq)]           
                    (->track records :track-name name))))))
 
 
