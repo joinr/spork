@@ -101,13 +101,12 @@
         (if *cartesian* (binding [*cartesian* nil]
                           (with-translation 0 (:height bounds) c 
                             #(draw-shape reflected %)))
-            (draw-shape s c))))))
+            (draw-shape shp c))))))
 
 (defn outline [s & {:keys [color] :or {color :black}}]
   (let [bounds (shape-bounds s)]
     [s
      (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
-
 
 
 ;; (defn underline [s & {:keys [color] :or {color :black}}]
@@ -166,12 +165,15 @@
     (reify IShape 
       (shape-bounds [s]   (shape-bounds r))
       (draw-shape   [s c] (draw-shape [r label] c)))))
-  
+
+ 
 (defn ->activity 
   [{:keys [start duration name quantity]} & {:keys [color-map label-color] 
                                              :or {color-map {} label-color :white}}]
-  (let [h  10 ;(* quantity 10)
-        b  (->labeled-box name label-color (get color-map name :blue) start 0 duration h)]
+  (let [h  (if (= quantity 10) quantity (+ 10 (* 3 (Math/log10 quantity))))
+        b  (->labeled-box name label-color (get color-map name :blue) start 0 duration h)
+           ;;(->rectangle (get color-map name :blue) start 0 duration  h)
+        ]
     (outline b)))
 
 (def  ->vline (image/shape->img (->line :black 0 0 0 10)))
@@ -187,23 +189,27 @@
 ;;left of the track.  Events in the track are rendered on top of each other.
 (defn ->track [records & {:keys [track-name track-height track-width] 
                           :or   {track-name (str (gensym "Track ")) 
-                                 track-height 100 
+                                 track-height 200 
                                  track-width  800}}]
   (let [label  (->label (str track-name) 0 0)
         lwidth 100 ; (:width (shape-bounds label))
         sorted (sort-by (juxt :start :duration) records)
         [elevated hmax wmax] (reduce (fn [[xs height width] x] 
-                                       (let [act (->activity x)]
+                                       (let [
+                                            ; _ (println [:converting x])
+                                             act (->activity x)
+                                             ;_ (println :converted)
+                                             ]
                                          [(conj xs (translate 0.0 height act)) 
                                           (+ height (:height (shape-bounds act)))
                                           (max width (+ (:start x) (:duration x)))]))
-                                     [[] 0 0] sorted)
+                                       [[] 0.0 0.0] sorted)
         hscale 0.5
         background    ;(when (> (:start (first sorted)) 0)
                (->rectangle :lightgray 0 0  wmax track-height)
         vscale (/ track-height hmax)
         ] ;(/ track-height hmax)]        
-     (beside [(->rectangle :white 0 0 lwidth hmax)
+     (beside [(->rectangle :white 0 0 lwidth track-height)
               label]
              [background
               (scale 1.0 vscale (cartesian (into [] elevated)))])))
@@ -212,7 +218,6 @@
   (->> (delineate 
         (into [] (for [[name records] (sort-by first track-seq)]           
                    (->track records :track-name name))))))
-
 
 (defn colored-rects [n]
   (let [rects  (->> [:red :blue :green]
@@ -243,3 +248,31 @@
   
 
 )
+;; (defn ->track2 [records & {:keys [track-name track-height track-width] 
+;;                           :or   {track-name (str (gensym "Track ")) 
+;;                                  track-height 100 
+;;                                  track-width  800}}]
+;;   (let [label  (->label (str track-name) 0 0)
+;;         lwidth 100 ; (:width (shape-bounds label))
+;;         sorted (sort-by (juxt :start :duration) records)
+;;         [elevated hmax wmax] (reduce (fn [[xs height width] x] 
+;;                                        (let [act (->activity x)]
+;;                                          [(conj xs (translate 0.0 height act)) 
+;;                                           (+ height (:height (shape-bounds act)))
+;;                                           (max width (+ (:start x) (:duration x)))]))
+;;                                        [[] 0.0 0.0] sorted)
+;;         hscale 0.5
+;;         background    ;(when (> (:start (first sorted)) 0)
+;;                (->rectangle :lightgray 0 0  wmax track-height)
+;;         vscale (/ track-height hmax)
+;;         _ (println :buildingimage)
+;;         ] ;(/ track-height hmax)]        
+;;     (with-meta (beside [(->rectangle :white 0 0 lwidth track-height)
+;;                         label]
+;;                        [background
+;;                         (scale 1.0 vscale (cartesian (into [] elevated)))]) {:records records :vscale vscale :wmax wmax})))
+
+     ;; (beside [(->rectangle :white 0 0 lwidth hmax)
+     ;;          label]
+     ;;         [background
+     ;;          (scale 1.0 vscale (cartesian (into [] elevated)))])))

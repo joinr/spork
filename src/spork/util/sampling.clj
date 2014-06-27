@@ -534,7 +534,9 @@
 ;;since we're just wrapping previously-defined functions from above.
 
 (defmethod sample-node :leaf     [node ctx] (get ctx (node-data node)))
-(defmethod sample-node :chain    [node ctx] ((chain (node-data node)) ctx))
+(defmethod sample-node :chain    [node ctx]
+  (let [data (:children (node-data node))]
+        ((chain (lift-children data)) ctx)))
 ;;sample-node now delegates to its function data to perform sampling.
 (defmethod sample-node :choice   [node ctx]
   (let [data (:children (node-data node))
@@ -641,8 +643,10 @@
          (->flatten
           (->replications 3 (->constrain {:tfinal 5000 
                                           :duration-max 5000} :case1)))})
+(def p6 {:foobarbaz (->chain (->flatten [(->replications 2 :foo) :bar :baz]))})
+
 ;;We can compose p1..p4 into a database of rules just using clojure.core/merge
-(def sample-graph (merge p1 p2 p3 p4 p5))
+(def sample-graph (merge p1 p2 p3 p4 p5 p6))
 
 (sample-from sample-graph :case1)
 
