@@ -80,14 +80,28 @@
     (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
     (draw-shape   [s c] (with-scale xscale yscale c (partial draw-shape shp)))))
 
+(def ^:dynamic *cartesian* nil)
 (defn cartesian [shp]
   (let [bounds    (shape-bounds shp)
         reflected (scale 1.0 -1.0 shp)]
     (reify IShape 
       (shape-bounds [s] bounds)
       (draw-shape [s c] 
-        (with-translation 0 (:height bounds) c 
-          (partial draw-shape reflected))))))
+        (if *cartesian* (draw-shape s c)
+            (binding [*cartesian* true]
+              (with-translation 0 (:height bounds) c 
+                #(draw-shape reflected %))))))))
+
+(defn uncartesian [shp]
+  (let [bounds    (shape-bounds shp)
+        reflected (scale 1.0 -1.0 shp)]
+    (reify IShape 
+      (shape-bounds [s] bounds)
+      (draw-shape [s c] 
+        (if *cartesian* (binding [*cartesian* nil]
+                          (with-translation 0 (:height bounds) c 
+                            #(draw-shape reflected %)))
+            (draw-shape s c))))))
 
 (defn outline [s & {:keys [color] :or {color :black}}]
   (let [bounds (shape-bounds s)]
@@ -148,14 +162,14 @@
         half-width (* (/ (count txt) 2.0) *font-width*)        
         scalex     1.0 ;(if (< half-width half-dur) 1.0  (/ half-dur half-width))
         centery    10
-        label      (scale scalex 1.0 (->label txt centerx centery :color label-color))]
+        label      (scale scalex 1.0 (uncartesian (->label txt centerx centery :color label-color)))]
     (reify IShape 
       (shape-bounds [s]   (shape-bounds r))
       (draw-shape   [s c] (draw-shape [r label] c)))))
   
 (defn ->activity 
   [{:keys [start duration name quantity]} & {:keys [color-map label-color] 
-                                             :or {color-map {} label-color :white}}]
+                                             :or {color-map {} label-color :black}}]
   (let [h  10 ;(* quantity 10)
         b  (->labeled-box name label-color (get color-map name :blue) start 0 duration h)]
     (outline b)))
@@ -173,24 +187,26 @@
 ;;left of the track.  Events in the track are rendered on top of each other.
 (defn ->track [records & {:keys [track-name track-height track-width] 
                           :or   {track-name (str (gensym "Track ")) 
-                                 track-height 10 
+                                 track-height 100 
                                  track-width  800}}]
   (let [label  (->label (str track-name) 0 0)
         lwidth (:width (shape-bounds label))
         sorted (sort-by (juxt :start :duration) records)
-        [elevated hmax] (reduce (fn [[xs height] x] 
-                           (let [act (->activity x)]
-                             [(conj xs (translate 0.0 height act)) 
-                              (+ height (:height (shape-bounds act)))]))
-                                [[] 0] sorted)
+        [elevated hmax wmax] (reduce (fn [[xs height width] x] 
+                                       (let [act (->activity x)]
+                                         [(conj xs (translate 0.0 height act)) 
+                                          (+ height (:height (shape-bounds act)))
+                                          (max width (+ (:start x) (:duration x)))]))
+                                     [[] 0 0] sorted)
         hscale 0.5
-        pad    (when (> (:start (first sorted)) 0)
-                  (->rectangle :white 0 0 (:start (first sorted)) track-height))
+        background    ;(when (> (:start (first sorted)) 0)
+               (->rectangle :green 0 0  wmax track-height)
+        vscale (/ track-height hmax)
         ] ;(/ track-height hmax)]        
-     (beside [(->rectangle :lightgray 0 0 lwidth (/ hmax 2.0))
-              label]              
-              (scale 1.0 hscale (cartesian 
-                                (into (conj [] pad) elevated))))))
+     (beside [(->rectangle :lightgray 0 0 lwidth hmax)
+              label]
+             [background
+              (scale 1.0 vscale (cartesian (into [] elevated)))])))
 
 (defn ->tracks [track-seq]
   (->> (delineate 
