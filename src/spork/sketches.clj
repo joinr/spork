@@ -74,11 +74,11 @@
      (->tracks (zipmap (map #(str "Track" %) (range n)) bad-data)))))
 
 (def event-colors 
-  {"Big"               :red
-   "Medium"            :orange
-   "Small"             :yellow
-   "Tiny"              :blue
-   "Year round demand" :green})
+  {"Big"               :dark-blue
+   "Medium"            :blue
+   "Small"             :dark-slate-blue
+   "Tiny"              :aqua
+   "Year round demand" :pale-green})
 
 (defn event->color [e] 
   (if-let [clr (get event-colors (get e :name))]

@@ -24,12 +24,12 @@
   (get-a [c] a))
 
 (defn- get-byte [n idx] (bit-and (bit-shift-right n (* idx 8)) 255))
-(defn get-rgba     [c] (+ (get-rgb c) (bit-shift-left (get-a c) 24))) 
-(defn color->alpha [c] (float (/ (get-a c) 255)))
-(defn color->rgb   [c]   (juxt [get-r get-g get-b]))
-(defn color->rgba  [c]  (juxt [get-r get-g get-b get-a]))
-(defn color->rgb-alpha [c]  (juxt [get-r get-g get-b color->alpha]))
-(defn rgba->color-rgba [rgba]
+(defn  get-rgba     [c] (+ (get-rgb c) (bit-shift-left (get-a c) 24))) 
+(defn  color->alpha [c] (float (/ (get-a c) 255)))
+(defn  color->rgb   [c]   (juxt [get-r get-g get-b]))
+(defn  color->rgba  [c]  (juxt [get-r get-g get-b get-a]))
+(defn  color->rgb-alpha [c]  (juxt [get-r get-g get-b color->alpha]))
+(defn  rgba->color-rgba [rgba]
   (let [byte-at (partial get-byte rgba)] 
     (->color-rgba (byte-at 2)
             (byte-at 1)
