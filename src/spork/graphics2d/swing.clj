@@ -121,10 +121,14 @@
 ;(defn color->rgb [^Color c]  [(.getRed c) (.getGreen c) (.getBlue c)])
 
 (def colormap     
-  {:black Color/BLACK :blue Color/BLUE :cyan Color/CYAN
-   :darkgray Color/DARK_GRAY :green Color/GREEN :lightgray Color/LIGHT_GRAY
-   :magenta Color/MAGENTA :orange Color/ORANGE :pink Color/PINK
-   :red Color/RED :white Color/WHITE :yellow Color/YELLOW}) 
+  (into (reduce-kv (fn [m clr [r g b]]
+                     (assoc m clr (Color. (int r) (int g) (int b))))
+                   {}
+                   spork.graphics2d.canvas/color-specs)
+       {:black Color/BLACK :blue Color/BLUE :cyan Color/CYAN
+        :darkgray Color/DARK_GRAY :green Color/GREEN :lightgray Color/LIGHT_GRAY
+        :magenta Color/MAGENTA :orange Color/ORANGE :pink Color/PINK
+        :red Color/RED :white Color/WHITE :yellow Color/YELLOW}))
 
 ;this is the dumb way to do it.
 (defn get-gui-color 

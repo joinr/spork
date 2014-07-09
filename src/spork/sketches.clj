@@ -74,11 +74,11 @@
      (->tracks (zipmap (map #(str "Track" %) (range n)) bad-data)))))
 
 (def event-colors 
-  "Big"               :red
-  "Medium"            :orange
-  "Small"             :yellow
-  "Tiny"              :blue
-  "Year round demand" :green)
+  {"Big"               :red
+   "Medium"            :orange
+   "Small"             :yellow
+   "Tiny"              :blue
+   "Year round demand" :green})
 
 (defn event->color [e] 
   (if-let [clr (get event-colors (get e :name))]
@@ -89,9 +89,10 @@
 (defn random-tracks! [& {:keys [n entry-case] :or {n 4 entry-case :random-case}}]
   (let [data (take n (repeatedly #(random-track! :entry-case entry-case)))
         _    (do (reset! last-data data))]
-    (sketch-image
-     (->tracks (zipmap (map #(str "Future" %) (range n)) data)))))
-
+    (with-event->color event->color 
+      (sketch-image
+       (->tracks (zipmap (map #(str "Future" %) (range n)) data))))))
+  
 
 (comment ;sample-code
   ;;We set an upper bound for our simulated demand future at 1500 days,
