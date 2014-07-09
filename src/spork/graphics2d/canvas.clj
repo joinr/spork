@@ -82,11 +82,11 @@
 
 
 (defprotocol IBitMap
-  (bitmap-width [b])
-  (bitmap-height [b])
-  (bitmap-graphics [b])
-  (bitmap-format [b])
-  (write-image [b dest fmt])
+  (bitmap-width      [b])
+  (bitmap-height     [b])
+  (bitmap-graphics   [b])
+  (bitmap-format     [b])
+  (write-image       [b dest fmt])
   (as-buffered-image [b fmt]))
     
 (defprotocol I2DGraphicsProvider 

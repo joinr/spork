@@ -115,6 +115,11 @@
 ;;      (->line color (:x bounds) (:y bounds) (:width bounds) (:height
 ;;   bounds))]))
 
+
+(defn stack [shapes] (reduce above  shapes))
+(defn shelf [shapes] (reduce beside shapes))
+
+
 (defn delineate [xs] 
   (let [group-bounds (shape-bounds xs)
         width        (- (:width group-bounds) 3)
@@ -123,9 +128,6 @@
                                     width 
                                     (dec (:y group-bounds)))]
     (stack (interleave xs (repeat separator)))))
-
-(defn stack [shapes] (reduce above  shapes))
-(defn shelf [shapes] (reduce beside shapes))
 
 ;;work in progress.
 ;(defn at-center [shp]
@@ -155,29 +157,53 @@
              (range 100))))
 
 (defn ->labeled-box  [txt label-color color x y w h]
-  (let [r          (->rectangle  color x y w h)
-        half-dur   (/ w 2.0)
-        centerx    (+ x 1)
-        half-width (* (/ (count txt) 2.0) *font-width*)        
-        scalex     1.0 ;(if (< half-width half-dur) 1.0  (/ half-dur half-width))
-        centery    0
-        label      (scale scalex 1.0 (uncartesian (->label txt centerx centery :color label-color)))]
-    (reify IShape 
-      (shape-bounds [s]   (shape-bounds r))
-      (draw-shape   [s c] (draw-shape [r label] c)))))
+  (if (empty? txt) 
+    (->rectangle color x y w h)
+    (let [r          (->rectangle  color x y w h)
+          half-dur   (/ w 2.0)
+          centerx    (+ x 1)
+          half-width (* (/ (count txt) 2.0) *font-width*)        
+          scalex     1.0 ;(if (< half-width half-dur) 1.0  (/ half-dur half-width))
+          centery    0
+          label      (scale scalex 1.0 (uncartesian (->label txt centerx centery :color label-color)))]
+      (reify IShape 
+        (shape-bounds [s]   (shape-bounds r))
+        (draw-shape   [s c] (draw-shape [r label] c))))))
 
- 
+;;For drawing Activities, we'll allow a dynamic color map.  This lets
+;;us change colors and stuff...
+
+(def ^:dynamic *color-map* {:default :blue})
+(defmacro with-color-map [key->color & body]
+  `(binding [~'*color-map* ~key->color]
+     ~@body))
+;;Allows us to define a bunch of colors, ala let-binding, 
+;;and have them inserted into the color-map.  High level method 
+;;for defining color pallettes.
+(defmacro with-colors [color-binds & body]
+  `(with-color-map (into *color-map* (partition 2 ~color-binds))
+     ~@body))
+
+;;We have a binding that maps events to colors, a single-arity
+;;function.  By default, we look at the event name.   Callers can 
+;;overload this by supplying their own event->color function, or 
+;;by altering the color-map.
+(def ^:dynamic *event->color* (fn [e] (get *color-map* (get e :name :default))))
+(defmacro with-event->color [event->color & body]
+  `(binding [~'*event->color*  ~event->color]
+     ~@body))
+
 (defn ->activity 
-  [{:keys [start duration name quantity]} & {:keys [color-map label-color] 
-                                             :or {color-map {} label-color :white}}]
+  [{:keys [start duration name quantity] :as e} & {:keys [get-color label-color event->color] 
+                                                   :or   {event->color *event->color* label-color :white}}]
   (let [h  (if (= quantity 10) quantity (+ 10 (* 3 (Math/log10 quantity))))
-        b  (->labeled-box name label-color (get color-map name :blue) start 0 duration h)
+        b  (->labeled-box name label-color (or (event->color e) :blue) start 0 duration h)
            ;;(->rectangle (get color-map name :blue) start 0 duration  h)
         ]
     (outline b)))
 
 (def  ->vline (image/shape->img (->line :black 0 0 0 10)))
-(defn ->axis [min max step-width]
+(defn ->axis  [min max step-width]
   (let [tick   (fn [x] (translate x 0 ->vline))]        
     (translate 0 *font-height*     
      (image/shape->img 
@@ -187,17 +213,18 @@
 
 ;;should render us a track of each event, with a track-name to the
 ;;left of the track.  Events in the track are rendered on top of each other.
-(defn ->track [records & {:keys [track-name track-height track-width] 
+(defn ->track [records & {:keys [track-name track-height track-width event->color] 
                           :or   {track-name (str (gensym "Track ")) 
                                  track-height 200 
-                                 track-width  800}}]
+                                 track-width  800
+                                 event->color *event->color*}}]
   (let [label  (->label (str track-name) 0 0)
         lwidth 100 ; (:width (shape-bounds label))
         sorted (sort-by (juxt :start :duration) records)
         [elevated hmax wmax] (reduce (fn [[xs height width] x] 
                                        (let [
                                             ; _ (println [:converting x])
-                                             act (->activity x)
+                                             act (->activity x :event->color event->color)
                                              ;_ (println :converted)
                                              ]
                                          [(conj xs (translate 0.0 height act)) 
