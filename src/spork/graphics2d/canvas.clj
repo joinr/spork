@@ -202,6 +202,71 @@
          [:white-smoke [245 245 245]]
          [:white [255 255 255]]]))
 
+;; var RColor = function() {
+;; 		this.hue			= Math.random(),
+;; 		this.goldenRatio 	= 0.618033988749895;
+;; 		this.hexwidth		= 2;
+;; 	};
+
+(defn rgb-floor [xs]  [(int  (Math/floor (*  (nth xs 0) 255.0)))
+                       (int  (Math/floor (*  (nth xs 1) 255.0)))
+                       (int  (Math/floor (*  (nth xs 2) 255.0)))])
+
+(defn hsv->rgb [h s v]
+  (let [h_i (long (Math/floor (* h 6)))
+        f   (- (* h 6) h_i)
+        p   (* v (- 1.0 s))
+        q   (* v (- 1.0 (* f s)))
+        t   (* v (- 1.0 (*  (- 1.0 f) s) ))]
+    (rgb-floor  (case h_i
+                  0 [v t p]
+                  1 [q v p]
+                  2 [p v t]
+                  3 [p q v]
+                  4 [t p v]
+                  5 [v p q]))))
+
+(defn rgb->hsv [r g b]
+  (let [r (/ r 255.0)
+        g (/ g 255.0)
+        b (/ b 255.0)
+        cmax (max r g b)
+        cmin (min r g b)
+        delta  (- cmax cmin)
+        d  (if (zero? delta) 1.0 delta)
+        v cmax
+        _ (println [r g b cmax cmin delta v])
+        s (if (zero? delta) 0 (/ delta cmax))]
+    [(/  (cond (= r cmax)  (mod (/ (- g b) d) 6)
+                  (= g cmax)  (+ (/ (- b r) d) 2)
+                  :else       (+ (/ (- r g) d) 4))
+         6)
+     s
+     v]    
+    ))
+
+;;source:https://github.com/sterlingwes/RandomColor/blob/master/rcolor.js
+
+;; 	RColor.prototype.hsvToRgb = function (h,s,v) {
+;; 		var	h_i	= Math.floor(h*6),
+;; 			f 	= h*6 - h_i,
+;; 			p	= v * (1-s),
+;; 			q	= v * (1-f*s),
+;; 			t	= v * (1-(1-f)*s),
+;; 			r	= 255,
+;; 			g	= 255,
+;; 			b	= 255;
+;; 		switch(h_i) {
+;; 			case 0:	r = v, g = t, b = p;	break;
+;; 			case 1:	r = q, g = v, b = p;	break;
+;; 			case 2:	r = p, g = v, b = t;	break;
+;; 			case 3:	r = p, g = q, b = v;	break;
+;; 			case 4: r = t, g = p, b = v;	break;
+;; 			case 5: r = v, g = p, b = q;	break;
+;; 		}
+;; 		return [Math.floor(r*256),Math.floor(g*256),Math.floor(b*256)];
+;; 	};
+
 (defprotocol IBitMap
   (bitmap-width      [b])
   (bitmap-height     [b])

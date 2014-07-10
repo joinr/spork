@@ -73,12 +73,13 @@
     (sketch-image
      (->tracks (zipmap (map #(str "Track" %) (range n)) bad-data)))))
 
+;;another way to color this is to use increasing saturation..
 (def event-colors 
   {"Big"               :dark-blue
    "Medium"            :blue
    "Small"             :dark-slate-blue
    "Tiny"              :aqua
-   "Year round demand" :pale-green})
+   "Year round demand" :green})
 
 (defn event->color [e] 
   (if-let [clr (get event-colors (get e :name))]
