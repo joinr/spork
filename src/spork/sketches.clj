@@ -75,11 +75,21 @@
 
 ;;another way to color this is to use increasing saturation..
 (def event-colors 
-  {"Big"               :dark-blue
-   "Medium"            :blue
-   "Small"             :dark-slate-blue
-   "Tiny"              :aqua
-   "Year round demand" :green})
+  (zipmap 
+   ["Tiny"
+    "Year round demand"
+    "Small"             
+    "Medium"            
+    "Big"]
+   (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (rest (spork.graphics2d.canvas/mono-color-palette 0.2 [255 0 0])))))
+(def event-colors 
+  (zipmap 
+   ["Tiny"
+    "Year round demand"
+    "Small"             
+    "Medium"            
+    "Big"]
+   (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (spork.graphics2d.canvas/random-color-palette))))
 
 (defn event->color [e] 
   (if-let [clr (get event-colors (get e :name))]
