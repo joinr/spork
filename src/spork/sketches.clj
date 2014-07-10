@@ -74,6 +74,15 @@
      (->tracks (zipmap (map #(str "Track" %) (range n)) bad-data)))))
 
 ;;another way to color this is to use increasing saturation..
+;; (def event-colors 
+;;   (zipmap 
+;;    ["Tiny"
+;;     "Year round demand"
+;;     "Small"             
+;;     "Medium"            
+;;     "Big"]
+;;    (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (rest (spork.graphics2d.canvas/mono-color-palette 0.2 [255 0 0])))))
+
 (def event-colors 
   (zipmap 
    ["Tiny"
@@ -81,15 +90,14 @@
     "Small"             
     "Medium"            
     "Big"]
-   (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (rest (spork.graphics2d.canvas/mono-color-palette 0.2 [255 0 0])))))
-(def event-colors 
-  (zipmap 
-   ["Tiny"
-    "Year round demand"
-    "Small"             
-    "Medium"            
-    "Big"]
-   (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (spork.graphics2d.canvas/random-color-palette))))
+   (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (spork.graphics2d.canvas/random-color-palette 0.5 0.7))))
+
+(defn ->legend-entry [lbl color]
+   (spork.geometry.shapes/->plain-text :white  lbl 0 10))
+
+;; (def legend 
+;;   (stack (for [[lbl clr] event-colors]
+;;                 (->legend-entry lbl clr))))
 
 (defn event->color [e] 
   (if-let [clr (get event-colors (get e :name))]

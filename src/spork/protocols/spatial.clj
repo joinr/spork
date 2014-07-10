@@ -451,10 +451,6 @@
 (defn box->bounds [qbox] ((juxt get-left get-right get-top get-bottom) qbox))
 (defn bound-intersects? [b1 b2] (not (nil? (intersect-bounds b1 b2))))
 
-
-
-
-
 ;;spatial index....work on this later.
 
 ;Define a protocol for spatial structures.

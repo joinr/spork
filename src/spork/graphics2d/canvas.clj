@@ -455,16 +455,20 @@
   (draw-string    [canvas color font s x y]  "Draws a string at x,y.")
   (draw-image     [canvas img transparency x y] "Draws an IBitmap at x,y."))
 
+(defprotocol ITextRenderer
+  (text-width     [canvas txt] "Gets the weidth of txt on canvas, in pixels.")
+  (text-height    [canvas txt] "Gets the height of txt on canvas, in pixels."))
+
 
 ;;__TODO__ Turn these stubs into protocol members.
-(defn text-width
-  "Currently a stub.
-   Returns the width, in pixels, of some text."  
-  ^long [canvas txt] (count txt))
-(defn text-height
-  "Currently a stub.
-   Returns the height, in pixels, of some text."
-  ^long [canvas txt] 1)
+;; (defn text-width
+;;   "Currently a stub.
+;;    Returns the width, in pixels, of some text."  
+;;   ^long [canvas txt] (count txt))
+;; (defn text-height
+;;   "Currently a stub.
+;;    Returns the height, in pixels, of some text."
+;;   ^long [canvas txt] 1)
 
 ;these are fancy rendering options.  We prefer them if supported.
 ;if the device supports them, then we'll use them.  Otherwise, we use the 

@@ -2,7 +2,8 @@
 ;;be able to make it more elegant.
 (ns spork.geometry.shapes
   (:require [spork.graphics2d [canvas :as c]
-                              [image :as image]]
+                              [image :as image]
+                              [font :as f]]
             [spork.protocols  [spatial  :as spatial]]))
 
 (defmacro defshape [name args bounds draw-body]

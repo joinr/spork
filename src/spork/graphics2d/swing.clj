@@ -3,18 +3,17 @@
 ;backends. 
 (ns spork.graphics2d.swing
   (:use     [spork.graphics2d.canvas])
-  (:require [spork.graphics2d [image :as image]])
+  (:require [spork.graphics2d [image :as image]]
+            [spork.protocols [spatial :as s]])
   (:import  [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
-                      GraphicsDevice GraphicsConfiguration Polygon Point 
-                      Rectangle Shape Dimension Color Transparency
-                      Component Stroke]
+             FontMetrics GraphicsDevice GraphicsConfiguration Polygon Point 
+             Rectangle Shape Dimension Color Transparency Component Stroke]
             [java.awt.geom AffineTransform Point2D Rectangle2D Line2D]
             [java.awt.image BufferedImage ImageObserver]
             [javax.swing JFrame JComponent JPanel]
             [javax.imageio ImageIO]))
 
 ;Java2D wrappers....
-
 (extend-protocol IColor
   Color 
   (get-rgb [c] (.getRGB c))
@@ -22,6 +21,17 @@
   (get-g   [c] (.getGreen c))
   (get-b   [c] (.getBlue c))
   (get-a   [c] (.getAlpha c)))
+
+(extend-type Rectangle2D 
+  s/IBounded 
+  (get-width  [b]  (.getWidth b))
+  (get-height [b]  (.getHeight b))
+  (get-left   [b]  (.getMinX b))
+  (get-right  [b]  (.getMaxX b))
+  (get-top    [b]  (.getMaxY b))
+  (get-bottom [b]  (.getMinY b))
+  s/IBoundingBox
+  (get-bounding-box [bv] (s/->boundingbox (.getX bv) (.getY bv) (.getWidth bv) (.getHeight bv))))
   
 (defn draw-line*
   ([^Graphics2D g x1 y1 x2 y2]
@@ -173,8 +183,18 @@
 (defn unsupported
   ([msg] (throw (Exception. (str msg))))
   ([] (unsupported (str "Unsupported operation"))))
- 
 
+(def font-graphics (.getGraphics (BufferedImage. 1 1 BufferedImage/TYPE_INT_ARGB)))
+(defn ^Rectangle2D string-bounds 
+  ([^Graphics2D g ^String txt]  
+     (let [^FontMetrics fm (.getFontMetrics g)]
+       (.getStringBounds fm txt g)))
+  ([^String txt] (string-bounds font-graphics txt)))
+
+;; Font font = ... ;
+;; BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+;; FontMetrics fm = img.getGraphics().getFontMetrics(font);
+;; int width = fm.stringWidth("Your string");
 
 (extend-type  Graphics2D 
   ICanvas2D
@@ -214,7 +234,11 @@
     (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil))
   IStroked
    (get-stroke [^Graphics2D ctx] (.getStroke ctx))
-   (set-stroke [^Graphics2D ctx ^Stroke s] (doto ctx (.setStroke s))))
+   (set-stroke [^Graphics2D ctx ^Stroke s] (doto ctx (.setStroke s)))
+  ITextRenderer
+  (text-width     [^Graphics2D canvas ^String txt] (.getWidth  (string-bounds canvas txt)))
+  (text-height    [^Graphics2D canvas ^String txt] (.getHeight (string-bounds canvas txt))))
+
   
 ;  ICanvas2DExtended
 ;  (-draw-polygon   [^Graphics2D g color points] )
@@ -298,6 +322,9 @@
     (swing-graphics. 
       (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil)
       options))
+  ITextRenderer
+  (text-width     [sg  txt] (.getWidth  (string-bounds g txt)))
+  (text-height    [sg  txt] (.getHeight (string-bounds g txt)))
   IStroked
   (get-stroke [sg]   (.getStroke g))
   (set-stroke [sg s] (swing-graphics. (doto g (.setStroke s)) options))
