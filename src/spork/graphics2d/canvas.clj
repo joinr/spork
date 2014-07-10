@@ -23,6 +23,23 @@
   (get-b [c] b)
   (get-a [c] a))
 
+;;vectors are simple color containers.
+(extend-protocol IColor 
+  clojure.lang.PersistentVector 
+  (get-rgb [c] (+ (bit-shift-left (nth c 0) 16)
+                  (bit-shift-left (nth c 1) 8)
+                  (nth c 2)))
+  (get-r [c] (nth c 0))
+  (get-g [c] (nth c 1))
+  (get-b [c] (nth c 2))
+  (get-a [c] (nth c 3)))
+
+(defn random-color []
+  [(rand-int 256)
+   (rand-int 256)
+   (rand-int 256)
+   255])
+
 (defn- get-byte [n idx] (bit-and (bit-shift-right n (* idx 8)) 255))
 (defn  get-rgba     [c] (+ (get-rgb c) (bit-shift-left (get-a c) 24))) 
 (defn  color->alpha [c] (float (/ (get-a c) 255)))
@@ -235,7 +252,7 @@
         delta  (- cmax cmin)
         d  (if (zero? delta) 1.0 delta)
         v cmax
-        _ (println [r g b cmax cmin delta v])
+        ;_ (println [r g b cmax cmin delta v])
         s (if (zero? delta) 0 (/ delta cmax))]
     [(/  (cond (= r cmax)  (mod (/ (- g b) d) 6)
                   (= g cmax)  (+ (/ (- b r) d) 2)
@@ -245,10 +262,41 @@
      v]    
     ))
 
-(defn saturations [step r g b]
-  (let [[h s v] (rgb->hsv r g b)]
-    (map (fn [sat]
-           (hsv->rgb h sat v)) (take-while #(<= % 1.0) (iterate (fn [x] (+ x step)) s)))))
+;;Thanks to Martin Ankerl at
+;; http://martin.ankerl.com/2009/12/09/how-to-create-random-colors-programmatically/: 
+
+
+;; golden_ratio_conjugate = 0.618033988749895
+;; h = rand # use random start value
+;; gen_html {
+;;   h += golden_ratio_conjugate
+;;   h %= 1
+;;   hsv_to_rgb(h, 0.5, 0.95)
+;; }
+
+(def ^:constant +golden-ratio+ 0.618033988749895)
+
+(let [hue         (double-array [(rand)])]
+  (defn random-golden-hue []
+    (let [h (double (mod (+ (aget hue 0) +golden-ratio+) 1))]
+      (do (aset hue 0 h)
+          h))))   
+
+(defn saturations 
+  ([step r g b]
+     (let [[h s v] (rgb->hsv r g b)]
+       (map (fn [sat]
+              (hsv->rgb h sat v)) (take-while #(<= % 1.0) (iterate (fn [x] (+ x step)) 0.0)))))
+  ([step color] (saturations step (get-r color) (get-g color) (get-b color))))
+
+(defn mono-color-palette
+  ([step color] (saturations step   (get-r color) (get-g color) (get-b color)))
+  ([step]       (mono-color-palette step (random-color))))
+
+(defn random-color-palette 
+  ([s v] (map (fn [h] (hsv->rgb h s v)) (repeatedly random-golden-hue)))
+  ([] (random-color-palette 0.5 0.95)))
+
 ;;source:https://github.com/sterlingwes/RandomColor/blob/master/rcolor.js
 
 ;; 	RColor.prototype.hsvToRgb = function (h,s,v) {
