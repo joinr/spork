@@ -245,6 +245,10 @@
      v]    
     ))
 
+(defn saturations [step r g b]
+  (let [[h s v] (rgb->hsv r g b)]
+    (map (fn [sat]
+           (hsv->rgb h sat v)) (take-while #(<= % 1.0) (iterate (fn [x] (+ x step)) s)))))
 ;;source:https://github.com/sterlingwes/RandomColor/blob/master/rcolor.js
 
 ;; 	RColor.prototype.hsvToRgb = function (h,s,v) {
