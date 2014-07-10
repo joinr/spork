@@ -92,12 +92,15 @@
     "Big"]
    (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (spork.graphics2d.canvas/random-color-palette 0.5 0.7))))
 
-(defn ->legend-entry [lbl color]
-   (spork.geometry.shapes/->plain-text :white  lbl 0 10))
+(defn ->legend-entry [txt color]
+  (let [lbl (spork.geometry.shapes/->plain-text :black  (str txt "  ") 0 10)
+        h   (spork.protocols.spatial/get-height (spork.protocols.spatial/get-bounding-box lbl))]
+    (beside (spork.geometry.shapes/->rectangle color 0 0 10 h)
+            lbl)))
 
-;; (def legend 
-;;   (stack (for [[lbl clr] event-colors]
-;;                 (->legend-entry lbl clr))))
+(def legend 
+   (shelf (for [[lbl clr] event-colors]
+                 (->legend-entry lbl clr))))
 
 (defn event->color [e] 
   (if-let [clr (get event-colors (get e :name))]
@@ -110,7 +113,8 @@
         _    (do (reset! last-data data))]
     (with-event->color event->color 
       (sketch-image
-       (->tracks (zipmap (map #(str "Future" %) (range n)) data))))))
+       (stack [(->tracks (zipmap (map #(str "Future" %) (range n)) data))
+               (translate 10 5 legend)])))))
   
 
 (comment ;sample-code

@@ -3,7 +3,7 @@
 ;backends. 
 (ns spork.graphics2d.swing
   (:use     [spork.graphics2d.canvas])
-  (:require [spork.graphics2d [image :as image]]
+  (:require [spork.graphics2d [image :as image] [font :as f]]
             [spork.protocols [spatial :as s]])
   (:import  [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
              FontMetrics GraphicsDevice GraphicsConfiguration Polygon Point 
@@ -12,6 +12,7 @@
             [java.awt.image BufferedImage ImageObserver]
             [javax.swing JFrame JComponent JPanel]
             [javax.imageio ImageIO]))
+
 
 ;Java2D wrappers....
 (extend-protocol IColor
@@ -224,12 +225,10 @@
   
   (fill-ellipse   [^Graphics2D g color x y w h]
     (with-color (get-gui-color color) g 
-      #(fill-circle % x y w h)))
-  
+      #(fill-circle % x y w h)))  
   (draw-string    [^Graphics2D g color font s x y]
     (with-color (get-gui-color color) g 
-      #(do (.drawString % (str s) (float x) (float y)) %)))
-  
+      #(do (.drawString % (str s) (float x) (float y)) %)))  
   (draw-image [^Graphics2D g img transparency x y]
     (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil))
   IStroked
