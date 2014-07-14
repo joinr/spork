@@ -274,11 +274,15 @@
 
 (def ^:dynamic *track-options* {:activity-labels true 
                                 :track-labels true})
-
 (defmacro hiding-labels [& body]
   `(binding [~'spork.sketch/*track-options* (merge ~'spork.sketch/*track-options* 
                                                    {:activity-labels nil 
                                                     :track-labels nil})]
+     ~@body))
+
+(defmacro with-track-scale [expr & body]
+  `(binding [~'spork.sketch/*track-options* (assoc ~'spork.sketch/*track-options* 
+                                                   {:track-scale ~expr})]
      ~@body))
   
 (defn activity-labels? [] (get *track-options* :activity-labels))
@@ -304,6 +308,11 @@
         (image/shape->img 
           (into [] (map tick (range min (inc max) step-width))))]))))
 
+;; (defrecord event-track [records name height width event->color min max shp]
+;;   IShape 
+;;   (shape-bounds [s] (shape-bounds shp))
+;;   (draw-shape [s c] (draw-shape shp c)))
+
 ;;should render us a track of each event, with a track-name to the
 ;;left of the track.  Events in the track are rendered on top of each other.
 (defn ->track [records & {:keys [track-name track-height track-width event->color] 
@@ -313,7 +322,7 @@
                                  event->color *event->color*}}]
   (let [label  (->label (str track-name) 0 0)
         lwidth 100 ; (:width (shape-bounds label))
-        sorted (sort-by (juxt :start :duration) records)
+        sorted (sort-by (juxt :start :duration) records)                
         [elevated hmax wmax] (reduce (fn [[xs height width] x] 
                                        (let [act (->activity x :event->color event->color)]
                                          [(conj xs (translate 0.0 height act)) 
@@ -324,18 +333,20 @@
         background    ;(when (> (:start (first sorted)) 0)
                (->rectangle :lightgray 0 0  wmax track-height)
         vscale (/ track-height hmax)
-        track-box [background
-                     (scale 1.0 vscale (cartesian (into [] elevated)))]]
+        track-box (stack [[background
+                           (scale 1.0 vscale (cartesian (into [] elevated)))]
+                          (->ggscale [0 wmax] :black wmax 30)
+                          (scale 2.0 2.0 (->label "Start Time" (/ wmax 4.0) 0))])]
     (if (track-labels?)
-     (beside [(->rectangle :white 0 0 lwidth track-height)
-              label]
-             track-box)
-     track-box)))
+      (beside [(->rectangle :white 0 0 lwidth track-height)
+               label]
+              track-box)
+      track-box)))
 
 (defn ->tracks [track-seq]
-  (->> (delineate 
-        (into [] (for [[name records] (sort-by first track-seq)]           
-                   (->track records :track-name name))))))
+  (delineate 
+   (into [] (for [[name records] (sort-by first track-seq)]           
+              (->track records :track-name name)))))
 
 (defn colored-rects [n]
   (let [rects  (->> [:red :blue :green]

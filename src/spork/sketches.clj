@@ -116,7 +116,7 @@
       (sketch-image
        (scale 1.0 1.5
               (stack [(->tracks (zipmap (map #(str "Future" %) (range n)) data))
-                      (translate 10 5 legend)]))))))
+                      (translate 10 5 (scale 2.0 2.0 legend))]))))))
   
 
 (comment ;sample-code
