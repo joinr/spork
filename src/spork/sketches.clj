@@ -109,14 +109,14 @@
     clr
     (throw (Exception. (str ["Unknown event!" e])))))
     
-
 (defn random-tracks! [& {:keys [n entry-case] :or {n 4 entry-case :random-case}}]
   (let [data (take n (repeatedly #(random-track! :entry-case entry-case)))
         _    (do (reset! last-data data))]
     (with-event->color event->color 
       (sketch-image
-       (stack [(->tracks (zipmap (map #(str "Future" %) (range n)) data))
-               (translate 10 5 legend)])))))
+       (scale 1.0 1.5
+              (stack [(->tracks (zipmap (map #(str "Future" %) (range n)) data))
+                      (translate 10 5 legend)]))))))
   
 
 (comment ;sample-code

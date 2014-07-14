@@ -7,12 +7,15 @@
 (ns spork.sketch
   (:require [spork.graphics2d.canvas :refer :all]
             [spork.graphics2d [image :as image]
-                              [swing :as provider]]
+                              [swing :as provider]
+                              [font :as f]]
             [spork.protocols [spatial :as space]]
             [spork.geometry.shapes :refer :all]
             [spork.cljgui.components [swing :as gui]]))
 
 ;;These are brittle, but work until I found a better way around the problem.
+
+;;Currently used in ->label, should be removed.
 (def ^:dynamic *font-height* 14)
 (def ^:dynamic *font-width*  5.5)
 
@@ -66,14 +69,18 @@
     (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
     (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
 
-
-;; (defn spin [theta shp]
-;;   (let [bounds (shape-bounds shp)
-;;         centerx (:x 
-;;   (reify IShape 
-;;     (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
-;;     (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
-
+;;rotates about a point....we probably should factor out spin-bounds
+;;from this guy.
+(defn spin   [theta shp]
+  (throw (Exception. "Rotation on bounds is currenty jacked up, not working.  Need to fix spatial."))
+  (let [bnds  (shape-bounds shp)
+        [x y] (space/get-center bnds)
+        spun  (space/spin-bounds theta bnds)
+        rotated (fn [canv] (with-rotation theta canv #(draw-shape shp %)))]
+    (reify IShape 
+      (shape-bounds [s]   spun)
+      (draw-shape   [s c] 
+        (with-translation x y c  rotated)))))
 
 (defn scale [xscale yscale shp]
   (reify IShape 
@@ -139,6 +146,78 @@
 ;    (draw-shape   [s c] (with-translation centerx centery c
 ;                          (partial draw-shape shp))))))
 
+(defn ->ticks [color width height step]
+  (let [tick   (:source (make-sprite :translucent (->line color 0 0 0 height) 0 0))
+        n      (quot width step)
+        bound  (unchecked-inc n)
+        bounds (space/bbox 0 0 width height)]                                                                                    
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [idx 0
+               canv c]
+          (if (== idx bound) 
+            canv
+            (recur (unchecked-inc idx)
+                   (draw-image canv tick :translucent (* idx step) 0))))))))
+        ;; half-height (/ height 2.0)
+        ;; ln     (->line color 0 half-height width half-height)          
+  
+(defn ->vticks [color width height step]
+  (let [tick   (:source (make-sprite :translucent (->line color 0 0 width 0) 0 0))
+        n      (quot height step)
+        bound  (unchecked-inc n)
+        bounds (space/bbox 0 0 width height)]                                                                                    
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [idx 0
+               canv c]
+          (if (== idx bound) 
+            canv
+            (recur (unchecked-inc idx)
+                   (draw-image canv tick :translucent 0 (* idx step)))))))))
+
+(defn ->ggscale [data color width height & {:keys [steps] :or {steps 6}}]
+  (let [tick-height (/ height 2.0)
+        tick    (:source (make-sprite :translucent (->line color 0 0 0 tick-height) 0 0))
+        sorted  (vec (sort data))
+        l       (first sorted)
+        r       (last  sorted)
+        lbounds (f/string-bounds (str l))
+        lwidth  (:width lbounds)
+        rwidth  (:width (f/string-bounds (str r)))
+        nheight (:height lbounds)
+        lheight (+ tick-height nheight)
+        spread  (- r l)
+        step    (long (/ spread steps))
+        nums    (mapv #(+ l (* step %)) (range steps))
+        bound   (unchecked-inc steps)
+        bounds  (space/bbox 0 0 (+ width lwidth rwidth) (max height lheight))
+        centered-numb (fn [canv n x]
+                          (let [lbl (str n)
+                                halfw (/ (:width (f/string-bounds lbl)) 2.0)]
+                            (draw-string canv :black :default lbl (- x halfw) (+ tick-height nheight))))]
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [idx 0
+               offset l
+               canv c]
+          (if (== idx bound) 
+            canv
+            (recur (unchecked-inc idx)
+                   (+ offset step)
+                   (-> canv
+                       (draw-image tick :translucent (* idx step) 0)
+                       (centered-numb offset (* idx step))))))))))
+  
+
+(defn ->scaled-border [color width height step]
+  [(translate height 0 (spork.sketch/->ticks color width height step)) 
+   (translate 0 height (spork.sketch/->vticks color  height width step))])
+
+;;need to change this to use ->text, which has bounds based off font metrics...
 (defn ->label [txt x y & {:keys [color] :or {color :black}}]
   (reify IShape
     (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
@@ -162,7 +241,7 @@
     (let [r          (->rectangle  color x y w h)
           half-dur   (/ w 2.0)
           centerx    (+ x 1)
-          half-width (* (/ (count txt) 2.0) *font-width*)        
+;          half-width (* (/ (count txt) 2.0) *font-width*)        
           scalex     1.0 ;(if (< half-width half-dur) 1.0  (/ half-dur half-width))
           centery    0
           label      (scale scalex 1.0 (uncartesian (->label txt centerx centery :color label-color)))]
@@ -193,11 +272,25 @@
   `(binding [~'*event->color*  ~event->color]
      ~@body))
 
+(def ^:dynamic *track-options* {:activity-labels true 
+                                :track-labels true})
+
+(defmacro hiding-labels [& body]
+  `(binding [~'spork.sketch/*track-options* (merge ~'spork.sketch/*track-options* 
+                                                   {:activity-labels nil 
+                                                    :track-labels nil})]
+     ~@body))
+  
+(defn activity-labels? [] (get *track-options* :activity-labels))
+(defn track-labels? [] (get *track-options*    :track-labels))
+
 (defn ->activity 
   [{:keys [start duration name quantity] :as e} & {:keys [get-color label-color event->color] 
                                                    :or   {event->color *event->color* label-color :white}}]
   (let [h  (if (= quantity 10) quantity (+ 10 (* 3 (Math/log10 quantity))))
-        b  (->labeled-box name label-color (or (event->color e) :blue) start 0 duration h)
+        b  (if (activity-labels?) 
+               (->labeled-box name label-color (or (event->color e) :blue) start 0 duration h)
+               (->rectangle (or (event->color e) :blue) start 0 duration h))               
            ;;(->rectangle (get color-map name :blue) start 0 duration  h)
         ]
     (outline b)))
@@ -215,18 +308,14 @@
 ;;left of the track.  Events in the track are rendered on top of each other.
 (defn ->track [records & {:keys [track-name track-height track-width event->color] 
                           :or   {track-name (str (gensym "Track ")) 
-                                 track-height 200 
-                                 track-width  800
+                                 track-height 400 
+                                 track-width  400
                                  event->color *event->color*}}]
   (let [label  (->label (str track-name) 0 0)
         lwidth 100 ; (:width (shape-bounds label))
         sorted (sort-by (juxt :start :duration) records)
         [elevated hmax wmax] (reduce (fn [[xs height width] x] 
-                                       (let [
-                                            ; _ (println [:converting x])
-                                             act (->activity x :event->color event->color)
-                                             ;_ (println :converted)
-                                             ]
+                                       (let [act (->activity x :event->color event->color)]
                                          [(conj xs (translate 0.0 height act)) 
                                           (+ height (:height (shape-bounds act)))
                                           (max width (+ (:start x) (:duration x)))]))
@@ -235,11 +324,13 @@
         background    ;(when (> (:start (first sorted)) 0)
                (->rectangle :lightgray 0 0  wmax track-height)
         vscale (/ track-height hmax)
-        ] ;(/ track-height hmax)]        
+        track-box [background
+                     (scale 1.0 vscale (cartesian (into [] elevated)))]]
+    (if (track-labels?)
      (beside [(->rectangle :white 0 0 lwidth track-height)
               label]
-             [background
-              (scale 1.0 vscale (cartesian (into [] elevated)))])))
+             track-box)
+     track-box)))
 
 (defn ->tracks [track-seq]
   (->> (delineate 

@@ -293,7 +293,7 @@
 (defn xywh->rotatedcoords
   "Rotate an x, y origin, plus a width and height, by theta radians."
   [x y w h theta]
-  (get-rotated-bounds theta (xywh->coords)))
+  (get-rotated-bounds theta (xywh->coords x y w h)))
 
 (defn xywh->rotated-xywh
   "Transform an x, y origin, plus a width and height, into an identical dataset
@@ -404,6 +404,17 @@
   "Adds theta to the bounding box's rotation angle."
   [t {:keys [x y width height theta]}]
   (bbox x y width height (+ t theta)))
+
+(defn spin-bounds 
+  "Rotates a bounds around its centroid."
+  ([theta x y bnds]
+     (->> bnds 
+          (translate-bounds x y)
+          (rotate-bounds theta) 
+          (translate-bounds (- x) (- y))))
+  ([theta bnds] 
+     (let [[x y] (get-center bnds)]
+       (spin-bounds theta x y bnds))))
 
 ;;This is erroneously labeled; w and h are actually x and y coords, 
 ;;extrema, not widths.
