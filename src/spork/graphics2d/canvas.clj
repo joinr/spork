@@ -477,10 +477,10 @@
 (defprotocol ICanvas2DExtended
   (-draw-polygon   [canvas color points] "Outlines a polygon defined by points.")
   (-fill-polygon   [canvas color points] "Fills a polygon defined by points.")
-  (-draw-path      [canvas points]   "Draws a general path defined by points.")
-  (-draw-poly-line [canvas pline]  "Draws adjacent segments defined by points.")
-  (-draw-quad      [canvas quad]    "Draws a quadrilateral defined by points.")
-  (-draw-curve     [canvas curve] "Working on curves later..."))
+  (-draw-path      [canvas points]       "Draws a general path defined by points.")
+  (-draw-poly-line [canvas pline]        "Draws adjacent segments defined by points.")
+  (-draw-quad      [canvas quad]         "Draws a quadrilateral defined by points.")
+  (-draw-curve     [canvas curve]        "Working on curves later..."))
 
 ;(defn draw-path [canvas points])
 ;(draw-poly-line [canvas points]

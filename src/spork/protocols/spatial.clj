@@ -20,8 +20,6 @@
   (:require [spork.util [vectors :as v]
                         [vecmath :as vmath]]))
 
-
-
 ;;Some geometric primitives.  I'll probably port these to a more general lib, 
 ;;but they live here for now.
 
@@ -256,7 +254,7 @@
   [theta x1 y1]
   (let [c (Math/cos theta)
         s (Math/sin theta)]
-    [(+ (* x1 c) (* y1 (* -1 s)))
+    [(+ (* x1 c) (* y1 (* - s)))
      (+ (* x1 s) (* y1 (* c)))]))
 
 (defn extreme-points
@@ -278,17 +276,26 @@
 (defn get-rotated-bounds
   "After rotating a coordinate pair, determine the extreme points from the 
    transformed pairs."
-  [theta [xys]]
-  (let [rotate (partial rotate-xy theta)         
-        [[x1 y1] [x2 y2]] (map #(apply rotate %) (partition 2 xys))
-        [[xmin xmax] [ymin ymax]] [(extreme-points [x1 x2]) 
-                                   (extreme-points [y1 y2])]]                
-    [xmin ymin xmax ymax]))
+  [theta xys]
+  (if (zero? (mod theta Math/PI)) xys
+      (let [rotate (partial rotate-xy theta)         
+            [[x1 y1] [x2 y2]] (map #(apply rotate %) (partition 2 xys))
+            [[xmin xmax] [ymin ymax]] [(extreme-points [x1 x2]) 
+                                       (extreme-points [y1 y2])]]                
+        [xmin ymin xmax ymax])))
 
 (defn xywh->coords
   "Convert an x,y origin, plus a width and a height, into absolute coorindates."
   [x y w h]
   [x y (+ x w) (+ y h)])
+
+(defn rotate-2d [theta x1 y1 x2 y2]
+  (let [c (Math/cos theta)
+        s (Math/sin theta)]
+    [(+ (* x1 c) (* y1 (- s)))
+     (+ (* x1 s) (* y1  c))
+     (+ (* x2 c) (* y2 (- s)))
+     (+ (* x2 s) (* y2  c))]))
 
 (defn xywh->rotatedcoords
   "Rotate an x, y origin, plus a width and height, by theta radians."

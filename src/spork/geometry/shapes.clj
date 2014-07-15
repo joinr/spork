@@ -6,13 +6,15 @@
                               [font :as f]]
             [spork.protocols  [spatial  :as spatial]]))
 
-(defmacro defshape [name args bounds draw-body]
+;;The value here is a bit dubious, but it saves on some boilerplate..
+(defmacro defshape [name args bounds draw-body & specs]
   `(defrecord ~name [~@args] 
      ~'c/IShape
      (~'shape-bounds [~'s] ~bounds) 
      (~'draw-shape [~'s ~'c] ~draw-body)
      ~'spatial/IBoundingBox 
-     (~'get-bounding-box [~'b] (~'c/shape-bounds ~'b))))
+     (~'get-bounding-box [~'b] (~'c/shape-bounds ~'b))
+     ~@specs))
 
 ;rectilinear stuff.
 
@@ -43,7 +45,7 @@
   (spatial/bbox x y w h)
   (c/draw-rectangle c color x y w h))
 
-(defn negate [n] (* -1 n))
+(defn negate [n] (- n))
 (defn halve  [n] (/ n 2))
 
 (defn relative-coords 
