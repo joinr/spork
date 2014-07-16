@@ -91,6 +91,13 @@
   "The simplest set of components that define entities that have a position."
   [coords coordinates
    visage description])
+
+(defentity prop [id & {:keys [description coordinates]
+                       :or {description "It defies description"
+                            coordinates {:x 0 :y 0}}}]
+  "The simplest set of components that define entities that have a position."
+  {:components [coords coordinates
+                visage description]})
     
 (defentity combatant [id & {:keys [offense defense] 
                             :or {offense 10 defense 0}}]
