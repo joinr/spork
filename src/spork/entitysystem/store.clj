@@ -49,6 +49,9 @@
 ;context, and the easier it is to factor out duplicate functionality into truly 
 ;unique data (which reinforces our desire to maintain orthogonal domains).
 
+
+
+
 (defprotocol IEntityStore
   "The entitystore is an abstract protocol for defining functionality necessary 
    to manage entities, as defined by collections of component data.  Due to the 
@@ -60,132 +63,73 @@
    our store and allowing for parallel querying/updating functions.  Finally, 
    we could implement the entitystore using a persistent database backend, if it
    makes sense to do that. "
-  (has-entity? [db id] "existence check for entities")
-  (get-keys [db] "returns a set of all entity keys")
-  (get-parts [db id] "derive components id contains")
-  (add-record [db id component data] "Associate a record of data /w entity id")
-  (drop-record [db id component] "Drop record for id from component")
-  (get-record [db id component] "Fetch the component record for ent id")
-  (get-entities [db] "Return a seq of [entityid #{components..}]")
-  (get-component [db component] "Return the data for component")
-  (get-components [db] "Return all components")
-  (get-domains [db] "Return a set of all domains in the store"))
+  (add-entry   [db id domain data] "Associate a record of data /w entity id")
+  (drop-entry  [db id domain] "Drop record for id from component")
+  (get-entry   [db id domain] "Fetch the component record for ent id")
+  (domains [db]   "Map of domain -> (id -> component), the database.")
+  (components-of  [db id]  "derive components id contains")
+  (domains-of     [db id]  "set of domains id intersects")
+  (get-entity [db id] "Returns an IEntity associated with id")
+  (conj-entity    [db id components] "Add an entity to the database.")   
+  (entities [db] "Return a map of {entityid #{components..}}"))
+
+;  (alter-entity [db id f] "Alter an entity's components using f.  f
+;  should take an entity and return a set of components that change.")
 
 ;EntityStore is the default implementation of our protocol, and it uses maps 
 ;to maintain records of component data, keyed by entity ID, as well as a map of
 ;entities to the set of components they are associated with.  
-(defrecord EntityStore [entities components]
+(defrecord EntityStore [entity-map domain-map]
   IEntityStore
-  (has-entity? [db id] (contains? entities id))
-  (get-keys [db] (keys entities))
-  (get-parts [db id] (get entities id #{}))
-  (add-record [db id component data]
-    (EntityStore. (assoc entities id (conj (get entities id #{}) component)) 
-                  (assoc components component
-                     (merge (get components component {}) {id data}))))
-  (drop-record [db id component]
-    (let [cnext (dissoc components component id)
-          enext (let [parts (disj (get-parts db id) component)]
+  (add-entry [db id domain data]
+    (EntityStore. (assoc entity-map id (conj (get entity-map id #{}) domain)) 
+                  (assoc-in domain-map [domain id] data)))
+  (drop-entry [db id domain]
+    (let [cnext (dissoc domain-map domain id)
+          enext (let [parts (disj (get entity-map id) domain)]
                       (if (zero? (count parts))
-                        (dissoc entities id)
-                        (assoc entities id parts)))]
+                        (dissoc entity-map id)
+                        (assoc entity-map id parts)))]
       (EntityStore. enext cnext)))
-  (get-record [db id component] (get (get components component) id))
-  (get-entities [db] entities) 
-  (get-component [db component] (get components component))
-  (get-components [db] components)
-  (get-domains [db] (keys components)))
+  (get-entry     [db id domain] (get (get domain-map domain) id))
+  (entities [db] entity-map)
+  (domains [db]   domain-map)
+  (domains-of     [db id]  (get entity-map id))
+  (components-of  [db id]  (reduce (fn [acc dom] (assoc acc dom (get-in domain-map [dom id]))) 
+                                   {} (get entity-map id)))
+  (get-entity [db id] (when-let [comps (.components-of db id)]
+                        (entity. id comps)))
+  (conj-entity     [db id components] 
+      (if (map? components) 
+        (reduce-kv (fn [acc dom dat]
+                     (.add-entry acc id dom dat))
+                   db components)
+        (reduce (fn [acc domdat] (.add-entry acc id (first domdat) (second domdat)))
+                db components))))
   
-;helper macro -> we can probably use a more general binding here...
-(defmacro with-store
-  "Evaluate body in the context of bound vars, where entities and components 
-   are assoc'd values in the entitystore"
-  [store body]
-  `(let [~'entities (:entities ~store) 
-         ~'components (:components ~store)]
-     ~body))
-
-;We can also implement a destructive store....we just keep the state in an 
-;atom, and wrap our operations behind it....
-(defn ->MutableStore
-  "Defines an implementation of IEntitystore whose add/drop operations are 
-   destructive.  Maintains an atom of state, to persist the effects of 
-   operations.  Reads are non-destructive.  Still conforms to the functional 
-   API of the IEntityStore protocol, in that add/drop still return an 
-   entitystore, in this case, the same store that was passed in and mutated. 
-   We can easily extend this to provide a fluent interface for database-backed 
-   stores, which is pretty useful."
-  [ents comps] 
-  (let [state (atom (->EntityStore ents comps))]
-    (reify IEntityStore 
-        (has-entity? [db id] (with-store @state (contains? entities id)))
-        (get-keys [db] (with-store @state (keys entities)))
-        (get-parts [db id] (with-store @state (get entities id #{})))
-        (add-record [db id component data]
-          (do 
-	          (swap! state (fn [s]
-	            (with-store s
-	              (EntityStore. 
-	                (assoc entities id (conj (get entities id #{}) component)) 
-	                (assoc components component
-	                       (merge (get components component {}) {id data})))))))
-             db)
-        (drop-record [db id component]
-           (do
-	           (swap! state	 (fn [s]
-	             (with-store s
-		             (let [cnext (dissoc components component id)
-		                   enext (let [parts (disj (get-parts db id) component)]
-		                           (if (zero? (count parts))
-		                             (dissoc entities id)
-		                             (assoc entities id parts)))]
-		                   (EntityStore. enext cnext))))))
-             db)
-        (get-record [db id component] 
-          (with-store @state (get (get components component) id)))
-        (get-entities [db] (with-store @state entities)) 
-        (get-component [db component] 
-          (with-store @state (get components component)))
-        (get-components [db] (:components @state))
-        (get-domains [db] (keys (:components @state))))))
-
-;While we're at it...let's allow regular maps to recognize our entitystore 
-;functions...
-(defn make-mapstore [entities components] 
-  {:entities entities :components components})
-
-(extend-type clojure.lang.PersistentArrayMap 
-  IEntityStore
-	  (has-entity? [db id] (with-store db (contains? entities id)))
-	  (get-keys [db] (with-store db (keys entities)))
-	  (get-parts [db id] (with-store db (get entities id #{})))
-	  (add-record [db id component data]
-	    (with-store db 
-         (make-mapstore  
-             (assoc entities id (conj (get entities id #{}) component)) 
-             (assoc components component
-                (merge (get components component {}) {id data})))))
-	  (drop-record [db id component]
-	    (with-store db
-		    (let [cnext (dissoc components component id)
-		          enext (let [parts (disj (get-parts db id) component)]
-		                      (if (zero? (count parts))
-		                        (dissoc entities id)
-		                        (assoc entities id parts)))]
-		      (make-mapstore enext cnext))))
-	  (get-record [db id component] (with-store db 
-	                                  (get (get components component) id)))
-	  (get-entities [db] (with-store db entities)) 
-	  (get-component [db component] (with-store db (get components component)))
-	  (get-components [db] (with-store db components))
-	  (get-domains [db] (with-store db (keys components))))
-
 (def emptystore (->EntityStore {} {}))
-(defn make-mutable 
-  "Create an empty mutable entity store, or derive one from an existing 
-   store."
-  ([] (->MutableStore {} {}))
-  ([store] (->MutableStore (:entities store) (:components store))))
+
+(defn domain-keys [db] (keys (domains db)))
+(defn get-domain [db d] (get (domains db) d))
+(defn disj-entity [db id xs] 
+  (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
+
+(comment ;testing
+
+(def db (conj-entity emptystore 2 {:age 22 :name "some-entity"}))
+(domains db) ;=>      {:age {2 22} :name {2 "some-entity"}}
+(get-domain  db :age) => [:age {2 22}]
+(get-entities db) => {2 #{:age :name}}
+
+(get-entity db 2) => {id 2 {:age 22 :name "some-entity"}}
+(domains-of db 2)    => #{:age :name}
+(components-of db 2) => {:age 22 :name "some-entity"}
+
+(conj-entity db  2     {:age 22 :name "some-entity"})
+(drop-entity db 2) => {:entities {} :components {}}
+(add-entry db  2    :age 22)  
+(drop-entry db 2    :age 22) 
+)
 
 ;components define a unique domain, and some data associated with the domain.
 ;in most setups, data is statically typed, so that the components are homogenous
@@ -195,11 +139,6 @@
 (defprotocol IComponent 
   (component-domain [x] "Returns the logical domain of the component")
   (component-data [x] "Returns the values associated with the component."))
-
-;; (defrecord component [domain data]
-;;   IComponent 
-;;   (component-domain [x] domain)
-;;   (component-data [x] data))
 
 (extend-protocol IComponent
   clojure.lang.PersistentArrayMap
@@ -251,13 +190,6 @@
                                (contains? m :domains) (get m :domains)
                                :else (dissoc m :name))))
 
-;;Might move back to this guy in the future...
-;;moved away from record syntax.
-;(defn ->entity [name components]
-;  {:name name :components components})
-;
-;(def empty-entity {:name nil :components {}})
-
 (defn conj-components
   "Conjoins each component in cs to the components in ent ."
   [ent cs]
@@ -298,7 +230,7 @@
    domains are the names of components."
   [ent] (keys (entity-components ent)))
 
-(defn entity->records
+(defn entity->entries
   "Converts the entity into a sequene of records, which can be easily added to
    an entity store.  This is the entity in its non-reified form, distributed
    across one or more components."
@@ -338,55 +270,50 @@
 (defn get-info
   "Get a quick summary of the entity, i.e. its components..."
   [ent]
-  [(:name ent) (entity->domains ent)])
+  [(entity-name ent) (entity->domains ent)])
   
 ;protocol-derived functionality 
 
-(defn add-field
-  "Deprecated. 
-   Adds a component entry to db for entity id, derived from a map containing 
-   domain and data keys."
-  [db id {:keys [domain data] :as component}] 
-  (add-record db id domain data)) 
-
-(defn reduce-records
+(defn reduce-entries
   "Mechanism for updating the entity store.  
    Fold function f::store -> [id component data] -> store 
    over a sequence of records, with store as its initial value."
   [store f recs] 
   (reduce (fn [store rec] (f store rec)) store recs))
 
-(defn drop-records 
+(defn drop-entries
   "Fold a sequence of [id component data] using drop-record to return 
    an updated entitystore."
   [store drops]
-  (reduce-records store (fn [s [id c & more]] (drop-record s id c)) drops))
+  (reduce-entries store (fn [s [id c & more]] (drop-entry s id c)) drops))
 
-(defn add-records 
-  "Fold a sequence of [id component data] using add-record to return 
+(defn add-entries 
+  "Fold a sequence of [id component data] using add-entry to return 
    an updated entitystore."
   [store adds]
-  (reduce-records store (fn [s [id c data]] (add-record s id c data)) adds))
+  (reduce-entries store (fn [s [id c data]] (add-entry s id c data)) adds))
 
 (defn add-parameter
   "Add a simple name and value to a dedicated parameters table.  We treat this 
    like any other component, except we provide explicit functionality to access
    it....for semantic purposes.  Parameters usually have a special meaning."
   [store name val]
-  (add-record store name :parameters val))
+  (add-entry store name :parameters val))
   
 (defn drop-parameter
   "Add a simple name and value to a dedicated parameters table.  We treat this 
    like any other component, except we provide explicit functionality to access
    it....for semantic purposes.  Parameters usually have a special meaning."
   [store name]
-  (drop-record store name :parameters))
+  (drop-entry store name :parameters))
 
 (defn add-entity 
   "Associate component data with id.  Records are {:component data} or 
   [[component data]] form.  Alternately, add a pre-built entity record."
-  ([db id records] (reduce #(add-field %1 id %2) db records))
-  ([db ent] (add-records db (entity->records ent))))
+  ([db id records] (reduce (fn [acc domdat]
+                             (add-entry acc id (first domdat) (second domdat)))
+                           db records))
+  ([db ent] (conj-entity db (entity-name ent) (entity-components ent))))
 
 (defn add-entities
   "Register multiple entity records at once..." 
@@ -395,30 +322,25 @@
 (defn drop-entity
   "drop component data associated with id, and id from entities in db." 
   [db id]
-  (reduce #(drop-record %1 id %2) db (get-parts db id)))
+  (reduce (fn [acc dom] (drop-entry acc id dom)) db (domains-of db id)))
+
+(defn drop-entities 
+  [db xs]
+  (reduce (fn [acc id] (drop-entity acc id)) db xs))
 
 (defn entity-count
   "Return the count of unique entity ids in the entitystore."
-  [db] (count (get-entities db)))
+  [db] (count (entities db)))
 
 (defn entity-data
   "Query the entitystore for the components associated with entity id."
-  [db id]
-  (reduce #(assoc %1 %2 (->component %2 (get-record db id %2)))
-    {} (get-parts db id)))
+  [db id] (components-of db id))
 
 (defn entities-in
   "Returns a sequence of entity ids that are members of a domain.
    Specifically, each entity has component data in the domain."
-  [db domain]
-  (keys (get-component db domain)))
-
-(defn get-entity
-  "Reify an entity record for entity id from an entitystore."
-  [db id]
-  (if-let [data (entity-data db id)]
-    (->entity id data)
-    nil))
+  [db d]
+  (keys (domain db d)))
 
 (defn get-entities 
   "Reify multiple entity records from ids from entitystore."
@@ -429,7 +351,7 @@
   "Return a lazy sequence of reified entity records for each entity in the 
    entitystore."
   [db] 
-  (for [id (get-keys db)]
+  (for [id (keys (entities db))]
     (get-entity db id)))
 
 (defn entity-union
@@ -463,7 +385,7 @@
       acc)))
 
 (defn entity-binds [e]
-  (kvps->binds (merge (get-components e) {:name (:name e)})))
+  (kvps->binds (merge (entity-components e) {:name (entity-name e)})))
                  
 (defmacro with-entity
  "Macro to allow binding of specific components"
@@ -523,7 +445,7 @@
    query if order-by is supplied. Values are automatically distinct due to the 
    nature of the entity store (e.g. component records are unique relative to the 
    entity).  Returns a (sub)set of the component data."  
-  [store & {:keys [from join-by where order-by] :or {from (get-domains store)
+  [store & {:keys [from join-by where order-by] :or {from (domain-keys store)
                                                 join-by :intersection
                                                 where nil
                                                 order-by nil}}]
@@ -538,7 +460,7 @@
          (fn [es] (sort-by order-by es)))])))
 
 (defn select-store [store & {:keys [from join-by where order-by] 
-                             :or {from (get-domains store)
+                             :or {from (domain-keys store)
                                   join-by :intersection
                                   where nil
                                   order-by nil}}]
@@ -757,5 +679,104 @@
 
 ;;testing
 (comment 
+
+)
+
+
+;;Different IEntityStore implementations.  Displaced
+
+(comment
+
+;helper macro -> we can probably use a more general binding here...
+(defmacro with-store
+  "Evaluate body in the context of bound vars, where entities and components 
+   are assoc'd values in the entitystore"
+  [store body]
+  `(let [~'entities (:entities ~store) 
+         ~'components (:components ~store)]
+     ~body))
+
+
+
+;We can also implement a destructive store....we just keep the state in an 
+;atom, and wrap our operations behind it....
+(defn ->MutableStore
+  "Defines an implementation of IEntitystore whose add/drop operations are 
+   destructive.  Maintains an atom of state, to persist the effects of 
+   operations.  Reads are non-destructive.  Still conforms to the functional 
+   API of the IEntityStore protocol, in that add/drop still return an 
+   entitystore, in this case, the same store that was passed in and mutated. 
+   We can easily extend this to provide a fluent interface for database-backed 
+   stores, which is pretty useful."
+  [ents comps] 
+  (let [state (atom (->EntityStore ents comps))]
+    (reify IEntityStore 
+        (has-entity? [db id] (with-store @state (contains? entities id)))
+        (get-keys [db] (with-store @state (keys entities)))
+        (get-parts [db id] (with-store @state (get entities id #{})))
+        (add-entry [db id component data]
+          (do 
+	          (swap! state (fn [s]
+	            (with-store s
+	              (EntityStore. 
+	                (assoc entities id (conj (get entities id #{}) component)) 
+	                (assoc components component
+	                       (merge (get components component {}) {id data})))))))
+             db)
+        (drop-entry [db id component]
+           (do
+	           (swap! state	 (fn [s]
+	             (with-store s
+		             (let [cnext (dissoc components component id)
+		                   enext (let [parts (disj (get-parts db id) component)]
+		                           (if (zero? (count parts))
+		                             (dissoc entities id)
+		                             (assoc entities id parts)))]
+		                   (EntityStore. enext cnext))))))
+             db)
+        (get-entry [db id component] 
+          (with-store @state (get (get components component) id)))
+        (get-entities [db] (with-store @state entities)) 
+        (get-component [db component] 
+          (with-store @state (get components component)))
+        (get-components [db] (:components @state))
+        (get-domains [db] (keys (:components @state))))))
+
+;While we're at it...let's allow regular maps to recognize our entitystore 
+;functions...
+(defn make-mapstore [entities components] 
+  {:entities entities :components components})
+
+(defn make-mutable 
+  "Create an empty mutable entity store, or derive one from an existing 
+   store."
+  ([] (->MutableStore {} {}))
+  ([store] (->MutableStore (:entities store) (:components store))))
+
+(extend-type clojure.lang.PersistentArrayMap 
+  IEntityStore
+	  (has-entity? [db id] (with-store db (contains? entities id)))
+	  (get-keys [db] (with-store db (keys entities)))
+	  (get-parts [db id] (with-store db (get entities id #{})))
+	  (add-entry [db id component data]
+	    (with-store db 
+         (make-mapstore  
+             (assoc entities id (conj (get entities id #{}) component)) 
+             (assoc components component
+                (merge (get components component {}) {id data})))))
+	  (drop-entry [db id component]
+	    (with-store db
+		    (let [cnext (dissoc components component id)
+		          enext (let [parts (disj (get-parts db id) component)]
+		                      (if (zero? (count parts))
+		                        (dissoc entities id)
+		                        (assoc entities id parts)))]
+		      (make-mapstore enext cnext))))
+	  (get-entry [db id component] (with-store db 
+	                                  (get (get components component) id)))
+	  (get-entities [db] (with-store db entities)) 
+	  (get-component [db component] (with-store db (get components component)))
+	  (get-components [db] (with-store db components))
+	  (get-domains [db] (with-store db (keys components))))
 
 )
