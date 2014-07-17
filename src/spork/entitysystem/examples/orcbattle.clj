@@ -89,13 +89,6 @@
                        :or {description "It defies description"
                             coordinates {:x 0 :y 0}}}]
   "The simplest set of components that define entities that have a position."
-  [coords coordinates
-   visage description])
-
-(defentity prop [id & {:keys [description coordinates]
-                       :or {description "It defies description"
-                            coordinates {:x 0 :y 0}}}]
-  "The simplest set of components that define entities that have a position."
   {:components [coords coordinates
                 visage description]})
     
@@ -133,17 +126,32 @@
                  (str "The " name " defies description!"))
     :enemy     true]})
 
-(defn simple-monster [race & [stats &rest]]
-  (monster nil :race race
-               :stats stats))
+
+(def monster-races   (atom (sorted-set)))
+(def monster-ctors   (atom {}))
+
+(defn register-monster! [race ctor] 
+  (do  (swap! monster-ctors assoc race ctor)
+       (swap! monster-races conj race)
+       (println [:new-monster race])))
+  
+(defn simple-monster [race & [stats &rest]]  
+      (monster nil :race race  :stats stats))
+
+(defmacro defmonster [name & expr]
+  `(do (defentity ~name ~@expr)
+       (register-monster! (quote ~name) ~name)))
+
+(defn random-monster! [id] ((get @monster-ctors (rand-nth @monster-races)) id))
+
 (defentity orc
   "Orcs are simple monsters...vicious in nature.
    Creates a random orc."
   [id & {:keys [orcstats] :or {orcstats (brawler-stats)}}]
-  [(simple-monster :orc orcstats)
-   combatant]
-  [:damage-modifier (inc (rand-int 8))  
-   visage "A wicked orc!"])
+  {:specs [(simple-monster :orc orcstats)
+           combatant]
+   :components  [:damage-modifier (inc (rand-int 8))  
+                 visage "A wicked orc!"]})
 
 (defentity rogue
   "Rogues are agile enemies with weak attacks.  They have 
@@ -152,19 +160,19 @@
   [id & {:keys [net-probability roguestats] 
          :or   {net-probability 0.1 
                 roguestats (rogue-stats)}}]
-  [(simple-monster :rogue roguestats)
-   combatant]
-  [:effects {:paralyze net-probability}
-   visage "An evil rogue!"])
+  {:specs  [(simple-monster :rogue roguestats)
+            combatant]
+   :components   [:effects {:paralyze net-probability}
+                  visage "An evil rogue!"]})
   
 (defentity hydra
   "Hydras are multi-headed beasts that can regenerate health.
    Creates a random hydra."
   [id] 
-  [(simple-monster :hydra)
-   combatant]
-  [visage "A Malicous hydra!"
-   :effects {:regeneration 1}])
+  {:specs [(simple-monster :hydra)
+           combatant]
+   :components  [visage "A Malicous hydra!"
+                 :effects {:regeneration 1}]})
 
 (defentity slime-mold
   "Slime-molds are weak monsters that slow down prey, feasting 
@@ -188,8 +196,8 @@
                                         :vis "A roguish slime-mold!")]})
 (defentity slime-orc [id] 
   "An orc with paralyzing capabilities..."
-  {:specs [slime-mold 
-           orc]})
+  {:specs [slime-mold  orc]})
    
-
-
+;;A new game full of monsters.
+;(defn inject-monsters [gm]
+  

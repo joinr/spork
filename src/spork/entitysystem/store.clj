@@ -114,22 +114,22 @@
 (defn disj-entity [db id xs] 
   (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
 
-(comment ;testing
+;; (comment ;testing
 
-(def db (conj-entity emptystore 2 {:age 22 :name "some-entity"}))
-(domains db) ;=>      {:age {2 22} :name {2 "some-entity"}}
-(get-domain  db :age) => [:age {2 22}]
-(get-entities db) => {2 #{:age :name}}
+;; (def db (conj-entity emptystore 2 {:age 22 :name "some-entity"}))
+;; (domains db) ;=>      {:age {2 22} :name {2 "some-entity"}}
+;; (get-domain  db :age) => [:age {2 22}]
+;; (get-entities db) => {2 #{:age :name}}
 
-(get-entity db 2) => {id 2 {:age 22 :name "some-entity"}}
-(domains-of db 2)    => #{:age :name}
-(components-of db 2) => {:age 22 :name "some-entity"}
+;; (get-entity db 2) => {id 2 {:age 22 :name "some-entity"}}
+;; (domains-of db 2)    => #{:age :name}
+;; (components-of db 2) => {:age 22 :name "some-entity"}
 
-(conj-entity db  2     {:age 22 :name "some-entity"})
-(drop-entity db 2) => {:entities {} :components {}}
-(add-entry db  2    :age 22)  
-(drop-entry db 2    :age 22) 
-)
+;; (conj-entity db  2     {:age 22 :name "some-entity"})
+;; (drop-entity db 2) => {:entities {} :components {}}
+;; (add-entry db  2    :age 22)  
+;; (drop-entry db 2    :age 22) 
+;; )
 
 ;components define a unique domain, and some data associated with the domain.
 ;in most setups, data is statically typed, so that the components are homogenous
@@ -205,7 +205,7 @@
    for composing entities, in that entity components can be contained in 
    a map."
   ([k v]
-    (cond (satisfies? IComponent v)  v
+    (cond (and (satisfies? IComponent v) (not (map? v)))  v
           (and (map? v) 
                (contains? v :domain) 
                (contains? v :components))
@@ -607,6 +607,8 @@
    things like docstrings and such.  Args are of the form 
    [args? docstring? specs? components], where ? indicates
    optional arguments."
+  ([name doc args specs components]
+     (entitydec name doc args {:specs specs :components components}))
   ([name doc args mix]
      (assert (symbol? name))
      (assert (string? doc))
@@ -668,8 +670,7 @@
    This yields a function, (computer-player id aitype name) that 
    produces parameterized computer players."   
   [name & doc+args+mix]
-    (let [decargs    (into [name] (sort-by #(cond (string? %) 0  (vector? %) 1 (map? %) 2) doc+args+mix))
-          _          (println decargs)
+    (let [decargs    (into [name] (sort-by #(cond (string? %) 0  (vector? %) 1 (map? %) 2) doc+args+mix))         
           specmap    (apply entitydec decargs)]
      (if (valid-spec? specmap)
        (let [{:keys [doc args specs components]} specmap]
