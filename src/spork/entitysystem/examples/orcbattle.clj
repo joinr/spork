@@ -155,7 +155,7 @@
 
 (defn random-monster! [id] ((get @monster-ctors (rand-nth @monster-races)) id))
 
-(defentity orc
+(defmonster orc
   "Orcs are simple monsters...vicious in nature.
    Creates a random orc."
   [id & {:keys [orcstats] :or {orcstats (brawler-stats)}}]
@@ -164,7 +164,7 @@
    :components  [:damage-modifier (inc (rand-int 8))  
                  visage "A wicked orc!"]})
 
-(defentity rogue
+(defmonster rogue
   "Rogues are agile enemies with weak attacks.  They have 
    the ability to snare opponents in a net, paralyzing them 
    for a round.  Creates a random rogue."
@@ -176,7 +176,7 @@
    :components   [:effects {:paralyze net-probability}
                   visage "An evil rogue!"]})
   
-(defentity hydra
+(defmonster hydra
   "Hydras are multi-headed beasts that can regenerate health.
    Creates a random hydra."
   [id] 
@@ -185,7 +185,7 @@
    :components  [visage "A Malicous hydra!"
                  :effects {:regeneration 1}]})
 
-(defentity slime-mold
+(defmonster slime-mold
   "Slime-molds are weak monsters that slow down prey, feasting 
    after starvation or suffocation takes hold.
    Creates a random slime-mold."
@@ -195,17 +195,17 @@
    :components  [visage "A slime mold!"
                  :effects {:drain :agility}]})
 
-(defentity testent
+(defmonster testent
   "A test entity"
   [id]
   {:specs [(simple-monster :test)
            combatant]})
  
-(defentity slime-rogue [id] 
+(defmonster slime-rogue [id] 
   "A slime molde with roguish aspects" 
   {:specs [rogue slime-mold (monster id :race :slime-rogue 
                                         :vis "A roguish slime-mold!")]})
-(defentity slime-orc [id] 
+(defmonster slime-orc [id] 
   "An orc with paralyzing capabilities..."
   {:specs [slime-mold  orc]
    :components [visage "A wicked, slimey orc!"]})
@@ -225,7 +225,32 @@
   ([ent id] ((as-ctor ent) id))
   ([ent] (spawn ent (next-id))))
 
-;;A new game full of monsters.
+;;A collection of monsters.
 (defn random-monsters! [n]
-  (map-indexed 
+  (map (fn [id] (random-monster! id))
+       (take n (repeatedly next-id))))
+
+(defn random-game [& {:keys [n] :or {n 12}}]
+  (let [store (:entities new-game)]    
+    (assoc new-game :entities 
+           (-> store 
+               (add-entity (player -1))
+               (add-entities (random-monsters! n))))))
+
+(defn live? [e] (-> (entity-components e) :basicstats :health pos?))
+
+;;game-queries
+(defn current-monsters [store]
+  (select-entities store 
+                   :from [:monster]
+                   :where live?))
+;;we can reform that into an entity query...
+;; (defquery current-monsters [store] 
+;;   {:components [monster player]
+;;    :where      [(> ?entity-health 10)]})
   
+  
+
+
+         
+
