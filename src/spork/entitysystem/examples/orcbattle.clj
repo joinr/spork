@@ -4,7 +4,8 @@
 (ns spork.entitysystem.examples.orcbattle 
   (:use [spork.entitysystem.store]))
 
-(def current-id (atom 0))
+(def hero-id 0)
+(def current-id (atom 1))
 (defn next-id [] 
   (let [res @current-id]
     (do (swap! current-id unchecked-inc)
@@ -13,7 +14,22 @@
 ;A record to hold the gamestate....we only really 
 ;need to keep track of our entities (via an entity store) 
 ;and the cap on the total number of monsters.
-(defrecord gamestate [entities monsternum])
+(defrecord gamestate [store monsternum]
+  IEntityStore
+  (add-entry [db id domain data] 
+    (gamestate. (add-entry store id domain data)
+                monsternum))
+  (drop-entry [db id domain] 
+    (gamestate. (drop-entry store id domain) monsternum)) 
+  (get-entry     [db id domain] (get-entry store id domain))
+  (entities [db] (entities store))
+  (domains [db]  (domains store))
+  (domains-of     [db id] (domains-of store id ))
+  (components-of  [db id]  (components-of store id))
+  (get-entity [db id] (get-entity store id))
+  (conj-entity     [db id components] 
+    (gamestate. (conj-entity store id components) monsternum)))
+
 (def new-game (->gamestate emptystore 12)) 
 
 ;Component definitions....these are building blocks for domains of interest 
@@ -231,26 +247,33 @@
        (take n (repeatedly next-id))))
 
 (defn random-game [& {:keys [n] :or {n 12}}]
-  (let [store (:entities new-game)]    
-    (assoc new-game :entities 
-           (-> store 
-               (add-entity (player -1))
-               (add-entities (random-monsters! n))))))
+    (-> new-game 
+        (add-entity (player hero-id))
+        (add-entities (random-monsters! n))))
 
 (defn live? [e] (-> (entity-components e) :basicstats :health pos?))
+
+;;might be nice to define language support for properties....
+;(defproperty live? (pos? [:basic-stats :health]))
 
 ;;game-queries
 (defn current-monsters [store]
   (select-entities store 
                    :from [:monster]
                    :where live?))
+
+(defn get-player [store] (get-entity store hero-id))
+
+
 ;;we can reform that into an entity query...
 ;; (defquery current-monsters [store] 
 ;;   {:components [monster player]
 ;;    :where      [(> ?entity-health 10)]})
-  
-  
 
 
+;;testing
+(comment
+(def g (random-game))
+)
          
 

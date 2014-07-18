@@ -48,8 +48,7 @@
 ;The smaller and more specific the component, the more obvious the domain 
 ;context, and the easier it is to factor out duplicate functionality into truly 
 ;unique data (which reinforces our desire to maintain orthogonal domains).
-
-
+    
 ;components define a unique domain, and some data associated with the domain.
 ;in most setups, data is statically typed, so that the components are homogenous
 ;we'll follow that practice, but nothing is technically stopping us from having
