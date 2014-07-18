@@ -4,6 +4,12 @@
 (ns spork.entitysystem.examples.orcbattle 
   (:use [spork.entitysystem.store]))
 
+(def current-id (atom 0))
+(defn next-id [] 
+  (let [res @current-id]
+    (do (swap! current-id unchecked-inc)
+        res)))
+
 ;A record to hold the gamestate....we only really 
 ;need to keep track of our entities (via an entity store) 
 ;and the cap on the total number of monsters.
@@ -126,14 +132,19 @@
                  (str "The " name " defies description!"))
     :enemy     true]})
 
-
-(def monster-races   (atom (sorted-set)))
+(def monster-races   (atom []))
+(def race->idx       (atom {}))
 (def monster-ctors   (atom {}))
 
 (defn register-monster! [race ctor] 
-  (do  (swap! monster-ctors assoc race ctor)
-       (swap! monster-races conj race)
-       (println [:new-monster race])))
+  (let [idx (if-let [i (get @race->idx  race)] i
+                    (let [ri @race->idx 
+                          new-idx (count ri)]                          
+                      (do (reset! race->idx (assoc ri race new-idx))                          
+                          new-idx)))]
+    (do (swap! monster-ctors assoc race ctor)
+        (swap! monster-races assoc idx race)
+        (println [:new-monster race]))))
   
 (defn simple-monster [race & [stats &rest]]  
       (monster nil :race race  :stats stats))
@@ -196,8 +207,25 @@
                                         :vis "A roguish slime-mold!")]})
 (defentity slime-orc [id] 
   "An orc with paralyzing capabilities..."
-  {:specs [slime-mold  orc]})
+  {:specs [slime-mold  orc]
+   :components [visage "A wicked, slimey orc!"]})
+
+(def keyword->symbol 
+  (memoize (fn [kw] (symbol (subs (str kw) 1)))))
    
+(def ^{:arglists '([symb]) 
+       :doc "Interprets symb as a constructor"} 
+  as-ctor 
+  (fn [symb]
+    (cond (or (symbol? symb) (fn? symb))   symb
+          (keyword? symb)  (resolve (keyword->symbol symb))
+          :else (throw (Exception. (str "entity arg must be keyword or symbol or function: " symb))))))
+      
+(defn spawn
+  ([ent id] ((as-ctor ent) id))
+  ([ent] (spawn ent (next-id))))
+
 ;;A new game full of monsters.
-;(defn inject-monsters [gm]
+(defn random-monsters! [n]
+  (map-indexed 
   
