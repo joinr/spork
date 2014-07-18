@@ -263,7 +263,13 @@
                    :where live?))
 
 (defn get-player [store] (get-entity store hero-id))
+(defmacro player-prop [name & expr]
+  `(defn ~(symbol (str "player-" name)) [store#]
+     (let [~name (get-player store#)]
+       ~@expr)))
 
+
+;(property live? [e] (pos? (basic-stats health]))
 
 ;;we can reform that into an entity query...
 ;; (defquery current-monsters [store] 
