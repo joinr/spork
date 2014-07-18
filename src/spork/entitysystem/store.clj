@@ -50,92 +50,10 @@
 ;unique data (which reinforces our desire to maintain orthogonal domains).
 
 
-
-
-(defprotocol IEntityStore
-  "The entitystore is an abstract protocol for defining functionality necessary 
-   to manage entities, as defined by collections of component data.  Due to the 
-   independent nature of component data (each component maps 1:1 to a specific, 
-   orthogonal domain of information, and is self contained), our entity store 
-   could be implemented a number of ways.  The obvious implementation is as a 
-   single hash-map database on a single machine.  However, we could easily 
-   distribute the component maps across multiple nodes, effectively distributing
-   our store and allowing for parallel querying/updating functions.  Finally, 
-   we could implement the entitystore using a persistent database backend, if it
-   makes sense to do that. "
-  (add-entry   [db id domain data] "Associate a record of data /w entity id")
-  (drop-entry  [db id domain] "Drop record for id from component")
-  (get-entry   [db id domain] "Fetch the component record for ent id")
-  (domains [db]   "Map of domain -> (id -> component), the database.")
-  (components-of  [db id]  "derive components id contains")
-  (domains-of     [db id]  "set of domains id intersects")
-  (get-entity [db id] "Returns an IEntity associated with id")
-  (conj-entity    [db id components] "Add an entity to the database.")   
-  (entities [db] "Return a map of {entityid #{components..}}"))
-
-;  (alter-entity [db id f] "Alter an entity's components using f.  f
-;  should take an entity and return a set of components that change.")
-
-;EntityStore is the default implementation of our protocol, and it uses maps 
-;to maintain records of component data, keyed by entity ID, as well as a map of
-;entities to the set of components they are associated with.  
-(defrecord EntityStore [entity-map domain-map]
-  IEntityStore
-  (add-entry [db id domain data]
-    (EntityStore. (assoc entity-map id (conj (get entity-map id #{}) domain)) 
-                  (assoc-in domain-map [domain id] data)))
-  (drop-entry [db id domain]
-    (let [cnext (dissoc domain-map domain id)
-          enext (let [parts (disj (get entity-map id) domain)]
-                      (if (zero? (count parts))
-                        (dissoc entity-map id)
-                        (assoc entity-map id parts)))]
-      (EntityStore. enext cnext)))
-  (get-entry     [db id domain] (get (get domain-map domain) id))
-  (entities [db] entity-map)
-  (domains [db]   domain-map)
-  (domains-of     [db id]  (get entity-map id))
-  (components-of  [db id]  (reduce (fn [acc dom] (assoc acc dom (get-in domain-map [dom id]))) 
-                                   {} (get entity-map id)))
-  (get-entity [db id] (when-let [comps (.components-of db id)]
-                        (entity. id comps)))
-  (conj-entity     [db id components] 
-      (if (map? components) 
-        (reduce-kv (fn [acc dom dat]
-                     (.add-entry acc id dom dat))
-                   db components)
-        (reduce (fn [acc domdat] (.add-entry acc id (first domdat) (second domdat)))
-                db components))))
-  
-(def emptystore (->EntityStore {} {}))
-
-(defn domain-keys [db] (keys (domains db)))
-(defn get-domain [db d] (get (domains db) d))
-(defn disj-entity [db id xs] 
-  (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
-
-;; (comment ;testing
-
-;; (def db (conj-entity emptystore 2 {:age 22 :name "some-entity"}))
-;; (domains db) ;=>      {:age {2 22} :name {2 "some-entity"}}
-;; (get-domain  db :age) => [:age {2 22}]
-;; (get-entities db) => {2 #{:age :name}}
-
-;; (get-entity db 2) => {id 2 {:age 22 :name "some-entity"}}
-;; (domains-of db 2)    => #{:age :name}
-;; (components-of db 2) => {:age 22 :name "some-entity"}
-
-;; (conj-entity db  2     {:age 22 :name "some-entity"})
-;; (drop-entity db 2) => {:entities {} :components {}}
-;; (add-entry db  2    :age 22)  
-;; (drop-entry db 2    :age 22) 
-;; )
-
 ;components define a unique domain, and some data associated with the domain.
 ;in most setups, data is statically typed, so that the components are homogenous
 ;we'll follow that practice, but nothing is technically stopping us from having
 ;heterogenous data across a component.
-;(defrecord component [domain data])
 (defprotocol IComponent 
   (component-domain [x] "Returns the logical domain of the component")
   (component-data [x] "Returns the values associated with the component."))
@@ -150,8 +68,11 @@
   (component-domain [x] (.key x))
   (component-data [x]   (.val x)))
 
-(defn ->component [domain data]  (clojure.lang.MapEntry. domain data))
-(defn as-component     [domain data]   (->component  domain  data))
+(defn ->component   [domain data]  (clojure.lang.MapEntry. domain data))
+(defn as-component  [domain data]  (->component  domain  data))
+
+;;Entity Definition
+;;=================
 
 (defprotocol IEntity 
   "A protocol for defining fundamental operations on entities."
@@ -271,7 +192,91 @@
   "Get a quick summary of the entity, i.e. its components..."
   [ent]
   [(entity-name ent) (entity->domains ent)])
+
+
+;;Entities live in Entity Stores
+;;==============================
+
+(defprotocol IEntityStore
+  "The entitystore is an abstract protocol for defining functionality necessary 
+   to manage entities, as defined by collections of component data.  Due to the 
+   independent nature of component data (each component maps 1:1 to a specific, 
+   orthogonal domain of information, and is self contained), our entity store 
+   could be implemented a number of ways.  The obvious implementation is as a 
+   single hash-map database on a single machine.  However, we could easily 
+   distribute the component maps across multiple nodes, effectively distributing
+   our store and allowing for parallel querying/updating functions.  Finally, 
+   we could implement the entitystore using a persistent database backend, if it
+   makes sense to do that. "
+  (add-entry   [db id domain data] "Associate a record of data /w entity id")
+  (drop-entry  [db id domain] "Drop record for id from component")
+  (get-entry   [db id domain] "Fetch the component record for ent id")
+  (domains [db]   "Map of domain -> (id -> component), the database.")
+  (components-of  [db id]  "derive components id contains")
+  (domains-of     [db id]  "set of domains id intersects")
+  (get-entity [db id] "Returns an IEntity associated with id")
+  (conj-entity    [db id components] "Add an entity to the database.")   
+  (entities [db] "Return a map of {entityid #{components..}}"))
+
+;  (alter-entity [db id f] "Alter an entity's components using f.  f
+;  should take an entity and return a set of components that change.")
+
+;EntityStore is the default implementation of our protocol, and it uses maps 
+;to maintain records of component data, keyed by entity ID, as well as a map of
+;entities to the set of components they are associated with.  
+(defrecord EntityStore [entity-map domain-map]
+  IEntityStore
+  (add-entry [db id domain data]
+    (EntityStore. (assoc entity-map id (conj (get entity-map id #{}) domain)) 
+                  (assoc-in domain-map [domain id] data)))
+  (drop-entry [db id domain]
+    (let [cnext (dissoc domain-map domain id)
+          enext (let [parts (disj (get entity-map id) domain)]
+                      (if (zero? (count parts))
+                        (dissoc entity-map id)
+                        (assoc entity-map id parts)))]
+      (EntityStore. enext cnext)))
+  (get-entry     [db id domain] (get (get domain-map domain) id))
+  (entities [db] entity-map)
+  (domains [db]   domain-map)
+  (domains-of     [db id]  (get entity-map id))
+  (components-of  [db id]  (reduce (fn [acc dom] (assoc acc dom (get-in domain-map [dom id]))) 
+                                   {} (get entity-map id)))
+  (get-entity [db id] (when-let [comps (.components-of db id)]
+                        (entity. id comps)))
+  (conj-entity     [db id components] 
+      (if (map? components) 
+        (reduce-kv (fn [acc dom dat]
+                     (.add-entry acc id dom dat))
+                   db components)
+        (reduce (fn [acc domdat] (.add-entry acc id (first domdat) (second domdat)))
+                db components))))
   
+(def emptystore (->EntityStore {} {}))
+
+(defn domain-keys [db] (keys (domains db)))
+(defn get-domain [db d] (get (domains db) d))
+(defn disj-entity [db id xs] 
+  (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
+
+;; (comment ;testing
+
+;; (def db (conj-entity emptystore 2 {:age 22 :name "some-entity"}))
+;; (domains db) ;=>      {:age {2 22} :name {2 "some-entity"}}
+;; (get-domain  db :age) => [:age {2 22}]
+;; (get-entities db) => {2 #{:age :name}}
+
+;; (get-entity db 2) => {id 2 {:age 22 :name "some-entity"}}
+;; (domains-of db 2)    => #{:age :name}
+;; (components-of db 2) => {:age 22 :name "some-entity"}
+
+;; (conj-entity db  2     {:age 22 :name "some-entity"})
+;; (drop-entity db 2) => {:entities {} :components {}}
+;; (add-entry db  2    :age 22)  
+;; (drop-entry db 2    :age 22) 
+;; )
+
+
 ;protocol-derived functionality 
 
 (defn reduce-entries
@@ -340,7 +345,7 @@
   "Returns a sequence of entity ids that are members of a domain.
    Specifically, each entity has component data in the domain."
   [db d]
-  (keys (domain db d)))
+  (keys (get-domain db d)))
 
 (defn get-entities 
   "Reify multiple entity records from ids from entitystore."
@@ -621,6 +626,9 @@
      (entitydec name "" args mix)))
 
 
+;;Might be nice to formalize the information or an entity spec.
+;(deftype entityspec [name doc args specs components]
+
 (defmacro defentity
   "Allows composition of a set of components into an entity template.  Creates 
    a function in the current namespace, prefixed with 'build-', taking at least
@@ -670,11 +678,14 @@
    This yields a function, (computer-player id aitype name) that 
    produces parameterized computer players."   
   [name & doc+args+mix]
-    (let [decargs    (into [name] (sort-by #(cond (string? %) 0  (vector? %) 1 (map? %) 2) doc+args+mix))         
+    (let [decargs    (into [name] (sort-by #(cond (string? %) 0  
+                                                  (vector? %) 1 
+                                                  (map? %) 2) doc+args+mix))         
           specmap    (apply entitydec decargs)]
      (if (valid-spec? specmap)
-       (let [{:keys [doc args specs components]} specmap]
-         `(def ~(with-meta name (assoc (meta name) :doc doc)) 
+       (let [{:keys [doc args specs components]} specmap
+             m (merge (meta name) {:doc doc :arglists (list 'quote (list args))})]
+         `(def ~(with-meta name m)  
             (entity-spec ~args ~specs ~components)))
          (throw (Exception. "Entity spec is invalid!")))))
 
