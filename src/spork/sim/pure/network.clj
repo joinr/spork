@@ -276,6 +276,12 @@
             (transition context data [client-name handler]))
           ctx client-handler-map))
 
+;;===================
+;;Performance Revision:
+;;Remove the variadic arg here; I think we'll be calling propogate 
+;;alot.  The varargs will slow us down...
+;;=====================
+
 ;For right now....we assume serial propogation...I'll have to figure out how
 ;to weave in parallel or asynch propogation in the future....Serial is the 
 ;simplest case, and we might be able to convey parallelism using composed forms
@@ -326,6 +332,12 @@
 ;event handler is a function of the form: 
 ; (event-type -> event-data -> state -> state)
 
+
+;;Union-handlers is currently jacked.  Need to modify this dude.
+;;The intent is to merge all the routes together; such that
+;;event->client mappings exist in the new network for everything in 
+;;the nets.  What is more than one event->client mapping exists? 
+;;We keep the latest one, ala merge.
 (defn union-handlers
   "This is a simple merge operation that clooges together one or more networks,
    and returns a new network that is the set-theoretic union of clients and 
@@ -335,13 +347,36 @@
   ([name nets]
     (reduce 
       (fn [merged net] (register-routes 
-                         (reduce (fn [routes e]
-                                   (merge routes 
-                                          (zipmap (repeat e) 
-                                                  (get-event-clients net e)))) 
-                                 {} (:subscriptions net)) merged))
+                         (reduce-kv (fn [routes e clients]
+                                      (merge routes 
+                                             (zipmap (repeat e) 
+                                                     (get-event-clients net e)))) 
+                                    {} (:subscriptions net)) merged))
     (empty-network name) nets))
   ([nets] (union-handlers :merged nets)))
+
+(comment ;fixing
+
+(defn union-handlers
+  "This is a simple merge operation that clooges together one or more networks,
+   and returns a new network that is the set-theoretic union of clients and 
+   events.  The resulting network has every client that the original did, as 
+   well as every event, with subscriptions merged.  Caller can supply a new 
+   name for the merger."
+  ([name nets]     
+    (reduce 
+      (fn [l r] 
+        (let [[
+        (register-routes 
+                         (reduce-kv (fn [routes e clients]
+                                      (merge routes 
+                                             (zipmap (repeat e) 
+                                                     (get-event-clients net e)))) 
+                                    {} (:subscriptions net)) merged))
+      
+    (empty-network name) nets))
+  ([nets] (union-handlers :merged nets)))
+)
 
 (defn bind-handlers
   "Creates a new network from one or more networks, that is a logical 
@@ -436,7 +471,6 @@
   (handle-event (->simple-event :hello-event 0 nil) nil sample-net))
 
 ;using combinators to build networks
-
 (defn echo-hello [] 
   (propogate-event 
     (->handler-context :hello-event "hello world!" nil noisy-transition) 
@@ -471,6 +505,7 @@
 ;add some capabilities to the network...
 ;like a better message.
 (use 'clojure.pprint)
+(require 'spork.util.datetime)
 (def message-net2 
   (register-routes {:messaging2 {:echo (fn [{:keys [state] :as ctx} edata name]
                                         (do (println "The message is: ")
@@ -483,9 +518,10 @@
                                                 (do (pprint (:state ctx))
                                                   ctx))}})
         add-current-time (fn [ctx] (assoc-in ctx [:state :date]
-                                             (util.datetime/get-date)))] 
+                                             (spork.util.datetime/get-date)))] 
     (->> print-route
-      (map-handler add-current-time) ;should wrap the whole thing...
-      (union-handlers message-net)))) ;combine it with the message-net.
+      (map-handler add-current-time)))) ;should wrap the whole thing...
+;      (vector message-net)
+;      (union-handlers message-net)))) ;combine it with the message-net.
 
 )

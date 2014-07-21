@@ -1,5 +1,5 @@
 ;;An implementation of an entity store, based on an entity-component
-;;architecture.  
+;;architecture.    Might rename this to "CENTS" "Component Entity System"
 (ns spork.entitysystem.store)
 
 ;A component-based architecture is a collection of Domains, Systems, Components,
@@ -250,7 +250,7 @@
                    db components)
         (reduce (fn [acc domdat] (.add-entry acc id (first domdat) (second domdat)))
                 db components))))
-  
+
 (def emptystore (->EntityStore {} {}))
 
 (defn domain-keys [db] (keys (domains db)))
@@ -791,3 +791,22 @@
 	  (get-domains [db] (with-store db (keys components))))
 
 )
+
+
+;;Working on easily defining interface implementations for entity stores.
+;; ;;Makes it easy to wrap up our entity store definitions....Maybe useful.  
+;; (defmacro wrap-entity-store [es update-expr]
+;;   `(IEntityStore
+;;     (~'add-entry  [db# id# domain# data#]   (~update-expr db# (~'add-entry  es id# domain# data#)))
+;;     (~'drop-entry [db# id# domain#]         (~update-expr db# (~'drop-entry es id# domain#)))
+;;     (~'get-entry  [db# id# domain#]         (~'get-entry es id# domain#))
+;;     (~'entities   [db#]                     (~'entities es))
+;;     (~'domains    [db#]                     (~'domain#s es))
+;;     (~'domains-of     [db# id#]             (~'domain#s-of es id#))
+;;     (~'components-of  [db# id#]             (~'components-of es id#))
+;;     (~'get-entity [db# id#]                 (~'get-entity es id#))
+;;     (~'conj-entity     [db# id# components] (~update-expr db# (~'conj-entity es id# components)))))
+
+;; ;ideally, i'd like to just say this... `(gamestate. ~expr monsternum)
+;; (defrecord gamestate [store monsternum]
+;;   ~@(wrapped-entity-store store (fn [expr] `(gamestate. ~expr monsternum))))

@@ -30,6 +30,21 @@
   (conj-entity     [db id components] 
     (gamestate. (conj-entity store id components) monsternum)))
 
+;; ;;Is this more readable?
+;; (defmacro set-store [expr]  `(~'gamestate. ~expr ~'monsternum))
+;; (defrecord gamestate [store monsternum]
+;;   IEntityStore
+;;   (add-entry      [db id domain data] (set-store (add-entry store id domain data)))
+;;   (drop-entry     [db id domain]      (set-store (drop-entry store id domain)))
+;;   (get-entry      [db id domain]      (get-entry store id domain))
+;;   (entities       [db]                (entities store))
+;;   (domains        [db]                (domains store))
+;;   (domains-of     [db id]             (domains-of store id))
+;;   (components-of  [db id]             (components-of store id))
+;;   (get-entity     [db id]             (get-entity store id))
+;;   (conj-entity    [db id components] 
+;;     (set-store (conj-entity store id components))))
+
 (def new-game (->gamestate emptystore 12)) 
 
 ;Component definitions....these are building blocks for domains of interest 
@@ -248,13 +263,21 @@
 
 (defn random-game [& {:keys [n] :or {n 12}}]
     (-> new-game 
-        (add-entity (player hero-id))
+        (add-entity   (player hero-id))
         (add-entities (random-monsters! n))))
 
+;;Entity Properties
+;;=================
 (defn live? [e] (-> (entity-components e) :basicstats :health pos?))
-
 ;;might be nice to define language support for properties....
 ;(defproperty live? (pos? [:basic-stats :health]))
+
+(defn active? [e] (-> (entity-components e) :basicstats :agility pos?))
+(defn effects [e] (-> (entity-components e) :effects))
+
+
+;;Killing an entity means removing it from the store.
+(defn kill-entity [g id] (drop-entity g id))
 
 ;;game-queries
 (defn current-monsters [store]
@@ -267,6 +290,22 @@
   `(defn ~(symbol (str "player-" name)) [store#]
      (let [~name (get-player store#)]
        ~@expr)))
+
+;;Subsystems
+;;==========
+
+
+;;Spawning 
+
+;;Combat 
+
+;;Death
+
+;;Player-Input
+
+;;Rendering
+
+
 
 
 ;(property live? [e] (pos? (basic-stats health]))
