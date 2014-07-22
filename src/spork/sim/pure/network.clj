@@ -354,7 +354,6 @@
                                     {} (:subscriptions net)) merged))
     (empty-network name) nets))
   ([nets] (union-handlers :merged nets)))
-
 (comment ;fixing
 
 (defn union-handlers

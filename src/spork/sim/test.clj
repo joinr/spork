@@ -24,31 +24,31 @@
   "A function that, given an initial event context, will poll for a user's name
    and then reply with a greeting."
   ([ec]
-		(let-events [(newname)
-	              (getinput)]
-		   (let [quit? #(= (ucase (event-data %)) "QUIT")
-             terminate (route [:newname :getinput] 
-                          (process (set-events *context* [])))
-             
-		         ui    (route [:getinput]
-                      (process 
-	                      (do (println "Please type your name!")
-	                          (set-events *context* 
-	                            (add-events *events* [(newname (get-line))])))))
-		         greet (route [:newname]
-	                     (process 
+     (let-events [(newname)
+                  (getinput)]
+                 (let [quit? #(= (ucase (event-data %)) "QUIT")
+                       terminate (route [:newname :getinput] 
+                                        (process (set-events *context* [])))
+                       
+                       ui    (route [:getinput]
+                                    (process 
+                                     (do (println "Please type your name!")
+                                         (set-events *context* 
+                                                     (add-events *events* [(newname (get-line))])))))
+                       greet (route [:newname]
+                                    (process 
 		                     (when (and (not (nil? *state*)) (not= *state* ""))
 		                       (do (println (str "Greetings,  " *state*  \!))
-		                         (set-events *context* 
-		                           (add-event *events* (getinput :keyboard)))))))
-		         nm    (route [:newname]
-                      (process
-			                  (if (quit? *event*) 
-                          (terminate *context*)                       
-	                        (-> *context*
-	                          (set-state (event-data *event*))
-	                          (greet)))))]                              	           	 
-	      (event-stepper #((comp nm ui) %) ec))))
+                                           (set-events *context* 
+                                                       (add-event *events* (getinput :keyboard)))))))
+                       nm    (route [:newname]
+                                    (process
+                                     (if (quit? *event*) 
+                                       (terminate *context*)                       
+                                       (-> *context*
+                                           (set-state (event-data *event*))
+                                           (greet)))))]                              	           	 
+                   (event-stepper #((comp nm ui) %) ec))))
   ([] (greeter (add-event emptycontext (->event :getinput :keyboard)))))
 
 
@@ -77,42 +77,37 @@
   "A function that, given an initial event context, will poll for a user's name
    and then reply with a greeting."
   ([ec]
-		(let-events [(newname)
-	              (getinput)]
-		   (let [terminate (route [:newname :getinput]
-                          (do (println "computation finished!") 
-                            (process (set-events *context* []))))
-             quit? #(= (ucase (event-data %)) "QUIT")
-             view-state (fn [ec] (do (println ec)
-                                     ec))
-             eventlog (ref [])
-             logevent! (fn [msg ec] (dosync (alter eventlog conj msg)
-                                      ec)) 
-		         ui     (->> (process
-                            (logevent! "ui" (set-events *context* 
-                               (add-events *events* 
-                                 [(newname (get-line))]))))                                                                                     
-                         (filter-route (type-filter :getinput)))
-                         
-
-		         greet  (->> (process 
-                          (logevent! "greet"
-                            (when (and (not (nil? *state*)) (not= *state* ""))
-                              (do (println (str "Greetings,  " *state*  \!))
-                                (set-events *context* 
-                                   (add-event *events* (getinput :keyboard)))))))
-                         (filter-route (type-filter :newname)))
-                         
-                   
-		         nm     (->> (process
-                           (logevent! "name"
-	                            (if (quit? *event*)
-	                              (terminate *context*)
-	                              (-> *context*
-	                                (set-state (event-data *event*))
-	                                (greet)))))                          
-                         (filter-route (type-filter :newname)))]
-                         	           	 
-	      [(event-stepper #((comp view-state nm ui) %) ec) @eventlog])))
-        ;(event-stepper ui ec))))
+     (let-events [(newname)
+                  (getinput)]
+                 (let [terminate (route [:newname :getinput]
+                                        (do (println "computation finished!") 
+                                            (process (set-events *context* []))))
+                       quit? #(= (ucase (event-data %)) "QUIT")
+                       view-state (fn [ec] (do (println ec)
+                                               ec))
+                       eventlog (ref [])
+                       logevent! (fn [msg ec] (dosync (alter eventlog conj msg)
+                                                      ec)) 
+                       ui     (->> (process
+                                    (logevent! "ui" (set-events *context* 
+                                                                (add-events *events* 
+                                                                            [(newname (get-line))]))))
+                                   (filter-route (type-filter :getinput)))                      
+                       greet  (->> (process 
+                                    (logevent! "greet"
+                                               (when (and (not (nil? *state*)) (not= *state* ""))
+                                                 (do (println (str "Greetings,  " *state*  \!))
+                                                     (set-events *context* 
+                                                                 (add-event *events* (getinput :keyboard)))))))
+                                   (filter-route (type-filter :newname)))                                              
+                       nm     (->> (process
+                                    (logevent! "name"
+                                               (if (quit? *event*)
+                                                 (terminate *context*)
+                                                 (-> *context*
+                                                     (set-state (event-data *event*))
+                                                     (greet)))))                          
+                                   (filter-route (type-filter :newname)))]                   
+                   [(event-stepper #((comp view-state nm ui) %) ec) @eventlog])))
+                                        ;(event-stepper ui ec))))
   ([] (greeter-frp (add-event emptycontext (->event :getinput :keyboard)))))
