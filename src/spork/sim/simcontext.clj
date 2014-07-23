@@ -47,6 +47,7 @@
 (ns spork.sim.simcontext
   (:require [spork.sim [data :as sim] [agenda :as agenda] [updates :as updates]]
             [spork.sim.pure [network :as simnet]]
+            [spork.entitysystem [store :as store]]
             [spork.util [metaprogramming :as util]]))
 ;probably need to move from marathon.updates to something in the sim namespace.
 
@@ -62,7 +63,24 @@
   [scheduler ;supported by agenda.  
    updater ;a weak agenda with some special state, tracks previous updates. 
    propogator  ;event propogation, represented by a propogation network. 
-   state]) ;the state of the simulation.
+   state ;;typically an entity store...but not necessarily.
+   ]
+  store/IEntityStore
+  (add-entry [db id domain data] 
+    (simcontext. scheduler updater propogator 
+       (store/add-entry state id domain data)))
+  (drop-entry [db id domain] 
+    (simcontext. scheduler updater propogator 
+        (store/drop-entry state id domain))) 
+  (get-entry     [db id domain] (store/get-entry state id domain))
+  (entities [db] (store/entities state))
+  (domains [db]  (store/domains state))
+  (domains-of     [db id] (store/domains-of state id ))
+  (components-of  [db id]  (store/components-of state id))
+  (get-entity [db id] (store/get-entity state id))
+  (conj-entity     [db id components] 
+    (simcontext. scheduler updater propogator 
+      (store/conj-entity state id components))))
 
 ;I should probably just use the protocol functions here....rather than 
 ;re-implementing them....that's a refactoring/clean-up step.  I'm just 
@@ -121,6 +139,12 @@
 (defn packet-data 
   "Fetches associated data, if any, from an event that carries a packet."
   [p] (get (sim/event-data p) :data))
+
+
+;;==============================================================
+;;Eliminate ctx->state and state->ctx by implementing a protocol 
+;;for simcontexts that interfaces better with event handling.
+;;==============================================================
 
 ;Data marshalling crap.  We shouldn't have to do this...should be using
 ;a protocol.

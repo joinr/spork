@@ -354,28 +354,28 @@
                                     {} (:subscriptions net)) merged))
     (empty-network name) nets))
   ([nets] (union-handlers :merged nets)))
-(comment ;fixing
+;; (comment ;fixing
 
-(defn union-handlers
-  "This is a simple merge operation that clooges together one or more networks,
-   and returns a new network that is the set-theoretic union of clients and 
-   events.  The resulting network has every client that the original did, as 
-   well as every event, with subscriptions merged.  Caller can supply a new 
-   name for the merger."
-  ([name nets]     
-    (reduce 
-      (fn [l r] 
-        (let [[
-        (register-routes 
-                         (reduce-kv (fn [routes e clients]
-                                      (merge routes 
-                                             (zipmap (repeat e) 
-                                                     (get-event-clients net e)))) 
-                                    {} (:subscriptions net)) merged))
+;; (defn union-handlers
+;;   "This is a simple merge operation that clooges together one or more networks,
+;;    and returns a new network that is the set-theoretic union of clients and 
+;;    events.  The resulting network has every client that the original did, as 
+;;    well as every event, with subscriptions merged.  Caller can supply a new 
+;;    name for the merger."
+;;   ([name nets]     
+;;     (reduce 
+;;       (fn [l r] 
+;;         (let [[
+;;         (register-routes 
+;;                          (reduce-kv (fn [routes e clients]
+;;                                       (merge routes 
+;;                                              (zipmap (repeat e) 
+;;                                                      (get-event-clients net e)))) 
+;;                                     {} (:subscriptions net)) merged))
       
-    (empty-network name) nets))
-  ([nets] (union-handlers :merged nets)))
-)
+;;     (empty-network name) nets))
+;;   ([nets] (union-handlers :merged nets)))
+;; )
 
 (defn bind-handlers
   "Creates a new network from one or more networks, that is a logical 
