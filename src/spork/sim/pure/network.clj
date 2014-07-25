@@ -116,7 +116,35 @@
 
 ;;__TODO__ Rewrite this using topologies from spork.graph
 
-(defrecord event-network [name clients subscriptions])
+(defprotocol IEventSystem 
+  (get-events [net] "Returns the set of events in the system.")
+  (get-clients [net] "Returns the set of clients in the system.")
+  (get-client-events [obs client-name] "Returns the events a client is subscribed to.")
+  (get-event-clients [obs event-type]   
+    "Return a map of clients to handlers, which will be invoked when this event  is traversed.")
+  (unsubscribe [obs client-name event-type]   
+    "Drop the relation from client-name to event-type, and the subscription from  event-type to client-name.")
+  (subscribe [obs client-name handler event-type]   "Adds a bi-directional relation between client-name and event-type, where the 
+   abstract traversal cost from event-type to client, is to invoke f.  
+   We only want to allow 2 classes of registration: universal and specific.  
+   Universal subscribers, tagged by :all, trigger on any event, and require no 
+   argument for event-type. Specific subscriptions take an argument for 
+   event-type.  Subscribers are either specific (triggering on specific events) 
+   or universal, but never both.  If no event-type is supplied, the type will 
+   default to :all, or a universal handler.")
+   (propogate [net ctx]
+     "Instead of the traditional notify, as we have in the observable lib, we 
+   define a function called propogate-event, which acts akin to a reduction.
+   Each client with either an :all routing or a subscription to the event-type 
+   will be traversed.  Every step of the walk is treated as a transition, in 
+   which the handler function and the context are supplied to a 
+   transition-function - transition - which determines the resulting context.  
+   event-transition-func:: 
+      'a -> sim.data.IEvent -> ('b, (sim.data.IEvent -> 'a -> 'a)) -> 'a        
+   The resulting reduction over every transition is the return value of the 
+   network.  If no transition function is supplied, we default to simply  
+   applying the associated handler to the event-data and the state." 
+   ))
 
 
 (defn- drop-event-client
@@ -130,8 +158,8 @@
         (assoc obs :subscriptions (dissoc subscriptions event-type))
         (assoc-in obs [:subscriptions event-type] (dissoc scripts client-name)))      
       (throw (Exception. 
-               (str "Client subscription does not exist" client-name)))))) 
-
+               (str "Client subscription does not exist" client-name))))))
+ 
 (defn- drop-client-event
   "Remove the relation from client-name to event-type.  If no relations remain
    for client, client is dropped from clients."
@@ -145,44 +173,66 @@
       (throw (Exception. 
                (str "Client does not exist" client-name))))))
 
-(defn get-events
-  "List the active events in this network."
-  [net] (keys (get net :subscriptions)))
+(defrecord event-network [name clients subscriptions]
+  IEventSystem
+  (get-events [net]  (keys subscriptions))
+  (get-clients [net] (keys clients))
+  (get-event-clients [obs event-type]  (get subscriptions event-type))
+  (get-client-events [obs client-name] (get clients client-name))
+  (unsubscribe  [obs client-name event-type] 
+    (-> (drop-event-client obs client-name event-type)
+        (drop-client-event client-name event-type)))
+  (subscribe [obs client-name handler event-type] 
+    (let [next-obs  (event-network. name 
+                        (assoc clients client-name 
+                               (conj (get clients client-name #{}) event-type))
+                        (assoc subscriptions event-type 
+                               (assoc (get subscriptions event-type {})
+                                 client-name handler)))
+          evts (get-client-events next-obs client-name)]
+      (cond (identical? event-type :all) ;registered a universal subscription. 
+            (reduce (fn [o e-type] (unsubscribe o client-name e-type))
+                    next-obs (disj evts :all))
+            :else  ;registered a specific subscription.
+            (if (or (not (contains? evts :all)) 
+                    (= evts #{:all}))                      
+              next-obs
+              (reduce (fn [o e-type] (unsubscribe o client-name e-type))
+                      next-obs 
+                      (clojure.set/difference evts #{:all event-type})))))))
 
-(def default-transition ;when handling events, we don't care about the client.
-  (fn [ctx e [client-name handler]]
-    (handler ctx e client-name)))
+;;Should rip out the client-name, it's not that important.
+;;If it's important, we can extract it as a var...otherwise, it 
+;;should be inside the handler....i.e. the handler should know about 
+;;who it is.
+(definline default-transition ;when handling events, we don't care about the client.
+   [ctx e client-name handler]
+    `(~handler ~ctx ~e ~client-name))
 
-(def noisy-transition 
-  (fn [ctx e [client-name handler]]
-    (do (println (str {:state ctx :event e :client client-name}))
-      (handler ctx e client-name))))
+(definline noisy-transition 
+  [ctx e client-name handler]
+  `(do (println (str {:state ~ctx :event ~e :client ~client-name}))
+      (~handler ~ctx ~e ~client-name)))
 
-(defn ->handler-context
-  "Creates a composite data structure that carries the context to be handled by
-   handler functions.  Note the shocking similarity to behavior context....."
-  ([type data state transition]
-    {:type type :data data :state state :transition transition})
-  ([type data state] (->handler-context type data state default-transition)))
+
+
+
+;;Is this vestigial?
+;;==================
+;; (defn ->handler-context
+;;   "Creates a composite data structure that carries the context to be handled by
+;;    handler functions.  Note the shocking similarity to behavior context....."
+;;   ([type data state transition]
+;;     {:type type :data data :state state :transition transition})
+;;   ([type data state] (->handler-context type data state default-transition)))
 
 (defn un-register
   "Drop the relation from client-name to event-type, and the subscription from 
    event-type to client-name."
   [obs client-name event-type]
-  (-> (drop-event-client obs client-name event-type)
-    (drop-client-event client-name event-type))) 
+  (unsubscribe obs client-name event-type))
 
-(defn get-event-clients
-  "Return a map of clients to handlers, which will be invoked when this event 
-   is traversed."
-  [obs event-type]
-  (get-in obs [:subscriptions event-type]))
-  
-(defn get-client-events
-  "Return an un-ordered set of the events this client is interested in."
-  [obs client-name]
-  (get-in obs [:clients client-name]))
-
+;;protocol-derived functions.
 (defn universal?
   "Determines if the client is subscribed to all events, or only a specific set
    of events.  If the client has :all as its subscription, it will trigger on 
@@ -200,25 +250,8 @@
    or universal, but never both.  If no event-type is supplied, the type will 
    default to :all, or a universal handler."
   ([obs client-name handler event-type]
-    (let [{:keys [clients subscriptions]} obs]    
-      (let [next-obs  (merge obs 
-                             {:clients (assoc clients client-name 
-                                (conj (get clients client-name #{}) event-type))
-                              :subscriptions (assoc subscriptions event-type 
-                                (assoc (get subscriptions event-type {})
-                                       client-name handler))})
-            evts (get-client-events next-obs client-name)]
-        (cond (= event-type :all) ;registered a universal subscription. 
-              (reduce (fn [o e-type] (un-register o client-name e-type))
-                      next-obs (disj evts :all))
-              :else  ;registered a specific subscription.
-              (if (or (not (contains? evts :all)) 
-                      (= evts #{:all}))                      
-                next-obs
-                (reduce (fn [o e-type] (un-register o client-name e-type))
-                        next-obs 
-                        (clojure.set/difference evts #{:all event-type})))))))
-  ([obs client-name handler] (register obs client-name handler :all)))
+     (subscribe obs client-name handler event-type))
+  ([obs client-name handler] (subscribe obs client-name handler :all)))
 
 (defn register-routes
   "Register multiple clients associated with multiple event/handler pairs.  
@@ -227,30 +260,36 @@
    a client entity 'Bob with the :shower and :eat events would look like: 
    {'Bob {:shower take-shower :eat eat-sandwich}}"
   [client-event-handler-map obs]
-  (reduce (fn [o1 [client-name handler-map]] 
-            (reduce  (fn [o2 [etype handler]]
+  (reduce-kv (fn [o1 client-name handler-map] 
+            (reduce-kv  (fn [o2 etype handler]
                        (register o2 client-name handler etype)) o1 handler-map))
           obs client-event-handler-map))
 
-(defn drop-client
+(defn remove-client
   "Unregisters client from every event, automatically dropping it from clients."
   [obs client-name] 
-  (assert (contains? (:clients obs) client-name) 
+  (assert (contains? (get-clients obs) client-name) 
           (str "Client " client-name " does not exist!"))
   (reduce (fn [o etype] (un-register o client-name etype))
-      obs (get-client-events obs client-name)))      
+      obs (get-client-events obs client-name)))
+
+(defn remove-event 
+  "Unregisters all clients from event, automatically dropping event from events."
+  [obs event]       
+  (reduce (fn [o client-name] (un-register o client-name event))
+          obs (get-event-clients obs event)))
 
 (defn empty-network
   "Creates an empty network of event-handlers."
   [name] 
   (map->event-network  {:name name :clients {} :subscriptions {}})) 
 
+;;Weak.
 (defn ->propogation
   "Given an event routing, as specified by m, creates a new event network for
    propogating events."
   [m]
-  (->> (empty-network "anonymous")
-    (register-routes m)))
+  (register-routes m (empty-network "anonymous")))
 
 (defn simple-handler
   "Defines the simplest possible event-network: a single client called :in 
@@ -271,16 +310,11 @@
    context....Note, this offers a significant amount of control, in that the 
    handler can override the propogation, short-circuit, change the event, 
    change the state, change the propogation network topology, etc."
-  [{:keys [state type data transition net] :as ctx} client-handler-map]
-  (reduce (fn [context [client-name handler]] 
-            (transition context data [client-name handler]))
-          ctx client-handler-map))
-
-;;===================
-;;Performance Revision:
-;;Remove the variadic arg here; I think we'll be calling propogate 
-;;alot.  The varargs will slow us down...
-;;=====================
+  [{:keys [data transition net] :as ctx} client-handler-map]
+  (reduce-kv 
+   (fn [context client-name handler] 
+     (transition context data client-name handler))
+   ctx client-handler-map))
 
 ;For right now....we assume serial propogation...I'll have to figure out how
 ;to weave in parallel or asynch propogation in the future....Serial is the 
@@ -288,6 +322,7 @@
 ;of serial propogation....or...we push the parallelism into the handler 
 ;functions, i.e. bulk updates of systems, so we have a coarse-grained event 
 ;structure.
+
 (defn propogate-event
   "Instead of the traditional notify, as we have in the observable lib, we 
    define a function called propogate-event, which acts akin to a reduction.
@@ -300,16 +335,34 @@
    The resulting reduction over every transition is the return value of the 
    network.  If no transition function is supplied, we default to simply  
    applying the associated handler to the event-data and the state." 
-  [{:keys [type data state] :as ctx} net 
-   & {:keys [transition] 
-      :or {transition (get ctx :transition default-transition)}}] 
-  (let [client-handler-map 
-        (merge (get-event-clients net type)
-               (if (not= type :all)
-                 (get-event-clients net :all) {}))]
-    (serial-propogator 
-      (assoc ctx :net net :transition transition) client-handler-map)))
+  ([{:keys [type data state] :as ctx} net  transition] 
+     (let [client-handler-map (merge (get-event-clients net type)
+                                     (if (not= type :all)
+                                       (get-event-clients net :all) {}))]
+       (serial-propogator 
+        (assoc ctx :net net :transition transition) client-handler-map)))
+  ([ctx net] (propogate-event ctx net  (get ctx :transition default-transition))))
 
+;;This is a bit clunky, probably some overhead due to allocation.
+;;We'll see if it matters in practice.
+(defprotocol IEventContext 
+  (handle [ctx e]))
+
+(defrecord handler-context [type data state transition net]
+  IEventContext
+  (handle [ctx e] 
+    (propogate-event 
+     (handler-context. (event-type e) 
+                       (event-data e) 
+                       state
+                       transition
+                       net)
+                     e)))
+
+(def default-context (->handler-context nil nil nil default-transition (empty-network "empty")))
+(def ^:dynamic *context* default-context)
+;;Handling means establishing an event context, from a current event,
+;;state, and net, then propogating through it.
 (defn handle-event
   "High level function to handle an IEvent, in the context of some state, using 
    an event-network defined by net.  Alternatively, the state and the network 
@@ -317,21 +370,22 @@
    values are required.  Returns the resulting state, with the context as 
    meta data."
   ([event state net]
-    (propogate-event 
-      (->handler-context (event-type event) (event-data event) state) net))
-  ([event ctx]
-    (propogate-event 
-      (merge ctx {:type (event-type event) 
-                  :data (event-data event)})
-      (:net ctx))))
+    (handle (handler-context. nil nil
+                              state default-transition net) event))
+  ([event ctx] (handle ctx event)))
 
-(defn handle-events [init-ctx net xs]
-  (reduce (fn [ctx e] (handle-event e ctx)) (assoc init-ctx :net net) xs))
+    
+(defn handle-events 
+  ([state net xs] (reduce (fn [ctx e] (handle ctx e)) (-> default-context (assoc :state state) (assoc :net net))  xs))
+  ([init-ctx xs]
+     (reduce (fn [ctx e] (handle ctx e))  init-ctx xs)))
 
+
+;;Primitive Event Handlers
+;;========================
 ;these are combinators for defining ways to compose event handlers, where an 
 ;event handler is a function of the form: 
 ; (event-type -> event-data -> state -> state)
-
 
 ;;Union-handlers is currently jacked.  Need to modify this dude.
 ;;The intent is to merge all the routes together; such that
@@ -354,7 +408,6 @@
                                     {} (:subscriptions net)) merged))
     (empty-network name) nets))
   ([nets] (union-handlers :merged nets)))
-;; (comment ;fixing
 
 ;; (defn union-handlers
 ;;   "This is a simple merge operation that clooges together one or more networks,
@@ -365,17 +418,17 @@
 ;;   ([name nets]     
 ;;     (reduce 
 ;;       (fn [l r] 
-;;         (let [[
+;;         (let [
 ;;         (register-routes 
-;;                          (reduce-kv (fn [routes e clients]
-;;                                       (merge routes 
-;;                                              (zipmap (repeat e) 
-;;                                                      (get-event-clients net e)))) 
-;;                                     {} (:subscriptions net)) merged))
+;;           (reduce-kv (fn [routes e clients]
+;;                        (merge routes 
+;;                               (zipmap (repeat e) 
+;;                                       (get-event-clients net e)))) 
+;;                      {} (:subscriptions net)) merged))
       
 ;;     (empty-network name) nets))
 ;;   ([nets] (union-handlers :merged nets)))
-;; )
+
 
 (defn bind-handlers
   "Creates a new network from one or more networks, that is a logical 
@@ -443,84 +496,17 @@
 ;         ~'*t*       (current-time ~'*events*)]
 ;     ~body))
 
-(comment ;testing 
 
-;these are low level examples of event handler networks.         
-(def sample-net 
-  (->> (empty-network "Mynetwork")
-    (register-routes 
-      {:hello-client {:hello-event 
-                       (fn [ctx edata name] 
-                         (do (println "Hello!") ctx))}})))
-(def simple-net 
-  (->> (empty-network "OtherNetwork")
-    (register-routes 
-      {:hello-client {:all 
-                      (fn [ctx edata name] 
-                        (do (println "I always talk!")) ctx)}})))
+;;Map-based rep
 
-;low-level event propogation
-(defn prop-hello [] 
-  (propogate-event 
-    (->handler-context :hello-event "hello world!" nil)
-    sample-net))
-
-;high level event propogation
-(defn handle-hello [] 
-  (handle-event (->simple-event :hello-event 0 nil) nil sample-net))
-
-;using combinators to build networks
-(defn echo-hello [] 
-  (propogate-event 
-    (->handler-context :hello-event "hello world!" nil noisy-transition) 
-    sample-net))
-
-(def message-net 
-  (->> (empty-network "A message pipe!")
-    (register-routes 
-      {:echoing {:echo (fn [{:keys [state] :as ctx} edata name] 
-                            (do (println "State:" state)
-                              ctx))}
-       :messaging {:append (fn [{:keys [state] :as ctx} edata name] 
-                                   (update-in ctx [:state :message] conj edata))}})))
-
-(defn test-echo [& [msg]]
-  (propogate-event (->handler-context :echo nil [msg]) message-net))
-
-;this is a round-about way of doing business....
-(defn test-conj [& xs]
-  (reduce (fn [acc x] 
-            (handle-event (->simple-event :append 0 x) acc message-net))
-          {:message []} xs))
-
-;a test of multiple events being 'queued' and handled by the message network.
-(defn test-messaging [] 
-  (handle-events {:message []}
-                 message-net
-                 [[:echo]
-                  [:append 2]
-                  [:append 3]]))
-
-;add some capabilities to the network...
-;like a better message.
-(use 'clojure.pprint)
-(require 'spork.util.datetime)
-(def message-net2 
-  (register-routes {:messaging2 {:echo (fn [{:keys [state] :as ctx} edata name]
-                                        (do (println "The message is: ")
-                                          (pprint (:message state))
-                                          ctx))}} message-net)) 
+;; (defn get-event-clients
+;;   "Return a map of clients to handlers, which will be invoked when this event 
+;;    is traversed."
+;;   [obs event-type]
+;;   (get-in obs [:subscriptions event-type]))
   
-;this is an attempt to get at the composable workflow from observable.
-(def time-stamped-messages
-  (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
-                                                (do (pprint (:state ctx))
-                                                  ctx))}})
-        add-current-time (fn [ctx] (assoc-in ctx [:state :date]
-                                             (spork.util.datetime/get-date)))] 
-    (->> print-route
-      (map-handler add-current-time)))) ;should wrap the whole thing...
-;      (vector message-net)
-;      (union-handlers message-net)))) ;combine it with the message-net.
+;; (defn get-client-events
+;;   "Return an un-ordered set of the events this client is interested in."
+;;   [obs client-name]
+;;   (get-in obs [:clients client-name]))
 
-)

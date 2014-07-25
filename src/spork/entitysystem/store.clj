@@ -60,7 +60,7 @@
 (extend-protocol IComponent
   clojure.lang.PersistentArrayMap
   (component-domain [x] (:domain x))
-  (component-data [x] (:data x)))
+  (component-data [x]   (:data x)))
 
 (extend-protocol IComponent
   clojure.lang.MapEntry
@@ -91,24 +91,34 @@
   IEntity 
   (entity-name [e] name)
   (conj-component [e c] 
-    (entity. name (assoc components (component-domain c) (component-data c))))
+    (entity. name (assoc components (component-domain c))))
   (disj-component [e c] 
-    (entity. name (dissoc components (component-domain c) (component-data c))))
+    (entity. name (dissoc components (component-domain c)))))
   (get-component [e domain] (get components domain))
   (entity-components [e] components))
 
-(def empty-entity (->entity nil {}))
-
-(extend-protocol IEntity
+(extend-protocol IEntity 
   nil 
   (entity-name [n] nil)
   (entity-components [n] nil)
+  clojure.lang.PersistentArrayMap
+  (entity-name [e] (.valAt e :name))
+  (conj-component [e c] 
+    (.assoc e :components 
+       (assoc (.valAt e :components) (component-domain c) (component-data c))))
+  (disj-component [e c]     (.without e (component-domain c)))
+  (get-component [e domain] (get (.valAt e :components) domain))
+  (entity-components [e] (.valAt e :components))
+  clojure.lang.PersistentHashMap
+  (entity-name [e] (.valAt e :name))
+  (conj-component [e c] 
+    (.assoc e :components 
+       (assoc (.valAt e :components) (component-domain c) (component-data c))))
+  (disj-component [e c]     (.without e (component-domain c)))
+  (get-component [e domain] (get (.valAt e :components) domain))
+  (entity-components [e] (.valAt e :components)))
 
-  clojure.lang.PersistentHashMap ;maps can also be simple entities...
-  (entity-name [m] (get m :name))
-  (entity-components [m] (cond (contains? m :components) (get m :components)
-                               (contains? m :domains) (get m :domains)
-                               :else (dissoc m :name))))
+(def empty-entity (->entity nil {}))
 
 (defn conj-components
   "Conjoins each component in cs to the components in ent ."
