@@ -76,14 +76,50 @@
   (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
                                                 (do (pprint (:state ctx))
                                                   ctx))}})
-        add-current-time (fn [ctx] (assoc-in ctx [:state :date]
-                                             (spork.util.datetime/get-date)))] 
+        add-current-time (fn [ctx] (let [t (spork.util.datetime/date->time (spork.util.datetime/get-date))]
+                                     (do (println (str "recording time " t))
+                                         (assoc-in ctx [:state :date] t))))] 
     (->> print-route
-      (map-handler add-current-time)))) ;should wrap the whole thing...
-;      (vector message-net)
-;      (union-handlers message-net)))) ;combine it with the message-net.
+      (map-handler add-current-time) ;should wrap the whole thing...
+      (vector message-net)
+      (union-handlers)))) ;combine it with the message-net.
+
+;;What if we could alter the network, like adding event-handlers
+;;during evaluation? 
 
 
-;;(handle-event :echo {:state {:message "Hey!"}} message-net2)
-;;(handle-events  {:state {:message []}} message-net2  [:echo [:append 2] [:append 3] [:append 50] :echo])
+(defn test-stamp []
+  (handle-event :echo {:state {:message "Hey!"}} time-stamped-messages))
+(defn test-stamps []
+  (handle-events  {:message []}
+                  time-stamped-messages
+                  [:echo 
+                   [:append 2] 
+                   [:append 3] 
+                   [:append 50] 
+                   :echo]))
+;;Works correctly.
+(defn tst []
+  (handle-event [:append 2] {:message []} 
+    (register-routes 
+     {:stamper 
+      {:all (fn [ctx e nm] 
+              (let [t (spork.util.datetime/date->time 
+                       (spork.util.datetime/get-date))]
+                (do (println (str "recording time " t))
+                    (assoc-in ctx [:state :date] t))))}} (empty-network "h"))))
+
+;;This works appropriately.  Happened so fast I missed the timing
+;;change earlier.
+(defn tsts []
+  (->> (map (fn [n] (keyword (str "a" n))) (range 100))
+       (handle-events {:message []}  
+                      (register-routes 
+                       {:stamper 
+                        {:all (fn [ctx e nm] 
+                                (let [t (spork.util.datetime/date->time 
+                                         (spork.util.datetime/get-date))]
+                                  (do (println (str "recording time " t))
+                                      (assoc-in ctx [:state :date] t))))}} 
+                       (empty-network "h")))))
 

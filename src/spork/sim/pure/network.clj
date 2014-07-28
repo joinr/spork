@@ -418,29 +418,32 @@
 ;;event->client mappings exist in the new network for everything in 
 ;;the nets.  What is more than one event->client mapping exists? 
 ;;We keep the latest one, ala merge.
-(defn union-handlers
-  "This is a simple merge operation that clooges together one or more networks,
-   and returns a new network that is the set-theoretic union of clients and 
-   events.  The resulting network has every client that the original did, as 
-   well as every event, with subscriptions merged.  Caller can supply a new 
-   name for the merger."
-  ([name nets]
-    (reduce 
-      (fn [merged net] (register-routes 
-                         (reduce-kv (fn [routes e clients]
-                                      (merge routes 
-                                             (zipmap (repeat e) 
-                                                     (get-event-clients net e)))) 
-                                    {} (:subscriptions net)) merged))
-    (empty-network name) nets))
-  ([nets] (union-handlers :merged nets)))
+;; (defn union-handlers
+;;   "This is a simple merge operation that clooges together one or more networks,
+;;    and returns a new network that is the set-theoretic union of clients and 
+;;    events.  The resulting network has every client that the original did, as 
+;;    well as every event, with subscriptions merged.  Caller can supply a new 
+;;    name for the merger."
+;;   ([name nets]
+;;     (reduce 
+;;       (fn [merged net] (register-routes 
+;;                          (reduce-kv (fn [routes e clients]
+;;                                       (merge routes 
+;;                                              (zipmap (repeat e) 
+;;                                                      (get-event-clients net e)))) 
+;;                                     {} (:subscriptions net)) merged))
+;;     (empty-network name) nets))
+;;   ([nets] (union-handlers :merged nets)))
 
 (defn merge-handlers [event-type l r]
   (reduce-kv (fn [n client handler]
                (register n  client handler event-type))
              l
-             (get-event-clients r e)))
+             (get-event-clients r event-type)))
 
+(defn merge-nets [l r]
+  (reduce (fn [acc e] (merge-handlers e acc r))
+          l (get-events r)))
 
 (defn union-handlers
   "This is a simple merge operation that clooges together one or more networks,
@@ -449,12 +452,9 @@
    well as every event, with subscriptions merged.  Caller can supply a new 
    name for the merger."
   ([name nets]     
-     (let [levents (get-events l)
-           revents (get-events r)]
-       
-
+     (-> (reduce merge-nets nets)
+         (assoc :name name)))
   ([nets] (union-handlers :merged nets)))
-
 
 (defn bind-handlers
   "Creates a new network from one or more networks, that is a logical 
@@ -462,20 +462,28 @@
    events handled by to.  Every propogation is first handled by from, then by 
    to, effectively chaining propogations on the basis of event names."
   [from to]
-  (let [like-events (clojure.set/intersection (set (get-events from))
-                                              (set (get-events to)))]
+  (let [like-events (into (set (get-events from))
+                          (get-events to))]
     (simple-handler (fn [ctx edata name] 
                       (let [nxt (propogate-event ctx from)]
                         (if (contains? like-events (event-type edata))
                           (propogate-event nxt to)
                           nxt))))))
+;;Right now, we're dealing with a side-effect of making the network 
+;;available.....or a side-effect of how we merge handlers.
+;;We want to subscribe a handler to an underlying observation.
+;;If it triggers, then the effect is that a new event triggers 
+;;that is the composition of the underyling event.
+;;When
 (defn map-handler
   "Maps a handler to the underlying network.  This is a primitive chaining 
    function.  We return a new network that, when used for propogation, calls
    the handler-func with the resulting state of the propogation."
   [handler-func base]  
-  (simple-handler (fn [ctx edata name] 
-                    (handler-func (propogate-event ctx base)))))
+  (simple-handler 
+   (fn [ctx edata name] 
+     (-> (handler-func (propogate-event ctx base))
+         (set-net (:net ctx))))))
 
 (defn filter-handler
   "Maps a filtering function f, to a map of the handler-context, namely 
