@@ -1,5 +1,6 @@
 (ns spork.sim.pure.test
-  (:require [spork.sim.pure.network :refer :all]))
+  (:require [spork.sim.pure.network :refer :all]
+            [spork.sim.data :refer [event-type event-data]]))
 
 ;these are low level examples of event handler networks.         
 (def sample-net 
@@ -18,7 +19,7 @@
 ;low-level event propogation
 (defn prop-hello [] 
   (propogate-event 
-    (->handler-context :hello-event "hello world!" nil)
+    (->handler-context [:hello-event "hello world!"] nil)
     sample-net))
 
 ;high level event propogation
@@ -28,7 +29,7 @@
 ;using combinators to build networks
 (defn echo-hello [] 
   (propogate-event 
-    (->handler-context :hello-event "hello world!" nil noisy-transition) 
+    (->handler-context [:hello-event "hello world!"] nil noisy-transition) 
     sample-net))
 
 (def message-net 
@@ -37,26 +38,28 @@
       {:echoing {:echo (fn [{:keys [state] :as ctx} edata name] 
                             (do (println "State:" state)
                               ctx))}
-       :messaging {:append (fn [{:keys [state] :as ctx} edata name] 
-                                   (update-in ctx [:state :message] conj edata))}})))
+       :messaging {:append (fn [ctx edata name] 
+                             (update-in ctx [:state :message] conj 
+                                        (event-data edata)))}})))
 
 (defn test-echo [& [msg]]
-  (propogate-event (->handler-context :echo nil [msg]) message-net))
+  (propogate-event (->handler-context :echo [msg]) message-net))
 
 ;this is a round-about way of doing business....
 (defn test-conj [& xs]
-  (reduce (fn [acc x] 
-            (handle-event [:append 0 x] acc message-net))
-          {:message []} xs))
+  (let [ctx (->handler-context nil {:message []} default-transition message-net)]
+    (reduce (fn [acc x] 
+              (handle-event [:append x] acc))
+            ctx  xs)))
 
 ;a test of multiple events being 'queued' and handled by the message network.
 (defn test-messaging [] 
-  (handle-events {:state {:message []}}
-                 message-net
-                 [:echo
-                  [:append 2]
-                  [:append 3]
-                  :echo]))
+  (handle-events  {:message []}
+                  message-net
+                  [:echo
+                   [:append 2]
+                   [:append 3]
+                   :echo]))
 
 ;add some capabilities to the network...
 ;like a better message.

@@ -215,8 +215,6 @@
       (~handler ~ctx ~e ~client-name)))
 
 
-
-
 ;;Is this vestigial?
 ;;==================
 ;; (defn ->handler-context
@@ -291,6 +289,7 @@
   [m]
   (register-routes m (empty-network "anonymous")))
 
+;;See if we can rephrase this...
 (defn simple-handler
   "Defines the simplest possible event-network: a single client called :in 
    that listens for every event, and handles it with the supplied 
@@ -310,11 +309,29 @@
    context....Note, this offers a significant amount of control, in that the 
    handler can override the propogation, short-circuit, change the event, 
    change the state, change the propogation network topology, etc."
-  [{:keys [data transition net] :as ctx} client-handler-map]
+  [{:keys [event transition net] :as ctx} client-handler-map]
   (reduce-kv 
    (fn [context client-name handler] 
-     (transition context data client-name handler))
+     (transition context event client-name handler))
    ctx client-handler-map))
+
+;;Note->
+;;We can actually extend IEventContext to our mutable lib by defining 
+;;an event propogation network based on observables....We just
+;;maintain some mutable state in an atom and let the observers work on
+;;it.
+
+
+;;Probably lift this guy out at some point.
+;;This is a bit clunky, probably some overhead due to allocation.
+;;We'll see if it matters in practice.
+(defprotocol IEventContext 
+  (handle     [ctx e])
+  (set-event  [ctx e])
+  (set-transition [ctx txn])
+  (set-state [ctx s])
+  (set-net   [ctx n]))
+
 
 ;For right now....we assume serial propogation...I'll have to figure out how
 ;to weave in parallel or asynch propogation in the future....Serial is the 
@@ -335,32 +352,41 @@
    The resulting reduction over every transition is the return value of the 
    network.  If no transition function is supplied, we default to simply  
    applying the associated handler to the event-data and the state." 
-  ([{:keys [type data state] :as ctx} net  transition] 
-     (let [client-handler-map (merge (get-event-clients net type)
+  ([{:keys [event state] :as ctx} net  transition] 
+     (let [type (event-type event)
+           client-handler-map (merge (get-event-clients net type)
                                      (if (not= type :all)
                                        (get-event-clients net :all) {}))]
        (serial-propogator 
-        (assoc ctx :net net :transition transition) client-handler-map)))
+        (-> ctx (set-net  net) (set-transition transition)) client-handler-map)))
   ([ctx net] (propogate-event ctx net  (get ctx :transition default-transition))))
 
-;;This is a bit clunky, probably some overhead due to allocation.
-;;We'll see if it matters in practice.
-(defprotocol IEventContext 
-  (handle [ctx e]))
+;;Is the network really necessary? 
+;;I think it is for a propogation...That's the whole idea...
 
-(defrecord handler-context [type data state transition net]
+;;Since we're using propogate-event, can we handle it more efficiently? 
+;;I.e. can we pull out the params for the propogation?
+;;We can definitely use a mutable context for efficiency later..
+(defrecord event-context [event state transition net]
   IEventContext
-  (handle [ctx e] 
-    (propogate-event 
-     (handler-context. (event-type e) 
-                       (event-data e) 
-                       state
-                       transition
-                       net)
-                     e)))
+  (handle     [ctx e] (propogate-event (.set-event ctx e) net))
+  (set-event [ctx e] (event-context. e 
+                                     state
+                                     transition
+                                     net))
+  (set-transition [ctx txn] (event-context. event state txn net))
+  (set-state [ctx s] (event-context. event s transition net))
+  (set-net   [ctx n] (event-context. event state transition n)))
 
-(def default-context (->handler-context nil nil nil default-transition (empty-network "empty")))
+(def default-net      (empty-network "empty"))
+(def default-context  (event-context. nil nil  default-transition default-net))
 (def ^:dynamic *context* default-context)
+
+(defn ->handler-context 
+  ([e state] (event-context. e state default-transition default-net))
+  ([e state txn] (event-context. e state txn default-net))
+  ([e state txn net] (event-context. e state txn net)))
+
 ;;Handling means establishing an event context, from a current event,
 ;;state, and net, then propogating through it.
 (defn handle-event
@@ -370,13 +396,13 @@
    values are required.  Returns the resulting state, with the context as 
    meta data."
   ([event state net]
-    (handle (handler-context. nil nil
-                              state default-transition net) event))
+    (propogate-event 
+       (event-context. event state default-transition net) net))
   ([event ctx] (handle ctx event)))
 
     
 (defn handle-events 
-  ([state net xs] (reduce (fn [ctx e] (handle ctx e)) (-> default-context (assoc :state state) (assoc :net net))  xs))
+  ([state net xs] (reduce (fn [ctx e] (handle ctx e)) (-> default-context (set-state state) (set-net net))  xs))
   ([init-ctx xs]
      (reduce (fn [ctx e] (handle ctx e))  init-ctx xs)))
 
@@ -409,25 +435,25 @@
     (empty-network name) nets))
   ([nets] (union-handlers :merged nets)))
 
-;; (defn union-handlers
-;;   "This is a simple merge operation that clooges together one or more networks,
-;;    and returns a new network that is the set-theoretic union of clients and 
-;;    events.  The resulting network has every client that the original did, as 
-;;    well as every event, with subscriptions merged.  Caller can supply a new 
-;;    name for the merger."
-;;   ([name nets]     
-;;     (reduce 
-;;       (fn [l r] 
-;;         (let [
-;;         (register-routes 
-;;           (reduce-kv (fn [routes e clients]
-;;                        (merge routes 
-;;                               (zipmap (repeat e) 
-;;                                       (get-event-clients net e)))) 
-;;                      {} (:subscriptions net)) merged))
-      
-;;     (empty-network name) nets))
-;;   ([nets] (union-handlers :merged nets)))
+(defn merge-handlers [event-type l r]
+  (reduce-kv (fn [n client handler]
+               (register n  client handler event-type))
+             l
+             (get-event-clients r e)))
+
+
+(defn union-handlers
+  "This is a simple merge operation that clooges together one or more networks,
+   and returns a new network that is the set-theoretic union of clients and 
+   events.  The resulting network has every client that the original did, as 
+   well as every event, with subscriptions merged.  Caller can supply a new 
+   name for the merger."
+  ([name nets]     
+     (let [levents (get-events l)
+           revents (get-events r)]
+       
+
+  ([nets] (union-handlers :merged nets)))
 
 
 (defn bind-handlers
@@ -438,9 +464,9 @@
   [from to]
   (let [like-events (clojure.set/intersection (set (get-events from))
                                               (set (get-events to)))]
-    (simple-handler (fn [{:keys [type] :as ctx} edata name] 
+    (simple-handler (fn [ctx edata name] 
                       (let [nxt (propogate-event ctx from)]
-                        (if (contains? like-events type)
+                        (if (contains? like-events (event-type edata))
                           (propogate-event nxt to)
                           nxt))))))
 (defn map-handler
