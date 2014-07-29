@@ -340,6 +340,34 @@
 ;functions, i.e. bulk updates of systems, so we have a coarse-grained event 
 ;structure.
 
+;;I think we need to alter this so that we're not munging the network.
+;;Propogate-event takes a net and uses it for propogation, setting the 
+;;context's network to that in the process.
+;;The problem here is in the setting....even if the propogation has no 
+;;effect on the network, we still provide it as part of the context.
+;;Perhaps we should make set-network an explicit operator.  We can
+;;propogate any event over the network.
+
+;;That's a pretty key feature....changes to the propogation topology.
+;;During a propogation, do we want to allow the topology to change? 
+;;Is this not akin to using "reduced" to perform earlier termination 
+;;during a reduction? 
+
+;;Maybe we can communicate an altered network during a propogation?
+;;Dunno...propogate-event expects to be supplied a network, which it 
+;;then embeds in the propogation context.  Handlers can "see" the
+;;network as events are handled by looking at the context.
+
+;;The problem we're having is that there's a handler that doesn't
+;;intend to modify the context, but since we use propogate-event 
+;;to handle it like a sub-net, the resulting context is indeed 
+;;modified - since the context's network is set that way. 
+
+;;The current implementation for HOFs like map-handler defines new 
+;;propogations....which is problematic because we expect the :net 
+;;in the resulting context to be left alone.
+;;However, it will always be subsumed by sub-propogations...
+;;Think of this as lexical-scoping for event-networks....
 (defn propogate-event
   "Instead of the traditional notify, as we have in the observable lib, we 
    define a function called propogate-event, which acts akin to a reduction.
@@ -370,10 +398,10 @@
 (defrecord event-context [event state transition net]
   IEventContext
   (handle     [ctx e] (propogate-event (.set-event ctx e) net))
-  (set-event [ctx e] (event-context. e 
-                                     state
-                                     transition
-                                     net))
+  (set-event  [ctx e] (event-context. e 
+                                      state
+                                      transition
+                                      net))
   (set-transition [ctx txn] (event-context. event state txn net))
   (set-state [ctx s] (event-context. event s transition net))
   (set-net   [ctx n] (event-context. event state transition n)))
@@ -382,9 +410,11 @@
 (def default-context  (event-context. nil nil  default-transition default-net))
 (def ^:dynamic *context* default-context)
 
+;;Do we even care about the network? 
+;;Can it be part of the transition function?
 (defn ->handler-context 
-  ([e state] (event-context. e state default-transition default-net))
-  ([e state txn] (event-context. e state txn default-net))
+  ([e state]         (event-context. e state default-transition default-net))
+  ([e state txn]     (event-context. e state txn default-net))
   ([e state txn net] (event-context. e state txn net)))
 
 ;;Handling means establishing an event context, from a current event,
@@ -399,12 +429,10 @@
     (propogate-event 
        (event-context. event state default-transition net) net))
   ([event ctx] (handle ctx event)))
-
     
 (defn handle-events 
   ([state net xs] (reduce (fn [ctx e] (handle ctx e)) (-> default-context (set-state state) (set-net net))  xs))
-  ([init-ctx xs]
-     (reduce (fn [ctx e] (handle ctx e))  init-ctx xs)))
+  ([init-ctx xs]  (reduce (fn [ctx e] (handle ctx e))  init-ctx xs)))
 
 
 ;;Primitive Event Handlers

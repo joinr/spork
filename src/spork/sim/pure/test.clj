@@ -84,6 +84,22 @@
       (vector message-net)
       (union-handlers)))) ;combine it with the message-net.
 
+
+(def exploded-example 
+  (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
+                                                (do (pprint (:state ctx))
+                                                  ctx))}})
+        add-current-time (fn [ctx] (let [t (spork.util.datetime/date->time (spork.util.datetime/get-date))]
+                                     (do (println (str "recording time " t))
+                                         (assoc-in ctx [:state :date] t))))
+        handler-function (fn [ctx edata name] 
+                             (add-current-time (propogate-event ctx print-route)))
+        mapped (register-routes {:blah {:all handler-function}}
+                                (empty-network :anonymous))] 
+    (->> mapped
+        (vector message-net)
+        (union-handlers)))) 
+
 ;;What if we could alter the network, like adding event-handlers
 ;;during evaluation? 
 
@@ -118,7 +134,7 @@
                        {:stamper 
                         {:all (fn [ctx e nm] 
                                 (let [t (spork.util.datetime/date->time 
-                                         (spork.util.datetime/get-date))]
+                                        (spork.util.datetime/get-date))]
                                   (do (println (str "recording time " t))
                                       (assoc-in ctx [:state :date] t))))}} 
                        (empty-network "h")))))
