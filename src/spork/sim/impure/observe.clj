@@ -155,12 +155,12 @@
    so that we can subscribe to observables at any level of composition."
   ([subscribef & base]
 	  (let [b (first base)
-          subscribers  (if b (get-subscribers b) (atom []))]
+                subscribers  (if b (get-subscribers b) (atom []))]
 	    (reify observable 
 	      (subscribe! [able obs] (subscribef subscribers able obs))
-        (notify! [able arg] (doseq [o (deref subscribers)] (update! o arg)))
-        (get-subscribers [able] subscribers)
-        (clear-subscribers! [able] (do (alter-atom! subscribers []))))))
+              (notify!    [able arg] (doseq [o (deref subscribers)] (update! o arg)))
+              (get-subscribers [able] subscribers)
+              (clear-subscribers! [able] (do (alter-atom! subscribers []))))))
   ([] (make-observable default-subscribe)))
 
 (defn map-obs

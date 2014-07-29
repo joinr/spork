@@ -368,6 +368,8 @@
 ;;in the resulting context to be left alone.
 ;;However, it will always be subsumed by sub-propogations...
 ;;Think of this as lexical-scoping for event-networks....
+
+
 (defn propogate-event
   "Instead of the traditional notify, as we have in the observable lib, we 
    define a function called propogate-event, which acts akin to a reduction.
@@ -387,6 +389,19 @@
                                        (get-event-clients net :all) {}))]
        (serial-propogator 
         (-> ctx (set-net  net) (set-transition transition)) client-handler-map)))
+  ([ctx net] (propogate-event ctx net  (get ctx :transition default-transition))))
+
+(defn sub-propogate-event
+  "Propogate an event without altering the network.  In other words, we 
+   do not allow changes to the net.  We want to toss away the net after we're 
+   done." 
+  ([{:keys [event state] :as ctx} net  transition] 
+     (let [type (event-type event)
+           client-handler-map (merge (get-event-clients net type)
+                                     (if (not= type :all)
+                                       (get-event-clients net :all) {}))]
+       (serial-propogator 
+        (-> ctx   (set-transition transition)) client-handler-map)))
   ([ctx net] (propogate-event ctx net  (get ctx :transition default-transition))))
 
 ;;Is the network really necessary? 
@@ -503,6 +518,11 @@
 ;;If it triggers, then the effect is that a new event triggers 
 ;;that is the composition of the underyling event.
 ;;When
+
+;;This is a bit weird...
+;;What we want to do is to subscribe to the :all event 
+;;in the network (thus capturing all triggers of the network.
+
 (defn map-handler
   "Maps a handler to the underlying network.  This is a primitive chaining 
    function.  We return a new network that, when used for propogation, calls
