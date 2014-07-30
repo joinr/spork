@@ -330,7 +330,11 @@
   (set-event  [ctx e])
   (set-transition [ctx txn])
   (set-state [ctx s])
-  (set-net   [ctx n]))
+  (set-net   [ctx n])
+  (get-event [ctx])
+  (get-transition [ctx])
+  (get-state [ctx])
+  (get-net   [ctx]))
 
 
 ;For right now....we assume serial propogation...I'll have to figure out how
@@ -410,7 +414,7 @@
 ;;Since we're using propogate-event, can we handle it more efficiently? 
 ;;I.e. can we pull out the params for the propogation?
 ;;We can definitely use a mutable context for efficiency later..
-(defrecord event-context [event state transition net]
+(defrecord event-context [event state transition ^event-network net]
   IEventContext
   (handle     [ctx e] (propogate-event (.set-event ctx e) net))
   (set-event  [ctx e] (event-context. e 
@@ -419,7 +423,20 @@
                                       net))
   (set-transition [ctx txn] (event-context. event state txn net))
   (set-state [ctx s] (event-context. event s transition net))
-  (set-net   [ctx n] (event-context. event state transition n)))
+  (set-net   [ctx n] (event-context. event state transition n))
+  (get-event  [ctx] event)
+  (get-transition [ctx] transition )
+  (get-state [ctx] state)
+  (get-net   [ctx] net)
+  IEventSystem
+  (get-events [ctx]  (.get-event net))
+  (get-clients [ctx] (.get-clients  net))
+  (get-event-clients [obs event-type]  (.get-event-clients net event-type))
+  (get-client-events [obs client-name] (.get-client-events net client-name))
+  (unsubscribe  [obs client-name event-type] 
+    (event-context. event state transition (.unsubscribe net client-name event-type)))
+  (subscribe [obs client-name handler event-type] 
+    (event-context. event state transition (.subscribe net client-name event-type))))
 
 (def default-net      (empty-network "empty"))
 (def default-context  (event-context. nil nil  default-transition default-net))
@@ -523,15 +540,56 @@
 ;;What we want to do is to subscribe to the :all event 
 ;;in the network (thus capturing all triggers of the network.
 
+;;The simplest thing is to not allow handlers to change the network
+;;topology.  Nothing says we can't communicate that desire though...
+;;for instance, if, when propogating across a network, we accumulate 
+;;some topological changes, that's great.  We can represent that as 
+;;another event handling context....rather than just a network...
+;;That's probably a better idea...
+
+;;We have scoped event locales....
+;;If there are subnets, we allow the subnets access to "their"
+;;network as the propogation context.
+
+
+;;These functions allow us to nest networks as handlers..
+;;Inside a network, we have a separate event context.
+;;We isolate changes to the local context.
+;;So, any changes to the event handler only appear in the 
+;;local context.  Things like subscribe, unsubscribe, etc 
+;;will affect changes for the sub propogation.  This allows us 
+;;to have analagous effects like shadowing and other stuff.
+
+(defmacro handler-bind [base expr]
+  `(let [net# ~base
+         internal-net# (event-context. nil nil ~base)]
+     (let [res# ~@expr
+           net2# (:net res#)]
+       (if (identical? net2# net#)           
+       
+(definline push-context [outer inner]
+  `(-> ~inner 
+       (set-event (get-event ~outer))
+       (set-state (get-state ~outer))))         
+
+(definline handle-internally [outer inner e name]
+  `(let [res# (handle (push-context ~outer ~inner) ~e)]
+     (-> (if (not (identical? (get-net res#) (get-net ~inner)))
+           (subscribe ~outer ~inner ~name (event-type ~e))
+           ~outer)
+         (set-state (get-state res#)))))     
+
 (defn map-handler
   "Maps a handler to the underlying network.  This is a primitive chaining 
    function.  We return a new network that, when used for propogation, calls
    the handler-func with the resulting state of the propogation."
-  [handler-func base]  
-  (simple-handler 
-   (fn [ctx edata name] 
-     (-> (handler-func (propogate-event ctx base))
-         (set-net (:net ctx))))))
+  [f base]
+  (let [internal-ctx (event-context. nil nil base)]
+    (simple-handler 
+     (fn [ctx edata name] 
+       (-> (handle-internally ctx internal-ctx name)           
+           (f)
+           )))))
 
 (defn filter-handler
   "Maps a filtering function f, to a map of the handler-context, namely 
