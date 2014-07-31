@@ -581,6 +581,10 @@
            ~outer)
          (set-state (get-state res#)))))     
 
+(defn handle-once [f]
+  (fn [ctx edata name]
+    (let [res (f ctx edata name)]
+      (remove-client res name))))
 
 (defn map-handler
   "Maps a handler to the underlying network.  This is a primitive chaining 
@@ -637,6 +641,8 @@
        (-> (handle-internally ctx internal-ctx edata name)
            (remove-client nm))))))
 
+;;Not implemented yet.  For now, one-time handlers and handle-once 
+;;are plenty sufficient....
 ;; (defn n-time-handler 
 ;;   "After handling n events, this handler will alter the network, as provided in
 ;;    the context, to remove itself from any further event handling."
@@ -648,8 +654,7 @@
 ;;      nm
 ;;      :all
 ;;      (fn [ctx edata name] 
-;;        (let [res (handle-internally ctx internal-ctx edata name)]
-             
+;;        (let [res (handle-internally ctx internal-ctx edata name)]             
 
 (defn conditional-handler
   "After handling an event, this handler will alter the network, as provided in

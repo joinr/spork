@@ -80,7 +80,16 @@
   (get-entity [db id] (store/get-entity state id))
   (conj-entity     [db id components] 
     (simcontext. scheduler updater propogator 
-      (store/conj-entity state id components))))
+      (store/conj-entity state id components)))
+  simnet/IEventSystem
+  (get-events [ctx]  (simnet/get-event net))
+  (get-clients [ctx] (simnet/get-clients  net))
+  (get-event-clients [obs event-type]  (simnet/get-event-clients net event-type))
+  (get-client-events [obs client-name] (simnet/get-client-events net client-name))
+  (unsubscribe  [obs client-name event-type] 
+    (simcontext. scheduler updater (simnet/unsubscribe net client-name event-type) state))
+  (subscribe [obs client-name handler event-type] 
+    (simcontext. scheduler updater (simnet/subscribe net client-name event-type))))
 
 ;I should probably just use the protocol functions here....rather than 
 ;re-implementing them....that's a refactoring/clean-up step.  I'm just 
@@ -105,6 +114,7 @@
   "Sets the upper bound on the time horizon."
   [tf ctx] (update-in ctx [:scheduler] agenda/set-final-time tf)) 
 
+;;Maybe rewrite this guy...
 (defn add-listener 
   "Legacy proxy for adding event handlers to the context.  Given a client-name, 
    a handler function, and a sequence of event-types to subscribe to, associates
@@ -118,9 +128,22 @@
   [client-name handler subscriptions ctx]
   (let [net (:propogator ctx)]
     (->> (reduce (fn [context e] (simnet/register context client-name handler e))
-                 net subscriptions)
+                 ctx subscriptions)
       (assoc ctx :propogator))))
 
+(def ^:constant +empty-msg-data+ {:msg nil :data nil})
+
+(defrecord packet [t type from to msg data]
+  sim/IEvent 
+  (event-type [e] type)
+  (event-data [e] data)
+  (event-id   [e] id)
+  (event-time [e] t)
+  (event-from [e] from)
+  (event-to   [e] to))
+
+;;Extended IEvent to packets, created a like data structure.  Specific 
+;;to marathon's stuff.  May want to generalize this.  For now, it works.  
 (defn ->packet
   "Creates an event record that - possibly - carries a message and some data.
    This is derived from the initial GenericPacket class from an earlier version
@@ -128,17 +151,16 @@
    special structure for the event-data.  The message field is typically used
    for passing logging information, but the remaining fields are more or less 
    identical.  Also time-stamps the packet with the current-time."
-  [t type from to & {:keys [msg data] 
-                   :or {msg nil data nil}}] 
-  (sim/->event sim/event-type {:msg msg :data data}   nil t from to))
+  ([t type from to]          (packet. t type from to nil nil))
+  ([t type from to msg data] (packet. t type from to msg data)))
 
 (defn packet-message
   "Fetches the message, if any from an event that carries a packet."
-  [p] (get (sim/event-data p) :msg))
+  [^packet p] (.msg p))
 
 (defn packet-data 
   "Fetches associated data, if any, from an event that carries a packet."
-  [p] (get (sim/event-data p) :data))
+  [^packet p] (.data p))
 
 
 ;;==============================================================

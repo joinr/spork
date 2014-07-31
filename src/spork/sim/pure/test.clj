@@ -91,11 +91,26 @@
                                                           ctx))}})]
     (one-time-handler print-route)))
 
-(def n-messages   
-  (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
-                                                (do (pprint (:state ctx))
-                                                          ctx))}})]
-    (n-time-handler 4 print-route)))
+(def limited-messages2   
+   (simple-handler 
+    (handle-once 
+     (fn [ctx edata name] 
+       (do (pprint (:state ctx))
+           ctx)))))
+
+(defn complex-handling []
+  (let [h  (simple-handler 
+            (handle-once 
+             (fn [ctx edata name] 
+               (do (pprint ["Handled" name "once!"])
+                   (assoc ctx :state name)))))]
+    (handle-events nil h [:hello :hello :hello])))
+
+;; (def n-messages   
+;;   (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
+;;                                                 (do (pprint (:state ctx))
+;;                                                           ctx))}})]
+;;     (n-time-handler 4 print-route)))
   
 
 (def exploded-example 
