@@ -292,7 +292,8 @@
   [& {:keys [debug-handler] 
       :or {debug-handler 
            (fn [ctx edata name] 
-             (do (println (debug-msg ":debugger saw " [(:type ctx) edata])) ctx))}}]    
+             (do (println (debug-msg ":debugger saw " [(sim/event-type edata) 
+                                                       (sim/event-data edata)])) ctx))}}]    
   (add-listener :debugger debug-handler [:all] (make-context)))
 
 ;new helper functions.
