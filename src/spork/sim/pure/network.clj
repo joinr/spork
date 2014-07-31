@@ -641,14 +641,14 @@
 ;;   "After handling n events, this handler will alter the network, as provided in
 ;;    the context, to remove itself from any further event handling."
 ;;   [n base]
-;;   (if (<= n 0) base 
-;;       (let [internal-ctx (event-context. nil nil default-transition base)
-;;             nm           (keyword (gensym "n-time"))]
-;;         (simple-handler
-;;          nm
-;;          :all
-;;          (fn [ctx edata name] 
-;;            (let [res (handle-internally ctx internal-ctx edata name)]
+;;   (let [internal-ctx (event-context. nil nil default-transition base)
+;;         nm           (keyword (gensym "n-time"))
+;;         continue     (fn [ctx] (n-time-handler (dec n) base))]
+;;     (simple-handler
+;;      nm
+;;      :all
+;;      (fn [ctx edata name] 
+;;        (let [res (handle-internally ctx internal-ctx edata name)]
              
 
 (defn conditional-handler
