@@ -46,7 +46,7 @@
 
 (ns spork.sim.simcontext
   (:require [spork.sim [data :as sim] [agenda :as agenda] [updates :as updates]]
-            [spork.sim.pure [network :as simnet]]
+            [spork.sim.pure     [network :as simnet]]
             [spork.entitysystem [store :as store]]
             [spork.util [metaprogramming :as util]]))
 ;probably need to move from marathon.updates to something in the sim namespace.
@@ -57,8 +57,14 @@
          (sim/first-event)
          (sim/event-type)))
 
-;we need to elevate this to a protocol for simulation contexts...
-;things like simstate (in another namespace) need to be seen as valid contexts.
+;;Simulation Context
+;;==================
+;;The simcontext is a container for all the information we need to 
+;;perform complex entity-based, discrete event simulations.
+
+;;Right now, I'm just extending the existing simulation protocols to
+;this guy.  We could have a base event context here....I suppose that
+;would be a good thing to do...
 (defrecord simcontext 
   [scheduler ;supported by agenda.  
    updater ;a weak agenda with some special state, tracks previous updates. 
@@ -66,30 +72,53 @@
    state ;;typically an entity store...but not necessarily.
    ]
   store/IEntityStore
-  (add-entry [db id domain data] 
+  (add-entry      [db id domain data] 
     (simcontext. scheduler updater propogator 
        (store/add-entry state id domain data)))
-  (drop-entry [db id domain] 
+  (drop-entry     [db id domain] 
     (simcontext. scheduler updater propogator 
         (store/drop-entry state id domain))) 
-  (get-entry     [db id domain] (store/get-entry state id domain))
-  (entities [db] (store/entities state))
-  (domains [db]  (store/domains state))
-  (domains-of     [db id] (store/domains-of state id ))
+  (get-entry      [db id domain] (store/get-entry state id domain))
+  (entities       [db]     (store/entities state))
+  (domains        [db]     (store/domains state))
+  (domains-of     [db id]  (store/domains-of state id))
   (components-of  [db id]  (store/components-of state id))
-  (get-entity [db id] (store/get-entity state id))
-  (conj-entity     [db id components] 
+  (get-entity     [db id]  (store/get-entity state id))
+  (conj-entity    [db id components] 
     (simcontext. scheduler updater propogator 
       (store/conj-entity state id components)))
   simnet/IEventSystem
-  (get-events [ctx]  (simnet/get-event net))
-  (get-clients [ctx] (simnet/get-clients  net))
-  (get-event-clients [obs event-type]  (simnet/get-event-clients net event-type))
-  (get-client-events [obs client-name] (simnet/get-client-events net client-name))
+  (get-events [ctx]  (simnet/get-event    propogator))
+  (get-clients [ctx] (simnet/get-clients  propogator))
+  (get-event-clients [obs event-type]  (simnet/get-event-clients propogator event-type))
+  (get-client-events [obs client-name] (simnet/get-client-events propogator client-name))
   (unsubscribe  [obs client-name event-type] 
-    (simcontext. scheduler updater (simnet/unsubscribe net client-name event-type) state))
+    (simcontext. scheduler updater 
+       (simnet/unsubscribe propogator client-name event-type) state))
   (subscribe [obs client-name handler event-type] 
-    (simcontext. scheduler updater (simnet/subscribe net client-name event-type))))
+    (simcontext. scheduler updater 
+       (simnet/subscribe propogator client-name handler event-type) state))
+  simnet/IEventContext
+  (handle     [ctx e] 
+    (let [type (sim/event-type e)
+          client-handler-map (merge (simnet/get-event-clients propogator type)
+                                    (if (not= type :all)
+                                      (simnet/get-event-clients propogator :all) {}))]
+      (let [res   (simnet/serial-propogator 
+                   (-> simnet/default-context 
+                       (simnet/set-event e)
+                       (simnet/set-net propogator)
+                       (simnet/set-state ctx)) client-handler-map)
+            nxtsim   (simnet/get-state res)]
+        (assoc nxtsim :propogator (simnet/get-net res)))))
+  (set-event  [ctx e]        (throw (Error. "set-event unavailable on simcontext")))
+  (set-transition [ctx txn]  (throw (Error. "set-transition unavailable on simcontext")))
+  (set-state  [ctx s]   (throw (Error. "set-state unavailable on simcontext")))
+  (set-net    [ctx n]   (throw (Error. "set-net unavailable on simcontext")))
+  (get-event  [ctx]     (throw (Error. "get-event unavailable on simcontext")))
+  (get-transition [ctx] simnet/default-transition)
+  (get-state [ctx]      state)
+  (get-net   [ctx]      propogator))
 
 ;I should probably just use the protocol functions here....rather than 
 ;re-implementing them....that's a refactoring/clean-up step.  I'm just 
@@ -114,7 +143,8 @@
   "Sets the upper bound on the time horizon."
   [tf ctx] (update-in ctx [:scheduler] agenda/set-final-time tf)) 
 
-;;Maybe rewrite this guy...
+;;Maybe rewrite this guy...Older functions expect add-listener, 
+;;should replace them with library calls.
 (defn add-listener 
   "Legacy proxy for adding event handlers to the context.  Given a client-name, 
    a handler function, and a sequence of event-types to subscribe to, associates
@@ -126,10 +156,8 @@
    restriction, and allows a single client to handle multiple event types 
    differently."
   [client-name handler subscriptions ctx]
-  (let [net (:propogator ctx)]
-    (->> (reduce (fn [context e] (simnet/register context client-name handler e))
-                 ctx subscriptions)
-      (assoc ctx :propogator))))
+  (reduce (fn [context e] (simnet/register context client-name handler e))
+          ctx subscriptions))
 
 (def ^:constant +empty-msg-data+ {:msg nil :data nil})
 
@@ -162,25 +190,6 @@
   "Fetches associated data, if any, from an event that carries a packet."
   [^packet p] (.data p))
 
-
-;;==============================================================
-;;Eliminate ctx->state and state->ctx by implementing a protocol 
-;;for simcontexts that interfaces better with event handling.
-;;==============================================================
-
-;Data marshalling crap.  We shouldn't have to do this...should be using
-;a protocol.
-;This is a total hack, we're just packaging the context....
-(defn ctx->state [ctx] 
-  {:state     (:state ctx)
-   :net       (:propogator ctx)
-   :updater   (:updater ctx)
-   :scheduler (:scheduler ctx)})
-
-;This is a total hack, we're just un-packaging the context....
-(defn state->ctx [{:keys [scheduler net updater state]}]
-  (->simcontext scheduler updater net state)) 
-
 ;Functions ported from Marathon.SimLib 
 (defn trigger-event
   "Shorthand convenience function for triggering immediate, synchronous events
@@ -188,11 +197,11 @@
    Returns the resulting simulation context."
   ([event-type entity-from entity-to msg data ctx]
     (trigger-event (->packet (current-time ctx) event-type entity-from 
-                                 entity-to :msg msg :data data)  ctx))
+                                 entity-to msg data)  ctx))
   ([event ctx]
-    (state->ctx (simnet/handle-event event (ctx->state ctx)))))
+    (simnet/handle-event event ctx)))
 
-(defn trigger-events [xs ctx] (reduce #(trigger-event %2 %1) ctx xs))
+(defn trigger-events [xs ctx] (reduce #(simnet/handle-event  %2 %1) ctx xs))
 
 (defn set-time-horizon
   "Ensures that time events exist for both tstart and tfinal, and sets the 

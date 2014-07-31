@@ -93,7 +93,7 @@
   (conj-component [e c] 
     (entity. name (assoc components (component-domain c))))
   (disj-component [e c] 
-    (entity. name (dissoc components (component-domain c)))))
+    (entity. name (dissoc components (component-domain c))))
   (get-component [e domain] (get components domain))
   (entity-components [e] components))
 
