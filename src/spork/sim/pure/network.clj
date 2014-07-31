@@ -201,18 +201,26 @@
                       next-obs 
                       (clojure.set/difference evts #{:all event-type})))))))
 
+
+(def ^:dynamic *noisy* nil)
+(defmacro with-noise [& expr]
+  `(binding [~'*noisy* true]
+     ~@expr))
+
 ;;Should rip out the client-name, it's not that important.
 ;;If it's important, we can extract it as a var...otherwise, it 
 ;;should be inside the handler....i.e. the handler should know about 
 ;;who it is.
-(definline default-transition ;when handling events, we don't care about the client.
-   [ctx e client-name handler]
-    `(~handler ~ctx ~e ~client-name))
-
 (definline noisy-transition 
   [ctx e client-name handler]
   `(do (println (str {:state ~ctx :event ~e :client ~client-name}))
       (~handler ~ctx ~e ~client-name)))
+
+(defn default-transition ;when handling events, we don't care about the client.
+   [ctx e client-name handler]
+   (if (nil? *noisy*)
+      (handler ctx e client-name)
+      (noisy-transition ctx e client-name handler)))
 
 
 ;;Is this vestigial?
@@ -266,10 +274,10 @@
 (defn remove-client
   "Unregisters client from every event, automatically dropping it from clients."
   [obs client-name] 
-  (assert (contains? (get-clients obs) client-name) 
-          (str "Client " client-name " does not exist!"))
-  (reduce (fn [o etype] (un-register o client-name etype))
-      obs (get-client-events obs client-name)))
+  (if-let [xs (get-client-events obs client-name)]
+    (reduce (fn [o etype] (un-register o client-name etype))
+            obs xs)
+    (throw (Error. (str "Client " client-name " does not exist!")))))
 
 (defn remove-event 
   "Unregisters all clients from event, automatically dropping event from events."
@@ -560,13 +568,7 @@
 ;;will affect changes for the sub propogation.  This allows us 
 ;;to have analagous effects like shadowing and other stuff.
 
-(defmacro handler-bind [base expr]
-  `(let [net# ~base
-         internal-net# (event-context. nil nil ~base)]
-     (let [res# ~@expr
-           net2# (:net res#)]
-       (if (identical? net2# net#)           
-       
+
 (definline push-context [outer inner]
   `(-> ~inner 
        (set-event (get-event ~outer))
@@ -579,41 +581,90 @@
            ~outer)
          (set-state (get-state res#)))))     
 
+
 (defn map-handler
   "Maps a handler to the underlying network.  This is a primitive chaining 
    function.  We return a new network that, when used for propogation, calls
    the handler-func with the resulting state of the propogation."
   [f base]
-  (let [internal-ctx (event-context. nil nil base)]
-    (simple-handler 
+  (let [internal-ctx (event-context. nil nil default-transition base)]
+    (simple-handler
+     (keyword (gensym "map"))
+     :all
      (fn [ctx edata name] 
-       (-> (handle-internally ctx internal-ctx name)           
-           (f)
-           )))))
+       (-> (handle-internally ctx internal-ctx edata name)           
+           (f))))))
 
 (defn filter-handler
   "Maps a filtering function f, to a map of the handler-context, namely 
    {:keys [type data state]}"
-  [f base]
-  (simple-handler (fn [ctx edata name] 
-                    (if (f ctx) (propogate-event ctx base) ctx))))
+  [pred base]
+  (let [internal-ctx (event-context. nil nil default-transition base)]
+    (simple-handler 
+     (keyword (gensym "filter"))
+     :all
+     (fn [ctx edata name] 
+       (if (pred ctx) 
+         (handle-internally ctx internal-ctx edata name) 
+         ctx)))))
 
 (defn switch-handler
   "Given predicate switch-func, composes two networks as if they were connected
    by a switch.  When split-func is applied to a handler context, true values 
    will cause propogation to continue to true-net, while false propogates to 
    false-net."
-  [switch-func true-net false-net base]
-  (simple-handler 
-    (fn [ctx]
-      (if (switch-func  ctx)
-        (propogate-event ctx true-net)
-        (propogate-event ctx false-net)))))
+  [switch-func true-net false-net]
+  (let [internal-true  (event-context. nil nil default-transition true-net)
+        internal-false (event-context. nil nil default-transition false-net)]
+    (simple-handler 
+     (keyword (gensym "switch"))
+     :all
+     (fn [ctx edata name] 
+       (if (switch-func  ctx)
+         (handle-internally ctx internal-true  edata name) 
+         (handle-internally ctx internal-false edata name))))))
 
-;(defn one-time-handler 
-;  "After handling an event, this handler will alter the network, as provided in
-;   the context, to remove itself from any further event handling."
-;  [handler-function base]
+(defn one-time-handler
+  "After handling an event, this handler will alter the network, as provided in
+   the context, to remove itself from any further event handling."
+  [base]
+  (let [internal-ctx (event-context. nil nil default-transition base)
+        nm           (keyword (gensym "one-time"))]
+    (simple-handler  
+     nm
+     :all
+     (fn [ctx edata name] 
+       (-> (handle-internally ctx internal-ctx edata name)
+           (remove-client nm))))))
+
+;; (defn n-time-handler 
+;;   "After handling n events, this handler will alter the network, as provided in
+;;    the context, to remove itself from any further event handling."
+;;   [n base]
+;;   (if (<= n 0) base 
+;;       (let [internal-ctx (event-context. nil nil default-transition base)
+;;             nm           (keyword (gensym "n-time"))]
+;;         (simple-handler
+;;          nm
+;;          :all
+;;          (fn [ctx edata name] 
+;;            (let [res (handle-internally ctx internal-ctx edata name)]
+             
+
+(defn conditional-handler
+  "After handling an event, this handler will alter the network, as provided in
+   the context, to remove itself from any further event handling."
+  [pred base]
+  (let [internal-ctx (event-context. nil nil default-transition base)
+        nm           (keyword (gensym "condition"))]
+    (simple-handler
+     nm
+     :all
+     (fn [ctx edata name] 
+       (if (pred ctx)
+         (-> (handle-internally ctx internal-ctx edata name)
+             (remove-client  nm))
+         ctx)))))
 
 ;note...the analogue for an observable, in this context, is a network....
 ;in the impure, observable library, we'd write...

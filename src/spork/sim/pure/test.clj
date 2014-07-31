@@ -75,15 +75,28 @@
 (def time-stamped-messages
   (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
                                                 (do (pprint (:state ctx))
-                                                  ctx))}})
+                                                  ctx))}})        
         add-current-time (fn [ctx] (let [t (spork.util.datetime/date->time (spork.util.datetime/get-date))]
                                      (do (println (str "recording time " t))
                                          (assoc-in ctx [:state :date] t))))] 
     (->> print-route
-      (map-handler add-current-time) ;should wrap the whole thing...
+      (map-handler add-current-time) ;should wrap the whole thing...      
       (vector message-net)
       (union-handlers)))) ;combine it with the message-net.
 
+
+(def limited-messages   
+  (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
+                                                (do (pprint (:state ctx))
+                                                          ctx))}})]
+    (one-time-handler print-route)))
+
+(def n-messages   
+  (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
+                                                (do (pprint (:state ctx))
+                                                          ctx))}})]
+    (n-time-handler 4 print-route)))
+  
 
 (def exploded-example 
   (let [print-route (->propogation {:in {:all (fn [ctx edata name] 
