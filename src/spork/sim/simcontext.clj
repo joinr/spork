@@ -165,7 +165,7 @@
   sim/IEvent 
   (event-type [e] type)
   (event-data [e] data)
-  (event-id   [e] id)
+  (event-id   [e] type)
   (event-time [e] t)
   (event-from [e] from)
   (event-to   [e] to))
@@ -353,6 +353,7 @@
   (def simple-ctx (let [c (make-debug-context)
                         p (:propogator c)]
                     (assoc c :propogator 
-                           (simnet/register-routes  bare-routes p))))
+                           (-> (simnet/register-routes  bare-routes p)
+                               (updates/add-routes (:updater c))))))
 )
 
