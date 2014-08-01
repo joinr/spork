@@ -234,7 +234,7 @@
   (let [c      (atom ctx)
         t      (or (current-time ctx) 0)
         ustore (reduce (fn [acc [tupdate by type]] 
-                         (do (swap! c #(add-time t %))
+                         (do (swap! c #(add-time tupdate %))
                              (updates/request-update acc tupdate by type t)))
                        (get ctx :updater)
                        xs)]

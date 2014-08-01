@@ -145,7 +145,7 @@
 (defn next-event
   "[s] retrieve first event in next active queue of events from schedule s
    [s t] retrieve first event in next active queue of events for time t from s"
-  ([s] (peek (get-segment (next-active s))))
+  ([s]   (peek (get-segment (next-active s))))
   ([s t] (peek (get-segment (next-active s) t)))) 
 
 (defn put-event
@@ -221,16 +221,17 @@
   "Compute the time of the next event in the sequence."
   [ecoll] (event-time (first-event (drop-event ecoll))))
 
-(defn event-seq [ecoll]
+(defn event-seq 
   "Return a lazy seq of ordered events."
-   (take-while #(not (nil? %)) 
-     (map first (iterate (fn [[x xs]] 
-                           (when xs [(next-event xs) (drop-event xs)]))
-                         [(first-event ecoll) (drop-event ecoll)]))))
-
+  [ecoll]
+  (take-while #(not (nil? %)) 
+    (map first (iterate (fn [[x xs]] 
+                          (when-let [nxt (first-event xs)]
+                            [nxt (drop-event xs)]))
+                        [(first-event ecoll) (drop-event ecoll)]))))
 (defn do-events
   ([s f n] (doseq [evt (take n (event-seq s))] (f evt)))
-  ([s f] (doseq [evt (event-seq s)] (f evt))))
+  ([s f]   (doseq [evt (event-seq s)] (f evt))))
 
 (defn print-events  
   "print the first n items of the schedule, produces a lazy seq...
