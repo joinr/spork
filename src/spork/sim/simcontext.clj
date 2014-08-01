@@ -211,18 +211,34 @@
        (add-time tfinal)
        (set-final-time tfinal)))
 
+;;We actually did NOT trigger an event before.... I think we should go
+;;back to that.  Just directly modify the updater.  Probably much more
+;;efficient to do this, since triggering events will introduce
+;;overheads; there are lots of times we'll have updates (particularly
+;;supply updates).
 (defn request-update
   "Public API for accounting for update requests, which consist of a time 
    to update a specific entity in the simulation, and a form of request.  No
    additional data is passed (although I may change that in future...)"
   [tupdate requested-by request-type ctx]
-  (let [t    (or (current-time ctx) 0)
-        req-data  {:update-time tupdate  
-                   :requested-by requested-by
-                   :update-type request-type 
-                   :trequest t}]
-    (trigger-event  (sim/->simple-event :update-request t req-data)
-                    (add-time tupdate ctx))))
+  (let [t    (or  (current-time ctx) 0)]
+    (-> (add-time tupdate ctx)
+        (assoc :updater 
+          (updates/request-update (get ctx :updater) tupdate 
+                                  requested-by request-type t)))))
+
+;; (defn request-update
+;;   "Public API for accounting for update requests, which consist of a time 
+;;    to update a specific entity in the simulation, and a form of request.  No
+;;    additional data is passed (although I may change that in future...)"
+;;   [tupdate requested-by request-type ctx]
+;;   (let [t    (or  (current-time ctx) 0)
+;;         req-data  {:update-time tupdate  
+;;                    :requested-by requested-by
+;;                    :update-type request-type 
+;;                    :trequest t}]
+;;     (trigger-event  (sim/->simple-event :update-request t req-data)
+;;                     (add-time tupdate ctx))))
 
 (defn advance-time 
   "Pop the next event off of the simulation context.  If the simulation context
