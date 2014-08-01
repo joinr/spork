@@ -59,8 +59,7 @@
 (defcomponent combatstats
   "Entities that are capable of offense."
   [{:keys [offense defense] :as stats}] 
-  {:offense offense 
-   :defense defense})
+  stats)
 (defcomponent race 
   "Entities that have a race."
   [race] race)

@@ -219,7 +219,8 @@
   
 (defn next-time
   "Compute the time of the next event in the sequence."
-  [ecoll] (event-time (first-event (drop-event ecoll))))
+  [ecoll] 
+  (event-time (first-event (drop-event ecoll))))
 
 (defn event-seq 
   "Return a lazy seq of ordered events."
@@ -236,7 +237,7 @@
 (defn print-events  
   "print the first n items of the schedule, produces a lazy seq...
    Planning to provide a pretty-printer for events."
-  ([s] (do-events s println)) 
+  ([s]   (do-events s println)) 
   ([s n] (do-events s println n))) 
 
 (comment 

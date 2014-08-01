@@ -65,7 +65,9 @@
 (defn elapsed
   "Report the amount of time that elapsed since the last event.  Useful for 
    operations requiring time deltas, such as integration."
-  [a] (- (sim/current-time a) (or (previous-time a) 0.0)))
+  [a] (if-let [t (sim/current-time a)]
+        (- t (or (previous-time a) 0.0))
+        0.0))
 (defn unbounded?
   "Predicate indicating that the agenda has no upper bound on its time horizon."
   [a] (or (nil? (final-time a)) 

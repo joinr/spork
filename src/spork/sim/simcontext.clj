@@ -65,12 +65,21 @@
 ;;Right now, I'm just extending the existing simulation protocols to
 ;this guy.  We could have a base event context here....I suppose that
 ;would be a good thing to do...
+;;Also, we could spin this out into a macro, to handle all the
+;;different kinds of simulation definitions, if say, we wanted 
+;;more fields than the defaults.  We'll see...
 (defrecord simcontext 
-  [scheduler ;supported by agenda.  
+  [^spork.sim.agenda.agenda
+   scheduler ;supported by agenda.  
    updater ;a weak agenda with some special state, tracks previous updates. 
    propogator  ;event propogation, represented by a propogation network. 
    state ;;typically an entity store...but not necessarily.
    ]
+  sim/IEventSeq
+  (add-event   [ctx e] (simcontext. (sim/add-event scheduler e) 
+                                    updater propogator state))                                 
+  (drop-event  [ctx] (simcontext. (sim/drop-event scheduler) updater propogator state))
+  (first-event [ctx] (sim/first-event scheduler))
   store/IEntityStore
   (add-entry      [db id domain data] 
     (simcontext. scheduler updater propogator 
