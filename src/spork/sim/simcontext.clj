@@ -54,8 +54,8 @@
 (defn next-type
   "Gets the type of the next event, based off of its :type field."
   [ec] (-> ec
-         (sim/first-event)
-         (sim/event-type)))
+           (sim/first-event)
+           (sim/event-type)))
 
 ;;Simulation Context
 ;;==================
@@ -226,6 +226,19 @@
         (assoc :updater 
           (updates/request-update (get ctx :updater) tupdate 
                                   requested-by request-type t)))))
+
+(defn request-updates 
+  "Allows user to request multiple updates, represented as 
+   [update-time request-by request-type] vectors."
+  [xs ctx]
+  (let [c      (atom ctx)
+        t      (or (current-time ctx) 0)
+        ustore (reduce (fn [acc [tupdate by type]] 
+                         (do (swap! c #(add-time t %))
+                             (updates/request-update acc tupdate by type t)))
+                       (get ctx :updater)
+                       xs)]
+    (assoc @c :updater ustore)))
 
 ;; (defn request-update
 ;;   "Public API for accounting for update requests, which consist of a time 
