@@ -219,8 +219,11 @@
   
 (defn next-time
   "Compute the time of the next event in the sequence."
-  [ecoll] 
-  (event-time (first-event (drop-event ecoll))))
+  [ecoll]  
+  (when (first-event ecoll)
+    (event-time 
+     (first-event 
+      (drop-event ecoll)))))
 
 (defn event-seq 
   "Return a lazy seq of ordered events."
