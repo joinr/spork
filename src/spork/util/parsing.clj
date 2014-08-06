@@ -49,14 +49,17 @@
 (def parse-defaults 
   {:string identity
    :text   identity
-   :number (fn [^String x] (try (Integer/parseInt x)
-                                 (catch NumberFormatException _
-                                   (Double/parseDouble x))))
+   :boolean (fn [^String x] (Boolean/parseBoolean x))
+   :number  (fn [^String x] (try (Integer/parseInt x)
+                                  (catch NumberFormatException _
+                                    (Double/parseDouble x))))
+   :keyword (fn [^String x] (keyword x))
    :float  (^double fn [^String x] (Double/parseDouble x))
    :int    (^int fn [^String x]    (Integer/parseInt x))
    :long   (^int fn [^String x]    (Long/parseLong x))
    :date   (^java.util.Date fn [^String x] (java.util.Date. x))
    :clojure clojure.edn/read-string
+   :symbol  clojure.edn/read-string
    :literal clojure.edn/read-string
    :code    read-string})
 
@@ -93,7 +96,7 @@
    its default parse is the right, which either succeeds or defaults to 
    the parse to its right, eventually ending with the final parser."
   [schemes & {:keys [default-parser] 
-                                :or   {default-parser parse-string}}]
+              :or   {default-parser parse-string}}]
   (let [revschemes (reverse schemes)]
     (reduce (fn [r l]
               (parsing-scheme l :default-parser r))
