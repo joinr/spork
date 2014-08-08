@@ -596,7 +596,7 @@
   (let [lines (strlib/split-lines s)
         tbl   (->column-table 
                  (vec (map (if keywordize-fields?  
-                             keyword 
+                             (comp keyword clojure.string/trim)
                              identity) (split-by-tab (first lines)))) 
                  [])
         parsef (parse/parsing-scheme schema :default-parser  
