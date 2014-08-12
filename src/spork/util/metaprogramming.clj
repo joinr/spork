@@ -39,7 +39,21 @@
   "Allows definitions of nested paths into associative structures.  Creates 
    a function, named pathname, that consume a map and apply get-in 
    using the supplied path denoted by a sequence of literals, ks."
-  [pathname & ks] `(~'defn ~pathname [~'m] (get-in ~'m ~@ks)))
+  [pathname & ks] 
+  `(do 
+     (defn ~(symbol (str "get-" pathname)) 
+       ~(str "Accessor for associatives. Fetches " pathname)   
+       [m#] (get-in m# ~@ks))
+     (defn ~(symbol (str "set-" pathname))    
+       ~(str "Accessor for associatives. Sets " pathname " to second arg.")
+       [m# v#] (assoc-in m# ~@ks v#))
+     (defn ~(symbol (str "update-" pathname)) 
+       ~(str "Accessor for associatives. Sets " pathname 
+             " to second arg applied to current val at " pathname)
+       [m# f#]
+       (if-let [current-val# (get-in m# ~@ks)]
+         (assoc-in m# ~@ks (f# current-val#))))))
+         
 
 (defmacro defpaths
   "Allows multiple paths to be defined at once, with the possibility of sharing 
@@ -47,7 +61,8 @@
    each in turn.  A common prefix may be supplied to the paths. "
   ([kvps]         `(defpaths [] ~kvps))
   ([prefix kvps]  
-    `(do ~@(map (fn [[n p]] `(defpath ~n ~(into prefix p))) kvps))))
+     (let [prefix (if (coll? prefix) prefix [prefix])]
+       `(do ~@(map (fn [[n p]] `(defpath ~n ~(into prefix p))) kvps)))))
 
 (defn key->symb [k]  (symbol (subs (str k) 1)))
 (defn key->gensymb [k]  (symbol (str (subs (str k) 1) \#)))
