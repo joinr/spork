@@ -52,8 +52,7 @@
              " to second arg applied to current val at " pathname)
        [m# f#]
        (if-let [current-val# (get-in m# ~@ks)]
-         (assoc-in m# ~@ks (f# current-val#))))))
-         
+         (assoc-in m# ~@ks (f# current-val#))))))         
 
 (defmacro defpaths
   "Allows multiple paths to be defined at once, with the possibility of sharing 
