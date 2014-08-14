@@ -613,7 +613,9 @@
 	 Like a database, all records have identical fieldnames.
    Re-routed to use the new table-records function built on the ITabular lib." 
 	[tbl]
- (table-records tbl)) 
+  (if (and (seq? tbl) (map? (first tbl))) tbl ;;allows us to work with
+      ;;sequences of records too, acting like identity.
+      (table-records tbl)))
 
 
 (defn get-record  

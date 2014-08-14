@@ -249,6 +249,23 @@
                (assoc m# k# (persistent! v#)))
              realized# realized#)))
 
+;;Operations optimized for speed.  the -in and friends 
+;;are not sufficient...
+(defmacro deep-assoc [m [k & ks] v]
+  (if ks
+    `(assoc ~m ~k (nassoc (get ~m ~k) ~ks ~v))
+    `(assoc ~m ~k ~v)))
+
+(defmacro deep-update [m [k & ks] f]
+   (if ks
+     `(assoc ~m ~k (deep-update (get ~m ~k) ~ks ~f))
+     `(assoc ~m ~k (~f (get ~m ~k)))))
+
+(defmacro deep-dissoc [m [k & ks] v]
+  (if ks
+    `(assoc ~m ~k (nassoc (get ~m ~k) ~ks ~v))
+    `(assoc ~m ~k ~v)))
+
 ;;It might be nice to pull this out into a protocol at some point...
 ;;There are other things, which are functors, that can be folded or 
 ;;reduced.
