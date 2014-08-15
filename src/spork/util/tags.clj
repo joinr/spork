@@ -2,7 +2,8 @@
 ;simple tag databases.  tags are categories applied to multiple 
 ;subjects.  Subjects are unique identifiers that are subjected to a tag.
 ;Tags are basically meta-data....except it's explicit.
-(ns spork.util.tags)
+(ns spork.util.tags
+  (:require [spork.util [general :as gen]]))
 
 ;(defprotocol ITagStore 
 ;  (get-tags [store subject])
@@ -37,7 +38,7 @@
 
 (defn add-tag
   "Add a tag to the database.  Should require a subject to exist."
-  [m tag] (assoc-in m [:tags tag] #{}))
+  [m tag] (gen/deep-assoc m [:tags tag] #{}))
 
 (defn and-tags
   "Select subjects that have every tag in xs."
@@ -49,15 +50,15 @@
   [m xs]
   (reduce #(clojure.set/union %1 (get-subjects m %2))) #{} xs)
 
-(defn add-subject [m subject] (assoc-in m [:subjects subject] #{}))
+(defn add-subject [m subject] (gen/deep-assoc m [:subjects subject] #{}))
 
 (defn tag-subject
   "Impose a tag on a subject."
   [m subject tag]
   (let [new-tags (conj (get-in m [:tags tag] #{}) subject) 
         new-subjects (conj (get-in m [:subjects subject] #{}) tag)]
-  (-> (assoc-in m [:tags tag] new-tags)  
-    (assoc-in [:subjects subject]  new-subjects))))
+  (-> (gen/deep-assoc m [:tags tag] new-tags)  
+      (gen/deep-assoc [:subjects subject]  new-subjects))))
 
 (defn untag-subject
   "Drop a tag from a subject."

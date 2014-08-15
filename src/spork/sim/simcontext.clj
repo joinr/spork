@@ -48,7 +48,8 @@
   (:require [spork.sim [data :as sim] [agenda :as agenda] [updates :as updates]]
             [spork.sim.pure     [network :as simnet]]
             [spork.entitysystem [store :as store]]
-            [spork.util [metaprogramming :as util]]))
+            [spork.util [metaprogramming :as util]
+                        [general :as gen]]))
 ;probably need to move from marathon.updates to something in the sim namespace.
 
 (defn next-type
@@ -146,11 +147,11 @@
 
 (defn add-time
   "Ensures that time t exists on the agenda."
-  [t ctx] (update-in ctx [:scheduler] agenda/add-time t))
+  [t ctx] (gen/deep-update ctx [:scheduler] agenda/add-time t))
 
 (defn set-final-time
   "Sets the upper bound on the time horizon."
-  [tf ctx] (update-in ctx [:scheduler] agenda/set-final-time tf)) 
+  [tf ctx] (gen/deep-update ctx [:scheduler] agenda/set-final-time tf)) 
 
 ;;Maybe rewrite this guy...Older functions expect add-listener, 
 ;;should replace them with library calls.
@@ -269,7 +270,7 @@
    events, it will return the result of popping the next event, which may or may
    not result in a change in the current time.  Probably needs re-looking..."
   [ctx] 
-  (update-in ctx [:scheduler] agenda/advance-time))
+  (gen/deep-update ctx [:scheduler] agenda/advance-time))
 
 (defn get-final-time
   "Returns the upper bound on the simulation time, if bounded."
@@ -283,7 +284,9 @@
 (defn add-times
   "Add multiple times to the schedule of the simulation context."
   [xs ctx]
-  (update-in ctx [:scheduler] agenda/add-times xs)) 
+  (assoc ctx :scheduler 
+         (-> (get ctx :scheduler)
+             (agenda/add-times xs))))
 
 (defn get-time
   "Duplicate functionality of current-time.  Deprecate?"
@@ -335,7 +338,7 @@
   (add-listener :debugger debug-handler [:all] (make-context)))
 
 ;new helper functions.
-(defn update-state [f ctx]   (update-in ctx [:state] f)) 
+(defn update-state [f ctx]   (gen/deep-update ctx [:state] f)) 
 (defn assoc-state [k v ctx]  (update-state #(assoc % k v) ctx))
 ;should probably allow for a parallel version of this guy.
 (defn merge-updates [m ctx] 
