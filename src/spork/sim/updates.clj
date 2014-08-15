@@ -1,6 +1,7 @@
 (ns spork.sim.updates
   (:require [spork.sim [data :as sim]]
-            [spork.sim.pure [network :as simnet]]))
+            [spork.sim.pure [network :as simnet]]
+            [spork.util [general :as gen]]))
 
 ;All the update manager does is listen for update request traffic.
 ;It records the time of the update request, who made the request, and the future
@@ -51,7 +52,7 @@
   "Schedule an update for requestor, of type request, at"
   [store update-time requested-by update-type trequest]
   (let [pending-updates (get-in store [:updates update-type update-time] {})] 
-    (assoc-in store [:updates update-type update-time]
+    (gen/deep-assoc store [:updates update-type update-time]
       (assoc pending-updates requested-by
        (->update-packet update-time requested-by update-type trequest)))))
 
@@ -63,7 +64,7 @@
     (if (contains? lastupdate ent)
       (let [tprev (get lastupdate ent t)
             tnext (if (> t tprev) t tprev)]  
-          (assoc-in store [:lastupdate ent] tnext)))))
+          (gen/deep-assoc store [:lastupdate ent] tnext)))))
 
 ;Most managers will need a trigger function... 
 ;We need to find a way to establish "event trigger" behavior for these guys...
@@ -79,7 +80,7 @@
   "A handler that assumes an update-store is present in the event context,
    inside the context's state."
   [ctx edata name]
-  (update-in ctx [:updater] 
+  (gen/deep-update ctx [:updater] 
        record-update (get edata :entity-to) (get edata :t)))
 
 (defn update-request-handler
@@ -87,7 +88,7 @@
    inside the context's state.  Passes requests for update to the update-store."
   [ctx edata name]
   (let [{:keys [update-time requested-by update-type trequest]}  edata]
-    (update-in ctx [:updater] 
+    (gen/deep-update ctx [:updater] 
                request-update update-time requested-by update-type trequest)))
 
 ;NOTE: this is too specific, the update mechanism is actually quite general.
