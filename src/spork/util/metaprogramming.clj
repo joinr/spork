@@ -1,6 +1,7 @@
 ;A collection of macros and functions useful for metaprogramming and library
 ;development. 
-(ns spork.util.metaprogramming)
+(ns spork.util.metaprogramming
+  (:require [spork.util [general :as gen]]))
 
 
 (definline id 
@@ -43,16 +44,16 @@
   `(do 
      (defn ~(symbol (str "get-" pathname)) 
        ~(str "Accessor for associatives. Fetches " pathname)   
-       [m#] (get-in m# ~@ks))
+       [m#] (gen/deep-get m# ~@ks))
      (defn ~(symbol (str "set-" pathname))    
        ~(str "Accessor for associatives. Sets " pathname " to second arg.")
-       [m# v#] (assoc-in m# ~@ks v#))
+       [m# v#] (gen/deep-assoc m# ~@ks v#))
      (defn ~(symbol (str "update-" pathname)) 
        ~(str "Accessor for associatives. Sets " pathname 
              " to second arg applied to current val at " pathname)
        [m# f#]
-       (if-let [current-val# (get-in m# ~@ks)]
-         (assoc-in m# ~@ks (f# current-val#))))))         
+       (gen/deep-update m# ~@ks f#))))
+
 
 (defmacro defpaths
   "Allows multiple paths to be defined at once, with the possibility of sharing 

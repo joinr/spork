@@ -261,24 +261,7 @@
     `(assoc ~m ~k ~v)))
 
 ;;This is a clone of get-in, directly from source.
-(defn  deep-get
-  "Returns the value in a nested associative structure,
-  where ks is a sequence of keys. Returns nil if the key
-  is not present, or the not-found value if supplied."
-  {:added "1.2"
-   :static true}
-  ([m ks]
-     (clojure.core/reduce1 get m ks))
-  ([m ks not-found]
-     (loop [sentinel (Object.)
-            m m
-            ks (seq ks)]
-       (if ks
-         (let [m (get m (first ks) sentinel)]
-           (if (identical? sentinel m)
-             not-found
-             (recur sentinel m (next ks))))
-         m))))
+(def deep-get get-in)
 
 (defmacro deep-update 
   "Replacement for update-in, but without the function call overhead.
