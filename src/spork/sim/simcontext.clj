@@ -111,14 +111,14 @@
   simnet/IEventContext
   (handle     [ctx e] 
     (let [type (sim/event-type e)
-          client-handler-map (merge (simnet/get-event-clients propogator type)
-                                    (if (not= type :all)
-                                      (simnet/get-event-clients propogator :all) {}))]
+          client-handler-map (simnet/get-event-clients propogator type)]
       (let [res   (simnet/serial-propogator 
                    (-> simnet/default-context 
                        (simnet/set-event e)
                        (simnet/set-net propogator)
-                       (simnet/set-state ctx)) client-handler-map)
+                       (simnet/set-state ctx)) 
+                   (simnet/get-event-clients propogator :all)
+                   client-handler-map)
             nxtsim   (simnet/get-state res)]
         (assoc nxtsim :propogator (simnet/get-net res)))))
   (set-event  [ctx e]        (throw (Error. "set-event unavailable on simcontext")))

@@ -317,11 +317,19 @@
    context....Note, this offers a significant amount of control, in that the 
    handler can override the propogation, short-circuit, change the event, 
    change the state, change the propogation network topology, etc."
-  [{:keys [event transition net] :as ctx} client-handler-map]
-  (reduce-kv 
-   (fn [context client-name handler] 
-     (transition context event client-name handler))
-   ctx client-handler-map))
+  ([{:keys [event transition net] :as ctx} client-handler-map]
+     (reduce-kv 
+      (fn [context client-name handler] 
+        (transition context event client-name handler))
+      ctx client-handler-map))
+  ([{:keys [event transition net] :as ctx} all-handler-map client-handler-map]                  
+     (let [res (reduce-kv 
+                (fn [context client-name handler] 
+                  (transition context event client-name handler))      
+                client-handler-map)]
+       (if (zero? (count all-handler-map)) res
+         (serial-propogator res all-handler-map)))))
+       
 
 ;;Note->
 ;;We can actually extend IEventContext to our mutable lib by defining 
