@@ -326,7 +326,7 @@
      (let [res (reduce-kv 
                 (fn [context client-name handler] 
                   (transition context event client-name handler))      
-                client-handler-map)]
+                ctx client-handler-map)]
        (if (zero? (count all-handler-map)) res
          (serial-propogator res all-handler-map)))))
        

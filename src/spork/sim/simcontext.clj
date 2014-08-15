@@ -110,7 +110,7 @@
        (simnet/subscribe propogator client-name handler event-type) state))
   simnet/IEventContext
   (handle     [ctx e] 
-    (let [type (sim/event-type e)
+    (let [type               (sim/event-type e)
           client-handler-map (simnet/get-event-clients propogator type)]
       (let [res   (simnet/serial-propogator 
                    (-> simnet/default-context 
