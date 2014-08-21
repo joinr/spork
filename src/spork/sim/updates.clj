@@ -17,21 +17,23 @@
                         updates      ;a map of all scheduled updates, by time.
                         lastupdate]) ;a map of the last update for each entity.
 
-(defn ->update-packet
-  "Creates an update packet that contains the time of the future update,
-   the entity that requested the update, the type of the update, and the 
-   time of the request."
-  [update-time requested-by update-type request-time]
-  {:update-time update-time 
-   :requested-by requested-by
-   :update-type update-type 
-   :request-time request-time})
+;; (defn ->update-packet
+;;   "Creates an update packet that contains the time of the future update,
+;;    the entity that requested the update, the type of the update, and the 
+;;    time of the request."
+;;   [update-time requested-by update-type request-time]
+;;   {:update-time update-time 
+;;    :requested-by requested-by
+;;    :update-type update-type 
+;;    :request-time request-time})
+
+(defrecord update-packet [update-time requested-by update-type request-time])
 
 (defn elapsed 
   "Computes the time elapsed since the last update for this packet."
-  ([update-packet tnow last-update]
+  ([^update-packet update-packet tnow last-update]
     (if (= last-update 0)
-      (:request-time update-packet)
+      (.request-time update-packet)
       (- tnow last-update)))
   ([update-packet tnow] (elapsed update-packet tnow 0)))
 
@@ -40,31 +42,35 @@
   "Return a list of all requested updates from the updatestore, where 
    utype is a key for updates, and t is a time index.  Updates are represented
    as update-packets."
-  [store update-type  t]
-  (get-in store [:updates update-type t] {}))
+  [^updatestore store update-type  t]
+  (get-in (.updates store) [update-type t] {}))
 
 (defn last-update
   "Returns the last time the entity was updated, if ever."
-  [store entity-name]
-  (get (:last-update store) entity-name))
+  [^updatestore store entity-name]
+  (get (.last-update store) entity-name))
 
 (defn request-update
   "Schedule an update for requestor, of type request, at"
-  [store update-time requested-by update-type trequest]
-  (let [pending-updates (get-in store [:updates update-type update-time] {})] 
-    (gen/deep-assoc store [:updates update-type update-time]
-      (assoc pending-updates requested-by
-       (->update-packet update-time requested-by update-type trequest)))))
+  [^updatestore store update-time requested-by update-type trequest]
+  (let [updates (.updates store)
+        pending-updates (get-in updates [update-type update-time] {})] 
+    (->> (update-packet. update-time requested-by update-type trequest)
+         (assoc pending-updates requested-by)
+         (gen/deep-assoc updates [update-type update-time])
+         (.assoc store :updates))))
 
 (defn record-update
   "Returns an update store that reflects the  sucessful updating of an entity x, 
-   with an updated last know update time for the entity.."
-  [store ent t]
-  (let [lastupdate (:lastupdate store)]
+   with an updated last known update time for the entity.."
+  [^updatestore store ent t]
+  (let [lastupdate (.lastupdate store)]
     (if (contains? lastupdate ent)
       (let [tprev (get lastupdate ent t)
             tnext (if (> t tprev) t tprev)]  
-          (gen/deep-assoc store [:lastupdate ent] tnext)))))
+        (->> tnext
+             (assoc lastupdate ent)
+             (.assoc store :lastupdate))))))
 
 ;Most managers will need a trigger function... 
 ;We need to find a way to establish "event trigger" behavior for these guys...
@@ -83,6 +89,7 @@
   (gen/deep-update ctx [:updater] 
        record-update (get edata :entity-to) (get edata :t)))
 
+;;#Possibly lift this guy out...
 (defn update-request-handler
   "A handler that assumes an update-store is present in the event context,
    inside the context's state.  Passes requests for update to the update-store."

@@ -130,28 +130,38 @@
   (get-state [ctx]      state)
   (get-net   [ctx]      propogator))
 
+(defmacro update-field [ctx field f & args]
+  (let [getter (if (keyword? field) (str "." (subs (str field) 1)))
+        k    (if (keyword? field) field (keyword field))]
+    `(let [res# (f (~getter ctx) ~@args)]
+       (.assoc ~k ctx sched#))))                                      
+  
+(defmacro update-scheduler [ctx f & args]
+  `(let [sched# (f (.scheduler ctx) ~@args)]
+     (.assoc ctx sched#)))                                      
+
 ;I should probably just use the protocol functions here....rather than 
 ;re-implementing them....that's a refactoring/clean-up step.  I'm just 
 ;trying to get the port working.
 (defn current-time
   "Fetches the current time of the context."
-  [ctx]  (sim/current-time (:scheduler ctx)))
+  [^simcontext ctx]  (sim/current-time (.scheduler ctx)))
 
 (defn current-quarter
   "Don't really need this in agenda..Fetches the current quarter."
-  [ctx] (agenda/quarter (:scheduler ctx)))
+  [^simcontext ctx] (agenda/quarter (.scheduler ctx)))
 
 (defn elapsed
   "Computes the time elapsed since the last event in the context."
-  [ctx] (agenda/elapsed (:scheduler ctx)))
+  [^simcontext ctx] (agenda/elapsed (.scheduler ctx)))
 
 (defn add-time
   "Ensures that time t exists on the agenda."
-  [t ctx] (gen/deep-update ctx [:scheduler] agenda/add-time t))
+  [t ^simcontext ctx] (update-field ctx :scheduler agenda/add-time t))
 
 (defn set-final-time
   "Sets the upper bound on the time horizon."
-  [tf ctx] (gen/deep-update ctx [:scheduler] agenda/set-final-time tf)) 
+  [tf ^simcontext ctx] (update-field ctx :scheduler agenda/set-final-time tf)) 
 
 ;;Maybe rewrite this guy...Older functions expect add-listener, 
 ;;should replace them with library calls.
@@ -206,8 +216,8 @@
    inline, according to the simulation context's event propogation scheme.
    Returns the resulting simulation context."
   ([event-type entity-from entity-to msg data ctx]
-    (trigger-event (->packet (current-time ctx) event-type entity-from 
-                                 entity-to msg data)  ctx))
+    (simnet/handle-event (packet. (current-time ctx) event-type entity-from 
+                                  entity-to msg data)  ctx))
   ([event ctx]
     (simnet/handle-event event ctx)))
 
@@ -230,25 +240,24 @@
   "Public API for accounting for update requests, which consist of a time 
    to update a specific entity in the simulation, and a form of request.  No
    additional data is passed (although I may change that in future...)"
-  [tupdate requested-by request-type ctx]
+  [tupdate requested-by request-type ^simcontext ctx]
   (let [t    (or  (current-time ctx) 0)]
     (-> (add-time tupdate ctx)
-        (assoc :updater 
-          (updates/request-update (get ctx :updater) tupdate 
-                                  requested-by request-type t)))))
+        (update-field :updater 
+           updates/request-update tupdate requested-by request-type t))))
 
 (defn request-updates 
   "Allows user to request multiple updates, represented as 
    [update-time request-by request-type] vectors."
-  [xs ctx]
+  [xs ^simcontext ctx]
   (let [c      (atom ctx)
         t      (or (current-time ctx) 0)
         ustore (reduce (fn [acc [tupdate by type]] 
                          (do (swap! c #(add-time tupdate %))
                              (updates/request-update acc tupdate by type t)))
-                       (get ctx :updater)
+                       (.updater ctx)
                        xs)]
-    (assoc @c :updater ustore)))
+    (.assoc ^simcontext @c :updater ustore)))
 
 ;; (defn request-update
 ;;   "Public API for accounting for update requests, which consist of a time 
@@ -269,24 +278,22 @@
    effectively advance time.  In the case that the schedule contains other 
    events, it will return the result of popping the next event, which may or may
    not result in a change in the current time.  Probably needs re-looking..."
-  [ctx] 
-  (gen/deep-update ctx [:scheduler] agenda/advance-time))
+  [^simcontext ctx] 
+  (update-field ctx :scheduler agenda/advance-time))
 
 (defn get-final-time
   "Returns the upper bound on the simulation time, if bounded."
-  [ctx] (agenda/final-time (:scheduler ctx)))
+  [^simcontext ctx] (agenda/final-time (.scheduler ctx)))
 
 (defn get-next-time
   "Returns the time of the next event in the context."
-  [ctx] 
-  (sim/next-time (:scheduler ctx)))
+  [^simcontext ctx] 
+  (sim/next-time (.scheduler ctx)))
 
 (defn add-times
   "Add multiple times to the schedule of the simulation context."
-  [xs ctx]
-  (assoc ctx :scheduler 
-         (-> (get ctx :scheduler)
-             (agenda/add-times xs))))
+  [xs ^simcontext ctx]
+  (update-field ctx :scheduler agenda/add-times xs))
 
 (defn get-time
   "Duplicate functionality of current-time.  Deprecate?"
@@ -295,7 +302,7 @@
 (defn has-time-remaining?
   "Consult the context to determine if there are, in terms of scheduled
    time events and a possible final time, any time events remaining."
-  [ctx] (agenda/still-time? (:scheduler ctx)))
+  [^simcontext ctx] (agenda/still-time? (.scheduler ctx)))
 
 (defn make-context
   "Creates a default simulation context record from component pieces.  If no 
@@ -312,18 +319,18 @@
 
 (defn last-update
   "Returns the last time the entity was updated in the simulation context."
-  [entity-name ctx]
-  (updates/last-update (:updater ctx) entity-name))
+  [entity-name ^simcontext ctx]
+  (updates/last-update (.updater ctx) entity-name))
 
 (defn get-updates
   "Returns a list of updates, by type, scheduled for time t in the simulation
    context."
-  [update-type t ctx]
-  (updates/get-updates (:updater ctx) update-type t))
+  [update-type t ^simcontext ctx]
+  (updates/get-updates (.updater ctx) update-type t))
   
 (defn get-state 
   "Accesses the state of the simulation context."
-  [ctx] (:state ctx))
+  [^simcontext ctx] (.state ctx))
 
 (defn debug-msg [& xs] (apply str "<Debug>" xs))
 
@@ -338,18 +345,18 @@
   (add-listener :debugger debug-handler [:all] (make-context)))
 
 ;new helper functions.
-(defn update-state [f ctx]   (gen/deep-update ctx [:state] f)) 
-(defn assoc-state [k v ctx]  (update-state #(assoc % k v) ctx))
+(defn update-state [f ^simcontext ctx] (update-field ctx :state f))
+(defn assoc-state [k v ^simcontext ctx]  (.assoc ctx  k v))
 ;should probably allow for a parallel version of this guy.
-(defn merge-updates [m ctx] 
+(defn merge-updates [m  ctx] 
   (if (map? m)
-    (reduce-kv (fn [c k v]
+    (reduce-kv (fn [^simcontext c k v]
                  (if (= k :trigger) (v c) 
-                     (assoc-state k v c)))
+                     (.assoc c k v)))
                ctx m)
-    (reduce (fn [c [k v]]
+    (reduce (fn [^simcontext c [k v]]
               (if (= k :trigger) (v c) 
-                  (assoc-state k v c)))
+                  (.assoc c k v)))
             ctx m)))
 
 ;it'd be really nice if we had a simple language for describing updates...
