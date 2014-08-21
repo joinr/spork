@@ -131,7 +131,7 @@
   (get-net   [ctx]      propogator))
 
 (defmacro update-field [ctx field f & args]
-  (let [getter (if (keyword? field) (str "." (subs (str field) 1)))
+  (let [getter (if (keyword? field) (symbol (str "." (subs (str field) 1))))
         k    (if (keyword? field) field (keyword field))]
     `(.assoc ~ctx ~k
         (~f (~getter ~ctx) ~@args))))                                      
