@@ -445,14 +445,14 @@
   (get-state [ctx] state)
   (get-net   [ctx] net)
   IEventSystem
-  (get-events [ctx]  (.get-event net))
+  (get-events [ctx]  (.get-events net))
   (get-clients [ctx] (.get-clients  net))
   (get-event-clients [obs event-type]  (.get-event-clients net event-type))
   (get-client-events [obs client-name] (.get-client-events net client-name))
   (unsubscribe  [obs client-name event-type] 
     (event-context. event state transition (.unsubscribe net client-name event-type)))
   (subscribe [obs client-name handler event-type] 
-    (event-context. event state transition (.subscribe net client-name event-type))))
+    (event-context. event state transition (.subscribe net client-name handler event-type))))
 
 (def default-net      (empty-network "empty"))
 (def default-context  (event-context. nil nil  default-transition default-net))

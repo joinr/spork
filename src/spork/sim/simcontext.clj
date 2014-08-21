@@ -133,8 +133,8 @@
 (defmacro update-field [ctx field f & args]
   (let [getter (if (keyword? field) (str "." (subs (str field) 1)))
         k    (if (keyword? field) field (keyword field))]
-    `(let [res# (f (~getter ctx) ~@args)]
-       (.assoc ~k ctx sched#))))                                      
+    `(.assoc ~ctx ~k
+        (~f (~getter ~ctx) ~@args))))                                      
   
 (defmacro update-scheduler [ctx f & args]
   `(let [sched# (f (.scheduler ctx) ~@args)]
@@ -242,7 +242,7 @@
    additional data is passed (although I may change that in future...)"
   [tupdate requested-by request-type ^simcontext ctx]
   (let [t    (or  (current-time ctx) 0)]
-    (-> (add-time tupdate ctx)
+    (-> ^simcontext (add-time tupdate ctx)
         (update-field :updater 
            updates/request-update tupdate requested-by request-type t))))
 

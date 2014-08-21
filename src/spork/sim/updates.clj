@@ -31,9 +31,9 @@
 
 (defn elapsed 
   "Computes the time elapsed since the last update for this packet."
-  ([^update-packet update-packet tnow last-update]
+  ([^update-packet upacket tnow last-update]
     (if (= last-update 0)
-      (.request-time update-packet)
+      (.request-time upacket)
       (- tnow last-update)))
   ([update-packet tnow] (elapsed update-packet tnow 0)))
 
@@ -48,7 +48,7 @@
 (defn last-update
   "Returns the last time the entity was updated, if ever."
   [^updatestore store entity-name]
-  (get (.last-update store) entity-name))
+  (get (.lastupdate store) entity-name))
 
 (defn request-update
   "Schedule an update for requestor, of type request, at"
