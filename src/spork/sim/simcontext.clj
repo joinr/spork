@@ -345,18 +345,18 @@
   (add-listener :debugger debug-handler [:all] (make-context)))
 
 ;new helper functions.
-(defn update-state [f ^simcontext ctx] (update-field ctx :state f))
-(defn assoc-state [k v ^simcontext ctx]  (.assoc ctx  k v))
+(defn update-state [f   ^simcontext ctx]  (update-field ctx :state  f))
+(defn assoc-state  [k v ^simcontext ctx]  (update-field ctx :state  assoc k v))
 ;should probably allow for a parallel version of this guy.
 (defn merge-updates [m  ctx] 
   (if (map? m)
     (reduce-kv (fn [^simcontext c k v]
                  (if (= k :trigger) (v c) 
-                     (.assoc c k v)))
+                     (assoc-state k v c)))
                ctx m)
     (reduce (fn [^simcontext c [k v]]
               (if (= k :trigger) (v c) 
-                  (.assoc c k v)))
+                  (assoc-state  k v c)))
             ctx m)))
 
 ;it'd be really nice if we had a simple language for describing updates...
