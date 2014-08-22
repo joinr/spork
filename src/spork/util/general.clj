@@ -365,7 +365,7 @@
 ;;then make-string is roughly 5x faster.  It's a drop-in replacement 
 ;;for clojure.core/str.
 (defn ^String simple-str [^Object x]
-  (if nil? x) "" (.toString x))
+  (if (nil? x) "" (.toString x)))
 
 (defmacro build-string [& args]
   `(let [x#  ~(first args)
