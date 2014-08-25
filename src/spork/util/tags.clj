@@ -60,6 +60,9 @@
   clojure.lang.IEditableCollection
   (asTransient [coll] (mutable-tags (gen/transient2 tags) (gen/transient2 subjects))))
 
+;;We're generally not storing a ton of stuff in the tag entries.  Can
+;;probabably pull this back a bit to use normal hashsets for the
+;;actual entries.
 (defrecord mtags [tags subjects]
   ITagStore
   (get-tags [store subject]     (get subjects subject))
@@ -98,7 +101,7 @@
   (persistent [coll]   (->tags (gen/persistent2! tags) (gen/persistent2! subjects)))
   (conj       [coll v] (.tag-subject coll (key v) (val v))))
   
-(def empty-tags (->tags {} {}))
+(def empty-tags (tags. {} {}))
 (defn mutable-tags [tgs subjcs] (mtags. tgs subjcs))
 
 (defn has-tag?     [tags tag subject] (contains? (get-tags tags subject) tag))
@@ -131,5 +134,9 @@
   (def dropped-tags 
     (-> simple-tags 
       (untag-subject "tom" :has-name)))
+
+(def tagset [:old :fat :mean :onery :bald :goof])
+
+
   
 )
