@@ -5,40 +5,104 @@
 (ns spork.util.tags
   (:require [spork.util [general :as gen]]))
 
-;(defprotocol ITagStore 
-;  (get-tags [store subject])
-;  (get-subjects [store tag])
-;  (add-tag [store tag])
-;  (add-subject [store subject])
-;  (drop-tag [store tag])
-;  (drop-subject [store subject]))
+(defprotocol ITagStore 
+ (get-tags [store subject]  "Fetch any tags associated with a subject from database m.")
+ (get-subjects [store tag]  "Fetch any subjects associated with a tag, from database m.")
+ (add-tag [store tag] "Add a tag to the database.  Should require a subject to exist.")
+ (add-subject [store subject])
+ (drop-tag [store tag]  "Drops a tag from all subjects, removes from store.")
+ (drop-subject [store subject] "Drops a subject from all tags, removes from store.")
+ (tag-subject [store tag subject]   "Impose a tag on a subject.")
+ (untag-subject [store tag subject]  "Remove a tag from a subject."))
 
-(defn ->tags
-  "Generate a simple tag database implemented using maps.
-   tags correspond to simple attributes (usually keywords)
-   associated with a subject, where subjects are unique 
-   identifiers.  It's really just two tables with many->many
-   relationships.  Calling it a tag is more for semantic 
-   clarity..."
-  [tags subjects]  {:tags tags  :subjects subjects})
+(declare mutable-tags)
 
+;;Generate a simple tag database implemented using maps.
+;;tags correspond to simple attributes (usually keywords)
+;;associated with a subject, where subjects are unique 
+;;identifiers.  It's really just two tables with many->many
+;;relationships.  Calling it a tag is more for semantic 
+;;clarity...
+(defrecord tags [tags subjects]
+  ITagStore
+  (get-tags [store subject]     (get subjects subject))
+  (get-subjects [store tag]     (get tags tag))
+  (add-tag [store tag]          (tags. (assoc tags tag #{}) subjects))
+  (add-subject [store subject]  (tags. tags (assoc subjects subject #{})))
+  (drop-tag [store tag]         (tags. (dissoc tags tag)                                        
+                                       (reduce (fn [acc subj] 
+                                                 (if-let [restags (disj (get acc subj) tag)]
+                                                   (assoc acc subj restags)
+                                                   (dissoc acc subj)))
+                                               subjects 
+                                               (get tags tag))))
+  (drop-subject [store subject] (tags. (reduce (fn [acc tag] 
+                                                 (if-let [ressubjs (disj (get acc tag) subject)]
+                                                   (assoc acc tag ressubjs)
+                                                   (dissoc acc tag)))
+                                               tags 
+                                               (get subjects subject))
+                                       (dissoc subjects subject)))
+  (tag-subject [store tag subject]   
+    (let [oldt (get tags subject #{})
+          olds (get subjects tag #{})]
+      (tags. (assoc tags tag (conj oldt subject))
+             (assoc subjects subject (conj olds tag)))))
+  (untag-subject [store tag subject]
+    (let [new-tags (disj (get tags tag #{}) subject)
+          new-subjects (disj (get subjects subject #{}) tag)]
+      (tags. (if (empty? new-tags)
+               (dissoc tags tag)
+               (assoc tags tag new-tags))
+             (if (empty? new-subjects)
+               (dissoc subjects subject)
+               (assoc subjects subject new-subjects)))))    
+  clojure.lang.IEditableCollection
+  (asTransient [coll] (mutable-tags (gen/transient2 tags) (gen/transient2 subjects))))
+
+(defrecord mtags [tags subjects]
+  ITagStore
+  (get-tags [store subject]     (get subjects subject))
+  (get-subjects [store tag]     (get tags tag))
+  (add-tag [store tag]          (mtags. (assoc! tags tag (transient #{})) subjects))
+  (add-subject [store subject]  (mtags. tags (assoc! subjects subject (transient #{}))))
+  (drop-tag [store tag]         (mtags. (dissoc! tags tag)                                        
+                                       (reduce (fn [acc subj] 
+                                                 (if-let [restags (disj! (get acc subj) tag)]
+                                                   (assoc! acc subj restags)
+                                                   (dissoc! acc subj)))
+                                               subjects 
+                                               (get tags tag))))
+  (drop-subject [store subject] (mtags. (reduce (fn [acc tag] 
+                                                 (if-let [ressubjs (disj! (get acc tag) subject)]
+                                                   (assoc! acc tag ressubjs)
+                                                   (dissoc! acc tag)))
+                                               tags 
+                                               (get subjects subject))
+                                       (dissoc! subjects subject)))
+  (tag-subject [store tag subject]   
+    (let [oldt (get tags subject (transient #{}))
+          olds (get subjects tag (transient #{}))]
+      (mtags. (assoc! tags tag (conj! oldt subject))
+              (assoc! subjects subject (conj! olds tag)))))
+  (untag-subject [store tag subject]
+    (let [new-tags (disj! (get tags tag (transient #{})) subject)
+          new-subjects (disj! (get subjects subject (transient #{})) tag)]
+      (mtags. (if (zero? (count new-tags))
+               (dissoc! tags tag)
+               (assoc! tags tag new-tags))
+             (if (zero? (count new-subjects))
+               (dissoc! subjects subject)
+               (assoc! subjects subject new-subjects))))) 
+  clojure.lang.ITransientCollection
+  (persistent [coll]   (->tags (gen/persistent2! tags) (gen/persistent2! subjects)))
+  (conj       [coll v] (.tag-subject coll (key v) (val v))))
+  
 (def empty-tags (->tags {} {}))
+(defn mutable-tags [tgs subjcs] (mtags. tgs subjcs))
 
-(defn get-tags
-  "Fetch any tags associated with a subject from database m."
-  [m subject] 
-  (get-in m [:subjects subject]))
-
-(defn has-tag? [tags tag subject] (contains? (get-tags tags subject) tag))
-;(defn has-subject? [tags tag subject] (has-tag? tags tag subject)) 
-
-(defn get-subjects
-  "Fetch any subjects associated with a tag, from database m."
-  [m tag] (get-in m [:tags tag]))
-
-(defn add-tag
-  "Add a tag to the database.  Should require a subject to exist."
-  [m tag] (gen/deep-assoc m [:tags tag] #{}))
+(defn has-tag?     [tags tag subject] (contains? (get-tags tags subject) tag))
+(defn has-subject? [tags tag subject] (has-tag? tags tag subject)) 
 
 (defn and-tags
   "Select subjects that have every tag in xs."
@@ -49,30 +113,6 @@
   "Select subjects that have any tag in xs."
   [m xs]
   (reduce #(clojure.set/union %1 (get-subjects m %2))) #{} xs)
-
-(defn add-subject [m subject] (gen/deep-assoc m [:subjects subject] #{}))
-
-(defn tag-subject
-  "Impose a tag on a subject."
-  [m subject tag]
-  (let [new-tags (conj (get-in m [:tags tag] #{}) subject) 
-        new-subjects (conj (get-in m [:subjects subject] #{}) tag)]
-  (-> (gen/deep-assoc m [:tags tag] new-tags)  
-      (gen/deep-assoc [:subjects subject]  new-subjects))))
-
-(defn untag-subject
-  "Drop a tag from a subject."
-  [m subject tag]
-  (let [subjects (:subjects m)
-        tags (:tags m)
-        new-tags (disj (get tags tag #{}) subject) 
-        new-subjects (disj (get subjects subject #{}) tag)]
-    (->tags (if (empty? new-tags)
-              (dissoc tags tag)
-              (assoc tags tag new-tags))
-            (if (empty? new-subjects)
-              (dissoc subjects subject)
-              (assoc subjects subject new-subjects)))))
 
 (defn multi-tag
   "Impose many tags on a subject."
