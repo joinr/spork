@@ -246,6 +246,16 @@
         (update-field :updater 
            updates/request-update tupdate requested-by request-type t))))
 
+;; (defn request-update!
+;;   "Public API for accounting for update requests, which consist of a time 
+;;    to update a specific entity in the simulation, and a form of request.  No
+;;    additional data is passed (although I may change that in future...)"
+;;   [tupdate requested-by request-type ^simcontext ctx]
+;;   (let [t    (or  (current-time ctx) 0)]
+;;     (-> ^simcontext (add-time tupdate ctx)
+;;         (update-field :updater 
+;;            updates/request-update tupdate requested-by request-type t))))
+
 (defn request-updates 
   "Allows user to request multiple updates, represented as 
    [update-time request-by request-type] vectors."

@@ -1,5 +1,6 @@
 (ns spork.sim.data
-  (:use [spork.util.datetime]))
+  (:use [spork.util.datetime])
+  (:require [clojure.core.reducers :as r]))
 
 (defprotocol IEvent
   (event-type [e] 
@@ -100,35 +101,35 @@
 (defmethod print-method clojure.lang.PersistentQueue [q,w]
   (print-method (seq q) w))
 
+
+(defn first-entry [m] (reduce-kv (fn [acc k v] (reduced (clojure.lang.MapEntry. k v))) nil m))
+(defn first-key [m] (reduce-kv (fn [acc k v]   (reduced k ))) nil m)
+(defn first-val [m] (reduce-kv (fn [acc k v]   (reduced v)) nil m))
+
 ;define a schedule, a sorted-map of event queues keyed by time.
 (def empty-schedule (sorted-map))
 
 (defn empty-schedule? [s]
   "If schedule s has one eventqueue, and it's emptyq, the schedule is empty"
-  (or (empty? s)
-      (and
-        (= (count (vals s)) 1)
-        (= (first (vals s)) emptyq))))
+  (when-let [q (first-val s)]
+    (identical? q emptyq)))
 
 (defn get-segment
   "[s] retrieve next queue of events from schedule s
    [s t] retrieve queue of events for time t from schedule s"
-  ([s] (second (first s)))
-  ([s t] (cond (contains? s t) (get s t)
-               :else emptyq)))
+  ([s]    (first-val s))
+  ([s t]  (get s t emptyq)))
 
 (defn active?
   "Determine if the schedule has any events, or if [s t] if events exist for a
    specific time"
-  ([s] (not (= (get-segment s) emptyq)))
-  ([s t] (and (contains? s t) (not (= (get-segment s t) emptyq)))))
-    
+  ([s]   (not (identical? (get-segment s) emptyq)))
+  ([s t] (not (identical? (get-segment s t) emptyq))))   
 
 (defn get-time [s]
   "[s] Determine the :time of the pending event in the schedule, if no events
    are pending (an empty schedule) we return nil"
-  (if (empty? s) nil 
-    (first (keys s))))
+  (first-key s))
 
 (defn next-active [s]
   "Clear empty queues.  If our current queue is no longer active (has no events)

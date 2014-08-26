@@ -3,6 +3,16 @@
             [spork.sim.pure [network :as simnet]]
             [spork.util [general :as gen]]))
 
+
+;;Note -> assoc is killing us here.
+;;Updates are called pretty frequently, so we need to be able to bulk 
+;;load them.  One option is to have a transient version of the 
+;;update store.  I like this idea.  We can have lazy transients and 
+;;convert the structure.
+
+;;The map-based version is great and all, but we probably want 
+;;a transient version to handle tons of updates.
+
 ;All the update manager does is listen for update request traffic.
 ;It records the time of the update request, who made the request, and the future
 ;update. It's really just a nice way to decouple and centralize the updating 
