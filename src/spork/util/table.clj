@@ -4,6 +4,7 @@
 (ns spork.util.table
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]
+            [clojure.core.reducers :as r]
             [spork.util [clipboard :as board] [parsing :as parse]]
             [spork.cljgui.components [swing :as gui]])
   (:use [spork.util.vector]
@@ -102,13 +103,62 @@
           (recur maxcount (rest remaining) dirty?) 
           (recur (max maxcount nextcount) (rest remaining) true)))))) 
  
+;;Consider making this seqable...turning it into a deftype.
 (defrecord column-table [fields columns] 
   ITabular  
     (table-fields [x]  fields) 
     (table-columns [x] columns) 
   ITabularMaker 
     (-make-table [x fields columns]  
-       (column-table. fields (normalize-columns columns))))
+       (column-table. fields (normalize-columns columns)))
+  clojure.core.protocols/CollReduce
+  (coll-reduce [this f]  
+    (let [bound   (count fields)
+          rbound  (dec (count (first columns)))
+          cursor  (transient {})
+          idx (atom 0)
+          fetch-record (fn [n m] 
+                         (loop [m m
+                                i 0]
+                           (if (== i bound) m
+                               (recur 
+                                (assoc! m (nth fields i)
+                                          (nth (nth columns i) n))
+                                (unchecked-inc i)))))
+          next-record! (fn [] (if (== @idx rbound) nil
+                                  (fetch-record (swap! idx inc)
+                                                cursor)))]
+      (when-let [r (zipmap fields (mapv #(nth % 0) columns))]
+        (cond (zero? rbound) r
+              (== rbound 1) (f r (next-record!))
+              :else         (let [init (next-record!)]
+                              (loop [ret (f r init )]
+                                (if (reduced? ret) @ret
+                                    (if-let [nxt (next-record!)]                
+                                      (recur (f ret nxt))
+                                      ret))))))))
+  (coll-reduce [this f init]
+    (let [bound   (count fields)
+          rbound  (dec (count (first columns)))
+          cursor  (transient {})
+          idx (atom -1) ;ugh...negative really?
+          fetch-record (fn [n m] 
+                         (loop [m m
+                                i 0]
+                           (if (== i bound) m
+                               (recur 
+                                (assoc! m (nth fields i)
+                                          (nth (nth columns i) n))
+                                (unchecked-inc i)))))
+          next-record! (fn [] (if (== @idx rbound) nil
+                                  (fetch-record (swap! idx inc)
+                                               cursor)))]
+      (when-let [r (next-record!)]
+        (loop [ret (f init r)]
+          (if (reduced? ret) @ret
+              (if-let [nxt (next-record!)]                
+                  (recur (f ret nxt))
+                  ret)))))))
 
 (defn make-table  
   "Constructs a new table either directly from a vector of fields and  
@@ -331,12 +381,15 @@
   [tbl n]
   "Extracts the nth row of data from tbl, returning a vector."
   (assert (valid-row? tbl n) (str "Index " n " Out of Bounds"))
-  (vec (map #(get % n) (table-columns tbl))))
+  (mapv #(nth % n) (table-columns tbl)))
 
 (defn table-rows 
   "Returns a vector of the rows of the table." 
-  [tbl]  (vec (map (partial nth-row tbl) (range (count-rows tbl))))) 
+  [tbl]  (vec (map #(nth-row tbl %) (range (count-rows tbl))))) 
 
+;;#Optimize!
+;;Dogshit slow....should clean this up...both zipmap and 
+;;the varargs are bad for performance.  This will get called a lot.
 (defn nth-record
   "Coerces a column-oriented vector representation of tables into 
    a map where keys are field names, and vals are column values at 
@@ -530,8 +583,7 @@
 (defn database? [xs]  
   (and (seq xs) (every? tabular? xs)))
 
-; design to support the as syntax.
-; [:age   (fn [i rec] (* 10 i))]
+
 
 (defmulti  computed-field  (fn [x] (if (fn? x) :function (type x))))
 (defmethod computed-field :function [f] (fn [i rec] (f i rec)))
@@ -539,13 +591,6 @@
 
 ;implementation for 'as statements pending....
 
-;(defn parse-as-map [x]
-;  (cond (or (keyword? x) (string? x)) 
-;          {:x (computed-field x)}
-;        (vector? x) (let [[fld v &rest] x]
-;                      {fld (computed-field v)})
-;        :else (throw (Exception. (str "Unsupported type in 'as query" x)))))
-;(defmacro with-computed-fields [fieldmap & body] 
 
 (defn- select- 
   "A small adaptation of Peter Seibel's excellent mini SQL language from 
@@ -613,7 +658,8 @@
 	 Like a database, all records have identical fieldnames.
    Re-routed to use the new table-records function built on the ITabular lib." 
 	[tbl]
- (table-records tbl)) 
+ (table-records tbl))
+
 
 
 (defn get-record  
