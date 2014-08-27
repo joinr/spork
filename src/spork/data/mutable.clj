@@ -3,8 +3,73 @@
 ;;for conj!. 
 ;; Work in progress.
 (ns spork.data.mutable  
+;  (:refer-clojure :exclude [conj persistent!])
   (:require [spork.protocols [core :as generic]])
   (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
+
+;;#Additional Reducers 
+;;These haven't made it into clojure.core yet, they probably will in
+;;1.7  .  I hacked together a couple of useful ones, like range.
+(in-ns 'clojure.core.reducers)
+
+;;we're going to add in iterate, range, and friends
+
+(doseq [s    '[range
+               iterate
+               map-indexed]]
+  (ns-unmap *ns* s))  
+
+;;Reducers patch for Clojure courtesy of Alan Malloy, CLJ-992, Eclipse Public License
+(defcurried iterate
+  "A reducible collection of [seed, (f seed), (f (f seed)), ...]"
+  {:added "1.5"}
+  [f seed]
+  (reify
+    clojure.core.protocols/CollReduce
+    (coll-reduce [this f1] (clojure.core.protocols/coll-reduce this f1 (f1)))
+    (coll-reduce [this f1 init]
+      (loop [ret (f1 init seed), seed seed]
+        (if (reduced? ret)
+          @ret
+          (let [next (f seed)]
+            (recur (f1 ret next) next)))))
+
+    clojure.lang.Seqable
+    (seq [this]
+      (seq (clojure.core/iterate f seed)))))
+
+  (defn range
+    "Creates a reducible sequence of numbers, ala core/range, except 
+     there is no intermediate collection to muck with."
+    ([lower n]
+       (reify clojure.core.protocols/CollReduce 
+         (coll-reduce [coll f] 
+           (loop [idx (+ 2 lower)
+                  res (f lower (inc lower))]
+             (if (or (== idx n) (reduced? res))
+               res
+               (recur (unchecked-inc idx)
+                      (f res idx)))))
+         (coll-reduce [coll f val]
+           (loop [idx lower
+                  res val]
+             (if (or (== idx n) (reduced? res))
+            res
+            (recur (unchecked-inc idx)
+                   (f res idx)))))
+         clojure.lang.Seqable ;;good idea...saw this from patch CLJ992
+         (seq [this]  (clojure.core/range lower n))))
+    ([n] (range 0 n)))
+
+    (defn map-indexed
+      "Creates a reducer analogue to core/map-indexed"
+      [f r] 
+      (let [idx (atom 0)]
+        (map (fn [x] 
+               (f (swap! idx inc) x))  r)))     
+
+(in-ns 'spork.data.mutable)
+
 
 (extend-type  java.util.HashMap 
   clojure.core.protocols/IKVReduce 
@@ -12,10 +77,11 @@
     (let [^java.util.Set es (.entrySet ^java.util.HashMap amap)
           ^java.util.Iterator it (.iterator es)]
       (loop [acc init]
-        (if (.hasNext it)
-          (let [^java.util.Map$Entry e (.next it)]
-            (recur (f acc (.getKey e) (.getValue e))))
-          acc))))
+        (if (reduced? acc) @acc
+            (if (.hasNext it)
+              (let [^java.util.Map$Entry e (.next it)]
+                (recur (f acc (.getKey e) (.getValue e))))
+              acc)))))
   clojure.core.protocols/CollReduce  
   (coll-reduce 
     ([coll f]     
@@ -23,18 +89,20 @@
              ^java.util.Iterator it (.iterator es)]
          (when (.hasNext it) 
            (loop [acc (.next it)]
-             (if (.hasNext it)
-               (let [^java.util.Map$Entry e (.next it)]
-                 (recur (f acc  e)))
-               acc))))) 
+             (if (reduced? acc) @acc
+                 (if (.hasNext it)
+                   (let [^java.util.Map$Entry e (.next it)]
+                     (recur (f acc  e)))
+                   acc))))))
     ([coll f val]
        (let [^java.util.Set es (.entrySet ^java.util.HashMap coll)
              ^java.util.Iterator it (.iterator es)]
          (loop [acc val]
-           (if (.hasNext it)
-             (let [^java.util.Map$Entry e (.next it)]
-               (recur (f acc  e)))
-             acc))))))
+           (if (reduced? acc) @acc
+               (if (.hasNext it)
+                 (let [^java.util.Map$Entry e (.next it)]
+                   (recur (f acc  e)))
+                 acc)))))))
 
 ;;Some notes on performance....
 ;;We can mimic field access by creating an interface that correponds
@@ -96,20 +164,54 @@
 (defmacro hadd [hint coll v]
   `(doto ~(with-meta coll {:tag hint}) (.add ~v)))
 
+;;Unifies mutable abstractions...
+;;Protocol dispatch cost is not terrible.
 (defprotocol IFastAccess
-  (fast-get [coll k])
-  (fast-put [coll k v])
-  (fast-add [coll v]))
+  (fast-get  [coll k])
+  (fast-add  [coll v])
+  (fast-drop [coll k]))
+(defprotocol IFastHashAccess
+  (fast-put  [coll k v]))
 
-(extend-protocol IFastAccess 
-  ArrayList 
+(defprotocol IMutable
+  (mutable   [c])
+  (immutable [c]))
+
+;;Debatable as to how much faster this is...
+(in-ns 'clojure.core)
+
+(defn into
+  "Returns a new coll consisting of to-coll with all of the items of
+  from-coll conjoined. *Modified to account for mutable structures." 
+  {:added "1.0"
+   :static true}
+  [to from]
+  (if (instance? clojure.lang.IEditableCollection to)
+    (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
+    (if (instance? spork.data.mutable.IMutable to)
+      (reduce conj!(spork.data.mutable/mutable to) from)
+      (reduce conj  to from))))
+(in-ns 'spork.data.mutable)
+
+(extend-type ArrayList 
+  IFastAccess 
   (fast-get [coll k]   (hget ArrayList coll k))
-  (fast-put [coll k v] (hadd ArrayList coll [k v]))
   (fast-add [coll v]   (hadd ArrayList coll v))
-  HashMap 
+  (fast-drop [coll k]  (doto ^java.util.ArrayList coll (.remove k)))
+  IMutable
+  (mutable [m] m)
+  (immutable [m] (into [] m)))
+
+(extend-type   HashMap 
+  IFastAccess
   (fast-get [coll k]   (hget HashMap coll k))
+  (fast-add [coll v]   (hput HashMap coll (first v) (second v)))
+  (fast-drop [coll k]  (doto ^java.util.HashMap coll (.remove k)))
+  IFastHashAccess
   (fast-put [coll k v] (hput HashMap coll k v))
-  (fast-add [coll v]   (hput HashMap coll (first v) (second v))))
+  IMutable
+  (mutable   [m] m)
+  (immutable [m] (into {} m)))  
 
 (definline get-arraylist [l n]
   `(.get ~(with-meta l {:tag 'java.util.ArrayList}) ~n))
@@ -210,25 +312,70 @@
   (nth    [this k not-found] (or (.get m k) not-found))
   (assoc  [this k v]   (do  (.add m k v) this))
   (conj    [this v]    (do (.add m v) this))
-;  (without [this k]    (do (.remove m k) this))
   (persistent [this]   (into [] m))
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.Counted 
+  (count [coll] (.size m))
+  IFastAccess 
+  (fast-get [coll k]   (.get m k))
+  (fast-add [coll v]   (do (.add  m v) coll))
+  (fast-drop [coll k]  (do  (.remove m k) coll))
+  IMutable
+  (mutable   [this] this)
+  (immutable [this] (into [] m))
   clojure.lang.IDeref
   (deref [this] m))
 
 (deftype mutmap [^java.util.HashMap m] 
   clojure.lang.ITransientMap  
-  (valAt [this k] (.get m k))
+  (valAt [this k]           (.get m k))
   (valAt [this k not-found] (or (.get m k) not-found))
   (assoc [this k v] (do  (.put m k v) this))
   (conj  [this e]    
     (let [[k v] e]      
       (do (.put m k v) this)))
   (without [this k]   (do (.remove m k) this))
-  (persistent [this] (into {} (seq m)))
+  (persistent [this] (into {}  m))
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.Counted 
+  (count [coll] (.size m))
+  IFastAccess 
+  (fast-get  [coll k]  (.get m k))
+  (fast-add  [coll v]  (do  (.put  m (first v) (second v)) coll))
+  (fast-drop [coll k]  (do  (.remove m k) coll))
+  IFastHashAccess
+  (fast-put [coll k v] (do (.put m k v) coll))
+  IMutable
+  (mutable [this] this)
+  (immutable [this] (into {} m))
   clojure.lang.IDeref
   (deref [this] m))
+
 (defn ^mutmap ->mutmap [& xs]  
-  (reduce (fn [m [k v]] (assoc! m k v)) (mutmap. (HashMap.)) xs))
+  (mutmap.  (reduce (fn [m [k v]] (fast-put m k v)) (java.util.HashMap.)  xs)))
+
+(defn ^mutlist ->mutlist [& xs]  
+  (mutlist. (reduce (fn [^java.util.ArrayList m k] (doto m (.add k)))  (java.util.ArrayList.)  xs)))
+
+(extend-protocol IMutable
+  clojure.lang.PersistentVector
+  (mutable [v]   (mutlist. (reduce fast-add (java.util.ArrayList.) v)))
+  (immutable [v] v)
+  clojure.lang.PersistentList$EmptyList
+  (mutable [v]   (mutlist. (java.util.ArrayList.)))
+  (immutable [v] v)
+  clojure.lang.PersistentList
+  (mutable [v]    (mutlist. (reduce fast-add (java.util.ArrayList.) v)))
+  (immutable [v]   v)
+  clojure.lang.PersistentArrayMap
+  (mutable [v]   (mutmap. (reduce-kv fast-put (java.util.HashMap.) v)))
+  (immutable [v] v)
+  clojure.lang.PersistentHashMap
+  (mutable   [v] (mutmap. (reduce-kv fast-put (java.util.HashMap.) v)))
+  (immutable [v] v))
+
 
 ;; (defmacro defarralias [name hint fields]
 ;;   (let [flds        (mapv (fn [sym] (vary-meta (symbol sym) merge {:tag hint})) fields)

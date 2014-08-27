@@ -25,7 +25,7 @@
           (<= t tf) true 
           :else false)))
           
-(defrecord agenda [tprev tfinal schedule item-count times current-time]
+(defrecord agenda [tprev tfinal schedule item-count times]
   IAgenda 
   (previous-time [a] tprev)
   (final-time [a] tfinal)
@@ -38,8 +38,7 @@
   spork.sim.data.IEventSeq 
   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  
     (agenda. tprev tfinal (sim/add-event schedule e) (inc item-count)
-             (conj times (sim/event-time e))
-             (min current-time (sim/event-time e)))) 
+             (conj times (sim/event-time e))))) 
   (drop-event  [a]  
     (if (> item-count 0)  
        (let [tnext (sim/current-time schedule)
