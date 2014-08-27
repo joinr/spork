@@ -1,6 +1,7 @@
 (ns spork.sim.data
   (:use [spork.util.datetime])
-  (:require [clojure.core.reducers :as r]))
+  (:require  [spork.util.reducers]
+             [clojure.core.reducers :as r]))
 
 (defprotocol IEvent
   (event-type [e] 
@@ -69,6 +70,13 @@
   (event-from [e] from)
   (event-to   [e] to))
 
+;;Overrides the built in map->event, defined by defrecord.
+;;That turned out to be surprisingly slow...as it uses the 
+;;event class's static method /create, passes a map, and then
+;;interns a bunch of symbols....weird.
+(definline map->event [{:keys [type data id time from to]}]
+  `(event. ~type ~data ~id ~time ~from ~to))
+
 (defn time-event
   "Default constructors for building temporal events; really just a nice
    way of representing time-stamped packets.  The contextual information is
@@ -103,8 +111,8 @@
 
 
 (defn first-entry [m] (reduce-kv (fn [acc k v] (reduced (clojure.lang.MapEntry. k v))) nil m))
-(defn first-key [m] (reduce-kv (fn [acc k v]   (reduced k ))) nil m)
-(defn first-val [m] (reduce-kv (fn [acc k v]   (reduced v)) nil m))
+(defn first-key   [m] (reduce-kv (fn [acc k v] (reduced k )) nil m))
+(defn first-val   [m] (reduce-kv (fn [acc k v] (reduced v)) nil m))
 
 ;define a schedule, a sorted-map of event queues keyed by time.
 (def empty-schedule (sorted-map))
@@ -244,6 +252,14 @@
   ([s]   (do-events s println)) 
   ([s n] (do-events s println n))) 
 
+(defmacro make-event 
+  "Optimized constructor for events.  Designed to supplant map->event, 
+   since that ends up being very slow.  Allows us to retain the versailitiy 
+   of building events using map args.  Not callable as a function, but 
+   may be wrapped in a function."
+  [{:keys [type data id time from to]}]
+  `(event. ~type ~data ~id ~time ~from ~to))
+
 (comment 
 ;;Testing.....
 
@@ -253,14 +269,16 @@
    spread across time [0.0 tmax]"
     (->> 
       (repeatedly n #(rand-int tmax)) 
-      (map (fn [t] 
-             (for [i (map inc (range (rand-int 10)))] 
-               (map->event {:id 1
-                            :type :task 
-                            :time t 
-                            :data (keyword (str 'task-type i))}))))
-      (flatten)
-      (map-indexed (fn [i evt] (assoc evt :id i)))
+      (r/mapcat (fn [t] 
+                  (->> (r/range (rand-int 10)) 
+                       (r/map inc )
+                       (r/map (fn [n]
+                             (make-event {:type :task 
+                                          :data t
+                                          :id   1
+                                          :time t}))))))
+      (r/flatten)
+      (r/map-indexed (fn [i evt] (assoc evt :id i)))
       (add-events empty-schedule)))
 
 (def sample-schedule 
