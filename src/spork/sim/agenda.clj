@@ -27,18 +27,18 @@
           
 (defrecord agenda [tprev tfinal schedule item-count times]
   IAgenda 
-  (previous-time [a] tprev)
-  (final-time [a] tfinal)
+  (previous-time  [a] tprev)
+  (final-time     [a] tfinal)
   (set-final-time [a tf]  (agenda. tprev tf schedule item-count times))
-  (agenda-count [a] item-count)
-  (time-segments [a] schedule)
+  (agenda-count   [a] item-count)
+  (time-segments  [a] schedule)
   (add-times [a ts] (reduce #(sim/add-event %1 
                                   (sim/->simple-event :time %2))  a ts))
   (get-times [a] times)
   spork.sim.data.IEventSeq 
   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  
     (agenda. tprev tfinal (sim/add-event schedule e) (inc item-count)
-             (conj times (sim/event-time e))))) 
+             (conj times (sim/event-time e)))) 
   (drop-event  [a]  
     (if (> item-count 0)  
        (let [tnext (sim/current-time schedule)
