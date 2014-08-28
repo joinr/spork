@@ -109,18 +109,36 @@
 (defmethod print-method clojure.lang.PersistentQueue [q,w]
   (print-method (seq q) w))
 
-
-(defn first-entry [m] (reduce-kv (fn [acc k v] (reduced (clojure.lang.MapEntry. k v))) nil m))
-(defn first-key   [m] (reduce-kv (fn [acc k v] (reduced k )) nil m))
-(defn first-val   [m] (reduce-kv (fn [acc k v] (reduced v)) nil m))
-
+(definline first-entry  [m] `(reduce-kv (fn [acc# k# v#] (reduced (clojure.lang.MapEntry. k# v#))) nil ~m))
+(definline first-key    [m] `(reduce-kv (fn [acc# k# v#] (reduced k# )) nil ~m))
+(definline first-val    [m] `(reduce-kv (fn [acc# k# v#] (reduced v#)) nil ~m))
+(definline nth-entry  [n m] 
+  `(let [bound# ~n
+         n#     (long-array [0])] 
+     (reduce-kv (fn [acc# k# v#] 
+                  (if (== @n# bound#)
+                    (reduced (clojure.lang.MapEntry. k# v#))
+                    (do (aset n# 0 (unchecked-inc (aget n# 0)))
+                        acc#))) nil ~m)))
+(definline nth-key   [n m] 
+  `(let [bound#  ~n
+         n#     (long-array [0])]
+     (reduce-kv (fn [acc# k# v#] 
+                  (if (== (aget n# 0) bound#)
+                    (reduced k#)
+                    (do (aset n# 0 (unchecked-inc (aget n# 0)))
+                        acc#))) nil ~m)))
+(definline nth-val   [n m] 
+  `(let [bound#  ~n
+         n#     (long-array [0])] 
+     (reduce-kv (fn [acc# k# v#] 
+                  (if (== @n# bound#)
+                    (reduced v#)
+                    (do (aset n# 0 (unchecked-inc (aget n# 0)))
+                        acc#))) nil ~m)))
 ;define a schedule, a sorted-map of event queues keyed by time.
 (def empty-schedule (sorted-map))
-
-(defn empty-schedule? [s]
-  "If schedule s has one eventqueue, and it's emptyq, the schedule is empty"
-  (when-let [q (first-val s)]
-    (identical? q emptyq)))
+(definline empty-schedule? [s] `(identical? ~s spork.sim.data/empty-schedule))
 
 (defn get-segment
   "[s] retrieve next queue of events from schedule s
@@ -131,31 +149,36 @@
 (defn active?
   "Determine if the schedule has any events, or if [s t] if events exist for a
    specific time"
-  ([s]   (not (identical? (get-segment s) emptyq)))
-  ([s t] (not (identical? (get-segment s t) emptyq))))   
+  ([s]   (not (identical? s empty-schedule)))
+  ([s t] (get s t)))
 
 (defn get-time [s]
   "[s] Determine the :time of the pending event in the schedule, if no events
    are pending (an empty schedule) we return nil"
   (first-key s))
 
-(defn next-active [s]
-  "Clear empty queues.  If our current queue is no longer active (has no events)
-   we remove it from consideration iff there are more pending queues."
-  (loop [sched s]    
-    (cond (empty-schedule? s) s 
-          (active? s)  s
-          :else   (recur (dissoc s (get-time s))))))
+;;#May be unncessary
+;; (defn next-active [s]
+;;   "Clear empty queues.  If our current queue is no longer active (has no events)
+;;    we remove it from consideration iff there are more pending queues."
+;;   (loop [sched s]    
+;;     (cond (empty-schedule? s) s 
+;;           (active? s)  s
+;;           :else   (recur (dissoc s (get-time s))))))
+
+;; (defn next-time [s]
+;;   "[s] Get the next active time"
+;;   (get-time (next-active s)))
 
 (defn next-time [s]
-  "[s] Get the next active time"
-  (get-time (next-active s)))
+   "[s] Get the next active time"
+   (get-time s))
 
 (defn next-event
   "[s] retrieve first event in next active queue of events from schedule s
    [s t] retrieve first event in next active queue of events for time t from s"
-  ([s]   (peek (get-segment (next-active s))))
-  ([s t] (peek (get-segment (next-active s) t)))) 
+  ([s]   (peek (first-val s)))
+  ([s t] (when-let [res (get s t)] (peek res))))
 
 (defn put-event
   "[s e] insert one or more events into a schedule, based on event time.
@@ -163,7 +186,7 @@
    data structure.  In real applications, we would likely have a limitation on 
    the times that could be added to the queue (i.e. only times >= current-time)"
   ([s e] (let [t (or (event-time e) (get-time s) 0.0)
-               q (get-segment s t)]
+               q (or (get-segment s t) emptyq)]
              (assoc s t (conj q e)))))
 
 (defn put-events [s es] 
@@ -185,34 +208,75 @@
                             
 (defn take-event [s]
   "[s] Remove the next event from schedule s, returning remaining schedule."
-  (let [snext     (next-active s)
-        remaining (pop (get-segment snext))]
-    (if (empty? remaining)
-      (next-active (dissoc snext (get-time snext)))
-    (next-active
-      (assoc snext (get-time snext) (pop (get-segment snext)))))))
+  (let [fe (first-entry s)
+        t  (key fe)
+        q  (pop (val fe))]
+    (if (empty? q) (dissoc s t)
+        (assoc s t q))))
+
+(defprotocol IEventReducer
+  (event-reducer [xs]))
 
 ;protocol for operating on abstract event collections.
-(defprotocol IEventSeq
-  (add-event [ecoll e] "add an event to the collection of events")
-  (drop-event [ecoll]  "remove an event from the collection of events")
-  (first-event [ecoll] "return the next event in the collection"))
+(defprotocol   IEventSeq
+  (add-event   [ecoll e] "add an event to the collection of events")
+  (drop-event  [ecoll]   "remove an event from the collection of events")
+  (first-event [ecoll]   "return the next event in the collection")
+  (nth-event   [ecoll n] "Return the nth event in the seq"))
+(defprotocol IChunkedEventSeq
+  (event-chunks [ecoll] "returns a lazy seq of chunks of ordered events."))
 
+
+(extend-type clojure.lang.PersistentTreeMap
+  IEventSeq
+  (add-event [m e] (put-event m e)) 
+  (drop-event [m] (take-event m))                       
+  (first-event [m] (next-event  m))
+  (nth-event  [m n] 
+    (assert (pos? n) (throw (Exception. "index out of bounds in nth-event")))
+    (let [cnt (long-array [-1])]
+      (reduce-kv (fn [acc t q]
+                   (if (< (+ (aget cnt 0) (count q)) n)
+                     (do (aset cnt 0 (+ (aget cnt 0)  (count q)))
+                         acc)
+                     (let [offset (- (dec n) (aget cnt 0))]
+                       (reduced (nth q offset)))))
+                 nil m)))
+  IChunkedEventSeq
+  (event-chunks [ecoll] (vals ecoll))
+  IEventReducer
+  ;;This is a more general reducer....could probably lift it up into 
+  ;;spork.util.reducers...
+  (event-reducer [sched]
+    (reify 
+      clojure.core.protocols/CollReduce
+      (coll-reduce [coll f]
+        (reduce-kv (fn [acc k q]
+                     (if (reduced? acc) @acc
+                         (reduce (fn [inner evt]
+                                   (if (reduced? inner) @inner
+                                       (f inner evt)))
+                                 acc q))) sched))
+      (coll-reduce [coll f init]  
+        (reduce-kv (fn [acc k q]
+                     (if (reduced? acc) @acc
+                         (reduce (fn [inner evt]
+                                   (if (reduced? inner) @inner
+                                       (f inner evt)))
+                                 acc q)))   init sched)))))
 (extend-protocol IEventSeq
   clojure.lang.PersistentVector
   (add-event [v e] (conj v e))
   (drop-event [v] (cond (or (= 1 (count v)) 
                             (= v [])) []
                         (> (count v) 1) (subvec v 1)))                       
-  (first-event [v] (first v))  
-  clojure.lang.PersistentTreeMap 
-  (add-event [m e] (put-event m e)) 
-  (drop-event [m] (take-event m))                       
-  (first-event [m] (next-event  m))
+  (first-event [v] (first v))
+  (nth-event [v n] (nth v n))                                     
   nil 
   (add-event [m e] (add-event empty-schedule e)) 
-  (drop-event [m] (throw (Exception. "Empty schedule")))                       
-  (first-event [m] nil))
+  (drop-event  [m] (throw (Exception. "Empty schedule")))                       
+  (first-event [m]  nil)
+  (nth-event   [m]  nil))
 
 ;;protocol-derived functionality
 (defn add-events
@@ -229,22 +293,28 @@
 (defn next-time
   "Compute the time of the next event in the sequence."
   [ecoll]  
-  (when (first-event ecoll)
-    (event-time 
-     (first-event 
-      (drop-event ecoll)))))
+  (event-time  (nth-event ecoll 1)))
 
+
+;;#THis is a potential drag.  We don't really want to do this..we
+;;should be returning chunks...
 (defn event-seq 
   "Return a lazy seq of ordered events."
   [ecoll]
-  (take-while #(not (nil? %)) 
-    (map first (iterate (fn [[x xs]] 
-                          (when-let [nxt (first-event xs)]
-                            [nxt (drop-event xs)]))
-                        [(first-event ecoll) (drop-event ecoll)]))))
+  (if (satisfies? IChunkedEventSeq ecoll)
+    (concat (event-chunks ecoll))
+    (take-while #(not (nil? %)) 
+                (map first (iterate (fn [[x xs]] 
+                                      (when-let [nxt (first-event xs)]
+                                        [nxt (drop-event xs)]))
+                                    [(first-event ecoll) (drop-event ecoll)])))))
 (defn do-events
-  ([s f n] (doseq [evt (take n (event-seq s))] (f evt)))
-  ([s f]   (doseq [evt (event-seq s)] (f evt))))
+  ([s f n] (if (satisfies? IEventReducer s)
+             (do (reduce (fn [acc v] (f v)) nil (r/take n (event-reducer s))))
+             (doseq [evt (take n (event-seq s))] (f evt))))
+  ([s f]   (if (satisfies? IEventReducer s)
+             (do (reduce (fn [acc v] (f v)) nil (event-reducer s)))
+             (doseq [evt (event-seq s)] (f evt)))))
 
 (defn print-events  
   "print the first n items of the schedule, produces a lazy seq...
@@ -267,19 +337,15 @@
 (defn random-schedule [n tmax]
   "Define a simple random schedule, with up to 10 events for n days randomly 
    spread across time [0.0 tmax]"
-    (->> 
-      (repeatedly n #(rand-int tmax)) 
-      (r/mapcat (fn [t] 
-                  (->> (r/range (rand-int 10)) 
-                       (r/map inc )
-                       (r/map (fn [n]
-                             (make-event {:type :task 
-                                          :data t
-                                          :id   1
-                                          :time t}))))))
-      (r/flatten)
-      (r/map-indexed (fn [i evt] (assoc evt :id i)))
-      (add-events empty-schedule)))
+    (->> (r/repeatedly n #(rand-int tmax)) 
+         (r/map inc)
+         (r/map (fn [t] 
+                  (make-event {:type :task 
+                               :data t
+                               :id   1
+                               :time t})))
+         (r/map-indexed (fn [i evt] (assoc evt :id i)))
+         (add-events empty-schedule)))
 
 (def sample-schedule 
   (let [wednesdays (take 6 (map date->num (daystream "Wednesday")))
