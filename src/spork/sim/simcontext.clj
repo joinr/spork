@@ -418,5 +418,10 @@
                     (assoc c :propogator 
                            (-> (simnet/register-routes  bare-routes p)
                                (updates/add-routes (:updater c))))))
+
+  (defn simple-update [t name ctx]
+    (->> ctx 
+         (request-update t name :some-update)
+         (request-update (+ t 100) name :some-update)))
 )
 

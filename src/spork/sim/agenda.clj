@@ -30,10 +30,17 @@
   (previous-time  [a] tprev)
   (final-time     [a] tfinal)
   (set-final-time [a tf]  (agenda. tprev tf schedule item-count times))
-  (agenda-count   [a] item-count)
-  (time-segments  [a] schedule)
-  (add-times [a ts] (reduce #(sim/add-event %1 
-                                  (sim/->simple-event :time %2))  a ts))
+  (agenda-count   [a]     item-count)
+  (time-segments  [a]     schedule)
+  (add-times [a ts] 
+    (let [itms (atom item-count)
+          [nsched nt i] (reduce (fn [[sched knowns i :as acc] t]
+                                  (if (contains? knowns t) acc
+                                      [(sim/add-event sched (sim/->simple-event :time  t))
+                                       (conj knowns t)
+                                       (inc i)]))
+                              [schedule times item-count]  ts)]
+      (agenda. tprev tfinal nsched  i nt)))
   (get-times [a] times)
   spork.sim.data.IEventSeq 
   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  

@@ -1,8 +1,25 @@
 (ns spork.sim.updates
   (:require [spork.sim [data :as sim]]
             [spork.sim.pure [network :as simnet]]
-            [spork.util [general :as gen]]))
+            [spork.util [general :as gen]]
+            [spork.data.mutable :as mut]))
 
+(defrecord update-packet [update-time requested-by update-type request-time])
+
+(defprotocol IUpdates    
+  (get-updates [u update-type  t]   
+    "Return a list of all requested updates from the updatestore, where 
+     utype is a key for updates, and t is a time index.  Updates are represented
+     as update-packets.")
+  (last-update [u entity-name]   "Returns the last time the entity was updated, if ever.")
+  (request-update [u update-time requested-by update-type trequest]   
+    "Schedule an update for requestor, of type request, at")
+  (record-update  [u  ent t]   
+    "Returns an update store that reflects the  sucessful updating of an entity x, 
+     with an updated last known update time for the entity.."))
+
+
+(declare ->mupdatestore)
 
 ;;Note -> assoc is killing us here.
 ;;Updates are called pretty frequently, so we need to be able to bulk 
@@ -13,6 +30,7 @@
 ;;The map-based version is great and all, but we probably want 
 ;;a transient version to handle tons of updates.
 
+
 ;All the update manager does is listen for update request traffic.
 ;It records the time of the update request, who made the request, and the future
 ;update. It's really just a nice way to decouple and centralize the updating 
@@ -22,23 +40,56 @@
 ;..and for debugging purposes. The simulation cannot progress without updates, 
 ;else every bit of state remains static. When we go to sample the state, we see
 ;no changes without updates.
-
 (defrecord updatestore [name         ;the name of the manager  
                         updates      ;a map of all scheduled updates, by time.
-                        lastupdate]) ;a map of the last update for each entity.
+                        lastupdate]  ;a map of the last update for
+                                     ;each entity.
+  
+ IUpdates       
+ (get-updates [u update-type  t] (gen/get2 updates update-type t {}))
+ (last-update [u entity-name]    (get lastupdate entity-name))
+ (request-update [u update-time requested-by update-type trequest]   
+   (let [pending-updates (gen/get2 updates update-type update-time {})] 
+     (updatestore. name 
+                   (->> (update-packet. update-time requested-by update-type trequest)
+                        (assoc pending-updates requested-by)
+                        (gen/deep-assoc updates [update-type update-time]))
+                   lastupdate)))                                              
+ (record-update  [u  ent t]   
+   (if-let [tprev (get lastupdate ent t)]
+     (let [tnext (if (> t tprev) t tprev)]  
+       (updatestore. name updates (assoc lastupdate ent tnext)))
+     (updatestore. name updates   (assoc lastupdate ent t))))
+ clojure.lang.IEditableCollection 
+ (asTransient [coll] (->mupdatestore name (gen/transient2 updates)
+                                          (transient lastupdate))))
 
-;; (defn ->update-packet
-;;   "Creates an update packet that contains the time of the future update,
-;;    the entity that requested the update, the type of the update, and the 
-;;    time of the request."
-;;   [update-time requested-by update-type request-time]
-;;   {:update-time update-time 
-;;    :requested-by requested-by
-;;    :update-type update-type 
-;;    :request-time request-time})
+(mut/defmutable mupdatestore [name         ;the name of the manager  
+                              updates      ;a map of all scheduled updates, by time.
+                              lastupdate]  ;a map of the last update for
+                                           ;each entity.
+  
+ IUpdates       
+ (get-updates [u update-type  t] (gen/get2 updates update-type t (transient {})))
+ (last-update [u entity-name]    (get lastupdate entity-name))
+ (request-update [u update-time requested-by update-type trequest]   
+   (let [pending-updates (gen/get2 updates update-type update-time (transient {}))] 
+     (do (set! updates 
+               (->> (update-packet. update-time requested-by update-type trequest)
+                    (assoc! pending-updates requested-by)
+                    (gen/assoc2! updates update-type update-time))) 
+         u)))
+ (record-update  [u  ent t]   
+   (if-let [tprev (get lastupdate ent t)]
+     (let [tnext (if (> t tprev) t tprev)]  
+       (do (set! lastupdate (assoc! lastupdate ent tnext)) u))
+     (do (set! lastupdate   (assoc! lastupdate ent t)))))
+ ;; clojure.lang.ITransientCollection
+ ;; (conj [coll e] (throw (Exception. "unsupported op")))
+ ;; (persistent [coll] (updatestore. name (gen/persistent2! updates) (persistent! lastupdate)))
+ )
 
-(defrecord update-packet [update-time requested-by update-type request-time])
-
+;;#Operations on stores and packets...
 (defn elapsed 
   "Computes the time elapsed since the last update for this packet."
   ([^update-packet upacket tnow last-update]
@@ -48,39 +99,6 @@
   ([update-packet tnow] (elapsed update-packet tnow 0)))
 
 (def empty-updatestore (->updatestore :UpdateStore {} {}))
-(defn get-updates
-  "Return a list of all requested updates from the updatestore, where 
-   utype is a key for updates, and t is a time index.  Updates are represented
-   as update-packets."
-  [^updatestore store update-type  t]
-  (get-in (.updates store) [update-type t] {}))
-
-(defn last-update
-  "Returns the last time the entity was updated, if ever."
-  [^updatestore store entity-name]
-  (get (.lastupdate store) entity-name))
-
-(defn request-update
-  "Schedule an update for requestor, of type request, at"
-  [^updatestore store update-time requested-by update-type trequest]
-  (let [updates (.updates store)
-        pending-updates (get-in updates [update-type update-time] {})] 
-    (->> (update-packet. update-time requested-by update-type trequest)
-         (assoc pending-updates requested-by)
-         (gen/deep-assoc updates [update-type update-time])
-         (.assoc store :updates))))
-
-(defn record-update
-  "Returns an update store that reflects the  sucessful updating of an entity x, 
-   with an updated last known update time for the entity.."
-  [^updatestore store ent t]
-  (let [lastupdate (.lastupdate store)]
-    (if (contains? lastupdate ent)
-      (let [tprev (get lastupdate ent t)
-            tnext (if (> t tprev) t tprev)]  
-        (->> tnext
-             (assoc lastupdate ent)
-             (.assoc store :lastupdate))))))
 
 ;Most managers will need a trigger function... 
 ;We need to find a way to establish "event trigger" behavior for these guys...
@@ -129,3 +147,27 @@
 ;  (add-listener source (:name ustore) ustore :demand-update))
 
 
+
+;;deprecated
+
+;; (defn request-update
+;;   "Schedule an update for requestor, of type request, at"
+;;   [^updatestore store update-time requested-by update-type trequest]
+;;   (let [updates (.updates store)
+;;         pending-updates (get-in updates [update-type update-time] {})] 
+;;     (->> (update-packet. update-time requested-by update-type trequest)
+;;          (assoc pending-updates requested-by)
+;;          (gen/deep-assoc updates [update-type update-time])
+;;          (.assoc store :updates))))
+
+;; (defn record-update
+;;   "Returns an update store that reflects the  sucessful updating of an entity x, 
+;;    with an updated last known update time for the entity.."
+;;   [^updatestore store ent t]
+;;   (let [lastupdate (.lastupdate store)]
+;;     (if (contains? lastupdate ent)
+;;       (let [tprev (get lastupdate ent t)
+;;             tnext (if (> t tprev) t tprev)]  
+;;         (->> tnext
+;;              (assoc lastupdate ent)
+;;              (.assoc store :lastupdate))))))
