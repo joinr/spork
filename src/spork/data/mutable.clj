@@ -238,7 +238,6 @@
 (defn ^ArrayList  add-list   [^ArrayList l obj]  (doto l  (.add obj)))
 (defn ^ArrayDeque add-q      [^ArrayDeque q obj]  (doto q (.add obj)))
 
-
 (defn ^PriorityQueue make-pq [] (PriorityQueue. 11 entry-comparer))
 (defn ^PriorityQueue pq [xs] 
   (reduce (fn [^PriorityQueue acc x]   
