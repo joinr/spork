@@ -266,16 +266,27 @@
 (defprotocol IMutableContainer)
 
 
-;;Defines a mutable container.
+;;Defines a mutable container.  Ueser may supply their own
+;;implementations of persistent, deref, conj, and without in the
+;;specs.
 (defmacro defmutable [name fields & specs]
   (let [flds        (mapv (fn [sym] (vary-meta (symbol sym) merge {:unsynchronized-mutable true})) fields)
         fld-hints   (zipmap flds (map (comp :tag meta) flds))
         keyfields   (mapv keyword fields)
         field-symbs (map (fn [sym] (vary-meta sym dissoc :tag)) fields)
         the-value   (gensym "the-value")
-        setters (flatten-bindings (map (fn [s] [(keyword s) (field-setter s fld-hints the-value)]) flds))
-        getters (flatten-bindings (map (fn [s] [(keyword s) s]) field-symbs))
-        fieldmap    (zipmap keyfields field-symbs)]
+        setters     (flatten-bindings (map (fn [s] [(keyword s) (field-setter s fld-hints the-value)]) flds))
+        getters     (flatten-bindings (map (fn [s] [(keyword s) s]) field-symbs))
+        fieldmap    (zipmap keyfields field-symbs)
+        user-supplied  (reduce (fn [acc symb]
+                                 (if (coll? symb)
+                                   (case (str (first symb)) 
+                                     "persistent" (conj acc :persistent)
+                                     "deref"      (conj acc :deref)
+                                     "conj"       (conj acc :conj)
+                                     "without"    (conj acc :without)
+                                     acc)
+                                   acc))  #{} specs)]
     `(deftype ~name ~flds 
          ~@specs
          spork.data.mutable.IMutableContainer
@@ -293,15 +304,19 @@
                  ~@setters
                  (throw (Error. (str "Invalid field: " k#))))                                      
                this#))  
-         (~'conj [this# e#]    
-           (let [[k# v#] e#]      
-             (.assoc this# k# v#)))  
-         (~'without [this# k#]    
-           (throw (Error. (str "Cannot dissoc from a mutable container: " k#))))      
-         (~'persistent [this#]    
-           ~fieldmap)
-         clojure.lang.IDeref
-         (~'deref [this#] ~fieldmap))))
+         ~@(when (not (contains? user-supplied :conj))
+               `((~'conj [this# e#]    
+                         (let [[k# v#] e#]      
+                           (.assoc this# k# v#)))))  
+         ~@(when (not (contains? user-supplied :without))
+               `((~'without [this# k#]    
+                    (throw (Error. (str "Cannot dissoc from a mutable container: " k#))))))       
+         ~@(when (not (contains? user-supplied :persistent))
+               `((~'persistent [this#]    
+                               ~fieldmap)))
+         ~@(when (not (contains? user-supplied :deref))
+               `(clojure.lang.IDeref                 
+                 (~'deref [this#] ~fieldmap))))))
 
 (deftype mutlist [^java.util.ArrayList m] 
   clojure.lang.ITransientVector  
