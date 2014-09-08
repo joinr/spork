@@ -58,7 +58,8 @@
                     (disj times tnext)
                     times)))
        (throw (Exception. "No items left in the agenda!"))))    
-  (first-event [a] (sim/first-event schedule)))
+  (first-event [a] (sim/first-event schedule))
+  (nth-event [a n] (sim/nth-event schedule n)))
 
 (def empty-agenda (->agenda nil nil nil 0 #{}))
 

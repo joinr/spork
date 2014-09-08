@@ -93,6 +93,7 @@
                                     updater propogator state))                                 
   (drop-event  [ctx] (simcontext. (sim/drop-event scheduler) updater propogator state))
   (first-event [ctx] (sim/first-event scheduler))
+  (nth-event [ctx n] (sim/nth-event scheduler n))
   store/IEntityStore
   (add-entry      [db id domain data] 
     (simcontext. scheduler updater propogator 
@@ -175,6 +176,7 @@
   (add-event   [ctx e] (do (set! scheduler (sim/add-event scheduler e)) ctx))                                 
   (drop-event  [ctx] (do (set! scheduler (sim/drop-event scheduler)) ctx))
   (first-event [ctx] (sim/first-event scheduler))
+  (nth-event [ctx n] (sim/nth-event scheduler n))
   store/IEntityStore
   (add-entry      [db id domain data] 
     (do (set! state  (store/add-entry state id domain data)) db))
