@@ -3,7 +3,9 @@
 ;The agenda is drawn from Abelson and Sussman's Structure and Interpretation of
 ;Computer Programs (SICP), chapter 3 circuit simulator.
 (ns spork.sim.agenda
-  (:require [spork.sim [data :as sim]]))
+;  (:refer-clojure :exclude [contains?])
+  (:require [spork.sim [data :as sim]]
+            [clojure.core [reducers :as r]]))
 
 ;Defined a simple protocol for agendas.  The operations on schedules are 
 ;similar to Abelson and Sussman's agenda from Structure and Interpretation of 
@@ -24,6 +26,13 @@
     (cond (or (= tf :inf) (nil? tf)) true
           (<= t tf) true 
           :else false)))
+
+;;Quick patch to allow contains? to work with transients.
+;; (defn- contains? [coll k]
+;;   (if (instance? clojure.lang.PersistentHashSet$TransientHashSet coll)
+;;     (.contains ^clojure.lang.PersistentHashSet$TransientHashSet coll k)
+;;     (clojure.core/contains? coll k)))
+  
           
 (defrecord agenda [tprev tfinal schedule item-count times]
   IAgenda 
@@ -35,12 +44,12 @@
   (add-times [a ts] 
     (let [itms (atom item-count)
           [nsched nt i] (reduce (fn [[sched knowns i :as acc] t]
-                                  (if (contains? knowns t) acc
+                                  (if (knowns t) acc
                                       [(sim/add-event sched (sim/->simple-event :time  t))
-                                       (conj knowns t)
+                                       (conj! knowns t)
                                        (inc i)]))
-                              [schedule times item-count]  ts)]
-      (agenda. tprev tfinal nsched  i nt)))
+                              [schedule (transient times) item-count]  (r/filter #(not (contains? times %)) ts))]
+      (agenda. tprev tfinal nsched  i (persistent! nt))))
   (get-times [a] times)
   spork.sim.data.IEventSeq 
   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  

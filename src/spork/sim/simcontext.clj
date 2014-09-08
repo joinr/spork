@@ -59,6 +59,18 @@
            (sim/first-event)
            (sim/event-type)))
 
+(defprotocol IUpdateable
+  (add-update [ctx tupdate requested-by request-type]   
+    "Public API for accounting for update requests, which consist of a time 
+     to update a specific entity in the simulation, and a form of request.  No
+      additional data is passed (although I may change that in future...)")
+  (add-updates [ctx xs]   
+    "Allows user to request multiple updates, represented as 
+     [update-time request-by request-type] vectors."))
+
+
+
+
 ;;Simulation Context
 ;;==================
 ;;The simcontext is a container for all the information we need to 
@@ -132,6 +144,21 @@
   (get-transition [ctx] simnet/default-transition)
   (get-state [ctx]      state)
   (get-net   [ctx]      propogator)
+  IUpdateable
+  (add-update [ctx tupdate requested-by request-type]   
+    (let [t    (or  (sim/current-time scheduler) 0)]
+      (simcontext.  (agenda/add-time scheduler tupdate)
+                    (updates/request-update updater tupdate requested-by request-type t)                    
+                    propogator
+                    state)))
+  (add-updates [ctx xs]   
+     (let [t    (or  (sim/current-time scheduler) 0)]
+       (simcontext. (agenda/add-times scheduler xs)
+                    (reduce (fn [acc [tupdate by type]] 
+                              (updates/request-update acc tupdate by type t))
+                            (transient updater)  xs)
+                    propogator
+                    state)))
   clojure.lang.IEditableCollection ;WIP
   (asTransient [coll] (->msimcontext scheduler ;supported by agenda.  
                                      (transient updater) ;a weak agenda with some special state, tracks previous updates. 
@@ -198,18 +225,33 @@
      (simcontext. scheduler ;supported by agenda.  
                   (persistent! updater) ;a weak agenda with some special state, tracks previous updates. 
                   propogator  ;event propogation, represented by a propogation network. 
-                  state)))
+                  state))
+  IUpdateable
+  (add-update [ctx tupdate requested-by request-type]   
+    (let [t    (or  (sim/current-time scheduler) 0)]
+      (do (set! scheduler  (agenda/add-time scheduler tupdate))
+          (set! updater    (updates/request-update updater tupdate requested-by request-type t))
+          ctx)))
+  (add-updates [ctx xs]   
+     (let [t    (or  (sim/current-time scheduler) 0)] 
+       (do (set! scheduler (agenda/add-times scheduler xs))
+           (set! updater  (reduce (fn [acc [tupdate by type]] 
+                                    (updates/request-update acc tupdate by type t))
+                                   updater  xs))
+           ctx))))
 
-(defmacro updating 
+
+
+
+(defmacro transiently 
   "Establish a transient binding to the context, returning a persistent call to to the binding after 
    evaluating expr.  This is currently used for allowing transient updates, since that 
    seems to be the most apparent hotspot in the simulation context.  I may extend this in the future 
    to more general transient enroachment, culminating with a call to (transient ) on the ctx."
   [[bind ctx] & expr]
-  `(let [updates# (transient (:updater ~ctx))
-         ctx# (assoc ~ctx :updater updates#)]
+  `(let [~bind (transient ~ctx)]
      (do ~@expr
-         (assoc ~ctx :updater (persistent! updates#)))))
+         (persistent! ~bind))))
 
 (defmacro update-field [ctx field f & args]
   (let [getter (if (keyword? field) (symbol (str "." (subs (str field) 1))))
@@ -312,43 +354,6 @@
        (add-time tfinal)
        (set-final-time tfinal)))
 
-;;We actually did NOT trigger an event before.... I think we should go
-;;back to that.  Just directly modify the updater.  Probably much more
-;;efficient to do this, since triggering events will introduce
-;;overheads; there are lots of times we'll have updates (particularly
-;;supply updates).
-(defn request-update
-  "Public API for accounting for update requests, which consist of a time 
-   to update a specific entity in the simulation, and a form of request.  No
-   additional data is passed (although I may change that in future...)"
-  [tupdate requested-by request-type ^simcontext ctx]
-  (let [t    (or  (current-time ctx) 0)]
-    (-> ^simcontext (add-time tupdate ctx)
-        (update-field :updater 
-           updates/request-update tupdate requested-by request-type t))))
-
-;; (defn request-update!
-;;   "Public API for accounting for update requests, which consist of a time 
-;;    to update a specific entity in the simulation, and a form of request.  No
-;;    additional data is passed (although I may change that in future...)"
-;;   [tupdate requested-by request-type ^simcontext ctx]
-;;   (let [t    (or  (current-time ctx) 0)]
-;;     (-> ^simcontext (add-time tupdate ctx)
-;;         (update-field :updater 
-;;            updates/request-update tupdate requested-by request-type t))))
-
-(defn request-updates 
-  "Allows user to request multiple updates, represented as 
-   [update-time request-by request-type] vectors."
-  [xs ^simcontext ctx]
-  (let [c      (atom ctx)
-        t      (or (current-time ctx) 0)
-        ustore (reduce (fn [acc [tupdate by type]] 
-                         (do (swap! c #(add-time tupdate %))
-                             (updates/request-update acc tupdate by type t)))
-                       (.updater ctx)
-                       xs)]
-    (.assoc ^simcontext @c :updater ustore)))
 
 ;; (defn request-update
 ;;   "Public API for accounting for update requests, which consist of a time 
@@ -362,6 +367,27 @@
 ;;                    :trequest t}]
 ;;     (trigger-event  (sim/->simple-event :update-request t req-data)
 ;;                     (add-time tupdate ctx))))
+
+;;We actually did NOT trigger an event before.... I think we should go
+;;back to that.  Just directly modify the updater.  Probably much more
+;;efficient to do this, since triggering events will introduce
+;;overheads; there are lots of times we'll have updates (particularly
+;;supply updates).
+
+
+;; Public API for accounting for update requests, which consist of a time 
+;; to update a specific entity in the simulation, and a form of request.  No
+;; additional data is passed (although I may change that in future...)
+(definline request-update
+  [tupdate requested-by request-type ctx]
+  `(add-update ~ctx ~tupdate ~requested-by ~request-type))
+ 
+;;Allows user to request multiple updates, represented as 
+;;[update-time request-by request-type] vectors.
+(definline
+  request-updates 
+  [xs  ctx]
+ `(add-updates ~ctx ~xs))
 
 (defn advance-time 
   "Pop the next event off of the simulation context.  If the simulation context

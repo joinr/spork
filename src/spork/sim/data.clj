@@ -1,7 +1,7 @@
 (ns spork.sim.data
   (:use [spork.util.datetime])
   (:require  [spork.util.reducers]
-             [clojure.core.reducers :as r]))
+             [clojure.core [reducers :as r]]))
 
 (defprotocol IEvent
   (event-type [e] 
@@ -225,7 +225,6 @@
   (nth-event   [ecoll n] "Return the nth event in the seq"))
 (defprotocol IChunkedEventSeq
   (event-chunks [ecoll] "returns a lazy seq of chunks of ordered events."))
-
 
 (extend-type clojure.lang.PersistentTreeMap
   IEventSeq
