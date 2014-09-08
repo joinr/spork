@@ -26,13 +26,6 @@
     (cond (or (= tf :inf) (nil? tf)) true
           (<= t tf) true 
           :else false)))
-
-;;Quick patch to allow contains? to work with transients.
-;; (defn- contains? [coll k]
-;;   (if (instance? clojure.lang.PersistentHashSet$TransientHashSet coll)
-;;     (.contains ^clojure.lang.PersistentHashSet$TransientHashSet coll k)
-;;     (clojure.core/contains? coll k)))
-  
           
 (defrecord agenda [tprev tfinal schedule item-count times]
   IAgenda 

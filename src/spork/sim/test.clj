@@ -1,5 +1,34 @@
+;;A set of tests and examples for the simcontext API.
 (ns spork.sim.test
-  (:use [spork.sim.events]))
+  (:use [spork.sim.simcontext])
+  (:require [spork.util.reducers]
+            [clojure.core.reducers :as r]))
+
+(defn lots-of-events [n]
+  (time (dotimes [i 1]
+          (reduce (fn [ctx n] (request-update n :some-entity :generic ctx))
+                  empty-context
+                  (r/range n)))))
+
+(defn lots-of-events! [n]  
+  (time (dotimes [i 1]
+          (request-updates (r/map (fn [n] [n :some-entity :blah]) (r/range n))
+                           empty-context))))
+
+(defn lots-of-events!! [n]    
+  (time (dotimes [i 1]          
+          (request-updates (r/map (fn [n] [n :some-entity :blah]) (r/range n))
+                           (transient empty-context)))))
+                                  
+(defn lots-of-events!!! [n]
+  (time (dotimes [i 1]
+          (reduce (fn [ctx n] (request-update n :some-entity :generic ctx))
+                  (transient empty-context)
+                  (r/range n)))))
+
+
+;;This is an old testing scheme.  Port it later
+(comment 
 
 (defn get-line [] (deref (future (read-line))))
 (defn ucase [s] (.toUpperCase s))
@@ -111,3 +140,4 @@
                    [(event-stepper #((comp view-state nm ui) %) ec) @eventlog])))
                                         ;(event-stepper ui ec))))
   ([] (greeter-frp (add-event emptycontext (->event :getinput :keyboard)))))
+)
