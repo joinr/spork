@@ -48,6 +48,7 @@
   (:require [spork.sim [data :as sim] [agenda :as agenda] [updates :as updates]]
             [spork.sim.pure     [network :as simnet]]
             [spork.entitysystem [store :as store]]
+            [spork.data [mutable :as mut]]
             [spork.util [metaprogramming :as util]
                         [general :as gen]]))
 ;probably need to move from marathon.updates to something in the sim namespace.
@@ -69,6 +70,8 @@
 ;;Also, we could spin this out into a macro, to handle all the
 ;;different kinds of simulation definitions, if say, we wanted 
 ;;more fields than the defaults.  We'll see...
+(declare ->msimcontext)
+
 (defrecord simcontext 
   [^spork.sim.agenda.agenda
    scheduler ;supported by agenda.  
@@ -128,7 +131,85 @@
   (get-event  [ctx]     (throw (Error. "get-event unavailable on simcontext")))
   (get-transition [ctx] simnet/default-transition)
   (get-state [ctx]      state)
-  (get-net   [ctx]      propogator))
+  (get-net   [ctx]      propogator)
+  clojure.lang.IEditableCollection ;WIP
+  (asTransient [coll] (->msimcontext scheduler ;supported by agenda.  
+                                     (transient updater) ;a weak agenda with some special state, tracks previous updates. 
+                                     propogator  ;event propogation, represented by a propogation network. 
+                                     state)))
+
+;;A mutable simulation context.  Currently almost identical to the
+;;persistent version.
+(mut/defmutable msimcontext 
+  [^spork.sim.agenda.agenda
+   scheduler ;supported by agenda.  
+   updater ;a weak agenda with some special state, tracks previous updates. 
+   propogator  ;event propogation, represented by a propogation network. 
+   state ;;typically an entity store...but not necessarily.
+   ]
+  sim/IEventSeq
+  (add-event   [ctx e] (do (set! scheduler (sim/add-event scheduler e)) ctx))                                 
+  (drop-event  [ctx] (do (set! scheduler (sim/drop-event scheduler)) ctx))
+  (first-event [ctx] (sim/first-event scheduler))
+  store/IEntityStore
+  (add-entry      [db id domain data] 
+    (do (set! state  (store/add-entry state id domain data)) db))
+  (drop-entry     [db id domain] 
+    (do (set! state  (store/drop-entry state id domain)) db))
+  (get-entry      [db id domain] (store/get-entry state id domain))
+  (entities       [db]     (store/entities state))
+  (domains        [db]     (store/domains state))
+  (domains-of     [db id]  (store/domains-of state id))
+  (components-of  [db id]  (store/components-of state id))
+  (get-entity     [db id]  (store/get-entity state id))
+  (conj-entity    [db id components]                   
+    (do (set! state  (store/conj-entity state id components)) db))
+  simnet/IEventSystem
+  (get-events [ctx]  (simnet/get-event    propogator))
+  (get-clients [ctx] (simnet/get-clients  propogator))
+  (get-event-clients [obs event-type]  (simnet/get-event-clients propogator event-type))
+  (get-client-events [obs client-name] (simnet/get-client-events propogator client-name))
+  (unsubscribe  [obs client-name event-type] 
+    (do (set! propogator (simnet/unsubscribe propogator client-name event-type)) obs))
+  (subscribe [obs client-name handler event-type] 
+    (do (set! propogator (simnet/subscribe propogator client-name handler event-type)) obs))
+  simnet/IEventContext
+  (handle     [ctx e] 
+    (let [type               (sim/event-type e)
+          client-handler-map (simnet/get-event-clients propogator type)]
+      (let [res   (simnet/serial-propogator 
+                   (-> simnet/default-context 
+                       (simnet/set-event e)
+                       (simnet/set-net propogator)
+                       (simnet/set-state ctx)) 
+                   (simnet/get-event-clients propogator :all)
+                   client-handler-map)
+            nxtsim   (simnet/get-state res)]
+        (assoc nxtsim :propogator (simnet/get-net res)))))
+  (set-event  [ctx e]        (throw (Error. "set-event unavailable on simcontext")))
+  (set-transition [ctx txn]  (throw (Error. "set-transition unavailable on simcontext")))
+  (set-state  [ctx s]   (throw (Error. "set-state unavailable on simcontext")))
+  (set-net    [ctx n]   (throw (Error. "set-net unavailable on simcontext")))
+  (get-event  [ctx]     (throw (Error. "get-event unavailable on simcontext")))
+  (get-transition [ctx] simnet/default-transition)
+  (get-state [ctx]      state)
+  (get-net   [ctx]      propogator) 
+  (persistent [coll] 
+     (simcontext. scheduler ;supported by agenda.  
+                  (persistent! updater) ;a weak agenda with some special state, tracks previous updates. 
+                  propogator  ;event propogation, represented by a propogation network. 
+                  state)))
+
+(defmacro updating 
+  "Establish a transient binding to the context, returning a persistent call to to the binding after 
+   evaluating expr.  This is currently used for allowing transient updates, since that 
+   seems to be the most apparent hotspot in the simulation context.  I may extend this in the future 
+   to more general transient enroachment, culminating with a call to (transient ) on the ctx."
+  [[bind ctx] & expr]
+  `(let [updates# (transient (:updater ~ctx))
+         ctx# (assoc ~ctx :updater updates#)]
+     (do ~@expr
+         (assoc ~ctx :updater (persistent! updates#)))))
 
 (defmacro update-field [ctx field f & args]
   (let [getter (if (keyword? field) (symbol (str "." (subs (str field) 1))))

@@ -18,7 +18,6 @@
     "Returns an update store that reflects the  sucessful updating of an entity x, 
      with an updated last known update time for the entity.."))
 
-
 (declare ->mupdatestore)
 
 ;;Note -> assoc is killing us here.
@@ -29,6 +28,10 @@
 
 ;;The map-based version is great and all, but we probably want 
 ;;a transient version to handle tons of updates.
+;;Also, there are other possible representations.  We may look at 
+;;different ways to organize updates in memory....for now 
+;;the performance with the transient version is sufficient.  More 
+;;profiling is needed to justify moving away from it.
 
 
 ;All the update manager does is listen for update request traffic.
@@ -64,6 +67,10 @@
  (asTransient [coll] (->mupdatestore name (gen/transient2 updates)
                                           (transient lastupdate))))
 
+;;Transient Version for fast/batch updates.
+;;Note: we can replace this with hashmaps if we want....
+;;That may be the preferable way, allow some dynamic var that holds
+;;onto the mutation strategy.
 (mut/defmutable mupdatestore [name         ;the name of the manager  
                               updates      ;a map of all scheduled updates, by time.
                               lastupdate]  ;a map of the last update for
@@ -84,10 +91,8 @@
      (let [tnext (if (> t tprev) t tprev)]  
        (do (set! lastupdate (assoc! lastupdate ent tnext)) u))
      (do (set! lastupdate   (assoc! lastupdate ent t)))))
- ;; clojure.lang.ITransientCollection
- ;; (conj [coll e] (throw (Exception. "unsupported op")))
- ;; (persistent [coll] (updatestore. name (gen/persistent2! updates) (persistent! lastupdate)))
- )
+ (conj       [coll e] (throw (Exception. "unsupported op")))
+ (persistent [coll] (updatestore. name (gen/persistent2! updates) (persistent! lastupdate))))
 
 ;;#Operations on stores and packets...
 (defn elapsed 
@@ -145,8 +150,6 @@
 ;  [store source] 
 ;  (add-listener source (:name ustore) ustore :supply-update)
 ;  (add-listener source (:name ustore) ustore :demand-update))
-
-
 
 ;;deprecated
 
