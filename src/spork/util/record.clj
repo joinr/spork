@@ -168,7 +168,10 @@
    which takes keys as optional arguements, one for each field.  It might be 
    nice to include type hinting and all that...but i'm not there yet..."
   [name [& fields] & opts+specs]
-  (let [rawfields (into [] (map (fn [x] (if (coll? x) (first x) x)) fields))
+  (let [hinted-fields (second &form) 
+        rawfields     (into [] (map (fn [x] 
+                                      (let [m (meta x)]
+                                        (with-meta (if (coll? x) (first x)  x) m))) fields))
         default-constructor (make-constructor name 
                                               (parse-fields fields) 
                                               rawfields)]
