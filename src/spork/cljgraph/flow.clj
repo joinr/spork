@@ -12,7 +12,6 @@
                                         persistent2! hinted-get2 kv-reduce2 kv-map2 memo-fn]]
             [spork.util.metaprogramming :refer [id tagged binding-keys key->symb]]))
 
-
 ;;TODO
 ;;====
 ;;We should define combinators for networks.  In other words, they
@@ -35,7 +34,6 @@
 
 ;;Notes on performance implications of using protocols and such...
 ;;
-
 ;;Network Protocols
 ;;=================
 
@@ -82,10 +80,16 @@
   (scale [n x] (scale-func x))
   (unscale [n x] (unscale-func x)))
 
-(defrecord variable-scaled-flow [scalar]
+;;allow us to scale the flows by a numerical value.
+(defn variable-scale [var] 
+  (reify spork.cljgraph.flow/IScaling
+    (scale   [sc n] (quot n @var))
+    (unscale [sc n] (*    n @var))))
+
+(defrecord variable-scaled-flow [atm]
   IScaling
-  (scale [n x]   (quot x @scalar))
-  (unscale [n x] (* x @scalar)))
+  (scale [n x]   (quot x @atm))
+  (unscale [n x] (* x @atm)))
 
 (defn scaling? [x] (satisfies? IScaling x))
 (defn as-scale [x] 
@@ -580,6 +584,8 @@
   [f init net]
   (reduce f init (einfos net)))
 
+
+
 (defn edge-map
   [f net]
   (edge-reduce 
@@ -613,7 +619,29 @@
                               acc# (get-children net from#))))))))
   ([startnode f net] (edge-reduce-from startnode f net  spork.cljgraph.flow/-flow-sinks net)))
 
-
+;;Version pulled from stoke...is now edge-reduce-from
+;;we can probably replace these with stuff from core/reducers fyi
+;; (defmacro edge-reduce [net node f & {:keys [direction] :or {direction :forward}}]
+;;   (let [dfunc (case direction :forward  'spork.cljgraph.flow/-flow-sinks 
+;;                               :backward 'spork.cljgraph.flow/-flow-sources
+;;                 (throw (Exception. "Unknown edge direction in edge-reduce, 
+;;                                     expected :forward or :backward")))]
+;;   `(let [visited# (atom (transient {}))
+;;          visited?# (fn [from# to#] (spork.util.general/get2   @visited# from# to# nil))
+;;          visit!#   (fn [from# to#] (reset! visited# (spork.util.general/assoc2! @visited# from# to# 1)))]
+;;      (loop [fringe#  #{~node}         
+;;             acc#        ~net]
+;;        (if (zero? (.count fringe#)) acc#
+;;            (let [from#    (first fringe#)
+;;                  parents# (reduce-kv (fn [acc# k# v#] (conj acc# k#)) #{} (~dfunc ~net from#))]
+;;              (recur (clojure.set/union (disj fringe# from#) parents#)
+;;                     (reduce (fn [inner-acc# to#] 
+;;                               (if (visited?# from# to#) 
+;;                                inner-acc#
+;;                                (let [~'_   (visit!# from# to#)
+;;                                      e#    (spork.cljgraph.flow/-edge-info inner-acc# to# from#)]
+;;                                  (~f inner-acc# e#))))
+;;                             acc# parents#))))))))
 
 (defn edge-map-from 
   ([startnode f get-children net]
@@ -624,6 +652,14 @@
               (spork.cljgraph.flow/-set-edge acc# res#))))
        net get-children net))
   ([startnode f net] (edge-map-from startnode f spork.cljgraph.flow/-flow-sinks net)))           
+
+;;From stoke...really is now edge-map-from
+;; (defmacro edge-map [net node f & {:keys [direction] :or {direction :forward}}] 
+;;   `(edge-reduce ~net ~node 
+;;       (fn [acc# edge#] 
+;;         (let [res# (~f edge#)] 
+;;           (if (identical? res# edge#) acc# (spork.cljgraph.flow/-set-edge acc# res#)))) 
+;;       :direction ~direction))
 
 
 (defn reset-flows [startnode net]
@@ -895,7 +931,7 @@
   (get-aug-path  [provider] aug-path )
   (get-path->edge-flows [provider] path->edge-flows))
 
-
+;;Original, app
 (defmacro flow-fn
   "Defines a flow computation across net, originating at from and ending at to.  
    Caller may supply flow options explicitly, or defer to the explicit 
@@ -935,6 +971,47 @@
                                              (:augmentations opts#))))))))
 
 
+;;Patched - in use in stoke....
+;; (defn flow-fn
+;;   "Defines a flow computation across net, originating at from and ending at to.  
+;;    Caller may supply flow options explicitly, or defer to the explicit 
+;;    *flow-options* dynamic binding, using  supporting macros ala with-flow-options 
+;;    or manual modification."
+;;   [{:keys [get-sinks get-sources get-edge get-direction neighborf weightf augmentations
+;;            forward-filter backward-filter state alter-flow unalter-flow] :as opts}]
+;;    (doseq [[k v] opts] (when (not= k :neighborf) (assert (not (nil? v)) (println [k :is :nil!]))))
+;;    `(let [neighborf# (fn ~(gensym "neighborf") [flow-info# v#]
+;;                        (general-flow-neighbors flow-info# v#
+;;                                                :get-sinks       ~get-sinks
+;;                                                :get-sources     ~get-sources
+;;                                                :forward-filter  ~forward-filter
+;;                                                :backward-filter ~backward-filter
+;;                                                :get-edge        ~get-edge))
+;;           traverse# (fn ~(gensym "traverse") [net# startnode# targetnode# startstate#] 
+;;                       (general-flow-traverse net# startnode# targetnode# startstate#
+;;                                              :weightf ~weightf   :neighborf neighborf#))
+;;           aug#     (fn ~(gensym "aug-path") [g# from# to#] (aug-path g# from# to# traverse# ~state))
+;;           flows#   (fn ~(gensym "path->edge-flows") [flow-info# p#]
+;;                      (path-walk flow-info# p#
+;;                                 :alter-flow    ~alter-flow
+;;                                 :unalter-flow  ~unalter-flow
+;;                                 :get-edge      ~get-edge
+;;                                 :get-direction ~get-direction))]
+;;       (with-meta 
+;;         (fn ~(gensym "flow") [net# from# to#] 
+;;           (~(case augmentations 
+;;               nil 'spork.cljgraph.flow/flowbody 
+;;               (true :recording) 'spork.cljgraph.flow/augbody 
+;;                 :debug 'spork.cljgraph.flow/augdebug 
+;;                 (throw (Exception. (str "unknown aug type" augmentations))))
+;;            net# from# to# aug# flows#))
+;;         {:opts ~opts
+;;          :neighborf neighborf#
+;;          :traverse  traverse#
+;;          :aug-path  aug#
+;;          :path->edge-flows flows#}))) 
+
+
 ;;High level API
 ;;==============
 ;;we define a set of options for building flow computations.
@@ -963,6 +1040,18 @@
                        "returning a map of active flow and the resulting network.")
    ;flow searchstate constructor.
    :state         empty-search})
+
+
+;;These were merged in, probably due to eval.  Since we're using fns, 
+;;wonder if we can ditch it..
+;; (def ^:dynamic *flow-options* 
+;;   (merge default-flow-opts      
+;;          {:get-sources 'spork.cljgraph.flow/-flow-sources, 
+;;           :get-sinks 'spork.cljgraph.flow/-flow-sinks, 
+;;           :weightf 'spork.cljgraph.flow/-flow-weight, 
+;;           :get-edge 'spork.cljgraph.flow/-edge-info, 
+;;           :get-direction 'spork.cljgraph.flow/-get-direction}))
+
 
 (def ^:dynamic *flow-options* default-flow-opts)
 (defmacro  with-flow-options
@@ -1031,6 +1120,8 @@
 
 (def edmonds-karp max-flow)
 
+;;Creates a function ala mincost-flow that 
+;;scales by the IScaling scalar.
 (defn ->scaled-mincost-flow [scalar]
   (with-scaled-flow scalar
      (flow-fn *flow-options*)))

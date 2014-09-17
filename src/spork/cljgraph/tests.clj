@@ -20,6 +20,7 @@
 (defn tree-arcs  [from xs] (map #(->tree-arc from %) xs))
 
 
+
 (def  the-tree (-> empty-ordered-graph
                   (add-arcs (tree-arcs :a [:b :c :d]))
                   (add-arcs (conj (tree-arcs :b [:e :f]) (->tree-arc :d :g)))
@@ -32,6 +33,9 @@
                              (->tree-arc :j :q)])
                   (add-arcs (tree-arcs :q  
                                        [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
+
+;;used for testing topsort
+(def tree-depths  (:distance (depth-walk the-tree :a)))
 
 (def unordered-tree 
   (-> empty-graph
@@ -46,6 +50,7 @@
                  (->tree-arc :j :q)])
       (add-arcs (tree-arcs :q  
                            [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
+
 
 (deftest graph-walks
   (is (= (ordered-nodes the-tree :a)
@@ -68,10 +73,8 @@
           #{:q :o :n :m :l :k :p} 
           #{:y :a2 :r :v :w :a3 :a1 :s :z :t :x :u}])
       "top-sort node clusters")
-  (is (= (topsort-nodes the-tree)
-          [:a :c :b :d :e :g :f :j :h :i :q :o :n :m :l 
-           :k :p :y :a2 :r :v :w :a3 :a1 :s :z :t :x :u])
-          "top-sort node ordering"))
+  (is (every? (fn [[l r]] (<= (get tree-depths l) (get tree-depths r))) (partition 2 1 (topsort-nodes the-tree)))
+      "top-sort node ordering"))
  
 (deftest tree-searching 
   (is (= (path? (depth-first-search the-tree :a :q)) 4)
@@ -158,11 +161,11 @@
       (conj-node "P")))  ;4th eq class, island
 
 (deftest decomposition-test
-  (is (= (map (comp sort nodes) (decompose class-graph))
-         '((["A" 0] ["B" 1] ["C" 2] ["D" 3] ["E" 4] ["F" 6] ["G" 5]) 
+  (is (= (sort-by count (map (comp sort nodes) (decompose class-graph)))
+         '((["P" 12]) 
            (["M" 10] ["N" 11]) 
            (["X" 9] ["Y" 7] ["Z" 8]) 
-           (["P" 12])))
+           (["A" 0] ["B" 1] ["C" 2] ["D" 3] ["E" 4] ["F" 6] ["G" 5])))
       "class-graph should decompose into 4 smaller graphs."))
 
 (deftest filter-test 
