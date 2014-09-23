@@ -307,14 +307,19 @@
     (-drop-field tbl fld )
     (drop-fields [fld] tbl)))
 
+
+;;Ran across a bug in clojure 1.6, where the type information was not
+;;equating an instance of column-table  as a column-table, and the 
+;;optimization in here passed through.  Produced invalid results...
 (defn table->map 
   "Extracts a map representation of a table, where keys are  
    fields, and values are column values. This is an unordered table." 
   [tbl]  
-  (if (and (map? tbl) (not= (type tbl) spork.util.table.column-table)) tbl 
+;  (if (and (map? tbl) (not= (type tbl) spork.util.table.column-table)) tbl 
     (let [cols (table-columns tbl)] 
       (reduce (fn [fldmap [j fld]]  (assoc fldmap fld (get cols j))) {}  
-              (reverse (map-indexed vector (table-fields tbl)))))))  
+              (reverse (map-indexed vector (table-fields tbl))))))
+;)  
  
 (defn map->table
   "Converts a map representation of a table into an ordered table."
