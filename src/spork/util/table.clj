@@ -679,7 +679,7 @@
 
 (defn row->string 
   ([separator r] (strlib/join separator r))
-  ([r] (row->string \tab)))
+  ([r]           (strlib/join \tab r)))
 
 (defn record->string [rec separator] (row->string (vals rec) separator)) 
 (defn table->string  
@@ -691,7 +691,7 @@
    row-separator::char||string" 
   [tbl & {:keys [stringify-fields? row-writer row-separator] 
           :or   {stringify-fields? true 
-                 row-writer (partial row->string \tab)
+                 row-writer  row->string
                  row-separator \newline}}]
   (let [xs (concat (if stringify-fields? 
                      [(vec (map field->string (table-fields tbl)))]  
