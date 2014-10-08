@@ -495,3 +495,19 @@
 (defmacro apply-4 [f args] `(apply-n 4 ~f ~args))
 (defmacro apply-5 [f args] `(apply-n 5 ~f ~args))
 (defmacro apply-6 [f args] `(apply-n 6 ~f ~args))
+
+
+(defmacro interval-loop 
+  "Debugging tool.  Allows caller to define an expression identical to loop, 
+   where bindings and body are identical to loop semantics.  expr will be 
+   evaluated every intervalms (in milliseconds), and two lexical vars *start*
+   and *now* will be bound and available in expr and the loop body."
+  [intervalms expr bindings & body]
+  `(let [~'*start* (System/currentTimeMillis)
+         prev# (atom ~'*start*)]
+       (loop [~@bindings]
+         (let [~'*now* (System/currentTimeMillis)] 
+           (if (>= (- ~'*now* @prev#) ~intervalms)
+             (do (reset! prev# ~'*now*)
+                 ~expr))
+           ~@body))))
