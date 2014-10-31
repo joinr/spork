@@ -73,8 +73,6 @@
     (sketch-image
      (->tracks (zipmap (map #(str "Track" %) (range n)) bad-data)))))
 
-
-
 (def event-colors 
   (zipmap 
    ["Tiny"

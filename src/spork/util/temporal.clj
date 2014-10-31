@@ -136,24 +136,60 @@
                                         :peak-function peak-function))] 
         [k (assoc peak-record :t t)]))))
 
+;;New functions for working on temporal data:
+(defn active-intervals 
+  [activities]
+  (filter (fn [[delta rs]]
+            (seq (:actives rs)))
+          (for [[[from ls] [to rs]] (partition 2 1 activities)]
+            [[from to]
+             rs])))
+
+(defn weighted-sample-by [sample-func actives]
+  (reduce (fn [{:keys [low hi n sum]} [[tprev t] {:keys [count actives]}]]
+            (let [delta (- t tprev)
+                  qs (map sample-func actives)
+                  total (reduce + qs)
+                  weighted (* total delta)]
+              {:low (min low total)
+               :hi  (max hi total)
+               :n   (+ n delta)
+               :sum (+ sum weighted)}))
+          {:low Long/MAX_VALUE :hi 0 :n 0 :sum 0} (active-intervals actives)))
+
+(defn weighted-stats [xs sample-func]
+  (let [{:keys [low hi n sum]} (weighted-sample-by sample-func xs)]
+    {:min low :max hi :average (float (/ sum n)) :n n :sum sum}))
+
+;;It'd probably be much nicer to build interval trees...
+;;Then we can answer queries over intervals..
+;;Interval trees are just like quad trees, with the exception that we
+;;only have one dimension.  So we don't have to split....
+
 
 ;;test data
-
 (comment
 (def recs [{:name :blah 
             :Start 10
             :src 1
-            :Duration 20}          
+            :Duration 20
+            :Quantity 2}          
            {:name :blee
             :Start 15 
             :src 1
-            :Duration 20}
+            :Duration 20
+            :Quantity 33}
            {:name :foo 
             :Start 23
             :src 2
-            :Duration 33}
+            :Duration 33
+            :Quantity 56}
            {:name :fizz
             :Start 2 
             :src 1
-            :Duration 4}])
+            :Duration 4
+            :Quantity 9}])
+
+;; (assert (= (weighted-stats (activity-profile recs) :Quantity)
+;;            {:min 2, :max 91, :average 51.68, :n 50, :sum 2584}))
 )

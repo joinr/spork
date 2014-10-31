@@ -182,7 +182,7 @@
   (let [tick-height (/ height 2.0)
         tick    (:source (make-sprite :translucent (->line color 0 0 0 tick-height) 0 0))
         sorted  (vec (sort data))
-        l       (first sorted)
+        l->ggscale       (first sorted)
         r       (last  sorted)
         lbounds (f/string-bounds (str l))
         lwidth  (:width lbounds)
@@ -211,7 +211,6 @@
                    (-> canv
                        (draw-image tick :translucent (* idx step) 0)
                        (centered-numb offset (* idx step))))))))))
-  
 
 (defn ->scaled-border [color width height step]
   [(translate height 0 (spork.sketch/->ticks color width height step)) 
@@ -368,6 +367,56 @@
   (let [xs (colored-rects w)]
     (delineate (into [] (take h (repeat xs))))))
     
+
+(defn ->hlines [color x1 y1 w n step]
+  (let [h (* step n)
+        b (space/bbox 0 0 w h)
+        hline (image/shape->img (->line color 0 1 w 1))
+        bound (inc n)]
+    (reify IShape
+      (shape-bounds [s] b)
+      (draw-shape [s c]
+        (loop [acc c 
+               idx 0]
+          (if (== idx bound) acc
+              (recur (draw-shape (translate 0 (* idx step) hline) acc)
+                     (unchecked-inc idx))))))))
+
+(defn ->vlines [color x1 y1 h n step]
+  (let [w (* step n)
+        b (space/bbox 0 0 w h)
+        vline (image/shape->img (->line color 1 0 1 h))
+        bound (inc n)]
+    (reify IShape
+      (shape-bounds [s] b)
+      (draw-shape [s c]
+        (loop [acc c 
+               idx 0]
+          (if (== idx bound) acc
+              (recur (draw-shape (translate (* idx step) 0  vline) acc)
+                     (unchecked-inc idx))))))))          
+
+(defn ->graph-paper [color w h & {:keys [n xscale yscale] :or {n 10}}]
+  (let [xscale (or xscale (/ w n))
+        yscale (or yscale (/ h n))
+        b (space/bbox 0 0 w h)
+        across (->hlines color 0 0 w n xscale)
+        up     (->vlines color 0 0 h n yscale)]
+    (reify IShape 
+      (shape-bounds [s]   b)
+      (draw-shape   [s c] 
+        (->> c 
+            (draw-shape across)
+            (draw-shape up))))))
+        
+
+          
+                   
+
+
+          
+
+
 
 ;;testing
 (comment 
