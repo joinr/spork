@@ -157,6 +157,7 @@
                :sum (+ sum weighted)}))
           {:low Long/MAX_VALUE :hi 0 :n 0 :sum 0} (active-intervals actives)))
 
+;;This is a bit of a hack for now, but not too bad.
 (defn weighted-stats [xs sample-func]
   (let [{:keys [low hi n sum]} (weighted-sample-by sample-func xs)]
     {:min low :max hi :average (float (/ sum n)) :n n :sum sum}))
