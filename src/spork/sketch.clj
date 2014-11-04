@@ -182,7 +182,7 @@
   (let [tick-height (/ height 2.0)
         tick    (:source (make-sprite :translucent (->line color 0 0 0 tick-height) 0 0))
         sorted  (vec (sort data))
-        l->ggscale       (first sorted)
+        l       (first sorted)
         r       (last  sorted)
         lbounds (f/string-bounds (str l))
         lwidth  (:width lbounds)

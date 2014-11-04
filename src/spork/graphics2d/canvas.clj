@@ -13,6 +13,12 @@
   (get-b     [c] "Returns an int encoding Blue, between 0-255.")
   (get-a     [c] "Returns an int encoding of alpha, between 0-255."))
 
+(defprotocol IGradient 
+  (left-color  [g])
+  (right-color [g])
+  (left-point [g])   
+  (right-point [g]))
+
 (defrecord color-rgba [^int r ^int g ^int b ^int a]
   IColor 
   (get-rgb [c] (+ (bit-shift-left r 16)
@@ -22,6 +28,13 @@
   (get-g [c] g)
   (get-b [c] b)
   (get-a [c] a))
+
+(defrecord color-gradient [lcolor rcolor lpoint rpoint]
+  IGradient 
+  (left-color  [g] lcolor)
+  (right-color [g] rcolor)
+  (left-point  [g] lpoint)    
+  (right-point [g] rpoint))
 
 ;;vectors are simple color containers.
 (extend-protocol IColor 

@@ -7,7 +7,7 @@
             [spork.protocols [spatial :as s]])
   (:import  [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
              FontMetrics GraphicsDevice GraphicsConfiguration Polygon Point 
-             Rectangle Shape Dimension Color Transparency Component Stroke]
+             Rectangle Shape Dimension Color Transparency Component Stroke GradientPaint]
             [java.awt.geom AffineTransform Point2D Rectangle2D Line2D]
             [java.awt.image BufferedImage ImageObserver]
             [javax.swing JFrame JComponent JPanel]
@@ -148,13 +148,14 @@
                       clr 
                       (throw (Exception. 
                          (str "Color " colorkey " does not exist!"))))
-                    (= (class colorkey) Color) 
+                    (identical? (class colorkey) Color) 
                        colorkey                     
                     (satisfies? IColor colorkey)
                       (get-gui-color (get-r colorkey)
                                      (get-g colorkey)
                                      (get-b colorkey)
                                      (get-a colorkey))
+                     (satisfies? IGradient colorkey) colorkey
                       :else (throw (Exception. 
                                      (str "Invalid color key: " colorkey)))))                    
   ([colorkey alpha] 
@@ -162,13 +163,21 @@
       (Color. (float r) (float g) (float b) (float alpha))))          
   ([^Float r ^Float g ^Float b] (Color. r g b))
   ([^Float r ^Float g ^Float b ^Float alpha] (Color. r g b alpha)))                  
+
+(extend-protocol  IGradient 
+  GradientPaint
+  (left-color  [g] (.getColor1 g))
+  (right-color [g] (.getColor2 g))
+  (left-point  [g] (.getPoint1 g))
+  (right-point [g] (.getPoint2 g)))
+
+(defn ^GradientPaint gradient-across 
+  ([x1 y1 clr1 x2 y2 clr2 cyclic?] (GradientPaint. x1 y1 (get-gui-color clr1) x2 y2 (get-gui-color clr2) cyclic?))
+  ([x1 y1 clr1 x2 y2 clr2] (GradientPaint. x1 y1 (get-gui-color clr1) x2 y2 (get-gui-color clr2))))
        
 (defn set-gui-color [^Graphics2D g color]
-  (do
-	  (cond (keyword? color) 
-         (.setColor g (get-gui-color color))))
-      (= (class? color) Color)
-          (.setColor g color))
+  (do (.setPaint g (get-gui-color color)) g))
+
 
 (defn get-current-color [^Graphics2D g] (.getColor g))
 ;(defn ^Graphics2D get-graphics-img [^BufferedImage img] (.getGraphics img))
@@ -228,7 +237,7 @@
       #(fill-circle % x y w h)))  
   (draw-string    [^Graphics2D g color font s x y]
     (with-color (get-gui-color color) g 
-      #(do (.drawString % (str s) (float x) (float y)) %)))  
+      #(do (.drawString ^Graphics2D % (str s) (float x) (float y)) %)))  
   (draw-image [^Graphics2D g img transparency x y]
     (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil))
   IStroked
