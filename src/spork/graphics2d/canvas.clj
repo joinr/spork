@@ -19,6 +19,41 @@
   (left-point [g])   
   (right-point [g]))
 
+(defrecord gradient [lcolor rcolor lpoint rpoint]
+  IGradient 
+  (left-color  [g] lcolor)
+  (right-color [g] rcolor)
+  (left-point  [g] lpoint)    
+  (right-point [g] rpoint))
+
+(defn gradient-right [c1 c2]
+  (fn [shp]
+    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+      (->gradient c1 c2 [x y] [(+ x width) y]))))
+
+(defn gradient-left [c1 c2]
+  (fn [shp]
+    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+      (->gradient c2 c1 [x y] [(+ x width) y]))))
+
+(defn gradient-down [c1 c2]
+  (fn [shp]
+    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+      (->gradient c1 c2 [x y] [x (+ y height)]))))
+
+(defn gradient-up [c1 c2]
+  (fn [shp]
+    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+      (->gradient c2 c1 [x y] [x (+ y height)]))))
+
+(defn color-by [f shp]
+  (let [grad (f shp)]
+    (assoc shp :color grad)))
+
+
+;;there are occasions where we want to specify a gradient based on the 
+;;shape bounds
+
 (defrecord color-rgba [^int r ^int g ^int b ^int a]
   IColor 
   (get-rgb [c] (+ (bit-shift-left r 16)
@@ -28,13 +63,6 @@
   (get-g [c] g)
   (get-b [c] b)
   (get-a [c] a))
-
-(defrecord color-gradient [lcolor rcolor lpoint rpoint]
-  IGradient 
-  (left-color  [g] lcolor)
-  (right-color [g] rcolor)
-  (left-point  [g] lpoint)    
-  (right-point [g] rpoint))
 
 ;;vectors are simple color containers.
 (extend-protocol IColor 

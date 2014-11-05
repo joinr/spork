@@ -128,6 +128,24 @@
      (assert (.exists tgt)) 
      (ImageIO/read tgt)))
 
+;;A better way is to exploit the paint interface, wrap our own
+;;protocol....
+
+(defprotocol IPaintable
+  (as-paint [p]))
+
+
+(defn get-gui-color 
+  ([colorkey] (if (satisfies? IPaintable colorkey)
+                (as-paint colorkey)
+                (throw (Exception. 
+                        (str "Not IPaintable :" colorkey)))))                    
+  ([colorkey alpha] 
+    (let [[r g b] (color->rgb  (get-gui-color colorkey))]
+      (Color. (float r) (float g) (float b) (float alpha))))          
+  ([^Float r ^Float g ^Float b] (Color. r g b))
+  ([^Float r ^Float g ^Float b ^Float alpha] (Color. r g b alpha)))
+
 ;Color wrappers.
 ;(defn color->rgb [^Color c]  [(.getRed c) (.getGreen c) (.getBlue c)])
 
@@ -141,31 +159,8 @@
         :magenta Color/MAGENTA :orange Color/ORANGE :pink Color/PINK
         :red Color/RED :white Color/WHITE :yellow Color/YELLOW}))
 
-;this is the dumb way to do it.
-(defn get-gui-color 
-  ([colorkey] (cond (keyword? colorkey) 
-                    (if-let [clr (get colormap colorkey)]
-                      clr 
-                      (throw (Exception. 
-                         (str "Color " colorkey " does not exist!"))))
-                    (identical? (class colorkey) Color) 
-                       colorkey                     
-                    (satisfies? IColor colorkey)
-                      (get-gui-color (get-r colorkey)
-                                     (get-g colorkey)
-                                     (get-b colorkey)
-                                     (get-a colorkey))
-                     (satisfies? IGradient colorkey) colorkey
-                      :else (throw (Exception. 
-                                     (str "Invalid color key: " colorkey)))))                    
-  ([colorkey alpha] 
-    (let [[r g b] (color->rgb  (get-gui-color colorkey))]
-      (Color. (float r) (float g) (float b) (float alpha))))          
-  ([^Float r ^Float g ^Float b] (Color. r g b))
-  ([^Float r ^Float g ^Float b ^Float alpha] (Color. r g b alpha)))                  
-
-(extend-protocol  IGradient 
-  GradientPaint
+(extend-type  GradientPaint
+  IGradient
   (left-color  [g] (.getColor1 g))
   (right-color [g] (.getColor2 g))
   (left-point  [g] (.getPoint1 g))
@@ -174,6 +169,51 @@
 (defn ^GradientPaint gradient-across 
   ([x1 y1 clr1 x2 y2 clr2 cyclic?] (GradientPaint. x1 y1 (get-gui-color clr1) x2 y2 (get-gui-color clr2) cyclic?))
   ([x1 y1 clr1 x2 y2 clr2] (GradientPaint. x1 y1 (get-gui-color clr1) x2 y2 (get-gui-color clr2))))
+
+
+(extend-protocol IPaintable 
+  Color 
+  (as-paint [c] c)
+  GradientPaint 
+  (as-paint [c] c)
+  spork.graphics2d.canvas.gradient 
+  (as-paint [c] (let [[x1 y1] (left-point c)
+                      [x2 y2] (right-point c)]
+                  (gradient-across x1 y1 (left-color c) x2 y2 (right-color c))))
+  clojure.lang.Keyword
+  (as-paint [k] (if-let [clr (get colormap k)]
+                  clr 
+                  (throw (Exception. 
+                          (str "Color " k " does not exist!")))))
+  spork.graphics2d.canvas.color-rgba
+  (as-paint [c] (Color. (.r c) (.g c) (.g c) (.a c))))  
+
+
+
+;this is the dumb way to do it.
+;; (defn get-gui-color 
+;;   ([colorkey] (cond (keyword? colorkey) 
+;;                     (if-let [clr (get colormap colorkey)]
+;;                       clr 
+;;                       (throw (Exception. 
+;;                          (str "Color " colorkey " does not exist!"))))
+;;                     (identical? (class colorkey) Color) 
+;;                        colorkey                     
+;;                     (satisfies? IColor colorkey)
+;;                       (get-gui-color (get-r colorkey)
+;;                                      (get-g colorkey)
+;;                                      (get-b colorkey)
+;;                                      (get-a colorkey))
+;;                      (satisfies? IGradient colorkey) colorkey
+;;                       :else (throw (Exception. 
+;;                                      (str "Invalid color key: " colorkey)))))                    
+;;   ([colorkey alpha] 
+;;     (let [[r g b] (color->rgb  (get-gui-color colorkey))]
+;;       (Color. (float r) (float g) (float b) (float alpha))))          
+;;   ([^Float r ^Float g ^Float b] (Color. r g b))
+;;   ([^Float r ^Float g ^Float b ^Float alpha] (Color. r g b alpha)))                  
+
+
        
 (defn set-gui-color [^Graphics2D g color]
   (do (.setPaint g (get-gui-color color)) g))
