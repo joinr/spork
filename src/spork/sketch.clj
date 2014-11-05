@@ -397,8 +397,8 @@
                      (unchecked-inc idx))))))))          
 
 (defn ->graph-paper [color w h & {:keys [n xscale yscale] :or {n 10}}]
-  (let [xscale (or xscale (/ w n))
-        yscale (or yscale (/ h n))
+  (let [xscale (or xscale (float (/ w n)))
+        yscale (or yscale (float (/ h n)))
         b (space/bbox 0 0 w h)
         across (->hlines color 0 0 w n xscale)
         up     (->vlines color 0 0 h n yscale)]

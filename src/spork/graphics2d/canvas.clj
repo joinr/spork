@@ -16,7 +16,7 @@
 (defprotocol IGradient 
   (left-color  [g])
   (right-color [g])
-  (left-point [g])   
+  (left-point  [g])   
   (right-point [g]))
 
 (defrecord gradient [lcolor rcolor lpoint rpoint]
@@ -26,24 +26,26 @@
   (left-point  [g] lpoint)    
   (right-point [g] rpoint))
 
+(declare shape-bounds)
+
 (defn gradient-right [c1 c2]
   (fn [shp]
-    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+    (let [{:keys [x y width height]} (shape-bounds shp)]
       (->gradient c1 c2 [x y] [(+ x width) y]))))
 
 (defn gradient-left [c1 c2]
   (fn [shp]
-    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+    (let [{:keys [x y width height]} (shape-bounds shp)]
       (->gradient c2 c1 [x y] [(+ x width) y]))))
 
 (defn gradient-down [c1 c2]
   (fn [shp]
-    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+    (let [{:keys [x y width height]} (shape-bounds shp)]
       (->gradient c1 c2 [x y] [x (+ y height)]))))
 
 (defn gradient-up [c1 c2]
   (fn [shp]
-    (let [{:keys [x y width height]} (spatial/get-bounding-box shp)]
+    (let [{:keys [x y width height]} (shape-bounds shp)]
       (->gradient c2 c1 [x y] [x (+ y height)]))))
 
 (defn color-by [f shp]
