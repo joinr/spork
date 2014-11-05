@@ -408,6 +408,8 @@
         (->> c 
             (draw-shape across)
             (draw-shape up))))))
+
+
         
 
           
