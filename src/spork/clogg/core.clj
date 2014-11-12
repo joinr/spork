@@ -92,10 +92,14 @@
   (if (fn? arg) :function 
       (type arg)))
 
-(defn plot-dispatch 
-  ([lyrs arg]      [(type lyrs) (plot-type arg)])
-  ([lyrs itm arg]  [(type lyrs) (type itm) (plot-type arg)]))
 
+
+(defn plot-dispatch 
+  ([lyrs arg]      [(plot-type lyrs) (plot-type arg)])
+  ([lyrs itm arg]  [(plot-type lyrs) (plot-type itm) (plot-type arg)]))
+
+
+;;do we have a match for the type? 
                       
 ;;Multimethods are slow....we'll look at changing this at some point
 ;;if performance matters.
@@ -111,6 +115,58 @@
 ;;     end
 ;;     lyrs[end].geom = arg
 ;; end
+
+
+;;We can continually build the match up....
+;;Maintain the expr of the matcher, and 
+;;recompile everytime we add a dispatch? 
+
+(match [[t1 t2]]
+   [Layer GeometryElement] ....
+   [Layer ...])
+
+(defprotocol IMatcher
+  (match-fn [m])
+  (add-match [m clause])
+  (match-expr [m]))
+
+(declare as-match) 
+
+(deftype Matcher [args ^:volatile-mutable matches ^:volatile-mutable else ^:volatile-mutable matchfn ^:volatile-mutable fresh]
+  IMatcher 
+  (match-fn [m] (if fresh matchfn 
+                    (do (set! matchfn (eval `(fn ~args ~(match-expr m))))
+                        (set! fresh true)
+                        matchfn)))
+  (match-expr [m] (as-match args matches else))
+  (add-match [m [from to]] (do (set! fresh false)
+                               (set! matches 
+                                     (-> matches (conj from) (conj to)))
+                               m)))                               
+
+(defmacro ->matcher [args matches & [else]]
+  `(Matcher. (quote [~@args]) (quote [~@matches]) (quote ~else) nil nil))
+
+(defn as-match [args matches else]
+  `(match ~args
+                 ~@matches
+                 :else ~else))
+
+(defn unzip [xs]
+  (reduce (fn [acc [x y]]
+            (-> acc (conj x) (conj y)))
+          [] xs))
+;;we can now define match-functions that are extensible...
+;;so a type-based matcher looks like this....
+(defmacro matcher-by [name f args]
+  `(let [m# (->matcher ~args nil (throw (Exception. "no match!")))]
+    (vary-meta (fn ~name ~args
+                 (let [~@(unzip (for [a args]
+                                    `[~a (~f ~a)]))]
+                   ((match-fn m#) ~@args)))
+               merge {:type-dispatcher (quote ~name)
+                      :arity ~(count args)
+                      :matcher m#})))
 
 
 (defmulti add-plot-element [Layer GeometryElement] [lyrs arg] 
@@ -165,11 +221,22 @@
 (defn ->plot 
   ([] (Plot. [] nil (->data) [] [] nil [] default-theme)))
 
+
+
+
+;;let's define a defgeneric method that uses core.match....
+
+(require '[clojure.core.match :as match])
+
+  
+
 (defmulti add-plot-element [Plot 
   
 function add_plot_element(p::Plot, data::AbstractDataFrame, arg::Function)
     add_plot_element(p, data, arg())
 end
+
+
 
 
 function add_plot_element(p::Plot, data::AbstractDataFrame, arg::GeometryElement)
