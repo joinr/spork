@@ -5,7 +5,7 @@
 (ns spork.cljgraph.core
   (:require [spork.protocols [core :as generic]]
             [spork.cljgraph  [search :as search]]
-            [spork.data      [digraph :as dig] [searchstate :as sstate]]))
+            [spork.data      [digraph :as dig] [searchstate :as sstate] orderedmap]))
 
 
 ;;Macrology
@@ -355,6 +355,53 @@
         (recur (clojure.set/difference xs (set c))
                (conj acc c))))))
 
+
+;;We could unify this for our components function too....hmmm
+(declare strong-connect) 
+(defn strongly-connected-components 
+  "Computes the strongly connected components of graph g.  These correspond to cycles in digraphs.  While there is 
+   guaranteed to be a cycle indicated by the component "
+  [g]
+  (let [s        (atom '())
+        indices  (atom  {})
+        lowlinks (atom  {})
+        active   (atom nil) 
+        scc      (atom  {})
+        idx      (atom 0)]
+    (doseq [v (get-node-labels g)]
+      (when (not (get @indices v))
+        (strong-connect g idx s v indices lowlinks scc active)))
+    @scc))
+
+;aux function for Tarjan's strongly connected components algo.
+(defn- strong-connect [g idx s v indices links sccs active]
+  (do  
+       (swap! indices assoc  v @idx)
+       (swap! links   assoc  v @idx)
+       (swap! s conj         v)
+       (swap! idx unchecked-inc)
+       (swap! active (fn [m] (assoc m v 1))))
+       (reduce (fn [acc w]
+                 (cond  (not (contains? @indices w)) 
+                        (do (strong-connect g idx s w indices links sccs active)
+                            (swap! links (fn [m] (assoc m v (min (get m v) (get m w))))))
+                        (contains? @active w)
+                        (swap! links (fn [m] (assoc m v (min (get m v) (get m w)))))))                                          
+               links (sinks g v))
+       (if (== (get @links v) (get @indices v))
+         (swap! sccs 
+                (fn [m]
+                  (let [cnt (inc (count m))]
+                    (->> @s
+                         (reduce (fn [acc w]
+                                   (if (not= v w)
+                                     (do (swap! s pop)
+                                         (assoc acc w cnt))
+                                     (do (swap! s pop)
+                                         (reduced (assoc acc w cnt)))))
+                                 spork.data.orderedmap/empty-ordered-map)
+                         (assoc m cnt)))))))
+
 ;;__Rewrite islands, you can do it more efficiently that using components.__
 (defn islands
   "Returns a sequence of nodes that are unreachable."
@@ -587,7 +634,24 @@
                                            :neighborf filtered-neighbors
                                            :multipath multipath}))
                                         ;startnode does not precede endnode in the topological order.
-      nil)))
+      nil))
+
+  ;; (defn cycle-search [g startnode] 
+  ;;   (let [startstate    (-> (sstate/mempty-DFS  startnode)
+  ;;                           (generic/set-start  startnode)
+  ;;                           (generic/set-target startnode))]
+  ;;     (loop [state (generic/conj-fringe startstate startnode 0)
+  ;;            idx   0]
+  ;;       (if (or (generic/empty-fringe? state) @halt?) 
+  ;;         state
+  ;;         (let [source     (generic/next-fringe state)]  ;next node to visit   
+  ;;           (recur (generic/loop-reduce 
+  ;;                   (fn [acc sink] 
+  ;;                     (generic/relax acc (weightf g source sink) source sink))
+  ;;                   (generic/visit-node state source) 
+  ;;                   (neighborf g source state))
+  ;;                  (unchecked-inc idx))))))
+  )
 
 
 ;;Paths
@@ -732,6 +796,34 @@
      (add-arcs [[:a :b] [:b :c] [:c :d] [:e :f] [:b :d]])
      (conj-node :g)
      (conj-node :h)))
+
+;;a cyclical graph with a strongly connected component:
+;    a -> b -> c -> d -> e
+;         ^
+;         |              /
+;         \--------------
+
+(def cycle-graph 
+     (-> empty-graph
+     (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e] [:e :b]])))
+
+(def big-cycle-graph 
+     (-> empty-graph
+         (add-arcs 
+          (partition 2 1 [:a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p :q :r :s :a]))))
+           
+;;a cyclical graph with a strongly connected component:
+;    a -> b -> c -> d -> e
+;         ^
+;         |              /
+;         \--------------
+;;   f -> g -> h 
+;;   ^ --------|
+(def cycles-graph 
+     (-> empty-graph
+     (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e] [:e :b]
+                [:f :g] [:g :h] [:h :f]])))
+
 
  ;a directed graph with 2 components
  ;    a - b - c - d - e
