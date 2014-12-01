@@ -88,6 +88,14 @@
    propogator  ;event propogation, represented by a propogation network. 
    state ;;typically an entity store...but not necessarily.
    ]
+  agenda/IAgenda 
+  (previous-time  [a]     (.previous-time scheduler))
+  (final-time     [a]     (.final-time scheduler))
+  (set-final-time [a tf]  (simcontext. (.set-final-time scheduler tf) updater propogator state))
+  (agenda-count   [a]     (.agenda-count scheduler))
+  (time-segments  [a]     (.time-segments scheduler))
+  (add-times      [a ts]  (simcontext. (.add-times scheduler ts) updater propogator state))
+  (get-times      [a]     (.get-times scheduler))
   sim/IEventSeq
   (add-event   [ctx e] (simcontext. (sim/add-event scheduler e) 
                                     updater propogator state))                                 
@@ -172,6 +180,14 @@
    propogator  ;event propogation, represented by a propogation network. 
    state ;;typically an entity store...but not necessarily.
    ]
+  agenda/IAgenda 
+  (previous-time  [a]     (.previous-time scheduler))
+  (final-time     [a]     (.final-time scheduler))
+  (set-final-time [a tf]  (simcontext. (.set-final-time scheduler tf) updater propogator state))
+  (agenda-count   [a]     (.agenda-count scheduler))
+  (time-segments  [a]     (.time-segments scheduler))
+  (add-times      [a ts]  (simcontext. (.add-times scheduler ts) updater propogator state))
+  (get-times      [a]     (.get-times scheduler))
   sim/IEventSeq
   (add-event   [ctx e] (do (set! scheduler (sim/add-event scheduler e)) ctx))                                 
   (drop-event  [ctx] (do (set! scheduler (sim/drop-event scheduler)) ctx))

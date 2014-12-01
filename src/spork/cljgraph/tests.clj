@@ -338,6 +338,31 @@
  
 
 
+;;a cyclical graph with a strongly connected component:
+;    a -> b -> c -> d -> e
+;         ^
+;         |              /
+;         \--------------
+
+(def cycle-graph 
+     (-> empty-graph
+     (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e] [:e :b]])))
+
+
+;;a cyclical graph with a strongly connected component:
+;    a -> b -> c -> d -> e
+;         ^
+;         |              /
+;         \--------------
+;;   f -> g -> h 
+;;   ^ --------|
+(def cycles-graph 
+     (-> empty-graph
+     (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e] [:e :b]
+                [:f :g] [:g :h] [:h :f]])))
+
+
+
 ;;Network Flow Testing
 ;;====================
 (def net-data 

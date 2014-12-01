@@ -361,17 +361,19 @@
 (defn strongly-connected-components 
   "Computes the strongly connected components of graph g.  These correspond to cycles in digraphs.  While there is 
    guaranteed to be a cycle indicated by the component "
-  [g]
-  (let [s        (atom '())
-        indices  (atom  {})
-        lowlinks (atom  {})
-        active   (atom nil) 
-        scc      (atom  {})
-        idx      (atom 0)]
-    (doseq [v (get-node-labels g)]
-      (when (not (get @indices v))
-        (strong-connect g idx s v indices lowlinks scc active)))
-    @scc))
+  ([g nodes]
+     (let [s        (atom '())
+           indices  (atom  {})
+           lowlinks (atom  {})
+           active   (atom nil) 
+           scc      (atom  {})
+           idx      (atom 0)]
+       (throw (Exception. "Works for the most part, but detecting false positives for residual nodes.  Needs more debugging"))
+       (doseq [v nodes]
+         (when (not (get @indices v))
+           (strong-connect g idx s v indices lowlinks scc active)))
+       @scc))
+  ([g] (strongly-connected-components g (get-node-labels g))))
 
 ;aux function for Tarjan's strongly connected components algo.
 (defn- strong-connect [g idx s v indices links sccs active]
