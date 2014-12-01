@@ -74,8 +74,8 @@
   "Returns a persistent map - of node keys to node data - used by topograph."
   [g] (generic/-get-nodes g))
 
-(defn has-node? [g nd] (generic/-has-node? g nd))
-(defn has-arc?  [g source sink] (generic/-has-arc? g source sink))
+(definline has-node? [g nd] `(generic/-has-node? ~g ~nd))
+(definline has-arc?  [g source sink] `(generic/-has-arc? ~g ~source ~sink))
 
 ;;This could be a bit destructive.  It allows changing existing nodes.
 (defn set-node
@@ -141,7 +141,12 @@
   "Drops a sequence of arcs, of the form [from to], from the topograph."
   [g xs] (reduce #(disj-arc %1 (first %2) (second %2)) g xs))
 
-(defn arc-weight
+;"The weight of an arc [from to] in g."
+(definline arc-weight
+  [g from to]
+  `(generic/-arc-weight ~g ~from ~to))
+
+(defn arc-weight-safe
   "The weight of an arc [from to] in g."
   [g from to]
   (assert (has-arc? g from to) (str "Arc does not exist " [from to]))
@@ -154,13 +159,19 @@
 
 ;;Neighborhood operations
 ;;=======================
-(defn sinks     "Nodes with arcs from k"  [g k]  (generic/-get-sinks g k))
-(defn sources   "Nodes with arcs to   k"  [g k]  (generic/-get-sources g k))
+
+;"Nodes with arcs from k"
+(definline sinks       [g k]  `(generic/-get-sinks ~g ~k))
+;"Nodes with arcs to   k"
+(definline sources     [g k]  `(generic/-get-sources ~g ~k))
+
 (defn neighbors "Nodes with arcs to or from k" [g k]  
   (vec (distinct (mapcat #(% g k) [sources sinks]))))
 
-(defn sink-map   "A  map of node->weight for every node with arcs from k"  [g k]  (generic/-sink-map g k))
-(defn source-map  "A map of node->weight for every node with arcs to k"    [g k]  (generic/-get-sources g k))
+;"A  map of node->weight for every node with arcs from k"
+(definline sink-map     [g k]  `(generic/-sink-map ~g ~k))
+;"A map of node->weight for every node with arcs to k"
+(definline source-map   [g k]  `(generic/-source-map ~g ~k))
 
 (defn get-indegree
   "What is the in-degree of the node?  For directed graphs, how many incident 
