@@ -44,8 +44,8 @@
                                                (get subjects subject))
                                        (dissoc subjects subject)))
   (tag-subject [store tag subject]   
-    (let [oldt (get tags subject #{})
-          olds (get subjects tag #{})]
+    (let [oldt (get tags tag #{})
+          olds (get subjects subject #{})]
       (tags. (assoc tags tag (conj oldt subject))
              (assoc subjects subject (conj olds tag)))))
   (untag-subject [store tag subject]
@@ -84,8 +84,8 @@
                                                (get subjects subject))
                                        (dissoc! subjects subject)))
   (tag-subject [store tag subject]   
-    (let [oldt (get tags subject (transient #{}))
-          olds (get subjects tag (transient #{}))]
+    (let [oldt (get tags tag (transient #{}))
+          olds (get subjects subject (transient #{}))]
       (mtags. (assoc! tags tag (conj! oldt subject))
               (assoc! subjects subject (conj! olds tag)))))
   (untag-subject [store tag subject]
@@ -126,6 +126,7 @@
   "Remove multiple tags from a subject."
   [m subject tags]
   (reduce #(untag-subject %1 subject  %2 ) m tags))
+ 
 
 (comment ;testing 
   (def simple-tags 
@@ -138,5 +139,5 @@
 (def tagset [:old :fat :mean :onery :bald :goof])
 
 
-  
+ 
 )
