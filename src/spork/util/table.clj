@@ -790,7 +790,7 @@
                      (table-rows obj) :sorted sorted)) 
 
 (defn visualize   [obj & {:keys [title sorted] :or {title "some data" sorted true}}]
-  (gui/scrollable-view 
+  (gui/->scrollable-view 
    (gui/->swing-table (get-fields obj)   
                       (table-rows obj) :sorted sorted)))
 
