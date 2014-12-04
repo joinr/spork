@@ -7,7 +7,6 @@
             [spork.cljgraph  [search :as search]]
             [spork.data      [digraph :as dig] [searchstate :as sstate] orderedmap]))
 
-
 ;;Macrology
 ;;=========
 ;;Helpful infrastructure, maybe move this guy over to
@@ -385,15 +384,9 @@
        @scc))
   ([g] (strongly-connected-components g (get-node-labels g) hash-set)))
 
-(defn directed-cycles 
-  "Computes the directed cycles of digraph g."
-  ([g nodes] (strongly-connected-components g nodes list))
-  ([g]       (strongly-connected-components g (get-node-labels g) list)))
-
 ;aux function for Tarjan's strongly connected components algo.
 (defn- strong-connect [g idx s v indices links sccs active containerf]
-  (do  (println [:visiting v])
-       (swap! indices assoc  v @idx)
+  (do  (swap! indices assoc  v @idx)
        (swap! links   assoc  v @idx)
        (swap! s conj         v)
        (swap! idx unchecked-inc)
@@ -409,8 +402,7 @@
          (if (not (next @s))            
            (do (swap! s pop)
                (swap! active dissoc v))
-           (do (println [:emitting v @s @indices @links @sccs @active])
-               (swap! sccs 
+           (do (swap! sccs 
                       (fn [m]
                         (let [cnt (inc (count m))]
                           (->> @s
@@ -425,6 +417,11 @@
                                        )
                                (assoc m cnt)))))))))
 
+
+(defn directed-cycles 
+  "Computes the directed cycles of digraph g."
+  ([g nodes] (filter (complement single?) (vals (strongly-connected-components g nodes list))))
+  ([g]       (filter (complement single?) (vals (strongly-connected-components g (get-node-labels g) list)))))
 
 ;;__Rewrite islands, you can do it more efficiently that using components.__
 (defn islands
@@ -503,7 +500,6 @@
   [g]
   (persistent! 
     (reduce (fn [acc xs] (reduce conj! acc xs)) (transient []) (topsort g)))) 
-
 
 (defn find-improving-arcs
   "Predicate for determining if any of the directed arcs in the node set have further improvement.  If 
