@@ -349,6 +349,11 @@
      (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e] [:e :b]])))
 
 
+(def big-cycle-graph 
+     (-> empty-graph
+         (add-arcs 
+          (partition 2 1 [:a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p :q :r :s :a]))))
+
 ;;a cyclical graph with a strongly connected component:
 ;    a -> b -> c -> d -> e
 ;         ^
@@ -361,7 +366,37 @@
      (add-arcs [[:a :b] [:b :c] [:c :d] [:d :e] [:e :b]
                 [:f :g] [:g :h] [:h :f]])))
 
+;     _______________
+;    |              |
+;    \/             |
+;    a -> b -> c -> d -> e
+;         ^
+;         |              /
+;         \--------------
 
+(def dicycle-graph 
+  (-> empty-graph 
+      (add-arcs [[:a :b]
+                 [:b :c]
+                 [:c :d]
+                 [:d :e]
+                 [:e :b]
+                 [:d :a]])))
+
+(deftest cycle-finding 
+  (is (= (directed-cycles cycle-graph) '{1 (:e :b :c :d)})
+      "Should have one directed cycle spanning e to d")
+  (is (= (directed-cycles dicycle-graph) '{1 (:e :b :c :d :a)})
+      "should have one directed cycle spanning a to e.")
+  (is (= (directed-cycles negative-cycle-graph)
+         '{1 ("E" "A" "C" "D" "B")})
+      "Should have one cycle spanning e and b.")
+  (is (= (directed-cycles big-cycle-graph)
+         '{1 (:q :r :s :a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p)})
+      "should have one cycle from q through a to p")
+  (is (= (directed-cycles cycles-graph)
+         '{2 (:e :b :c :d), 1 (:h :f :g)})
+      "should have two directed cycles"))
 
 ;;Network Flow Testing
 ;;====================
@@ -374,6 +409,7 @@
   [:chi :hou  7 200]
   [:hou :t    0 300]
   [:bos :t    0 300]])
+
 (def the-net 
   (-> empty-network 
     (conj-cap-arcs net-data)))

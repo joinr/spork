@@ -372,48 +372,57 @@
 (defn strongly-connected-components 
   "Computes the strongly connected components of graph g.  These correspond to cycles in digraphs.  While there is 
    guaranteed to be a cycle indicated by the component "
-  ([g nodes]
+  ([g nodes containerf]
      (let [s        (atom '())
            indices  (atom  {})
            lowlinks (atom  {})
            active   (atom nil) 
            scc      (atom  {})
            idx      (atom 0)]
-       (throw (Exception. "Works for the most part, but detecting false positives for residual nodes.  Needs more debugging"))
        (doseq [v nodes]
          (when (not (get @indices v))
-           (strong-connect g idx s v indices lowlinks scc active)))
+           (strong-connect g idx s v indices lowlinks scc active containerf)))
        @scc))
-  ([g] (strongly-connected-components g (get-node-labels g))))
+  ([g] (strongly-connected-components g (get-node-labels g) hash-set)))
+
+(defn directed-cycles 
+  "Computes the directed cycles of digraph g."
+  ([g nodes] (strongly-connected-components g nodes list))
+  ([g]       (strongly-connected-components g (get-node-labels g) list)))
 
 ;aux function for Tarjan's strongly connected components algo.
-(defn- strong-connect [g idx s v indices links sccs active]
-  (do  
-       (swap! indices assoc  v @idx)
+(defn- strong-connect [g idx s v indices links sccs active containerf]
+  (do  (swap! indices assoc  v @idx)
        (swap! links   assoc  v @idx)
        (swap! s conj         v)
        (swap! idx unchecked-inc)
        (swap! active (fn [m] (assoc m v 1))))
        (reduce (fn [acc w]
                  (cond  (not (contains? @indices w)) 
-                        (do (strong-connect g idx s w indices links sccs active)
+                        (do (strong-connect g idx s w indices links sccs active containerf)
                             (swap! links (fn [m] (assoc m v (min (get m v) (get m w))))))
                         (contains? @active w)
-                        (swap! links (fn [m] (assoc m v (min (get m v) (get m w)))))))                                          
+                        (swap! links (fn [m] (assoc m v (min (get m v) (get @indices w)))))))                                          
                links (sinks g v))
        (if (== (get @links v) (get @indices v))
-         (swap! sccs 
-                (fn [m]
-                  (let [cnt (inc (count m))]
-                    (->> @s
-                         (reduce (fn [acc w]
-                                   (if (not= v w)
-                                     (do (swap! s pop)
-                                         (assoc acc w cnt))
-                                     (do (swap! s pop)
-                                         (reduced (assoc acc w cnt)))))
-                                 spork.data.orderedmap/empty-ordered-map)
-                         (assoc m cnt)))))))
+         (if (not (next @s))            
+           (do (swap! s pop)
+               (swap! active dissoc v))
+           (do (swap! sccs 
+                      (fn [m]
+                        (let [cnt (inc (count m))]
+                          (->> @s
+                               (reduce (fn [acc w]
+                                         (do (swap! s pop)
+                                             (swap! active dissoc w)
+                                             (if (not= v w)
+                                               (conj acc w)
+                                               (reduced (conj acc w)))))
+                                       (containerf)
+                                        ;spork.data.orderedmap/empty-ordered-map
+                                       )
+                               (assoc m cnt)))))))))
+
 
 ;;__Rewrite islands, you can do it more efficiently that using components.__
 (defn islands
@@ -648,22 +657,6 @@
                                            :multipath multipath}))
                                         ;startnode does not precede endnode in the topological order.
       nil))
-
-  ;; (defn cycle-search [g startnode] 
-  ;;   (let [startstate    (-> (sstate/mempty-DFS  startnode)
-  ;;                           (generic/set-start  startnode)
-  ;;                           (generic/set-target startnode))]
-  ;;     (loop [state (generic/conj-fringe startstate startnode 0)
-  ;;            idx   0]
-  ;;       (if (or (generic/empty-fringe? state) @halt?) 
-  ;;         state
-  ;;         (let [source     (generic/next-fringe state)]  ;next node to visit   
-  ;;           (recur (generic/loop-reduce 
-  ;;                   (fn [acc sink] 
-  ;;                     (generic/relax acc (weightf g source sink) source sink))
-  ;;                   (generic/visit-node state source) 
-  ;;                   (neighborf g source state))
-  ;;                  (unchecked-inc idx))))))
   )
 
 
