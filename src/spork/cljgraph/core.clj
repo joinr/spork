@@ -392,7 +392,8 @@
 
 ;aux function for Tarjan's strongly connected components algo.
 (defn- strong-connect [g idx s v indices links sccs active containerf]
-  (do  (swap! indices assoc  v @idx)
+  (do  (println [:visiting v])
+       (swap! indices assoc  v @idx)
        (swap! links   assoc  v @idx)
        (swap! s conj         v)
        (swap! idx unchecked-inc)
@@ -408,7 +409,8 @@
          (if (not (next @s))            
            (do (swap! s pop)
                (swap! active dissoc v))
-           (do (swap! sccs 
+           (do (println [:emitting v @s @indices @links @sccs @active])
+               (swap! sccs 
                       (fn [m]
                         (let [cnt (inc (count m))]
                           (->> @s

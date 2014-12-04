@@ -383,6 +383,28 @@
                  [:e :b]
                  [:d :a]])))
 
+(def weird-graph 
+  (-> empty-graph 
+      (add-arcs [[:c->a 
+                  :source-a 0] 
+                 [:a :a->c 1.0] 
+                 [:a :source-a 0] 
+                 [:G :G->H 4.0] 
+                 [:fillrule-b :b 0] 
+                 [:c :c->a 1.0] 
+                 [:c :source-c 0] 
+                 [:fillrule-a :a 0] 
+                 [:source-c :filled 0] 
+                 [:source-a :filled 0] 
+                 [:source-b :filled 0] 
+                 [:b :source-b 0] 
+                 [:a->c 
+                  :source-c 0] 
+                 [:unfilled :fillrule-c 0] 
+                 [:unfilled :fillrule-b 0] 
+                 [:unfilled :fillrule-a 0] 
+                 [:fillrule-c :c 0]])))
+
 (deftest cycle-finding 
   (is (= (directed-cycles cycle-graph) '{1 (:e :b :c :d)})
       "Should have one directed cycle spanning e to d")
