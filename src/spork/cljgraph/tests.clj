@@ -406,18 +406,18 @@
                  [:fillrule-c :c 0]])))
 
 (deftest cycle-finding 
-  (is (= (directed-cycles cycle-graph) '{1 (:e :b :c :d)})
+  (is (= (directed-cycles cycle-graph) '((:e :b :c :d)))
       "Should have one directed cycle spanning e to d")
-  (is (= (directed-cycles dicycle-graph) '{1 (:e :b :c :d :a)})
+  (is (= (directed-cycles dicycle-graph) '((:e :b :c :d :a)))
       "should have one directed cycle spanning a to e.")
   (is (= (directed-cycles negative-cycle-graph)
-         '{1 ("E" "A" "C" "D" "B")})
+         '(("E" "A" "C" "D" "B")))
       "Should have one cycle spanning e and b.")
   (is (= (directed-cycles big-cycle-graph)
-         '{1 (:q :r :s :a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p)})
+         '((:q :r :s :a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p)))
       "should have one cycle from q through a to p")
   (is (= (directed-cycles cycles-graph)
-         '{2 (:e :b :c :d), 1 (:h :f :g)})
+         '((:e :b :c :d) (:h :f :g)))
       "should have two directed cycles"))
 
 ;;Network Flow Testing

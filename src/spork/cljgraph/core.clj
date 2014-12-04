@@ -7,6 +7,14 @@
             [spork.cljgraph  [search :as search]]
             [spork.data      [digraph :as dig] [searchstate :as sstate] orderedmap]))
 
+;;Utils
+;;=====
+
+(defn- single? [x]
+  (cond (instance? clojure.lang.Counted x)
+        (== (count x) 1)
+        (seq? x)
+        (nil? (next x))))
 ;;Macrology
 ;;=========
 ;;Helpful infrastructure, maybe move this guy over to
