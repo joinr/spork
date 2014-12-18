@@ -41,12 +41,12 @@
   (event-from [e] nil)
   (event-to [e] nil)
   clojure.lang.PersistentArrayMap
-  (event-type [e] (:type e))
-  (event-data [e] (:data e))
-  (event-id [e]   (:id e)) 
-  (event-time [e] (:time e))
-  (event-from [e] (:from e) )
-  (event-to [e] (:to e))
+  (event-type [e] (get e :type))
+  (event-data [e] (get e :data))
+  (event-id [e]   (get e :id)) 
+  (event-time [e] (get e :time))
+  (event-from [e] (get e :from) )
+  (event-to [e] (get e :to))
   clojure.lang.Keyword ;keywords are events...
   (event-type [e] e)
   (event-data [e] e)
@@ -286,13 +286,15 @@
 (defn current-time 
   "Return the current time of the event collection (i.e. the time of the first 
    event)."
-  [ecoll]
-  (event-time (first-event ecoll)))
+  [^spork.sim.data.IEventSeq ecoll]
+  (when-let [e (.first-event ecoll)]
+    (event-time e)))
   
 (defn next-time
   "Compute the time of the next event in the sequence."
-  [ecoll]  
-  (event-time  (nth-event ecoll 1)))
+  [^spork.sim.data.IEventSeq ecoll]
+  (when-let [e (.nth-event ecoll 1)]  
+    (event-time  e)))
 
 
 ;;#THis is a potential drag.  We don't really want to do this..we

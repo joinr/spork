@@ -15,6 +15,12 @@
  (tag-subject [store tag subject]   "Impose a tag on a subject.")
  (untag-subject [store tag subject]  "Remove a tag from a subject."))
 
+
+(defmacro try-get [m k not-found]
+  `(if-let [v# (get ~m ~k)]
+     v#
+     ~not-found))
+
 (declare mutable-tags)
 
 ;;Generate a simple tag database implemented using maps.
@@ -44,13 +50,13 @@
                                                (get subjects subject))
                                        (dissoc subjects subject)))
   (tag-subject [store tag subject]   
-    (let [oldt (get tags tag #{})
-          olds (get subjects subject #{})]
+    (let [oldt (try-get tags tag #{})
+          olds (try-get subjects subject #{})]
       (tags. (assoc tags tag (conj oldt subject))
              (assoc subjects subject (conj olds tag)))))
   (untag-subject [store tag subject]
-    (let [new-tags (disj (get tags tag #{}) subject)
-          new-subjects (disj (get subjects subject #{}) tag)]
+    (let [new-tags (disj (try-get tags tag #{}) subject)
+          new-subjects (disj (try-get subjects subject #{}) tag)]
       (tags. (if (empty? new-tags)
                (dissoc tags tag)
                (assoc tags tag new-tags))
@@ -84,13 +90,13 @@
                                                (get subjects subject))
                                        (dissoc! subjects subject)))
   (tag-subject [store tag subject]   
-    (let [oldt (get tags tag (transient #{}))
-          olds (get subjects subject (transient #{}))]
+    (let [oldt (try-get tags tag (transient #{}))
+          olds (try-get subjects subject (transient #{}))]
       (mtags. (assoc! tags tag (conj! oldt subject))
               (assoc! subjects subject (conj! olds tag)))))
   (untag-subject [store tag subject]
-    (let [new-tags (disj! (get tags tag (transient #{})) subject)
-          new-subjects (disj! (get subjects subject (transient #{})) tag)]
+    (let [new-tags (disj! (try-get tags tag (transient #{})) subject)
+          new-subjects (disj! (try-get subjects subject (transient #{})) tag)]
       (mtags. (if (zero? (count new-tags))
                (dissoc! tags tag)
                (assoc! tags tag new-tags))

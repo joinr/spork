@@ -117,6 +117,28 @@
                       (translate 10 5 (scale 2.0 2.0 legend))]))))))
   
 
+;;Some demos....
+
+(comment
+  ;;We can create multiple random futures using random-tracks!
+  (random-tracks!)
+  ;;We can create a single random future the same way
+  (random-tracks! :n 1)
+  ;;A single little event...
+  (random-tracks! :n 1 :entry-case :random-sporadic)
+  ;;multiple small events...
+  (random-tracks! :n 1 :entry-case (s/->replications 10 :random-sporadic))
+  ;;multiple small events directly following eachother....
+  (random-tracks! :n 4 :entry-case
+                  (s/->choice  {(s/->chain (s/->replications 10 :random-sporadic)) 0.5
+                                :random-buildup 0.5}))
+  
+  
+  )
+
+
+
+
 (comment ;sample-code
   ;;We set an upper bound for our simulated demand future at 1500 days,
   ;;with the intent that no sampled event will extend paste 1500.:
@@ -147,7 +169,7 @@
   ;;the choice will not be available for future samples, until all
   ;;choices have been exhausted.
   (def random-surge (s/->transform                                       
-                      {:start      random-time}
+                     {:start      get-random-time}
                       (s/->without-replacement [:Big :Small :Medium])))
   ;;A /textit{ramp} demand is a sequential chain of /textit{Small}, /textit{Medium}, and /textit{Big}
   ;;demands that are temporally adjacent.  This rule composes three

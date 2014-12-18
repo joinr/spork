@@ -319,6 +319,23 @@
                                            (rest xs) (rest ds)))))]
     (fn [ctx] ((choose) ctx))))
 
+(defn weighted-choice
+  "Identical to choice, except it takes a map of node->probability densities.
+   Where the keys are resolvable nodes, and the densities are the probabilities
+   from [0 1], that a node will be chosen.  Densities must sum to 1.0 to be
+   valid."
+  [pdf-map]
+  (let [length (reduce + (vals pdf-map))
+        nodes  (keys pdf-map) 
+        choose (fn [] (loop [r (* length (stats/*rand*))
+                             xs nodes
+                             ds (vals pdf-map)]
+                        (cond (= (count xs) 1)  (first xs)
+                              (<= r (first ds)) (first xs)
+                              :else (recur (- r (first ds)) 
+                                           (rest xs) (rest ds)))))]
+    (fn [ctx] ((choose) ctx))))
+
 (defn tree-mapcat
   "Collects all elements in xs, as projected by function f.  If an element 
    is atomic, "

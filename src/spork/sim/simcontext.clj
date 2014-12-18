@@ -140,8 +140,8 @@
                        (simnet/set-state ctx)) 
                    (simnet/get-event-clients propogator :all)
                    client-handler-map)
-            nxtsim   (simnet/get-state res)]
-        (assoc nxtsim :propogator (simnet/get-net res)))))
+            ^simcontext nxtsim   (simnet/get-state res)]
+        (.assoc nxtsim :propogator (simnet/get-net res)))))
   (set-event  [ctx e]        (throw (Error. "set-event unavailable on simcontext")))
   (set-transition [ctx txn]  (throw (Error. "set-transition unavailable on simcontext")))
   (set-state  [ctx s]   (throw (Error. "set-state unavailable on simcontext")))
