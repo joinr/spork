@@ -286,15 +286,13 @@
 (defn current-time 
   "Return the current time of the event collection (i.e. the time of the first 
    event)."
-  [^spork.sim.data.IEventSeq ecoll]
-  (when-let [e (.first-event ecoll)]
-    (event-time e)))
+  [ecoll]
+  (event-time (first-event ecoll)))
   
 (defn next-time
   "Compute the time of the next event in the sequence."
-  [^spork.sim.data.IEventSeq ecoll]
-  (when-let [e (.nth-event ecoll 1)]  
-    (event-time  e)))
+  [ecoll]
+  (event-time  (nth-event ecoll 1)  ))
 
 
 ;;#THis is a potential drag.  We don't really want to do this..we
