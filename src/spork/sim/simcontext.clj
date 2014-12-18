@@ -459,11 +459,11 @@
 (defn merge-updates [m  ctx] 
   (if (map? m)
     (reduce-kv (fn [^simcontext c k v]
-                 (if (= k :trigger) (v c) 
+                 (if (identical? k :trigger) (v c) 
                      (assoc-state k v c)))
                ctx m)
     (reduce (fn [^simcontext c [k v]]
-              (if (= k :trigger) (v c) 
+              (if (identical? k :trigger) (v c) 
                   (assoc-state  k v c)))
             ctx m)))
 
