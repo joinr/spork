@@ -409,50 +409,18 @@
             (draw-shape across)
             (draw-shape up))))))
 
+(defn ->legend-entry [txt color]
+  (let [lbl (spork.geometry.shapes/->plain-text :black  (str txt "  ") 0 10)
+        h   (spork.protocols.spatial/get-height (spork.protocols.spatial/get-bounding-box lbl))]
+    (beside (spork.geometry.shapes/->rectangle color 0 0 10 h)
+            lbl)))
 
-        
+(defn ->legend [m]
+   (shelf (for [[lbl clr] m]
+                 (->legend-entry lbl clr))))
 
-          
-                   
-
-
-          
-
-
-
-;;testing
-(comment 
-
-
-
-  
-
-)
-;; (defn ->track2 [records & {:keys [track-name track-height track-width] 
-;;                           :or   {track-name (str (gensym "Track ")) 
-;;                                  track-height 100 
-;;                                  track-width  800}}]
-;;   (let [label  (->label (str track-name) 0 0)
-;;         lwidth 100 ; (:width (shape-bounds label))
-;;         sorted (sort-by (juxt :start :duration) records)
-;;         [elevated hmax wmax] (reduce (fn [[xs height width] x] 
-;;                                        (let [act (->activity x)]
-;;                                          [(conj xs (translate 0.0 height act)) 
-;;                                           (+ height (:height (shape-bounds act)))
-;;                                           (max width (+ (:start x) (:duration x)))]))
-;;                                        [[] 0.0 0.0] sorted)
-;;         hscale 0.5
-;;         background    ;(when (> (:start (first sorted)) 0)
-;;                (->rectangle :lightgray 0 0  wmax track-height)
-;;         vscale (/ track-height hmax)
-;;         _ (println :buildingimage)
-;;         ] ;(/ track-height hmax)]        
-;;     (with-meta (beside [(->rectangle :white 0 0 lwidth track-height)
-;;                         label]
-;;                        [background
-;;                         (scale 1.0 vscale (cartesian (into [] elevated)))]) {:records records :vscale vscale :wmax wmax})))
-
-     ;; (beside [(->rectangle :white 0 0 lwidth hmax)
-     ;;          label]
-     ;;         [background
-     ;;          (scale 1.0 vscale (cartesian (into [] elevated)))])))
+(defn palette
+  "Generates a random color palette using golden ratio"
+  ([s v]  
+     (map (java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (spork.graphics2d.canvas/random-color-palette s v)))
+  ([] (palette 0.2 0.65)))

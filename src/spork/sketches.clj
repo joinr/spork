@@ -80,7 +80,7 @@
     "Small"             
     "Medium"            
     "Big"]
-   (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (spork.graphics2d.canvas/random-color-palette 0.2 0.65))))
+   (palette 0.2 0.65)))
 
 ;;another way to color this is to use increasing saturation..
 ;; (def event-colors 
@@ -92,21 +92,16 @@
 ;;     "Big"]
 ;;    (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (rest (spork.graphics2d.canvas/mono-color-palette 0.2 [255 0 0])))))
 
-(defn ->legend-entry [txt color]
-  (let [lbl (spork.geometry.shapes/->plain-text :black  (str txt "  ") 0 10)
-        h   (spork.protocols.spatial/get-height (spork.protocols.spatial/get-bounding-box lbl))]
-    (beside (spork.geometry.shapes/->rectangle color 0 0 10 h)
-            lbl)))
 
-(def legend 
-   (shelf (for [[lbl clr] event-colors]
-                 (->legend-entry lbl clr))))
+
+(def legend (->legend event-colors))
 
 (defn event->color [e] 
   (if-let [clr (get event-colors (get e :name))]
     clr
     (throw (Exception. (str ["Unknown event!" e])))))
     
+
 (defn random-tracks! [& {:keys [n entry-case] :or {n 4 entry-case :random-case}}]
   (let [data (take n (repeatedly #(random-track! :entry-case entry-case)))
         _    (do (reset! last-data data))]
