@@ -268,7 +268,7 @@
 ;;by altering the color-map.
 (def ^:dynamic *event->color* (fn [e] (get *color-map* (get e :name :default))))
 (defmacro with-event->color [event->color & body]
-  `(binding [~'*event->color*  ~event->color]
+  `(binding [~'spork.sketch/*event->color*  ~event->color]
      ~@body))
 
 (def ^:dynamic *track-options* {:activity-labels true 
@@ -419,7 +419,7 @@
    (shelf (for [[lbl clr] m]
                  (->legend-entry lbl clr))))
 
-;;#TODO Change this to be a generic cljgui color, not java specific.
+;;#TODO Change this to be a generic cljgui color, not java awt
 (defn palette
   "Generates a random color palette using golden ratio"
   ([s v]  
