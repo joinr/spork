@@ -20,10 +20,17 @@
 (def ^:dynamic *font-width*  5.5)
 
 (def ^:dynamic *current-sketch* nil)
-      
+
+
+(defn sketch [the-shapes]
+  (->> the-shapes 
+       (gui/view)))
+
+;;Buffered image was killing us here with memory leakage.  So for now,
+;;we just do immediate mode drawing.
 (defn sketch-image [the-shapes]
   (->> the-shapes 
-       (image/shape->img)
+;       (image/shape->img)
        (gui/view)))
 
 ;;image combinators 
@@ -36,7 +43,7 @@
   (reify IShape 
     (shape-bounds [s] new-bounds)
     (draw-shape   [s c] (with-translation (:width bounds1) 0 
-                          (draw-shape s1 c) (partial draw-shape s2))))))
+                          (draw-shape s1 c) #(draw-shape s2 %))))))
 
 (defn background [color shp]
   (let [{:keys [x y width height]} (shape-bounds shp)]
@@ -47,7 +54,7 @@
   (reify IShape 
     (shape-bounds [s] (space/translate-bounds tx ty (shape-bounds shp)))
     (draw-shape   [s c] (with-translation tx ty 
-                          c (partial draw-shape shp)))))
+                          c #(draw-shape shp %)))))
 
 (defn above [s1 s2]
   (let [bounds1 (shape-bounds  s1)
@@ -58,16 +65,16 @@
   (reify IShape 
     (shape-bounds [s] new-bounds)
     (draw-shape   [s c] (with-translation  0 (:height bounds1) 
-                          (draw-shape s1 c) (partial draw-shape s2))))))
+                          (draw-shape s1 c) #(draw-shape s2 %))))))
 (defn fade [alpha shp]
   (reify IShape 
     (shape-bounds [s] (shape-bounds shp))
     (draw-shape   [s c] (with-alpha  alpha 
-                          c (partial draw-shape shp)))))
+                          c #(draw-shape shp %)))))
 (defn rotate [theta shp]
   (reify IShape 
     (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
-    (draw-shape   [s c] (with-rotation theta  c (partial draw-shape shp)))))
+    (draw-shape   [s c] (with-rotation theta  c #(draw-shape shp %)))))
 
 ;;rotates about a point....we probably should factor out spin-bounds
 ;;from this guy.
@@ -85,7 +92,7 @@
 (defn scale [xscale yscale shp]
   (reify IShape 
     (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
-    (draw-shape   [s c] (with-scale xscale yscale c (partial draw-shape shp)))))
+    (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %)))))
 
 (def ^:dynamic *cartesian* nil)
 (defn cartesian [shp]
@@ -144,7 +151,7 @@
 ;  (reify IShape 
 ;    (shape-bounds [s] bounds)
 ;    (draw-shape   [s c] (with-translation centerx centery c
-;                          (partial draw-shape shp))))))
+;                          #(draw-shape shp %))))))
 
 (defn ->ticks [color width height step]
   (let [tick   (:source (make-sprite :translucent (->line color 0 0 0 height) 0 0))

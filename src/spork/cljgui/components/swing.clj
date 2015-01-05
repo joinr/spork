@@ -790,6 +790,40 @@
             (.addMouseListener  savelistener))))
   ([paintf] (paintpanel 250 250 paintf)))
 
+;; (defn cached-paintpanel
+;;   "Create a JPanel with its paint method overriden by paintf, which will be 
+;;    called using g.  We can get mutable behavior by passing a function that 
+;;    evals and applies a ref'd function for paintf, or we can keep the painting 
+;;    static.  Note, paintpanel is static, in that resize behavior will not scale
+;;    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
+;;    simple situations where you have fixed dimensions."
+;;   ([width height paintf]
+;;      (let [buffer (jgraphics/make-imgbuffer  width height)
+;;            bg     (j2d/bitmap-graphics buffer)           
+;;            p      (fn [^Graphics2D g]
+;;                     (do (paintf bg) 
+;;                         (j2d/draw-image g buffer :opaque 0 0)))
+;;            panel  (proxy [JPanel]   []
+;;                     (paintComponent [g]  (do (proxy-super paintComponent g) 
+;;                                              (p g)))
+;;                     (removeNotify   [] (do (println "removing!")
+;;                                            (proxy-super removeAll)
+;;                                            (.dispose bg)
+;;                                            (.flush buffer)
+;;                                            (proxy-super removeNotify))))
+;;            savelistener (proxy [MouseAdapter] []
+;;                           (mouseClicked [^MouseEvent e]
+;;                              (if (= (.getButton e) MouseEvent/BUTTON3)
+;;                                (let [savepath 
+;;                                      (str (str (System/getProperty "user.home") 
+;;                                                "\\" "SavedBuffer.png")) ]
+;;                                (do (j2d/write-image buffer savepath nil)
+;;                                  (alert (str "Saved image to " savepath)))))))]                                      
+;;          (doto panel                                                     
+;;            (.setPreferredSize (Dimension. width height))
+;;            (.addMouseListener  savelistener))))
+;;   ([paintf] (paintpanel 250 250 paintf))) 
+    
 (defn cached-paintpanel
   "Create a JPanel with its paint method overriden by paintf, which will be 
    called using g.  We can get mutable behavior by passing a function that 
@@ -798,20 +832,20 @@
    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
    simple situations where you have fixed dimensions."
   ([width height paintf]
-     (let [buffer  (atom (jgraphics/make-imgbuffer  width height))
-           bg      (j2d/bitmap-graphics @buffer)           
-           p (fn [^Graphics2D g]
-               (do (paintf bg) 
-                   (j2d/draw-image g @buffer :opaque 0 0)))
-           panel  (proxy [JPanel] []
+     (let [buffer (object-array [(jgraphics/make-imgbuffer  width height)])
+           bg     (j2d/bitmap-graphics (aget buffer 0))           
+           p      (fn [^Graphics2D g]
+                    (do (paintf bg) 
+                        (j2d/draw-image g (aget buffer 0) :opaque 0 0)))
+           panel  (proxy [JPanel]   []
                     (paintComponent [g]  (do (proxy-super paintComponent g) 
                                              (p g)))
-                    (removeNotify [] (do (println "removing!")
-                                         (proxy-super removeAll)
-                                         (.dispose bg)
-                                         (.flush @buffer)
-                                         (reset! buffer nil)
-                                         (proxy-super removeNotify))))
+                    (removeNotify   [] (do (println "removing!")
+                                           (proxy-super removeAll)
+                                           (.dispose bg)
+                                           (.flush (aget buffer 0))
+                                           (aset buffer 0 nil)
+                                           (proxy-super removeNotify))))
            savelistener (proxy [MouseAdapter] []
                           (mouseClicked [^MouseEvent e]
                              (if (= (.getButton e) MouseEvent/BUTTON3)
@@ -929,9 +963,12 @@
     ;(->scrollable-view s :title title)))
 ;    (view (empty-frame) s)))
     (let [{:keys [x y width height]} (j2d/shape-bounds s)]
-      (->scrollable-view (cached-paintpanel (inc (+ x width)) ;;check this...for duplicate.
-                                     (inc (+ y height))
-                                     #(j2d/draw-shape s %)) :title title))))
+      (->scrollable-view (
+                          paintpanel
+                          ;;cached-paintpanel 
+                          (inc (+ x width)) ;;check this...for duplicate.
+                          (inc (+ y height))
+                          #(j2d/draw-shape s %)) :title title))))
 
 (defn swing-canvas [width height] 
   (let [frm (empty-frame)
