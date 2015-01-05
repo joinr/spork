@@ -798,18 +798,19 @@
    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
    simple situations where you have fixed dimensions."
   ([width height paintf]
-     (let [buffer  (jgraphics/make-imgbuffer  width height)
-           bg      (j2d/bitmap-graphics buffer)           
+     (let [buffer  (atom (jgraphics/make-imgbuffer  width height))
+           bg      (j2d/bitmap-graphics @buffer)           
            p (fn [^Graphics2D g]
                (do (paintf bg) 
-                   (j2d/draw-image g buffer :opaque 0 0)))
+                   (j2d/draw-image g @buffer :opaque 0 0)))
            panel  (proxy [JPanel] []
                     (paintComponent [g]  (do (proxy-super paintComponent g) 
                                              (p g)))
                     (removeNotify [] (do (println "removing!")
                                          (proxy-super removeAll)
                                          (.dispose bg)
-                                         (.flush buffer)
+                                         (.flush @buffer)
+                                         (reset! buffer nil)
                                          (proxy-super removeNotify))))
            savelistener (proxy [MouseAdapter] []
                           (mouseClicked [^MouseEvent e]
