@@ -51,7 +51,6 @@
       (add-arcs (tree-arcs :q  
                            [:r :s :t :u :v :w :x :y :z :a1 :a2 :a3]))))
 
-
 (deftest graph-walks
   (is (= (ordered-nodes the-tree :a)
          [:a :b :e :h :k :l :f :i :m :n :o :c :d :g :j :p :q 
