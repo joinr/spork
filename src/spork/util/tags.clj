@@ -116,12 +116,12 @@
 (defn and-tags
   "Select subjects that have every tag in xs."
   [m xs]
-  (reduce #(clojure.set/intersection %1 (get-subjects m %2))) #{} xs)
+  (reduce #(clojure.set/intersection %1 (get-subjects m %2)) #{} xs))
 
 (defn or-tags
   "Select subjects that have any tag in xs."
   [m xs]
-  (reduce #(clojure.set/union %1 (get-subjects m %2))) #{} xs)
+  (reduce #(clojure.set/union %1 (get-subjects m %2)) #{} xs))
 
 (defn multi-tag
   "Impose many tags on a subject."
