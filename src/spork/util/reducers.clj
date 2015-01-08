@@ -19,7 +19,7 @@
 ;;1.7  .  I hacked together a couple of useful ones, like range.
 (in-ns 'clojure.core.reducers)
 
-(doseq [x '[iterate repeatedly repeat range map-indexed]]
+(doseq [x '[iterate repeatedly repeat range map-indexed first last nth]]
   (ns-unmap *ns* x))
 
 ;;we're going to add in iterate, range, and friends
@@ -115,8 +115,8 @@
   (slice [this from to])
   (empty-slice? [this]))
 
-(defn left-slice  [s] (slice s (nth s 0) (nth s (quot (count s) 2))))
-(defn right-slice [s] (slice s (nth s (quot (count s) 2)) (count s)))
+(defn left-slice  [s] (slice s (clojure.core/nth s 0) (clojure.core/nth s (quot (count s) 2))))
+(defn right-slice [s] (slice s (clojure.core/nth s (quot (count s) 2)) (count s)))
 ;;Allows us to fold things that can be sliced, in parallel!
 (defn- foldslice  [r n combinef reducef] 
   (cond  (empty-slice? r) (combinef) 
@@ -170,5 +170,19 @@
   (let [idx (atom 0)]
     (map (fn [x] 
            (f (swap! idx inc) x))  r)))
+
+(defn right [l r] r)
+(defn last  [r] 
+  (if (and (instance? clojure.lang.Indexed r) 
+           (instance? clojure.lang.Counted r))
+    (clojure.core/nth  r (dec (count r)))
+    (reduce right nil r)))
+(defn first [r] (reduce right nil (take 1 r)))
+(defn nth   [n r] 
+  (if (instance? clojure.lang.Indexed r)
+    (nth r n)
+    (cond (zero? n) (first r)
+          (pos? n)  (last (take n r))                         
+          :else (throw (Exception. "Index for reducers/nth must be non-negative!")))))                     
 
 (in-ns 'spork.util.reducers)
