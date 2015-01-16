@@ -110,18 +110,21 @@
 (def empty-tags (tags. {} {}))
 (defn mutable-tags [tgs subjcs] (mtags. tgs subjcs))
 
-(defn has-tag?     [tags tag subject] (contains? (get-tags tags subject) tag))
+(definline subject->tags [tags subject] `(get-subjects ~tags ~subject))
+(definline tag->subjects [tags tag] `(get-tags ~tag ~tag))
+
+(defn has-tag?     [tags tag subject] (contains? (tag->subjects tags tag) subject))
 (defn has-subject? [tags tag subject] (has-tag? tags tag subject)) 
 
 (defn and-tags
   "Select subjects that have every tag in xs."
   [m xs]
-  (reduce #(clojure.set/intersection %1 (get-subjects m %2)) #{} xs))
+  (reduce #(clojure.set/intersection %1 (tag->subjects m %2)) #{} xs))
 
 (defn or-tags
   "Select subjects that have any tag in xs."
   [m xs]
-  (reduce #(clojure.set/union %1 (get-subjects m %2)) #{} xs))
+  (reduce #(clojure.set/union %1 (tag->subjects m %2)) #{} xs))
 
 (defn multi-tag
   "Impose many tags on a subject."
