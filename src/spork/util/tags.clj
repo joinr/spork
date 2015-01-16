@@ -114,7 +114,29 @@
 (definline tag->subjects [tags tag] `(get-tags ~tag ~tag))
 
 (defn has-tag?     [tags tag subject] (contains? (tag->subjects tags tag) subject))
-(defn has-subject? [tags tag subject] (has-tag? tags tag subject)) 
+
+(defn has-tags? [tags subject xs]
+  (when-let [knowns (subject->tags tags subject)]
+    (every? knowns  xs)))
+
+(defn some-tags? [tags subject xs]
+  (let [knowns (subject->tags tags subject)]
+    (reduce (fn [acc x]
+              (if (contains? knowns x)
+                (reduced x)
+                acc)) nil xs)))
+
+(defn has-subject?  [tags tag subject] (has-tag? tags tag subject)) 
+(defn has-subjects? [tags tag xs]
+  (when-let [knowns (tag->subjects tags tag)]
+    (every? knowns  xs)))
+
+(defn some-subjects? [tags tag xs]
+  (let [knowns (tag->subjects tags tag)]
+    (reduce (fn [acc x]
+              (if (contains? knowns x)
+                (reduced x)
+                acc)) nil xs)))
 
 (defn and-tags
   "Select subjects that have every tag in xs."
