@@ -110,6 +110,17 @@
 (def empty-tags (tags. {} {}))
 (defn mutable-tags [tgs subjcs] (mtags. tgs subjcs))
 
+(extend-protocol ITagStore nil 
+  (get-tags [store subject] nil)
+  (get-subjects [store tag] nil)
+  (add-tag [store tag] (add-tag empty-tags tag))         
+  (add-subject [store subject]  (add-subject empty-tags subject))
+  (drop-tag [store tag]           nil)   
+  (drop-subject [store subject]   nil)
+  (tag-subject [store tag subject]  (tag-subject empty-tags tag subject))     
+  (untag-subject [store tag subject] nil))
+
+
 (definline subject->tags [tags subject] `(get-subjects ~tags ~subject))
 (definline tag->subjects [tags tag] `(get-tags ~tags ~tag))
 
