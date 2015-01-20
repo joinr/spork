@@ -111,7 +111,7 @@
 (defn mutable-tags [tgs subjcs] (mtags. tgs subjcs))
 
 (definline subject->tags [tags subject] `(get-subjects ~tags ~subject))
-(definline tag->subjects [tags tag] `(get-tags ~tag ~tag))
+(definline tag->subjects [tags tag] `(get-tags ~tags ~tag))
 
 (defn has-tag?     [tags tag subject] (contains? (tag->subjects tags tag) subject))
 
