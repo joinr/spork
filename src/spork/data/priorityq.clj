@@ -10,6 +10,16 @@
    priority or weight.  Weight is assumed to be, although not enforced, a 
    numeric value, typically a floating point value.")
 
+
+;;note, this persistent PQ is no longer in favor, because most of our 
+;;usage for pq's are motivated by search algorithms.  I made the
+;;mistake of defaulting to java.util.PriorityQueue for a search 
+;;fringe, and while initially useful, I realized I was generating 
+;;a lot of garbage by not updating/re-weighing the value of entries 
+;;in the queue.  Note that the j.u.pq doesn't provide operations for 
+;;re-weighing either.
+
+
 ;;A simple type tagging mechanism.  Since priority queues use clojure's 
 ;;ordered maps, we can use this info for a second layer of type tagging.
 (defn tag-as-pq [x]

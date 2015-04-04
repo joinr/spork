@@ -64,6 +64,17 @@
   ([coll elseval] (if-let [v (first coll)] v elseval))
   ([coll] (maybe coll nil)))
 
+(defprotocol IPQ
+  (priority-seq [pq]))
+(defprotocl IMinQ
+  (get-min [pq])
+  (pop-min [pq])
+  (min-priority [pq]))
+(defprotocol IMaxQ
+  (get-max [pq])
+  (pop-max [pq])
+  (max-priority [pq]))
+
 ;;Definition for associative containers that can traverse their keys in the 
 ;;first-in-first-out order, while retaining a constant, or near-constant 
 ;;lookup time.
