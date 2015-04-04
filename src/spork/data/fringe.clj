@@ -60,6 +60,21 @@
   (conj-fringe [fringe n w] (.cons fringe n))
   (next-fringe [fringe]     (.peek fringe))
   (pop-fringe  [fringe]     (.pop fringe))
+  ;;TODO# Add a better priorityfringe
+  ;;Note -> Using on a priority queue, we have a possible space leak.
+  ;;I was approaching it much like the depth and breadth fringe
+  ;;implementations.  Specifically, we still keep the properties of
+  ;;Dijkstra's algorithm (or PFS), but we don't update the weights on
+  ;;the PQ.  We just queue the same item at a higher priority.
+  ;;Because of the priority-order of visit, we still get the
+  ;;properties of PFS, we just ignore duplicate items that occur later
+  ;;(they don't decrease distance), and they have already been
+  ;;visited.  In large state spaces, like combinatorial search, we 
+  ;;pay a significant penalty here in both memory and computation
+  ;;speed because we're not updating existing nodes on the fringe, and 
+  ;;allowing lots of garbage to accumulate.  Instead, we should be 
+  ;;using an indexed priority queue, and upon discovering that a 
+  ;;node exists, we should re-weight the node and rebalance the pq.
   java.util.PriorityQueue
   (conj-fringe [fringe n w] (doto fringe (.add (generic/entry w n))))
   (next-fringe [fringe]     (when-let [^clojure.lang.MapEntry e (.peek ^PriorityQueue fringe)] (.val e)))
