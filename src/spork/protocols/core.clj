@@ -66,7 +66,7 @@
 
 (defprotocol IPQ
   (priority-seq [pq]))
-(defprotocl IMinQ
+(defprotocol IMinQ
   (get-min [pq])
   (pop-min [pq])
   (min-priority [pq]))
@@ -74,6 +74,9 @@
   (get-max [pq])
   (pop-max [pq])
   (max-priority [pq]))
+
+;;Used as a convenience function to show us what's inside deftypes.
+(defprotocol IExposed  (expose [s]))
 
 ;;Definition for associative containers that can traverse their keys in the 
 ;;first-in-first-out order, while retaining a constant, or near-constant 
