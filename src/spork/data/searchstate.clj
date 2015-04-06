@@ -190,14 +190,26 @@
                     (java.util.ArrayList.)
                     nil))
 
-;; (definline mempty-PFS [startnode] 
+;; (definline mempty-PFS2 [startnode] 
 ;;   `(msearchstate2.  ~startnode 
 ;;                     nil
 ;;                     (doto (HashMap. ) (.put ~startnode ~startnode))
 ;;                     (doto (HashMap. ) (.put ~startnode 0))
-;;                     (fr/make-pq)
+;;                     (mpq/->min-pq)
 ;;                     (java.util.ArrayList.)
 ;;                     nil))
+
+
+;;This is the old priority-queue based implementation, non-indexed,
+;;may be useful in some cases despite the memory overhead.
+(definline mempty-PFSQ [startnode] 
+  `(msearchstate2.  ~startnode 
+                    nil
+                    (doto (HashMap. ) (.put ~startnode ~startnode))
+                    (doto (HashMap. ) (.put ~startnode 0))
+                    (fr/make-pq)
+                    (java.util.ArrayList.)
+                    nil))
 
 ;;now using new mutable priority queue, with updated search fringe.
 (definline mempty-PFS [startnode] 
@@ -205,6 +217,7 @@
                     nil
                     (doto (HashMap. ) (.put ~startnode ~startnode))
                     (doto (HashMap. ) (.put ~startnode 0))
+                    ;(fr/make-pq)
                     (mpq/->min-pq)
                     (java.util.ArrayList.)
                     nil))

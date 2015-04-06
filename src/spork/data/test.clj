@@ -87,7 +87,8 @@
 (let [pq (-> (fresh-pq) (assoc :a 0) (assoc :e 200))]
   (deftest reweighting
     (is (= (count pq) (count nodes)))
-    (is (= (generic/get-min pq) :a))
+    (is (= (generic/get-min pq) :p))
+    (is (= (second pq) [0 :a]))
     (is (= (generic/get-max pq) :e))))
 
 (let [pq (fresh-pq 5)]
@@ -118,6 +119,7 @@
              )]
   (deftest addingb
     (is (= (count pq) 5))
-    (is (= (generic/get-min pq) :a))
+    (is (= (generic/get-min pq) :p))
+    (is (= (second pq) [0 :a]))
     (is (= (generic/get-max pq) :m))))
 

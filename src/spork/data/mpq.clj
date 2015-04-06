@@ -41,25 +41,21 @@
   core/IPQ 
   (priority-seq [pq] (seq weightnodes))
   core/IMinQ
-  (get-min [pq] (when-let [^clojure.lang.MapEntry e (.first weightnodes)]
-                  (.val e)))
+  (get-min [pq] (when (pos? (.count pq)) (.val   ^clojure.lang.MapEntry (.first weightnodes))))
   (pop-min [pq] 
            (do (when-let [^clojure.lang.MapEntry e (.pollFirst weightnodes)]
                  (.remove node->weightnodes (.val e)))
                pq))                      
-  (min-priority [pq]
-    (when-let [^clojure.lang.MapEntry e (.first weightnodes)]
-      (.key  e)))  
+  (min-priority [pq]  (when (pos? (.count pq))
+                        (.key   ^clojure.lang.MapEntry (.first weightnodes))))  
   core/IMaxQ
-  (get-max [pq] (when-let [^clojure.lang.MapEntry e (.last weightnodes)]
-                  (.val e)))
+  (get-max [pq] (when (pos? (.count pq)) (.val   ^clojure.lang.MapEntry (.last weightnodes))))
   (pop-max [pq] 
            (do (when-let [^clojure.lang.MapEntry e (.pollLast weightnodes)]
                  (.remove node->weightnodes (.val e)))
                pq))                      
-  (max-priority [pq]
-    (when-let [^clojure.lang.MapEntry e (.last weightnodes)]
-      (.key  e)))  
+  (max-priority [pq]  (when (pos? (.count pq))
+                        (.key   ^clojure.lang.MapEntry (.last weightnodes))))  
   clojure.lang.IPersistentMap  
   (assoc [this node weight]    
     (if-let [^clojure.lang.MapEntry e (.get node->weightnodes node)]      
@@ -146,27 +142,21 @@
   (next-fringe [fringe]     (.get-min fringe))
   (pop-fringe  [fringe]     (.pop-min fringe))
   core/IMinQ
-  (get-min [pq] (when-let [^clojure.lang.MapEntry e (.first weightnodes)]
-                  (.val e)))
+  (get-min [pq] (when (pos? (.count pq)) (.val   ^clojure.lang.MapEntry (.first weightnodes))))
   (pop-min [pq] 
            (do (when-let [^clojure.lang.MapEntry e (.pollFirst weightnodes)]
-                 (do  (.remove node->weightnodes (.val e))
-                      (set! distance (unchecked-inc distance))))
+                 (.remove node->weightnodes (.val e)))
                pq))                      
-  (min-priority [pq]
-    (when-let [^clojure.lang.MapEntry e (.first weightnodes)]
-      (.key  e)))  
+  (min-priority [pq]  (when (pos? (.count pq))
+                        (.key   ^clojure.lang.MapEntry (.first weightnodes))))  
   core/IMaxQ
-  (get-max [pq] (when-let [^clojure.lang.MapEntry e (.last weightnodes)]
-                  (.val e)))
+  (get-max [pq] (when (pos? (.count pq)) (.val   ^clojure.lang.MapEntry (.last weightnodes))))
   (pop-max [pq] 
            (do (when-let [^clojure.lang.MapEntry e (.pollLast weightnodes)]
-                 (do (.remove node->weightnodes (.val e))
-                     (set! distance (unchecked-inc distance))))
+                 (.remove node->weightnodes (.val e)))
                pq))                      
-  (max-priority [pq]
-    (when-let [^clojure.lang.MapEntry e (.last weightnodes)]
-      (.key  e)))  
+  (max-priority [pq]  (when (pos? (.count pq))
+                        (.key   ^clojure.lang.MapEntry (.last weightnodes)))) 
   clojure.lang.IPersistentMap  
   (assoc [this node weight]     
     (if-let [^clojure.lang.MapEntry e (.get node->weightnodes node)]  ;reweight    
@@ -264,16 +254,33 @@
 (defmethod print-method Boundedpq [p  writer]  (print-bpq p writer))
 (defmethod print-dup Boundedpq [p  writer] (print-bpq p  writer))
 
+;;Note - using sorted sets for pqs is a pain, because set equality
+;;is determined by comparison value.  You forget this is not a
+;;"regular" priority queue, i.e. the number of items with the same
+;;values is irrelevant, and removal order of items with the same value
+;;respects insertion order.  In other words, a regular priority queue
+;;acts like a queue; faking a treeset as a queue "can" act like a
+;;queue, but we have to finagle the comparer.  Lack of proper
+;;finagling means that we can have unintended consequences in things
+;;like dijkstra, where we find a path to the destination node and
+;;end up re-weighting it, unintentionally visiting it over a
+;;pre-existing node with the same cost, the preference due to
+;;the fact that the destination node's value compares as less than.
+;;To fix this, we force the pq to "break ties" by always decalring
+;;greater than.
+
 (defn min-comparer [^clojure.lang.MapEntry l ^clojure.lang.MapEntry r]
   (let [c (compare (.key l) (.key r))]
     (case c
-      0 (compare (.val l) (.val r))
+      0  (let [v  (compare (.val l) (.val r))]
+             (if (zero? v) 0 1))
       c)))
 
-(defn max-comparer [^clojure.lang.MapEntry l ^clojure.lang.MapEntry r]
-  (let [c (compare (.key r) (.key l))]
+(defn max-comparer [^clojure.lang.MapEntry r ^clojure.lang.MapEntry l]
+  (let [c (compare (.key l) (.key r))]
     (case c
-      0 (compare (.val r) (.val l))
+      0  (let [v  (compare (.val l) (.val r))]
+               (if (zero? v) 0 1))
       c)))
 
 (defn ->min-pq []     (Mpq. (java.util.HashMap.) (java.util.TreeSet. ^java.util.Comparator min-comparer) {}))
