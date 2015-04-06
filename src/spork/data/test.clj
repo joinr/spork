@@ -110,6 +110,7 @@
       _  (dotimes [i 2] (generic/pop-max pq))]
   (deftest poprightb
     (is (= (count pq) 3))
+    (is (= (:distance (generic/expose pq)) 2))
     (is (= (generic/get-min pq) :p))
     (is (= (generic/get-max pq) :n))))
 

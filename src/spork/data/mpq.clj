@@ -145,7 +145,8 @@
   (get-min [pq] (when (pos? (.count pq)) (.val   ^clojure.lang.MapEntry (.first weightnodes))))
   (pop-min [pq] 
            (do (when-let [^clojure.lang.MapEntry e (.pollFirst weightnodes)]
-                 (.remove node->weightnodes (.val e)))
+                 (do (set! distance (unchecked-inc distance))
+                     (.remove node->weightnodes (.val e))))
                pq))                      
   (min-priority [pq]  (when (pos? (.count pq))
                         (.key   ^clojure.lang.MapEntry (.first weightnodes))))  
@@ -153,7 +154,8 @@
   (get-max [pq] (when (pos? (.count pq)) (.val   ^clojure.lang.MapEntry (.last weightnodes))))
   (pop-max [pq] 
            (do (when-let [^clojure.lang.MapEntry e (.pollLast weightnodes)]
-                 (.remove node->weightnodes (.val e)))
+                 (do (set! distance (unchecked-inc distance))
+                     (.remove node->weightnodes (.val e))))
                pq))                      
   (max-priority [pq]  (when (pos? (.count pq))
                         (.key   ^clojure.lang.MapEntry (.last weightnodes)))) 
@@ -184,9 +186,10 @@
                   this)))))
   (assocEx [this k v]  (.assoc this k v))
   (without [this node]   
-      (do (when-let [^clojure.lang.MapEntry e (.get node->weightnodes node)] (.remove node->weightnodes node)
-                    (do (.remove weightnodes e)
-                        (set! distance (unchecked-inc distance))))
+      (do (when-let [^clojure.lang.MapEntry e (.get node->weightnodes node)]
+            (do (.remove node->weightnodes node)
+                (.remove weightnodes e)
+                (set! distance (unchecked-inc distance))))
           this))
   java.lang.Iterable ;weak implementation.
   (iterator [this]  (iterator-seq (.seq this)))
@@ -288,7 +291,8 @@
 (defn ->custom-pq [^java.util.Comparator f] (Mpq. (java.util.HashMap.) (java.util.TreeSet. f) {}))
 
 (defn ->min-bounded-pq [^long bound]     
-  (Boundedpq. (java.util.HashMap.) (java.util.TreeSet. ^java.util.Comparator min-comparer) 
+  (Boundedpq. (java.util.HashMap.) 
+              (java.util.TreeSet. ^java.util.Comparator min-comparer) 
               bound
               nil
               bound
@@ -296,7 +300,8 @@
               {}))
 
 (defn ->max-bounded-pq [^long bound]     
-  (Boundedpq. (java.util.HashMap.) (java.util.TreeSet. ^java.util.Comparator max-comparer) 
+  (Boundedpq. (java.util.HashMap.) 
+              (java.util.TreeSet. ^java.util.Comparator max-comparer) 
               bound
               nil
               bound
