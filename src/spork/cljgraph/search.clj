@@ -2,6 +2,7 @@
 ;;breadth, priority, random searches and traversals (walks).
 (ns spork.cljgraph.search
   (:require [clojure.core [reducers :as r]]
+            [clojure.set]
             [spork.protocols [core :as generic]]
             [spork.data      [searchstate :as searchstate]]))
 
