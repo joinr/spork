@@ -632,7 +632,7 @@
 (def split-by-tab #(strlib/split % re-tab))
 
 ;older table abstraction, based on maps and records...
- 
+
 (defn tabdelimited->table 
   "Return a map-based table abstraction from reading a string of tabdelimited 
    text.  The default string parser tries to parse an item as a number.  In 
@@ -645,6 +645,30 @@
                 schema {}}}] 
   (let [lines (strlib/split-lines s)
         tbl   (->column-table 
+                 (vec (map (if keywordize-fields?  
+                             (comp keyword clojure.string/trim)
+                             identity) (split-by-tab (first lines)))) 
+                 [])
+        parsef (parse/parsing-scheme schema :default-parser  
+                 (if (= parsemode :scientific) parse/parse-string
+                     parse/parse-string-nonscientific))
+        fields (table-fields tbl)      
+        parse-rec (comp (parse/vec-parser fields parsef) split-by-tab)]
+      (->> (conj-rows (empty-columns (count (table-fields tbl))) 
+                      (map parse-rec (rest lines)))
+           (assoc tbl :columns)))) 
+
+(defn lines->table 
+  "Return a map-based table abstraction from reading lines of tabe delimited text.  
+   The default string parser tries to parse an item as a number.  In 
+   cases where there is an E in the string, parsing may return a number or 
+   infinity.  Set the :parsemode key to any value to anything other than 
+   :scientific to avoid parsing scientific numbers."
+   [lines & {:keys [parsemode keywordize-fields? schema] 
+             :or   {parsemode :scientific
+                    keywordize-fields? true
+                    schema {}}}] 
+  (let [tbl   (->column-table 
                  (vec (map (if keywordize-fields?  
                              (comp keyword clojure.string/trim)
                              identity) (split-by-tab (first lines)))) 
