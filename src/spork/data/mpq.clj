@@ -34,6 +34,10 @@
               ^java.util.TreeSet weightnodes
               _meta]
   Object  (toString [this] (str (.seq this)))
+  core/IFringe
+  (conj-fringe [fringe n w] (.assoc fringe n w))
+  (next-fringe [fringe]     (.get-min fringe))
+  (pop-fringe  [fringe]     (.pop-min fringe))
   core/IPQ 
   (priority-seq [pq] (seq weightnodes))
   core/IMinQ
@@ -137,6 +141,10 @@
   Object  (toString [this] (str (.seq this)))
   core/IPQ 
   (priority-seq [pq] (seq weightnodes))
+  core/IFringe
+  (conj-fringe [fringe n w] (.assoc fringe n w))
+  (next-fringe [fringe]     (.get-min fringe))
+  (pop-fringe  [fringe]     (.pop-min fringe))
   core/IMinQ
   (get-min [pq] (when-let [^clojure.lang.MapEntry e (.first weightnodes)]
                   (.val e)))
@@ -287,81 +295,3 @@
               bound
               (fn [l r]  (== (compare r l) 1))              
               {}))
-;;testing 
-(comment 
-
-(require '[clojure.test :as test])
-
-(def nodes [:a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p])
-(defn fresh-pq 
-  ([] 
-     (reduce (fn [acc [node w]]
-               (assoc acc node w))
-             (->min-pq)
-             (map-indexed (fn [i n] [n i]) (reverse nodes))))
-  ([bound] 
-     (reduce (fn [acc [node w]]
-               (assoc acc node w))
-             (->min-bounded-pq bound)
-             (map-indexed (fn [i n] [n i]) (reverse nodes)))))
-
-(let [pq (fresh-pq)]
-  (test/deftest counting   
-    (test/is (= (count pq) (count nodes)))
-    (test/is (= (core/get-min pq) :p))
-    (test/is (= (core/get-max pq) :a))))
-  
-
-(let [pq (fresh-pq)
-      _  (dotimes [i 10] (core/pop-min pq))]
-  (test/deftest popleft
-    (test/is (= (count pq) (- (count nodes) 10)))
-    (test/is (= (core/get-min pq) :f))
-    (test/is (= (core/get-max pq) :a))))
-
-
-(let [pq (fresh-pq)
-      _  (dotimes [i 10] (core/pop-max pq))]
-  (test/deftest popright
-    (test/is (= (count pq) (- (count nodes) 10)))
-    (test/is (= (core/get-min pq) :p))
-    (test/is (= (core/get-max pq) :k))))
-
-(let [pq (-> (fresh-pq) (assoc :a 0) (assoc :e 200))]
-  (test/deftest reweighting
-    (test/is (= (count pq) (count nodes)))
-    (test/is (= (core/get-min pq) :a))
-    (test/is (= (core/get-max pq) :e))))
-
-(let [pq (fresh-pq 5)]
-  (test/deftest countingb   
-    (test/is (= (count pq) 5))
-    (test/is (= (core/get-min pq) :p))
-    (test/is (= (core/get-max pq) :l))))
-  
-
-(let [pq (fresh-pq 5)
-      _  (dotimes [i 2] (core/pop-min pq))]
-  (test/deftest popleftb
-    (test/is (= (count pq) 3))
-    (test/is (= (core/get-min pq) :n))
-    (test/is (= (core/get-max pq) :l))))
-
-
-(let [pq (fresh-pq 5)
-      _  (dotimes [i 2] (core/pop-max pq))]
-  (test/deftest poprightb
-    (test/is (= (count pq) 3))
-    (test/is (= (core/get-min pq) :p))
-    (test/is (= (core/get-max pq) :n))))
-
-(let [pq (-> (fresh-pq 5) 
-             (assoc :a 0)  ;adds :a, bumps :n
-             (assoc :e 200) ;should be ignored
-             )]
-  (test/deftest addingb
-    (test/is (= (count pq) 5))
-    (test/is (= (core/get-min pq) :a))
-    (test/is (= (core/get-max pq) :m))))
-)
-

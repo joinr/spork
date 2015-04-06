@@ -7,7 +7,10 @@
   (:require [spork.protocols [core :as generic]]
             [spork.data      [priorityq :as pq]
                              [fringe :as fr]
-                             [mutable :as m]])
+                             [mutable :as m]
+                             [mpq :as mpq] ;new mutable priority
+                                        ;queue, bounded queues.
+             ])
   (:import  [java.util HashMap ArrayList]))
 
 ;;This is slow for recovering paths.
@@ -187,12 +190,31 @@
                     (java.util.ArrayList.)
                     nil))
 
+;; (definline mempty-PFS [startnode] 
+;;   `(msearchstate2.  ~startnode 
+;;                     nil
+;;                     (doto (HashMap. ) (.put ~startnode ~startnode))
+;;                     (doto (HashMap. ) (.put ~startnode 0))
+;;                     (fr/make-pq)
+;;                     (java.util.ArrayList.)
+;;                     nil))
+
+;;now using new mutable priority queue, with updated search fringe.
 (definline mempty-PFS [startnode] 
   `(msearchstate2.  ~startnode 
                     nil
                     (doto (HashMap. ) (.put ~startnode ~startnode))
                     (doto (HashMap. ) (.put ~startnode 0))
-                    (fr/make-pq)
+                    (mpq/->min-pq)
+                    (java.util.ArrayList.)
+                    nil))
+
+(definline mempty-PFS-bounded [startnode bound] 
+  `(msearchstate2.  ~startnode 
+                    nil
+                    (doto (HashMap. ) (.put ~startnode ~startnode))
+                    (doto (HashMap. ) (.put ~startnode 0))
+                    (mpq/->min-bounded-pq ~bound)
                     (java.util.ArrayList.)
                     nil))
 
