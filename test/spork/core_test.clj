@@ -1,7 +1,6 @@
 (ns spork.core-test
-  (:use clojure.test
-        spork.core))
+  (:use clojure.test)
+  (:require [spork.data.test]
+            [spork.cljgraph.tests]))
 
-(deftest a-test
-  (testing "FIXME, I fail."
-    (is (= 0 1))))
+(run-tests 'spork.data.test 'spork.cljgraph.tests)
