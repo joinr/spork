@@ -27,8 +27,13 @@
 (defn func-sig [name sig]
   `(~name ~as-type  ~(close sig)))
            
+(defn get-params [m]
+  (let [p (get m :parameter-types)]
+    (if (= p []) '[void] p)))
+        
 (defn method->funcsig [m]
-  (func-sig (:name m)  (conj (:parameter-types m) (:return-type m))))
+  (func-sig (:name m)  (conj (get-params m) 
+                             (get m :return-type (get m :name)))))
         
 (defn flatten-bases [cls]
   (loop [visited #{cls}
