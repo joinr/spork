@@ -4,12 +4,12 @@
 
 (def ^:dynamic *short-types* true)
 
-(defn members [cls] (:members (reflect/reflect cls)))
+(defn public? [meth] (contains? (:flags meth) :public)) 
+(defn members [cls] (filter public? (:members (reflect/reflect cls))))
 (def trunc-pattern #"\.[A-Za-z]*$")
 (def short-name (memoize (fn [cls] (if-let [the-name (re-find trunc-pattern (str cls))]
                                      (symbol (subs the-name 1))
                                      cls))))
-
 (defn method->sig [m]
   `((with-meta ~(:name m) {:tag ~(:return-type m)})   ~(:parameter-types m))) 
 
@@ -41,7 +41,7 @@
             (recur (conj visited  base) (conj order  base) (into bases (remove visited (:bases (reflect/reflect base))))))))))
 
 (defn get-spec [cls]
-  {:class cls :methods (map method->funcsig (:members (reflect/reflect cls)))})
+  {:class cls :methods (map method->funcsig (members  cls))})
 
 (defn replace-with
   "Derived from clojure.core/replace"
