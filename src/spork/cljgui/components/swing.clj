@@ -782,7 +782,8 @@
                                      (str (str (System/getProperty "user.home") 
                                                "\\" "SavedBuffer.png")) ]
                                  (do (let [buffer (jgraphics/make-imgbuffer width height)
-                                           bg     (j2d/bitmap-graphics buffer)]
+                                           bg     (j2d/bitmap-graphics buffer)
+                                           _      (paintf bg)]
                                        (j2d/write-image buffer savepath nil))
                                      (alert (str "Saved image to " savepath)))))))]                                      
           (doto panel                                                     
