@@ -1,4 +1,4 @@
-(defproject spork "0.1.9.4-SNAPSHOT"
+(defproject spork "0.1.9.5-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and are suppoorted as stand-alone dependencies.
@@ -26,5 +26,6 @@
                  [dk.ative/docjure    "1.6.0-SNAPSHOT"]
                  [primitive-math "0.1.3"]
                  [org.clojure/core.match "0.2.1"]
-                 [iota "1.1.2"]]
+                 [iota "1.1.2"]
+                 [clojure-watch "LATEST"]]
   :jvm-opts ^:replace ["-Xmx500m" "-XX:NewSize=200m"])
