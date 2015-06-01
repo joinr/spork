@@ -27,5 +27,6 @@
                  [primitive-math "0.1.3"]
                  [org.clojure/core.match "0.2.1"]
                  [iota "1.1.2"]
-                 [clojure-watch "LATEST"]]
+                 [clojure-watch "LATEST"] ;ephemeral dependency.
+                 ]
   :jvm-opts ^:replace ["-Xmx500m" "-XX:NewSize=200m"])
