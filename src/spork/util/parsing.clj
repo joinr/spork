@@ -1,5 +1,6 @@
 (ns spork.util.parsing
-  (:require [clojure.edn]))
+  (:require [clojure.edn]
+            [spork.util [general :as gen]]))
 
 
 ;;Note -> this isn't quite so hot, but it's a general failsafe.
@@ -84,10 +85,10 @@
    general."
   [field-parser & {:keys [default-parser] 
                    :or   {default-parser parse-string}}]
-  (let [get-parser (memoize (fn [field] 
-                              (if-let [pfunc (get-key-or-string field-parser field default-parser)]
-                                (lookup-parser pfunc default-parser) 
-                                parse-string)))]
+  (let [get-parser (gen/memo-1  (fn [field] 
+                                  (if-let [pfunc (get-key-or-string field-parser field default-parser)]
+                                    (lookup-parser pfunc default-parser) 
+                                    parse-string)))]
     (fn [field ^String v] ((get-parser field) v))))
 
 (defn nested-parser 
@@ -149,6 +150,34 @@
           (reduce (fn [acc x] 
                     (conj acc (parsefunc x)))  []
                     xs)))))
+
+;;There's some loosery-goosiness to tab delimited parsing, 
+;;that happens when we're parsing tab delimited strings.
+;;we want to allow a clean parse if the last field in a 
+;;record is empty.
+
+(defn vec-parser 
+  "Given a set of fields, and a function that maps a field name to 
+   a parser::string->'a, returns a function that consumes a sequence
+   of strings, and parses fields with the corresponding 
+   positional parser.  Alternately, caller may supply a parser as a 
+   single argument, to be applied to a vector of strings."
+  ([fields field->value]
+     (let [xs->values (vec (map #(partial field->value %) fields))]
+       (fn [xs]
+         (loop [acc []
+                idx 0]
+           (if (= idx (count xs->values)) acc
+               (recur (conj acc ((nth xs->values idx) (nth xs idx)))
+                      (inc idx)))))))
+  ([f] 
+     (let [parsefunc (lookup-parser f identity)]
+       (fn [xs]         
+          (reduce (fn [acc x] 
+                    (conj acc (parsefunc x)))  []
+                    xs)))))
+
+
 (defn record-parser 
   "Given an implied schema as indicated by the map, returns a function that
    parses maps with identical fields using the parser."

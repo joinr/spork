@@ -23,9 +23,9 @@
               (let [x (first xs)
                     res  (if (coll? x) (close x) (if *short-types* (short-name x) x))]
                 (recur (-> (if op (conj acc op) acc) (conj res)) (flip op) (rest xs))))))))
+
 (def as-type (symbol (str "::")))          
-(defn func-sig [name sig]
-  `(~name ~as-type  ~(close sig)))
+(defn func-sig [name sig] `(~name ~as-type  ~(close sig)))
            
 (defn get-params [m]
   (let [p (get m :parameter-types)]
@@ -43,7 +43,8 @@
         (let [base (ns-resolve *ns* (first bases))]
           (if (visited base)
             (recur visited order (next bases))           
-            (recur (conj visited  base) (conj order  base) (into bases (remove visited (:bases (reflect/reflect base))))))))))
+            (recur (conj visited  base) (conj order  base) 
+                   (into bases (remove visited (:bases (reflect/reflect base))))))))))
 
 (defn get-spec [cls]
   {:class cls :methods (map method->funcsig (members  cls))})

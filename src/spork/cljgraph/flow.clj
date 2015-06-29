@@ -1094,8 +1094,6 @@
          ~'neighborf (:neighborf ~ctx)]
      ~@body))
 
-
-
 (defn ->flow [options]
   (with-flow-options options
     (flow-fn *flow-options*)))
