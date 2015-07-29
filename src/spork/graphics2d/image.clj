@@ -39,7 +39,7 @@
            (ImageIO/write img "png" tgt)
            (postf (str "Buffer saved to:" filepath)))))
 
-(defn ^BufferedImage read-image [filepath]
+(defn ^BufferedImage read-buffered-image [filepath]
    (let [tgt (clojure.java.io/file filepath)]         
      (assert (.exists tgt)) 
      (ImageIO/read tgt)))
@@ -133,3 +133,6 @@
   ([s] (shape->img :translucent s)))
 
 
+(defn read-image [filepath]
+  (let [buf (read-buffered-image filepath)]
+    (->image :buffered-image buf  (bitmap-width buf) (bitmap-height buf) :translucent)))
