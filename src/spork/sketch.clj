@@ -22,9 +22,8 @@
 (def ^:dynamic *current-sketch* nil)
 
 
-(defn sketch [the-shapes]
-  (->> the-shapes 
-       (gui/view)))
+;;current options are :title and :cached?
+(defn sketch [the-shapes & opts] (apply gui/view the-shapes opts))
 
 ;;Buffered image was killing us here with memory leakage.  So for now,
 ;;we just do immediate mode drawing.
