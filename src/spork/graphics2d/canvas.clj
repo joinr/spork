@@ -369,6 +369,9 @@
   (bitmap-format     [b])
   (write-image       [b dest fmt])
   (as-buffered-image [b fmt]))
+
+(defprotocol IClearable
+  (clear [obj]))
     
 (defprotocol I2DGraphicsProvider 
   (get-graphics [obj]))

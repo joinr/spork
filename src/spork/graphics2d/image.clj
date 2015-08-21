@@ -8,7 +8,7 @@
   (:use [spork.graphics2d.canvas])
   (:require [spork.protocols [spatial :as spatial]])
   (:import [java.awt GraphicsEnvironment  GraphicsDevice GraphicsConfiguration 
-            Transparency Graphics2D]
+            Transparency Graphics2D AlphaComposite Color]
            [java.awt.image BufferedImage ImageObserver]
            [javax.imageio ImageIO]))
 
@@ -44,6 +44,17 @@
      (assert (.exists tgt)) 
      (ImageIO/read tgt)))
 
+(def +clear+ (Color. 255 255 255 0))
+
+(defn ^BufferedImage clear-buffered-image [^BufferedImage img]
+  (let [^Graphics2D g (.getGraphics img)
+        composite     (.getComposite g)]
+        (doto g
+          (.setComposite AlphaComposite/Clear)
+          (.fillRect 0 0 (.getWidth img) (.getHeight img))
+          (.setComposite composite))
+        img))
+
 (def get-transparency 
   (let [transmap {:opaque Transparency/OPAQUE
                   :translucent Transparency/TRANSLUCENT
@@ -54,14 +65,16 @@
     (fn [t]
       (get transmap t Transparency/OPAQUE)))) 
 
-(extend-protocol IBitMap 
-  BufferedImage 
+(extend-type  BufferedImage
+  IBitMap
   (bitmap-width [b]  (.getWidth b))
   (bitmap-height [b] (.getHeight b))
   (bitmap-graphics [b] (get-graphics-img b))
   (bitmap-format [b] :buffered-image)
   (as-buffered-image [b fmt] b)
-  (write-image [b dest fmt] (save-image b dest (fn [_] nil))))
+  (write-image [b dest fmt] (save-image b dest (fn [_] nil)))
+  IClearable
+  (clear [obj] (clear-buffered-image obj)))
 
 ;;Images are mutable...It might be interesting to look at persistent images 
 ;;later (could certainly do it).

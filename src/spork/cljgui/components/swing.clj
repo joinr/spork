@@ -769,9 +769,9 @@
    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
    simple situations where you have fixed dimensions."
   ([width height paintf]
-   (let [painter (atom paintf)
+   (let [painter  (atom paintf)
          meta-map (atom {:paintf painter})
-         panel  (proxy [JPanel clojure.lang.IMeta clojure.lang.IObj] []
+         panel    (proxy [JPanel clojure.lang.IMeta clojure.lang.IObj] []
                     (paintComponent [g]  (do (proxy-super paintComponent g)
                                              (paintf g)))
                     (removeNotify [] (do (println "removing!")
@@ -796,70 +796,6 @@
             (.setName  (str (gensym "Canvas"))))))
   ([paintf] (paintpanel 250 250 paintf)))
 
-;; (defn paintpanel
-;;   "Create a JPanel with its paint method overriden by paintf, which will be 
-;;    called using g.  We can get mutable behavior by passing a function that 
-;;    evals and applies a ref'd function for paintf, or we can keep the painting 
-;;    static.  Note, paintpanel is static, in that resize behavior will not scale
-;;    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
-;;    simple situations where you have fixed dimensions."
-;;   ([width height paintf]
-;;      (let [panel  (proxy [JPanel] []
-;;                     (paintComponent [g]  (do (proxy-super paintComponent g)
-;;                                              (paintf g)))
-;;                     (removeNotify [] (do (println "removing!")
-;;                                          (proxy-super removeAll)
-;;                                          (proxy-super removeNotify))))
-;;            savelistener (proxy [MouseAdapter] []
-;;                           (mouseClicked [^MouseEvent e]
-;;                              (if (= (.getButton e) MouseEvent/BUTTON3)
-;;                                (let [savepath 
-;;                                      (str (str (System/getProperty "user.home") 
-;;                                                "\\" "SavedBuffer.png")) ]
-;;                                  (do (let [buffer (jgraphics/make-imgbuffer width height)
-;;                                            bg     (j2d/bitmap-graphics buffer)
-;;                                            _      (paintf bg)]
-;;                                        (j2d/write-image buffer savepath nil))
-;;                                      (alert (str "Saved image to " savepath)))))))]                                      
-;;           (doto panel                                                     
-;;             (.setPreferredSize (Dimension. width height))
-;;             (.addMouseListener  savelistener))))
-;;   ([paintf] (paintpanel 250 250 paintf)))
-
-;; (defn cached-paintpanel
-;;   "Create a JPanel with its paint method overriden by paintf, which will be 
-;;    called using g.  We can get mutable behavior by passing a function that 
-;;    evals and applies a ref'd function for paintf, or we can keep the painting 
-;;    static.  Note, paintpanel is static, in that resize behavior will not scale
-;;    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
-;;    simple situations where you have fixed dimensions."
-;;   ([width height paintf]
-;;      (let [buffer (jgraphics/make-imgbuffer  width height)
-;;            bg     (j2d/bitmap-graphics buffer)           
-;;            p      (fn [^Graphics2D g]
-;;                     (do (paintf bg) 
-;;                         (j2d/draw-image g buffer :opaque 0 0)))
-;;            panel  (proxy [JPanel]   []
-;;                     (paintComponent [g]  (do (proxy-super paintComponent g) 
-;;                                              (p g)))
-;;                     (removeNotify   [] (do (println "removing!")
-;;                                            (proxy-super removeAll)
-;;                                            (.dispose bg)
-;;                                            (.flush buffer)
-;;                                            (proxy-super removeNotify))))
-;;            savelistener (proxy [MouseAdapter] []
-;;                           (mouseClicked [^MouseEvent e]
-;;                              (if (= (.getButton e) MouseEvent/BUTTON3)
-;;                                (let [savepath 
-;;                                      (str (str (System/getProperty "user.home") 
-;;                                                "\\" "SavedBuffer.png")) ]
-;;                                (do (j2d/write-image buffer savepath nil)
-;;                                  (alert (str "Saved image to " savepath)))))))]                                      
-;;          (doto panel                                                     
-;;            (.setPreferredSize (Dimension. width height))
-;;            (.addMouseListener  savelistener))))
-;;   ([paintf] (paintpanel 250 250 paintf))) 
-    
 (defn cached-paintpanel
   "Create a JPanel with its paint method overriden by paintf, which will be 
    called using g.  We can get mutable behavior by passing a function that 
@@ -868,8 +804,8 @@
    the original coordinate system.  It will NOT stretch.  Use paintpanel for 
    simple situations where you have fixed dimensions."
   ([width height paintf]
-     (let [buffer (atom (jgraphics/make-imgbuffer  width height))           
-           painter (atom paintf)
+     (let [buffer   (atom (jgraphics/make-imgbuffer  width height))           
+           painter  (atom paintf)
            meta-map (atom {:buffer @buffer :paintf painter})
            bg     (j2d/bitmap-graphics @buffer)           
            p      (fn [^Graphics2D g]
