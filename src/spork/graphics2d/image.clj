@@ -73,8 +73,8 @@
   (bitmap-format [b] :buffered-image)
   (as-buffered-image [b fmt] b)
   (write-image [b dest fmt] (save-image b dest (fn [_] nil)))
-  IClearable
-  (clear [obj] (clear-buffered-image obj)))
+  IWipeable
+  (wipe [obj] (clear-buffered-image obj)))
 
 ;;Images are mutable...It might be interesting to look at persistent images 
 ;;later (could certainly do it).
