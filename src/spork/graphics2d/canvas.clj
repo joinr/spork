@@ -106,6 +106,8 @@
   (and (= (get-a c1) (get-a c2))
        (rgb-equal c1 c2)))
 
+;;The clear color, used for "wiping" out existing colors.
+
 (def colors     
   #{:black :magenta :white 
     :orange :red :lightgray 
@@ -116,7 +118,8 @@
 ;;http://www.rapidtables.com/web/color/RGB_Color.htm
 (def color-specs
   (into {}
-        [[:maroon [128 0 0]]
+        [[:clear [255 255 255 0]]
+         [:maroon [128 0 0]]
          [:dark-red [139 0 0]]
          [:brown [165 42 42]]
          [:firebrick [178 34 34]]
@@ -521,12 +524,12 @@
 ;primtive drawing functions above to draw.  ;;These are actually our primitive 
 ;drawing operations...
 (defprotocol ICanvas2DExtended
-  (-draw-polygon   [canvas color points] "Outlines a polygon defined by points.")
-  (-fill-polygon   [canvas color points] "Fills a polygon defined by points.")
-  (-draw-path      [canvas points]       "Draws a general path defined by points.")
-  (-draw-poly-line [canvas pline]        "Draws adjacent segments defined by points.")
-  (-draw-quad      [canvas quad]         "Draws a quadrilateral defined by points.")
-  (-draw-curve     [canvas curve]        "Working on curves later..."))
+  (draw-polygon   [canvas color points] "Outlines a polygon defined by points.")
+  (fill-polygon   [canvas color points] "Fills a polygon defined by points.")
+  (draw-path      [canvas points]       "Draws a general path defined by points.")
+  (draw-poly-line [canvas pline]        "Draws adjacent segments defined by points.")
+  (draw-quad      [canvas quad]         "Draws a quadrilateral defined by points.")
+  (draw-curve     [canvas curve]        "Working on curves later..."))
 
 ;(defn draw-path [canvas points])
 ;(draw-poly-line [canvas points]

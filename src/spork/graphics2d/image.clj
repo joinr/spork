@@ -13,6 +13,7 @@
            [javax.imageio ImageIO]))
 
 (def opaqe Transparency/OPAQUE)
+(def +clear+ (Color. 255 255 255 0))
 
 (def null-observer 
   (reify ImageObserver 
@@ -43,8 +44,6 @@
    (let [tgt (clojure.java.io/file filepath)]         
      (assert (.exists tgt)) 
      (ImageIO/read tgt)))
-
-(def +clear+ (Color. 255 255 255 0))
 
 (defn ^BufferedImage clear-buffered-image [^BufferedImage img]
   (let [^Graphics2D g (.getGraphics img)
@@ -116,6 +115,12 @@
     (do (draw-string (get-graphics data) color font s x y) ig))
   (draw-image     [ig img transparency x y] 
     (do (draw-image (get-graphics data) img transparency x y) ig))
+  ICanvas2DExtended
+  (draw-polygon   [ig color  points] (do (draw-polygon (get-graphics data) color points) ig))
+  (fill-polygon   [ig color  points] (do (fill-polygon (get-graphics data) color points) ig))
+  (draw-path      [ig points] (do (draw-path (get-graphics data) points) ig))
+  (draw-poly-line [ig pline]  (do (draw-poly-line (get-graphics data) pline) ig))
+  (draw-quad      [ig tri]    (do (draw-quad (get-graphics data) tri) ig))
   IInternalDraw
   (-draw-shapes [ig xs] (let [g (get-graphics data)]
                           (do (draw-shapes g xs)

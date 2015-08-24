@@ -246,6 +246,9 @@
 ;; FontMetrics fm = img.getGraphics().getFontMetrics(font);
 ;; int width = fm.stringWidth("Your string");
 
+(defmacro not-implemented [nm]
+  `(throw (Exception. (str [~nm :not-implemented!])))) 
+
 (extend-type  Graphics2D 
   ICanvas2D
   (get-context    [^Graphics2D g]  g)
@@ -285,15 +288,17 @@
    (set-stroke [^Graphics2D ctx ^Stroke s] (doto ctx (.setStroke s)))
   ITextRenderer
   (text-width     [^Graphics2D canvas ^String txt] (.getWidth  (string-bounds canvas txt)))
-  (text-height    [^Graphics2D canvas ^String txt] (.getHeight (string-bounds canvas txt))))
-
-  
-;  ICanvas2DExtended
-;  (-draw-polygon   [^Graphics2D g color points] )
-;  (-fill-polygon   [^Graphics2D g color points] )
-;  (-draw-path      [^Graphics2D g points]   )
-;  (-draw-poly-line [^Graphics2D g pline]  )
-;  (-draw-quad      [^Graphics2D g tri]  ))
+  (text-height    [^Graphics2D canvas ^String txt] (.getHeight (string-bounds canvas txt)))
+  ICanvas2DExtended
+  (draw-polygon   [^Graphics2D g color ^Polygon points]
+    (with-color (get-gui-color color) g
+      #(do (.drawPolygon ^Graphics2D % points) %)))
+  (fill-polygon   [^Graphics2D g color ^Polygon points]
+    (with-color (get-gui-color color) g
+      #(do (.fillPolygon ^Graphics2D % points) %)))
+  (draw-path      [^Graphics2D g points] (not-implemented draw-path))
+  (draw-poly-line [^Graphics2D g pline]  (not-implemented draw-poly-line))
+  (draw-quad      [^Graphics2D g tri]    (not-implemented draw-quad)))
 
 
 ;a set of rendering options specific to the j2d context.
@@ -370,6 +375,14 @@
     (swing-graphics. 
       (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil)
       options))
+  ICanvas2DExtended
+  (draw-polygon   [sg color  points]
+    (swing-graphics. (draw-polygon g color points) options))
+  (fill-polygon   [sg color  points]
+    (swing-graphics. (fill-polygon g color points) options))
+  (draw-path      [sg points] (swing-graphics. (draw-path g points) options))
+  (draw-poly-line [sg pline]  (swing-graphics. (draw-poly-line g pline) options))
+  (draw-quad      [sg tri]    (swing-graphics. (draw-quad g tri) options))
   ITextRenderer
   (text-width     [sg  txt] (.getWidth  (string-bounds g txt)))
   (text-height    [sg  txt] (.getHeight (string-bounds g txt)))
