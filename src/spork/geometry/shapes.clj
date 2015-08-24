@@ -143,5 +143,43 @@
 ;  (draw-sphere   [s sph])
 ;  (draw-cylinder [s cyl])
 
+;;This forms the basis for an easy way to wrap j2d shapes...
+;;a wrapper around a java poloygon, somewhat of a hack atm...
+;;We should probably formalize this a bit better, make it more
+;;portable.
+;; (defn ->polygon [color points]
+;;   (let [^java.awt.Polygon p (java.awt.Polygon.)
+;;         _ (doseq [[^int x ^int y] points]
+;;             (.addPoint p x y))
+;;         ^java.awt.Rectangle b (.getBounds p)
+;;         bnds (spork.protocols.spatial/bbox (.getX b) (.getY b) (.getWidth b) (.getHeight b))]
+;;     (proxy [java.awt.Polygon
+;;             spork.graphics2d.canvas.IShape
+;;             spork.protocols.spatial.IBoundingBox] []       
+;;       (get_bounding_box [b] bnds)
+;;       (shape_bounds [] bnds)
+;;       (draw_shape   [canv]  (c/draw-polygon canv color p)))))
+
+(deftype polygon [^java.awt.Polygon p color bnds drawf]
+  c/IShape
+  (draw-shape [shp c] (drawf c color p))
+  (shape-bounds [shp] bnds)
+  spatial/IBoundingBox
+  (get-bounding-box [shp] bnds)
+  clojure.lang.IDeref
+  (deref [obj] p))
+  
+(defn ->polygon
+  ([color points drawf]
+   (let [^java.awt.Polygon p (java.awt.Polygon.)
+         _ (doseq [[^int x ^int y] points]
+             (.addPoint p x y))
+         ^java.awt.Rectangle b (.getBounds p)
+         bnds (spork.protocols.spatial/bbox (.getX b) (.getY b) (.getWidth b) (.getHeight b))]
+     (polygon. p color bnds drawf)))
+  ([color points] (->polygon color points c/draw-polygon)))
+(defn ->filled-polygon [color points] (->polygon color points c/fill-polygon))
+
+  
   
   

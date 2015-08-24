@@ -33,7 +33,19 @@
   (get-bottom [b]  (.getMinY b))
   s/IBoundingBox
   (get-bounding-box [bv] (s/->boundingbox (.getX bv) (.getY bv) (.getWidth bv) (.getHeight bv))))
-  
+
+
+(extend-type Rectangle
+  s/IBounded 
+  (get-width  [b]  (.getWidth b))
+  (get-height [b]  (.getHeight b))
+  (get-left   [b]  (.getMinX b))
+  (get-right  [b]  (.getMaxX b))
+  (get-top    [b]  (.getMaxY b))
+  (get-bottom [b]  (.getMinY b))
+  s/IBoundingBox
+  (get-bounding-box [bv] (s/->boundingbox (.getX bv) (.getY bv) (.getWidth bv) (.getHeight bv))))
+
 (defn draw-line*
   ([^Graphics2D g x1 y1 x2 y2]
     (do (.. g (drawLine x1 y1 x2 y2)) g))
