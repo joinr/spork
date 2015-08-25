@@ -5,7 +5,7 @@
 ;;full scene graph library for this.  For now, it's being used as 
 ;;a sort of skeleton scene graph, for simple 2d diagrams and plotting.
 (ns spork.sketch
-  (:require [spork.graphics2d.canvas :refer :all]
+  (:require [spork.graphics2d.canvas :as canvas :refer :all ]
             [spork.graphics2d [image :as image]
                               [swing :as provider]
                               [font :as f]]
@@ -121,6 +121,49 @@
     [s
      (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
 
+
+;;Operations on images and icons.
+(defn fit-ratio [w h maxw maxh]
+  (let [ar (min (/ (double maxw)  w) (/  (double maxh)  h))]
+    [(/ (* w ar) maxw)
+     (/ (* h ar) maxh)]))
+
+(defn fit-ratio [w h maxw maxh]
+  (let [ar (min (/ (double maxw)  w) 
+                (/ (double maxh)  h))]
+    [(* w ar)
+     (* h ar)]))
+
+(defn fit-ratio [w h maxw maxh]
+  (let [w->h  (double (/ w h))
+        ar    (min (/ (double maxw)  w) 
+                   (/ (double maxh)  h))]
+    [ar
+     (* w->h ar)]))
+
+
+(defn flip [img]
+  (let [bnds (canvas/shape-bounds img)]
+      (translate (/ (:width bnds) 2.0) (/ (:height bnds) 2.0)                        
+         (rotate Math/PI
+           (scale -1.0 1.0
+                          (translate (/ (:width bnds) -2.0) (/ (:height bnds) -2.0)
+                                            img)
+                         )
+         ))))
+
+(defn iconify [img & {:keys [w h flipped?]
+                      :or {w 50 h 50 flipped? true}}]
+  (let [{:keys [width height]} (canvas/shape-bounds img)
+        [xscale yscale]        (fit-ratio width height w h)
+        _                      (println [xscale yscale])
+        dest   (spork.graphics2d.image/make-image w h)
+        g      (canvas/get-graphics dest)]
+    (do  (canvas/with-scale xscale  yscale g
+           (if flipped?
+             #(canvas/draw-shape    (flip img) %)
+             #(canvas/draw-shape img  %)))
+         dest)))
 
 ;; (defn underline [s & {:keys [color] :or {color :black}}]
 ;;   (let [bounds (shape-bounds s)]
@@ -402,6 +445,10 @@
               (recur (draw-shape (translate (* idx step) 0  vline) acc)
                      (unchecked-inc idx))))))))          
 
+(defn ->grid [w h wn hn]
+  [(->vlines :black 0 0 h wn  (/ w wn))
+   (->hlines :black 0 0 w  hn (/ h hn))])
+
 (defn ->graph-paper [color w h & {:keys [n xscale yscale] :or {n 10}}]
   (let [xscale (or xscale (float (/ w n)))
         yscale (or yscale (float (/ h n)))
@@ -429,5 +476,5 @@
 (defn palette
   "Generates a random color palette using golden ratio"
   ([s v]  
-     (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (spork.graphics2d.canvas/random-color-palette s v)))
+     (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (canvas/random-color-palette s v)))
   ([] (palette 0.2 0.65)))
