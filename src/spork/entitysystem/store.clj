@@ -75,10 +75,10 @@
 
 (defprotocol IEntity 
   "A protocol for defining fundamental operations on entities."
-  (entity-name [e] "Get the unique name of entity e")
-  (conj-component [e c] "Conjoin a component onto the entity")
-  (disj-component [e c] "Disjoin a component from the entity")
-  (get-component  [e domain] "Return a component from the entity that matches the domain")
+  (entity-name       [e] "Get the unique name of entity e")
+  (conj-component    [e c] "Conjoin a component onto the entity")
+  (disj-component    [e c] "Disjoin a component from the entity")
+  (get-component     [e domain] "Return a component from the entity that matches the domain")
   (entity-components [e] "Get the unique components that define entity e"))
 
 ;We define a useful container for entities.  We use this as an initial and 
@@ -507,7 +507,7 @@
 
 (defmacro emit-entity-builder [args cs]
   `(fn [~'id ~@(distinct (remove #{'id} args))]    
-     (~'build-entity ~'id 
+     (~'spork.entitysystem.store/build-entity ~'id 
        [~@(map binding->component 
                (partition 2 (filter (complement nil?) cs)))])))
 
@@ -576,10 +576,10 @@
    will be inserted."
   ([args specs components]
     (if (empty? specs)
-      `(~'emit-entity-builder ~args ~components)
-      `(~'emit-complex-entity-builder ~args ~specs ~components)))
+      `(~'spork.entitysystem.store/emit-entity-builder ~args ~components)
+      `(~'spork.entitysystem.store/emit-complex-entity-builder ~args ~specs ~components)))
   ([args components]
-      `(~'emit-entity-builder ~args ~components)))
+      `(~'spork.entitysystem.store/emit-entity-builder ~args ~components)))
 
 (defn entity-doc
   "Function for auto-documenting entity constructors."
