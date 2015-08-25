@@ -55,7 +55,7 @@
 ;heterogenous data across a component.
 (defprotocol IComponent 
   (component-domain [x] "Returns the logical domain of the component")
-  (component-data [x] "Returns the values associated with the component."))
+  (component-data   [x] "Returns the values associated with the component."))
 
 (extend-protocol IComponent
   clojure.lang.PersistentArrayMap
@@ -91,9 +91,9 @@
   IEntity 
   (entity-name [e] name)
   (conj-component [e c] 
-    (entity. name (assoc components (component-domain c))))
+    (entity. name (assoc components (component-domain c) c)))
   (disj-component [e c] 
-    (entity. name (dissoc components (component-domain c))))
+    (entity. name (dissoc components (component-domain c) c)))
   (get-component [e domain] (get components domain))
   (entity-components [e] components))
 
