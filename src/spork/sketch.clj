@@ -12,8 +12,7 @@
             [spork.protocols [spatial :as space]]
             [spork.geometry.shapes :refer :all]
             [spork.cljgui.components [swing :as gui]]
-            [clojure.core.async :as a
-                                :refer [>! <! >!! <!! go chan buffer close! thread alts! alts!! timeout]]))
+            ))
 
 ;;These are brittle, but work until I found a better way around the problem.
 
