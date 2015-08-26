@@ -21,10 +21,19 @@
 (def ^:dynamic *font-width*  5.5)
 
 (def ^:dynamic *current-sketch* nil)
+(def ^:dynamic *anti-aliasing* nil)
+
 
 
 ;;current options are :title and :cached?
 (defn sketch [the-shapes & opts] (apply gui/view the-shapes opts))
+
+
+(defn smooth [shp]
+  (reify IShape
+    (shape-bounds [s] (shape-bounds shp))
+    (draw-shape [s c]
+      (draw-shape shp (set-state c  {:antialias true})))))
 
 ;;Buffered image was killing us here with memory leakage.  So for now,
 ;;we just do immediate mode drawing.

@@ -240,8 +240,18 @@
 
 
 (def get-transparency image/get-transparency) 
- 
 
+;;An interpreter for generalized state-setting options.
+;;We can pass a map of options in here and see if the context
+;;can understand them.  If not, we just pass back the context
+;;ala identity.
+(defn interpret-state [{:keys [antialias]} ^Graphics2D ctx]
+  (do  (when antialias
+         (.setRenderingHint ctx
+                            java.awt.RenderingHints/KEY_ANTIALIASING
+                            java.awt.RenderingHints/VALUE_ANTIALIAS_ON))
+         ctx
+         ))
 (defn unsupported
   ([msg] (throw (Exception. (str msg))))
   ([] (unsupported (str "Unsupported operation"))))
@@ -335,7 +345,7 @@
   (scale-2d       [ctx x y] (doto ctx (.scale  x  y)))
   (rotate-2d      [ctx theta] (doto ctx (.rotate (float theta))))
   
-  (set-state      [ctx state] ctx)
+  (set-state      [ctx state] (interpret-state state ctx))
   (make-bitmap    [ctx w h transp] (make-imgbuffer w h transp)))
 
 ;encapsulation for everything swing...plumbing mostly.
@@ -363,7 +373,8 @@
   (rotate-2d      [ctx theta] (swing-graphics. 
                                 (doto g (.rotate (float theta)))
                                options))  
-  (set-state      [ctx state] ctx)
+  (set-state      [ctx state]     (swing-graphics.  (interpret-state state ctx)
+                                                    options))
   (make-bitmap    [ctx w h transp] (make-imgbuffer w h 
                                        (get-transparency transp)))
   ICanvas2D
