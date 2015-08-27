@@ -265,9 +265,19 @@
         (add-entity   (player hero-id))
         (add-entities (random-monsters! n))))
 
+;;build queries on this...
+(defmacro with-components [e cs & body]
+  (let [cs (mapv (fn [c] (if (keyword? c) (symbol (subs (str c) 1)) c)) cs)]
+    `(let [{:keys [~@cs] :as ~'*components*} (entity-components ~e)
+           ~@(reduce concat (for [c cs]
+                              `(~c (when ~c (val ~c)))))]
+       ~@body)))
+  
 ;;Entity Properties
 ;;=================
-(defn live? [e] (-> (entity-components e) :basicstats :health pos?))
+(defn live? [e] (-> (with-components e [basicstats]
+                      (pos? (:health  basicstats)))))
+
 ;;might be nice to define language support for properties....
 ;(defproperty live? (pos? [:basic-stats :health]))
 

@@ -480,7 +480,15 @@
                                   order-by nil}}]
   (->> (select-entities  store 
          {:from from :join-by join-by :where where :order-by order-by})
-       (add-entities emptystore)))                   
+       (add-entities emptystore)))
+
+;;build queries on this...
+(defmacro with-components [e cs & body]
+  (let [cs (mapv (fn [c] (if (keyword? c) (symbol (subs (str c) 1)) c)) cs)]
+    `(let [{:keys [~@cs] :as ~'*components*} (spork.entitysystem.store/entity-components ~e)
+           ~@(reduce concat (for [c cs]
+                              `(~c (when ~c (val ~c)))))]
+       ~@body)))
 
 (defmacro defcomponent
   "Macro to define a new component (for use in specifying entity templates and 
