@@ -45,14 +45,19 @@
      (assert (.exists tgt)) 
      (ImageIO/read tgt)))
 
+(defn clear-region [^Graphics2D g x y width height]
+  (let [composite     (.getComposite g)]
+        (doto g
+          (.setComposite AlphaComposite/Clear)
+          (.fillRect x y width height)
+          (.setComposite composite))
+        g))
+
 (defn ^BufferedImage clear-buffered-image [^BufferedImage img]
   (let [^Graphics2D g (.getGraphics img)
         composite     (.getComposite g)]
-        (doto g
-          (.setComposite AlphaComposite/Clear)
-          (.fillRect 0 0 (.getWidth img) (.getHeight img))
-          (.setComposite composite))
-        img))
+    (do (clear-region g 0 0 (.getWidth img) (.getHeight img))
+        img)))
 
 (def get-transparency 
   (let [transmap {:opaque Transparency/OPAQUE

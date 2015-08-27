@@ -42,6 +42,22 @@
 ;       (image/shape->img)
        (gui/view)))
 
+(defn clear [shp]
+  (let [{:keys [x y width height] :as bnds} (shape-bounds shp)]        
+    (reify IShape
+      (shape-bounds [s] bnds)
+      (draw-shape [s c]
+        (->>  (spork.graphics2d.image/clear-region c x y width height)
+              (draw-shape shp))))))
+
+(defn ->clear-region [x y w h]
+  (let [bnds (spork.protocols.spatial/bbox x y w h)]        
+    (reify IShape
+      (shape-bounds [s] bnds)
+      (draw-shape [s c]
+       (spork.graphics2d.image/clear-region c x y w h)))))
+              
+
 ;;image combinators 
 (defn beside [s1 s2]
   (let [bounds1 (shape-bounds s1)
