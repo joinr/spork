@@ -12,7 +12,8 @@
 ;unitdata or demanddata classes.  They have a significant amount of 
 ;functionality associated with (and stuck IN) the class.  There is a sense of 
 ;modularity in the sense that unit policy, behavior, etc. are also objects with 
-;independent functions.  However, the design suffers from extensibility due to
+                                        ;independent functions.  However, the design suff
+ers from extensibility due to
 ;the encapsulation of domain-specific data and functionality, particularly where 
 ;more than one domain may be accessed.   We have to define the relation between 
 ;unitdata and policy explicitly in the unitdata class…indiciating that all 
