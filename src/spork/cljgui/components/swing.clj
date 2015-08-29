@@ -10,12 +10,13 @@
            [javax.swing JFrame JPanel Box BoxLayout JTextField JSplitPane
             JLabel JButton JOptionPane JScrollPane Timer SwingUtilities
             JFileChooser JTable JFrame JMenuBar JMenu JMenuItem JTextArea
-            JList ListModel ListSelectionModel AbstractListModel JTabbedPane]
+            JList ListModel ListSelectionModel AbstractListModel JTabbedPane JComponent]
            [javax.swing.event ChangeListener]
            [java.awt GridBagConstraints GridBagLayout BorderLayout FlowLayout 
-                     GridLayout Component Graphics2D Dimension Insets]           
+                     GridLayout Component Graphics Graphics2D Dimension Insets]           
            [java.awt.event ActionListener MouseListener ComponentListener 
-                           MouseAdapter MouseEvent WindowAdapter WindowEvent]))
+            MouseAdapter MouseEvent WindowAdapter WindowEvent]
+           [java.awt.image BufferedImage]))
 
  
 (defn get-events [obj]  (:event-stream (meta obj)))
@@ -772,8 +773,10 @@
    (let [painter  (atom paintf)
          meta-map (atom {:paintf painter})
          panel    (proxy [JPanel clojure.lang.IMeta clojure.lang.IObj] []
-                    (paintComponent [g]  (do (proxy-super paintComponent g)
-                                             (paintf g)))
+                    (paintComponent [^Graphics g]
+                      (let [^JComponent this this
+                            _  (proxy-super paintComponent g)]
+                        (paintf g)))
                     (removeNotify [] (do (println "removing!")
                                          (proxy-super removeAll)
                                          (proxy-super removeNotify)))
@@ -812,12 +815,14 @@
                     (do (paintf bg) 
                         (j2d/draw-image g @buffer :opaque 0 0)))
            panel  (proxy [JPanel clojure.lang.IMeta clojure.lang.IObj]   []
-                    (paintComponent [g]  (do (proxy-super paintComponent g) 
-                                             (p g)))
+                    (paintComponent [^Graphics g]
+                      (let [^JComponent this  this ;hat tip to stackoverflow, this was tricky!
+                            _  (proxy-super paintComponent g)]
+                        (p g)))
                     (removeNotify   [] (do (println "removing!")
                                            (proxy-super removeAll)
                                            (.dispose bg)
-                                           (.flush @buffer)
+                                           (.flush ^BufferedImage @buffer)
                                            (reset! buffer nil)
                                            (proxy-super removeNotify)))
                     (meta [] @meta-map)

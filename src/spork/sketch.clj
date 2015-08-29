@@ -504,5 +504,5 @@
 (defn palette
   "Generates a random color palette using golden ratio"
   ([s v]  
-     (map #(java.awt.Color. (nth % 0) (nth % 1) (nth % 2)) (canvas/random-color-palette s v)))
+     (map #(java.awt.Color. ^long (nth % 0) ^long (nth % 1) ^long (nth % 2)) (canvas/random-color-palette s v)))
   ([] (palette 0.2 0.65)))

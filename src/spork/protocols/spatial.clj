@@ -372,8 +372,8 @@
   "Defines a bounding box, rooted at (x,y), width wide, height high,
    and rotated by theta radians.  If theta is zero, then no rotation is
    performed."
-  ([x y width height theta] (->boundingbox x y (Math/abs width) (Math/abs height) theta))
-  ([x y width height] (->boundingbox x y (Math/abs width) (Math/abs height) 0)))
+  ([x y width  height theta] (->boundingbox x y (Math/abs (double width)) (Math/abs (double height)) theta))
+  ([x y width  height] (->boundingbox x y (Math/abs (double width)) (Math/abs (double height)) 0)))
 
 (defn bbox-around 
   "Defines a bounding box centered at coordinates x,y, with perimeter extending 
