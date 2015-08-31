@@ -1,3 +1,4 @@
+;;Init is still jacked up....trying to figure out constructors, plus we get reflection warnings, blah.
 (ns spork.cljgui.components.PaintPanel
   (:gen-class
    :extends javax.swing.JPanel
@@ -9,25 +10,33 @@
    :exposes-methods {paintComponent parentPaintComponent
                      removeAll      parentRemoveAll
                      removeNotify   parentRemoveNotify})
-  (:import [java.awt Graphics]))
+  (:import [java.awt Graphics Component]
+           [javax.swing JComponent]
+          ))
 
+;;this is somewhat hackish at the moment...
 (def painter (atom identity))
-(def metamap (atom {:paintf painter}))
-
+(def remover (atom identity))
+(def metamap (atom {:paintf  painter
+                    :remover remover}))
 
 (defn -init [msg]  [[] (atom msg)])
 (defn -deref [this] @(.state this))
 
+;;This is our primary wrapper.  Allows us to avoid reflection warnings
+;;(and the creation of tons of java.lang.reflector objects when we're calling
+;;paintComponent (as we would via proxy).
 (defn -paintComponent [this ^Graphics g]
-  (do  (.parentPaintComponent this g)
-       (@painter g)))
+    (do  (.parentPaintComponent this g)
+         (@painter g)))
 
 (defn -removeNotify [this]
   (do (println "removing!")
-      (.parentRemoveAll this)
+      (@remover this)
+      (.parentRemoveAll    this)
       (.parentRemoveNotify this)))
 
 (defn -withMeta [m] (reset! metamap m))
-(defn -meta [this] @metamap)       
+(defn -meta     [this] @metamap)       
 
 
