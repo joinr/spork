@@ -14,6 +14,7 @@
   :url "None Currently"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
+  :aot [spork.cljgui.components.PaintPanel]
   :dependencies [[org.clojure/clojure "1.6.0"]
                  ;[org.clojure.contrib/standalone "1.3.0-alpha4"]
                  [clj-tuple "0.1.5"]

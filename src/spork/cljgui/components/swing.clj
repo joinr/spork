@@ -17,7 +17,7 @@
            [java.awt.event ActionListener MouseListener ComponentListener 
             MouseAdapter MouseEvent WindowAdapter WindowEvent]
            [java.awt.image BufferedImage]
-           [spork.cljgui.components.PaintPanel]))
+           [spork.cljgui.components PaintPanel]))
 
  
 (defn get-events [obj]  (:event-stream (meta obj)))
@@ -813,7 +813,7 @@
   ([width height paintf]
    (let [painter  (atom paintf)
          meta-map (atom {:paintf painter})
-         panel    (PaintPanel.)
+         ^PaintPanel panel    (PaintPanel.)
          savelistener (proxy [MouseAdapter] []
                           (mouseClicked [^MouseEvent e]
                              (if (= (.getButton e) MouseEvent/BUTTON3)
