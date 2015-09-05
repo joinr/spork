@@ -254,7 +254,7 @@
   [theta x1 y1]
   (let [c (Math/cos theta)
         s (Math/sin theta)]
-    [(+ (* x1 c) (* y1 (* - s)))
+    [(+ (* x1 c) (* y1 (* (- s))))
      (+ (* x1 s) (* y1 (* c)))]))
 
 (defn extreme-points

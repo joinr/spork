@@ -58,6 +58,9 @@
        (spork.graphics2d.image/clear-region c x y w h)))))
               
 
+(definline atom? [x]
+  `(instance? ~'clojure.lang.Atom ~x))
+
 ;;image combinators 
 (defn beside [s1 s2]
   (let [bounds1 (shape-bounds s1)
@@ -76,10 +79,15 @@
      shp]))
 
 (defn translate [tx ty shp]
-  (reify IShape 
-    (shape-bounds [s] (space/translate-bounds tx ty (shape-bounds shp)))
-    (draw-shape   [s c] (with-translation tx ty 
-                          c #(draw-shape shp %)))))
+  (if (not (and (atom? tx) (atom? ty)))
+    (reify IShape 
+      (shape-bounds [s] (space/translate-bounds tx ty (shape-bounds shp)))
+      (draw-shape   [s c] (with-translation tx ty 
+                            c #(draw-shape shp %))))
+    (reify IShape 
+      (shape-bounds [s] (space/translate-bounds @tx @ty (shape-bounds shp)))
+      (draw-shape   [s c] (with-translation @tx @ty 
+                            c #(draw-shape shp %))))))
 
 (defn above [s1 s2]
   (let [bounds1 (shape-bounds  s1)
@@ -92,19 +100,28 @@
     (draw-shape   [s c] (with-translation  0 (:height bounds1) 
                           (draw-shape s1 c) #(draw-shape s2 %))))))
 (defn fade [alpha shp]
-  (reify IShape 
-    (shape-bounds [s] (shape-bounds shp))
-    (draw-shape   [s c] (with-alpha  alpha 
-                          c #(draw-shape shp %)))))
+  (if (not (atom? alpha))
+    (reify IShape 
+      (shape-bounds [s] (shape-bounds shp))
+      (draw-shape   [s c] (with-alpha  alpha 
+                            c #(draw-shape shp %))))
+    (reify IShape 
+      (shape-bounds [s] (shape-bounds shp))
+      (draw-shape   [s c] (with-alpha  @alpha 
+                            c #(draw-shape shp %))))))
 (defn rotate [theta shp]
-  (reify IShape 
-    (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
-    (draw-shape   [s c] (with-rotation theta  c #(draw-shape shp %)))))
+  (if (not (atom? theta))
+    (reify IShape 
+      (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
+      (draw-shape   [s c] (with-rotation theta  c #(draw-shape shp %))))
+    (reify IShape 
+      (shape-bounds [s]   (space/rotate-bounds @theta (shape-bounds shp)))
+      (draw-shape   [s c] (with-rotation @theta  c #(draw-shape shp %))))))
 
 ;;rotates about a point....we probably should factor out spin-bounds
 ;;from this guy.
 (defn spin   [theta shp]
-  (throw (Exception. "Rotation on bounds is currenty jacked up, not working.  Need to fix spatial."))
+  (throw (Exception. "Rotation on bounds is currenty jacked up, not working. Need to fix the math on this."))
   (let [bnds  (shape-bounds shp)
         [x y] (space/get-center bnds)
         spun  (space/spin-bounds theta bnds)
@@ -115,9 +132,13 @@
         (with-translation x y c  rotated)))))
 
 (defn scale [xscale yscale shp]
-  (reify IShape 
-    (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
-    (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %)))))
+  (if (not (and (atom? xscale) (atom? yscale)))
+    (reify IShape 
+      (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
+      (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %))))
+    (reify IShape 
+      (shape-bounds [s]   (space/scale-bounds @xscale @yscale (shape-bounds shp)))    
+      (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %))))))
 
 (def ^:dynamic *cartesian* nil)
 (defn cartesian [shp]
@@ -376,6 +397,7 @@
     (outline b)))
 
 (def  ->vline (image/shape->img (->line :black 0 0 0 10)))
+(def  ->hline (image/shape->img (->line :black 0 0 10 0)))
 (defn ->axis  [min max step-width]
   (let [tick   (fn [x] (translate x 0 ->vline))]        
     (translate 0 *font-height*     
@@ -383,6 +405,21 @@
        [(->line :black min 0 max 0)
         (image/shape->img 
           (into [] (map tick (range min (inc max) step-width))))]))))
+
+(defn ->xaxis  [min max step-width]
+  (let [tick   (fn [x] (translate x 0 ->vline))]        
+    (translate 0 *font-height*     
+     (image/shape->img 
+       [(->line :black min 0 max 0)
+        (image/shape->img 
+          (into [] (map tick (range min (inc max) step-width))))]))))
+
+(defn ->yaxis  [min max step-width]
+  (let [tick   (fn [x] (translate 0 x ->hline))]        
+    (image/shape->img 
+     [(->line :black  10 min   10 max)
+      (image/shape->img 
+       (into [] (map tick (range min (inc max) step-width))))])))
 
 ;; (defrecord event-track [records name height width event->color min max shp]
 ;;   IShape 
