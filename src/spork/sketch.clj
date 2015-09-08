@@ -21,7 +21,7 @@
 (def ^:dynamic *font-width*  5.5)
 
 (def ^:dynamic *current-sketch* nil)
-(def ^:dynamic *anti-aliasing* nil)
+(def ^:dynamic *anti-aliasing*  nil)
 
 
 

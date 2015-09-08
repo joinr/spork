@@ -14,8 +14,8 @@
            [javax.swing.event ChangeListener]
            [java.awt GridBagConstraints GridBagLayout BorderLayout FlowLayout 
                      GridLayout Component Graphics Graphics2D Dimension Insets]           
-           [java.awt.event ActionListener MouseListener ComponentListener 
-            MouseAdapter MouseEvent WindowAdapter WindowEvent]
+           [java.awt.event ActionListener MouseListener ComponentListener
+            MouseAdapter MouseEvent WindowAdapter WindowEvent HierarchyListener HierarchyEvent]
            [java.awt.image BufferedImage]
            [spork.cljgui.components PaintPanel]
            ))
@@ -757,6 +757,11 @@
      (windowClosing [^WindowEvent e]
        (do ~@(map (fn [x] `(.dispose ~x)) xs)))))
 
+(defn hierarchy-listener [f]
+  (proxy [HierarchyListener] []
+    (hierarchyChanged [^HierarchyEvent e]
+      (f e))))
+
 (def logger (atom nil))
 ;(add-watch logger :gui (fn ()))
 (defn log! [msg] (swap! logger conj msg))
@@ -1011,18 +1016,45 @@
 (defmethod view JTable [t & {:keys [title] :or {title "Table"}}]
   (->scrollable-view t :title title))
 
+;; (defmethod view :default [s & {:keys [title cached?] :or {title "Shape" :cached? false}}] 
+;;   (if (satisfies? j2d/IShape s)
+;;     ;(->scrollable-view s :title title)))
+;; ;    (view (empty-frame) s)))
+;;     (let [{:keys [x y width height]} (j2d/shape-bounds s)]
+;;       (->scrollable-view (
+;;                           (if cached? 
+;;                             cached-paintpanel
+;;                             paintpanel)
+;;                           (inc (+ x width)) ;;check this...for duplicate.
+;;                           (inc (+ y height))
+;;                           #(j2d/draw-shape s %)) :title title))))
+
+(defn atom? [x]  (instance? clojure.lang.Atom  x))
+(defn add-repaint-watch! [atm ^JPanel pnl]
+  (let [repaint    (keyword (gensym "repainter"))
+        closer     (hierarchy-listener (fn [^HierarchyEvent e]
+                                         (let [^Component c (.getComponent e)]
+                                           (when (and (not (.isDisplayable c))
+                                                      (nil? pnl))
+                                             (remove-watch atm repaint)))))] 
+    (do (add-watch atm repaint (fn [k r old new] (.repaint pnl)))
+        (.addHierarchyListener pnl closer)
+        pnl)))
+        
+
 (defmethod view :default [s & {:keys [title cached?] :or {title "Shape" :cached? false}}] 
   (if (satisfies? j2d/IShape s)
-    ;(->scrollable-view s :title title)))
-;    (view (empty-frame) s)))
-    (let [{:keys [x y width height]} (j2d/shape-bounds s)]
-      (->scrollable-view (
-                          (if cached? 
-                            cached-paintpanel
-                            paintpanel)
-                          (inc (+ x width)) ;;check this...for duplicate.
-                          (inc (+ y height))
-                          #(j2d/draw-shape s %)) :title title))))
+    (let [{:keys [x y width height]} (j2d/shape-bounds s)
+          paintf (if (atom? s) (fn [c] (j2d/draw-shape @s c))
+                     (fn [c] (j2d/draw-shape s c)))
+          panel  (->> ((if cached? 
+                         cached-paintpanel
+                         paintpanel)
+                       (inc (+ x width)) ;;check this...for duplicate.
+                       (inc (+ y height))
+                       paintf)
+                      (add-repaint-watch! s))]
+      (->scrollable-view panel :title title))))
 
 (defn swing-canvas [width height] 
   (let [frm (empty-frame)

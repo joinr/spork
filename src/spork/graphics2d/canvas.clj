@@ -577,8 +577,8 @@
   (push-shape [s shp])
   (pop-shape  [s]))
 
-;;Allow mutable shapes.
+;;Allow mutable shapes. 
 (extend-type clojure.lang.Atom
-  canvas/IShape
-  (draw-shape [shp c] (canvas/draw-shape (deref shp) c))
-  (shape-bounds [shp] (canvas/shape-bounds (deref shp))))
+  IShape
+  (draw-shape [shp c] (draw-shape (deref shp) c))
+  (shape-bounds [shp] (shape-bounds (deref shp))))
