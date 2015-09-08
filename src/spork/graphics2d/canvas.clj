@@ -571,3 +571,14 @@
 (defn draw [s c]
   (let [g  (if (satisfies? ICanvas2D c) c (get-graphics c))]
     (draw-shape s g)))
+
+
+(defprotocol IShapeStack
+  (push-shape [s shp])
+  (pop-shape  [s]))
+
+;;Allow mutable shapes.
+(extend-type clojure.lang.Atom
+  canvas/IShape
+  (draw-shape [shp c] (canvas/draw-shape (deref shp) c))
+  (shape-bounds [shp] (canvas/shape-bounds (deref shp))))

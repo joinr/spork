@@ -4,7 +4,15 @@
   (:require [spork.graphics2d [canvas :as c]
                               [image :as image]
                               [font :as f]]
-            [spork.protocols  [spatial  :as spatial]]))
+            [spork.protocols  [spatial  :as spatial]]
+            [spork.util.general]))
+
+;;Basically a no-op for rendering....we ignore
+(def pass
+  (let [ebox (spork.protocols.spatial/bbox 0 0 1 1)]
+    (reify canvas/IShape
+      (draw-shape [shp c] c)
+      (shape-bounds [c] ebox))))
 
 ;;The value here is a bit dubious, but it saves on some boilerplate..
 (defmacro defshape [name args bounds draw-body & specs]
@@ -180,6 +188,48 @@
   ([color points] (->polygon color points c/draw-polygon)))
 (defn ->filled-polygon [color points] (->polygon color points c/fill-polygon))
 
+
+;;Currently dropped.
+
+;; (def colored-ring (spork.util.general/memo-1
+;;                    (fn [clr]
+;;                      (spork.graphics2d.image/shape->img
+;;                       :translucent (->ring clr 0 0 10 10)))))
+
+;; (def colored-point (spork.util.general/memo-1
+;;                     (fn [clr]
+;;                       (spork.graphics2d.image/shape->img
+;;                        :translucent (->circle clr 0 0 10 10)))))
   
   
-  
+
+;;As we add shapes to the stack, we update the buffer (only by drawing the new
+;;shape).  This allows us to incrementally render a shape, keeping sort of a
+;;"dirty" canvas over time in a controlled fashion.
+(defrecord recording [shapes buffer width height]
+  canvas/IShape
+  (draw-shape   [shp c] (canvas/draw-image c buffer :opaque 0 0))
+  (shape-bounds [shp]   (spatial/bbox 0 0 width height))
+  IShapeStack
+  (push-shape   [s shp]
+    (recording. shapes
+                 (do (canvas/draw-shape shp (canvas/get-graphics buffer)) buffer)
+                 width
+                 height))                                     
+  (pop-shape    [s]   (let [shps (pop shapes)
+                            buff (canvas/wipe buffer)
+                            _    (canvas/draw-shape shps (canvas/get-graphics buff))]
+                        (recording. shps buff width height)))  
+  canvas/IWipeable
+    (wipe [obj]  (recording. '() (canvas/wipe buffer) width height))
+    )
+
+;;Creates a recording (basically a dirty canvas...note that we can use any image
+;;as a dirty canvas....we should look into better idioms to describe this....
+;;Is there a semantic difference between a canvas (an area of fixed dimension
+;;that mutates as it's drawn upon) vs a pure canvas?
+(defn ->rec [shps w h]
+  (reduce push-shape
+          (->recording '()
+                       (spork.graphics2d.image/make-imgbuffer w h ) w  h)          
+          shps))
