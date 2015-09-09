@@ -10,7 +10,7 @@
 ;;Basically a no-op for rendering....we ignore
 (def pass
   (let [ebox (spork.protocols.spatial/bbox 0 0 1 1)]
-    (reify canvas/IShape
+    (reify c/IShape
       (draw-shape [shp c] c)
       (shape-bounds [c] ebox))))
 
@@ -207,21 +207,21 @@
 ;;shape).  This allows us to incrementally render a shape, keeping sort of a
 ;;"dirty" canvas over time in a controlled fashion.
 (defrecord recording [shapes buffer width height]
-  canvas/IShape
-  (draw-shape   [shp c] (canvas/draw-image c buffer :opaque 0 0))
+  c/IShape
+  (draw-shape   [shp c] (c/draw-image c buffer :opaque 0 0))
   (shape-bounds [shp]   (spatial/bbox 0 0 width height))
-  IShapeStack
+  c/IShapeStack
   (push-shape   [s shp]
     (recording. shapes
-                 (do (canvas/draw-shape shp (canvas/get-graphics buffer)) buffer)
+                 (do (c/draw-shape shp (c/get-graphics buffer)) buffer)
                  width
                  height))                                     
   (pop-shape    [s]   (let [shps (pop shapes)
-                            buff (canvas/wipe buffer)
-                            _    (canvas/draw-shape shps (canvas/get-graphics buff))]
+                            buff (c/wipe buffer)
+                            _    (c/draw-shape shps (c/get-graphics buff))]
                         (recording. shps buff width height)))  
-  canvas/IWipeable
-    (wipe [obj]  (recording. '() (canvas/wipe buffer) width height))
+  c/IWipeable
+    (wipe [obj]  (recording. '() (c/wipe buffer) width height))
     )
 
 ;;Creates a recording (basically a dirty canvas...note that we can use any image
@@ -229,7 +229,7 @@
 ;;Is there a semantic difference between a canvas (an area of fixed dimension
 ;;that mutates as it's drawn upon) vs a pure canvas?
 (defn ->rec [shps w h]
-  (reduce push-shape
+  (reduce c/push-shape
           (->recording '()
                        (spork.graphics2d.image/make-imgbuffer w h ) w  h)          
           shps))

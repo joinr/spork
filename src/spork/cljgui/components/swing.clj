@@ -1031,15 +1031,17 @@
 
 (defn atom? [x]  (instance? clojure.lang.Atom  x))
 (defn add-repaint-watch! [atm ^JPanel pnl]
-  (let [repaint    (keyword (gensym "repainter"))
-        closer     (hierarchy-listener (fn [^HierarchyEvent e]
-                                         (let [^Component c (.getComponent e)]
-                                           (when (and (not (.isDisplayable c))
-                                                      (nil? pnl))
-                                             (remove-watch atm repaint)))))] 
-    (do (add-watch atm repaint (fn [k r old new] (.repaint pnl)))
-        (.addHierarchyListener pnl closer)
-        pnl)))
+  (if (atom? atm)
+    (let [repaint    (keyword (gensym "repainter"))
+          closer     (hierarchy-listener (fn [^HierarchyEvent e]
+                                           (let [^Component c (.getComponent e)]
+                                             (when (and (not (.isDisplayable c))
+                                                        (nil? pnl))
+                                               (remove-watch atm repaint)))))] 
+      (do (add-watch atm repaint (fn [k r old new] (.repaint pnl)))
+          (.addHierarchyListener pnl closer)
+          pnl))
+    pnl))
         
 
 (defmethod view :default [s & {:keys [title cached?] :or {title "Shape" :cached? false}}] 
@@ -1052,7 +1054,7 @@
                          paintpanel)
                        (inc (+ x width)) ;;check this...for duplicate.
                        (inc (+ y height))
-                       paintf)
+                       paintf)                      
                       (add-repaint-watch! s))]
       (->scrollable-view panel :title title))))
 
