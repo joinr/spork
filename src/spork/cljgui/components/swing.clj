@@ -126,7 +126,7 @@
 (defn  display [^JFrame frm ^JPanel pane]
 	  (doto frm
 	    (clear-contents)
-     (.add pane BorderLayout/CENTER)
+            (.add pane BorderLayout/CENTER)
 	    (make-visible)))
 
 (defn display-simple [^JPanel pane]
@@ -466,6 +466,7 @@
   (doto (empty-frame title)
     (.add (JScrollPane. content))
     (.setSize width  height)
+    (.pack)
     (.setVisible true)))
 
 (defn choose-from
@@ -988,8 +989,7 @@
                                            )))
                              (.setPreferredSize panel (Dimension. wnew hnew))
                              ))))))]
-       (doto (JPanel. (GridBagLayout.))
-                                                                                                         
+       (doto (JPanel. (GridBagLayout.))                                                                                                         
          (grid-bag-layout (JPanel. (GridBagLayout.)) 
                       :fill :BOTH, :insets (Insets. 0 0 0 0)
                       :gridx 0, :gridy 0, :weightx 1 :weighty 1 

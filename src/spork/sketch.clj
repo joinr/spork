@@ -533,8 +533,8 @@
     (beside (spork.geometry.shapes/->rectangle color 0 0 10 h)
             lbl)))
 
-(defn ->legend [m]
-   (shelf (for [[lbl clr] m]
+(defn ->legend [m & {:keys [orient] :or {orient shelf}}]
+   (orient (for [[lbl clr] m]
                  (->legend-entry lbl clr))))
 
 ;;#TODO Change this to be a generic cljgui color, not java awt
