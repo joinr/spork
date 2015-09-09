@@ -263,7 +263,9 @@
          [:light-grey [211 211 211]]
          [:gainsboro [220 220 220]]
          [:white-smoke [245 245 245]]
-         [:white [255 255 255]]]))
+         [:white [255 255 255]]
+         ;;added due to conveneience
+         [:amber [178 140 0]]]))
 
 ;; var RColor = function() {
 ;; 		this.hue			= Math.random(),
