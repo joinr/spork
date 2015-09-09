@@ -63,10 +63,9 @@
   (do (println "removing!")      
       (.parentRemoveAll    this)
       (.parentRemoveNotify this)
-      (when-let [buffer (get @(.state this) :buffer)]
-        (do (.flush ^BufferedImage @buffer)
-            (.dispose ^Graphics2D (get @(.state this) :bg))
-            (swap! (.state this) merge {:buffer nil :bg nil})))))
+      (when-let [buffer (get (.state this) :buffer)]
+        (do (.flush ^BufferedImage buffer)
+            (.dispose ^Graphics2D (get (.state this) :bg))))))
 
 ;; (defn ^Graphics2D -get_graphics [this]
 ;;   (when-let [b (get @(.state this) :buffer)]

@@ -294,8 +294,21 @@
             (.setLayout (GridLayout. x y)))]
     (dotimes [i x]
       (dotimes [j y]
-        (.add g (f))))
+        (.add g (f i j))))
     g))
+
+;; (defn grid []
+;;   (doto (JPanel. (GridBagLayout.))    
+;;     (grid-bag-layout 
+;;      :fill :BOTH, :insets (Insets. 5 5 5 5)
+;;      :gridx 0, :gridy 0, ;:weightx 1 :weighty 1
+;;      (JButton. "One")
+;;      :gridy 1
+;;      (JButton. "Two")
+;;      :gridx 1 :gridy 0 :gridheight 2
+;;      (JButton. "Three"))))
+
+;; (defn grid [x y f]
 
 (def text-directions {:left JTextField/LEADING 
                       :centered JTextField/CENTER
