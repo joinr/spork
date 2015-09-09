@@ -233,3 +233,31 @@
           (->recording '()
                        (spork.graphics2d.image/make-imgbuffer w h ) w  h)          
           shps))
+
+
+(defn ->area [color x y pts]
+  (let [[bx by] (first pts)
+        front (when (not= by y)
+                (if (not= bx x)
+                  [[x y] [bx y]]
+                  [[x y]]))
+        [ex ey] (last pts)
+        end  (when (not= ey y)
+               [ex y])
+        mdl  (if front (into front pts) pts)]
+   (->filled-polygon color (if end
+                      (conj mdl end)
+                      mdl))))
+(defn ->perimeter [color x y pts]
+  (let [[bx by] (first pts)
+        front (when (not= by y)
+                (if (not= bx x)
+                  [[x y] [bx y]]
+                  [[x y]]))
+        [ex ey] (last pts)
+        end  (when (not= ey y)
+               [ex y])
+        mdl  (if front (into front pts) pts)]
+   (->polygon color (if end
+                      (conj mdl end)
+                      mdl))))  
