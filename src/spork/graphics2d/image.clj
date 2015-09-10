@@ -6,19 +6,13 @@
 ;make-bitmap, which "everyone" can use....
 (ns spork.graphics2d.image
   (:use [spork.graphics2d.canvas])
-  (:require [spork.protocols [spatial :as spatial]])
+  (:require [spork.protocols [spatial :as spatial]]
+            [spork.graphics2d.swing.shared :refer
+             [null-observer get-transparency +clear+ opaque]])
   (:import [java.awt GraphicsEnvironment  GraphicsDevice GraphicsConfiguration 
             Transparency Graphics2D AlphaComposite Color]
            [java.awt.image BufferedImage ImageObserver]
            [javax.imageio ImageIO]))
-
-(def opaqe Transparency/OPAQUE)
-(def +clear+ (Color. 255 255 255 0))
-
-(def null-observer 
-  (reify ImageObserver 
-     (imageUpdate [this img infoflags x y width height]
-        false)))
 
 (defn ^Graphics2D get-graphics-img [^BufferedImage img] (.getGraphics img))
 
@@ -59,16 +53,6 @@
     (do (clear-region g 0 0 (.getWidth img) (.getHeight img))
         img)))
 
-(def get-transparency 
-  (let [transmap {:opaque Transparency/OPAQUE
-                  :translucent Transparency/TRANSLUCENT
-                  :bitmask Transparency/BITMASK
-                  Transparency/OPAQUE Transparency/OPAQUE
-                  Transparency/TRANSLUCENT Transparency/TRANSLUCENT
-                  Transparency/BITMASK Transparency/BITMASK}]
-    (fn [t]
-      (get transmap t Transparency/OPAQUE)))) 
-
 (extend-type  BufferedImage
   IBitMap
   (bitmap-width [b]  (.getWidth b))
@@ -77,6 +61,15 @@
   (bitmap-format [b] :buffered-image)
   (as-buffered-image [b fmt] b)
   (write-image [b dest fmt] (save-image b dest (fn [_] nil)))
+  IShape
+  (draw-shape    [shp c] (draw-image c shp (.getTransparency shp) 0 0))
+  (shape-bounds  [shp] (spork.protocols.spatial/bbox 0 0 (.getWidth shp) (.getHeight shp)))
+  IShapeStack
+  (push-shape [c shp] (do (draw-shape  shp (get-graphics c)) c))
+  (pop-shape [c shp] c)
+  IBoundedCanvas
+  (canvas-width  [c] (.getWidth c))
+  (canvas-height [c] (.getHeight c))
   IWipeable
   (wipe [obj] (clear-buffered-image obj)))
 

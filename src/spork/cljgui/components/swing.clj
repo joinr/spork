@@ -25,7 +25,6 @@
  
 (defn ->ui-spec [name & {:keys [doc event-type event] :as opts}]
   (merge {:name name}  opts))
-   
  
 (defmacro with-disposable [bindings & body]
   "Blatantly ripped from clojure.core !  with-open repurposed... "
@@ -797,7 +796,7 @@
                     (paintComponent [^Graphics g]
                       (let [^JComponent this this
                             _  (proxy-super paintComponent g)]
-                        (paintf g)))
+                        (paintf (jgraphics/->canvas-graphics g width height))))
                     (removeNotify [] (do (println "removing!")
                                          (proxy-super removeAll)
                                          (proxy-super removeNotify)))
@@ -839,7 +838,7 @@
                                      (str (str (System/getProperty "user.home") 
                                                "\\" "SavedBuffer.png")) ]
                                  (do (let [buffer (jgraphics/make-imgbuffer width height)
-                                           bg     (j2d/bitmap-graphics buffer)
+                                           bg     (j2d/get-graphics (j2d/bitmap-graphics buffer))
                                            _      (paintf bg)]
                                        (j2d/write-image buffer savepath nil))
                                      (alert (str "Saved image to " savepath)))))))]                                      
@@ -864,7 +863,7 @@
      (let [buffer   (atom (jgraphics/make-imgbuffer  width height))           
            painter  (atom paintf)
            meta-map (atom {:buffer @buffer :paintf painter})
-           bg     (j2d/bitmap-graphics @buffer)           
+           bg     (jgraphics/->canvas-graphics (j2d/bitmap-graphics @buffer) width height)
            p      (fn [^Graphics2D g]
                     (do (paintf bg) 
                         (j2d/draw-image g @buffer :opaque 0 0)))

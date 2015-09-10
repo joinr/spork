@@ -57,7 +57,9 @@
 (defn -paint [this ^Graphics g]
   (let [^javax.swing.JComponent that this]
     (do ; (.parentPaint that g)
-         ((.getPaintf ^spork.cljgui.components.PaintPanel.ICanvasPanel (.state this)) g))))
+      ((.getPaintf ^spork.cljgui.components.PaintPanel.ICanvasPanel
+                   (.state this))
+       g))))
 
 (defn -removeNotify [this]
   (do (println "removing!")      

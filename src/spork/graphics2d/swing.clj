@@ -3,7 +3,9 @@
 ;backends. 
 (ns spork.graphics2d.swing
   (:use     [spork.graphics2d.canvas])
-  (:require [spork.graphics2d [image :as image] [font :as f]]
+  (:require [spork.graphics2d.swing.shared :refer
+             [null-observer get-transparency +clear+ opaque]]
+            [spork.graphics2d [font :as f]]
             [spork.protocols [spatial :as s]])
   (:import  [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
              FontMetrics GraphicsDevice GraphicsConfiguration Polygon Point 
@@ -11,8 +13,7 @@
             [java.awt.geom AffineTransform Point2D Rectangle2D Line2D]
             [java.awt.image BufferedImage ImageObserver]
             [javax.swing JFrame JComponent JPanel]
-            [javax.imageio ImageIO]))
-
+            [javax.imageio ImageIO])) 
 
 ;Java2D wrappers....
 (extend-protocol IColor
@@ -115,7 +116,6 @@
 ;BufferedImage compatibleImage = gc.createCompatibleImage(width,height,transparency);
 ;//for the transparency you can use either Transparency.OPAQUE, Transparency.BITMASK, or Transparency.TRANSLUCENT
 
-(def opaqe Transparency/OPAQUE)
 
 (defn ^BufferedImage make-imgbuffer 
   ([w h ^Transparency t]
@@ -234,13 +234,26 @@
 (defn get-current-color [^Graphics2D g] (.getColor g))
 ;(defn ^Graphics2D get-graphics-img [^BufferedImage img] (.getGraphics img))
 
-(defn draw-image* [^Graphics g ^BufferedImage img  x y & rest] 
-  (do (.drawImage g img x y image/null-observer)
+(defn draw-image* [^Graphics g ^BufferedImage img  x y] 
+  (do (.drawImage g img x y null-observer)
     g))
 
+(defn draw-image-cartesian [^Graphics g ^BufferedImage img   x  y]
+  (let [yoffset (+ (.getHeight img) y)
+        txform (.getTransform g)]
+    (doto g
+      (.translate 0.0 (double yoffset))
+      (.scale  1.0 -1.0)
+      (.drawImage img (double x) (double y) null-observer)
+      (.setTransform txform))))
 
-(def get-transparency image/get-transparency) 
-
+(defn draw-string-cartesian [^Graphics2D g ^String s x y]
+  (let [yoffset  0.0;(f/string-height s)  ;(-  y)
+        txform (.getTransform g)]
+    (doto g                           
+         (.scale  1.0 -1.0)
+         (.drawString s (float x) (- (float y)))
+         (.setTransform txform))))
 ;;An interpreter for generalized state-setting options.
 ;;We can pass a map of options in here and see if the context
 ;;can understand them.  If not, we just pass back the context
@@ -304,7 +317,7 @@
     (with-color (get-gui-color color) g 
       #(do (.drawString ^Graphics2D % (str s) (float x) (float y)) %)))  
   (draw-image [^Graphics2D g img transparency x y]
-    (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil))
+    (draw-image* g (as-buffered-image img (bitmap-format img)) x y))
   IStroked
    (get-stroke [^Graphics2D ctx] (.getStroke ctx))
    (set-stroke [^Graphics2D ctx ^Stroke s] (doto ctx (.setStroke s)))
@@ -322,6 +335,99 @@
   (draw-poly-line [^Graphics2D g pline]  (not-implemented draw-poly-line))
   (draw-quad      [^Graphics2D g tri]    (not-implemented draw-quad)))
 
+;;Canvas Graphics are drawn in a cartesian coordinate space, with an understanding that
+;;images and strings are to be drawn oriented from the bottom-left corner; thus,
+;;they are un-flipped and translated when drawn.  We also know the bounds.
+(deftype CanvasGraphics [^Graphics2D g  width  height]
+  ICanvas2D
+  (get-context    [cg]  cg)
+  (set-context    [cg ctx] (throw (Exception. "not implemented")))  
+  (draw-point     [cg color x1 y1 w]
+    (with-color (get-gui-color color) g 
+      #(draw-rectangle* % color x1 y1 10))
+    cg)     
+  (draw-line      [cg color x1 y1 x2 y2]
+    (with-color (get-gui-color color) g 
+      #(draw-line* % x1 y1 x2 y2))
+    cg)
+  (draw-rectangle [cg color x y w h]
+    (let [c  (if (nil? color) :black color)]
+      (with-color (get-gui-color c) g 
+        #(draw-rectangle* % x y w h)))
+    cg)
+
+  (fill-rectangle [cg color x y w h]
+    (let [c  (if (nil? color) :black color)]
+      (with-color (get-gui-color c) g 
+        #(fill-rectangle* % x y w h)))
+    cg)
+  
+  (draw-ellipse   [cg color x y w h]
+    (with-color (get-gui-color color) g 
+      #(draw-circle % (inc x) (inc y) (dec w) (dec h)))
+    cg)
+  
+  (fill-ellipse   [cg color x y w h]
+    (with-color (get-gui-color color) g 
+      #(fill-circle % x y w h))
+    cg)  
+  (draw-string    [cg color font s x y]
+    (with-color (get-gui-color color) g 
+      #(draw-string-cartesian  % (str s) (float x) (float y)))
+    cg)  
+  (draw-image [cg img transparency x y]
+    (draw-image-cartesian g (as-buffered-image img (bitmap-format img)) x y)
+    cg)
+  IStroked
+   (get-stroke [cg] (.getStroke g) cg)
+   (set-stroke [cg  s] (do (.setStroke g ^Stroke s) cg))
+  ITextRenderer
+  (text-width     [cg txt] (f/string-width (.getFont g) txt))
+  (text-height    [cg txt] (f/string-height (.getFont g)  txt))
+  ICanvas2DExtended
+  (draw-polygon   [cg color points]
+    (with-color (get-gui-color color) g
+      #(do (.drawPolygon ^Graphics2D % ^Polygon points) %))
+    cg)
+  (fill-polygon   [cg color points]
+    (with-color (get-gui-color color) g
+      #(do (.fillPolygon ^Graphics2D % ^Polygon points) %))
+    cg)
+  (draw-path      [cg points] (not-implemented draw-path))
+  (draw-poly-line [cg pline]  (not-implemented draw-poly-line))
+  (draw-quad      [cg tri]    (not-implemented draw-quad))
+  IBoundedCanvas
+  (canvas-width   [c] width)
+  (canvas-height  [c] height)
+  IGraphicsContext
+  (get-alpha      [cg] (get-composite g))
+  (get-transform  [cg] (get-transform* g))
+  (get-color      [cg] (get-current-color g))     
+  (set-color      [cg c] (do (set-gui-color g 
+                                (get-gui-color c)) cg))
+  (set-alpha      [cg a] (do (set-composite g (make-alphacomposite a))
+                            cg))
+  (set-transform  [cg t] (do (set-transform* g t) cg))
+  
+  (translate-2d   [cg x y] (doto g (.translate (int x) (int y))) cg)
+  (scale-2d       [cg x y] (doto g (.scale  x  y)) cg)
+  (rotate-2d      [cg theta] (doto g (.rotate (float theta))) cg)
+  
+  (set-state      [cg state] (interpret-state state g) cg)
+  (make-bitmap    [cg w h transp] (make-imgbuffer w h transp) cg)
+  clojure.lang.IDeref
+  (deref [obj] g)
+  )
+
+;;Wraps an existing canvas item and makes it into a smart cartesian
+;;coordinate system-based canvas, allowing us to draw images and strings
+;;unaltered.  Standard shapes will be reflected normally, strings and images
+;;will be drawn with their origin at the bottom-left (like the cartesian plane),
+;;and not reflected.
+(defn ->canvas-graphics [^Graphics2D g width height]
+  (let [g (doto g (.translate 1.0 (double height))
+                  (.scale   1.0 -1.0))]
+    (CanvasGraphics. g width height)))
 
 ;a set of rendering options specific to the j2d context.
 ;We can expose these options for low-level stuff later.
@@ -348,6 +454,7 @@
   (set-state      [ctx state] (interpret-state state ctx))
   (make-bitmap    [ctx w h transp] (make-imgbuffer w h transp)))
 
+;;THis is probably overkill...I think all we need (and are using) is CanvasGraphics.
 ;encapsulation for everything swing...plumbing mostly.
 (defrecord swing-graphics [^Graphics2D g options]
   IGraphicsContext 
@@ -396,7 +503,7 @@
     (swing-graphics. (draw-string g color font s x y) options))  
   (draw-image     [sg img transparency x y]
     (swing-graphics. 
-      (draw-image* g (as-buffered-image img (bitmap-format img)) x y nil)
+      (draw-image* g (as-buffered-image img (bitmap-format img)) x y)
       options))
   ICanvas2DExtended
   (draw-polygon   [sg color  points]
@@ -419,15 +526,27 @@
 
 (extend-protocol I2DGraphicsProvider
   BufferedImage 
-  (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
-  Component 
-  (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
-  JFrame 
-  (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
-  JComponent
-  (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
+  (get-graphics [source] (->canvas-graphics (.getGraphics source) (.getWidth source) (.getHeight source)))
+  ;; Component 
+  ;; (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
+  ;; JFrame 
+  ;; (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
+  ;; JComponent
+  ;; (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
   JPanel
-  (get-graphics [source] (->swing-graphics (.getGraphics source) nil)))
+  (get-graphics [source] (->canvas-graphics (.getGraphics source) (.getWidth source) (.getHeight source))))
+
+;; (extend-protocol I2DGraphicsProvider
+;;   BufferedImage 
+;;   (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
+;;   Component 
+;;   (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
+;;   JFrame 
+;;   (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
+;;   JComponent
+;;   (get-graphics [source] (->swing-graphics (.getGraphics source) nil))
+;;   JPanel
+;;   (get-graphics [source] (->swing-graphics (.getGraphics source) nil)))
 
 ;(defn ^Graphics2D get-graphics 
 ;  ([obj] (cond (satisfies? IBitMap obj) (bitmap-graphics obj)

@@ -17,12 +17,35 @@
 (defn get-font [f] (if (instance? java.awt.Font f) f (get @fonts f)))
 
 (defn  string-bounds 
-  ([f ^String txt]  
+  ([f ^String txt x y]   
+     (let [^Font fnt (get-font f)
+           ^FontMetrics fm (.getFontMetrics font-graphics fnt)
+           ^Rectangle2D bv (.getStringBounds fm txt font-graphics)]
+       (s/bbox x y (.getWidth bv) (- (.getY bv));(.getHeight bv)
+               )))
+  ([f ^String txt]   
      (let [^Font fnt (get-font f)
            ^FontMetrics fm (.getFontMetrics font-graphics fnt)
            ^Rectangle2D bv (.getStringBounds fm txt font-graphics)]
        (s/bbox (.getX bv) (.getY bv) (.getWidth bv) (.getHeight bv))))
   ([^String txt] (string-bounds default-font txt)))
+
+(defn string-height
+  ([f ^String txt]  
+   (let [^Font fnt (get-font f)
+         ^FontMetrics fm (.getFontMetrics font-graphics fnt)
+         ^Rectangle2D bv (.getStringBounds fm txt font-graphics)]
+       (.getHeight bv)))
+  ([^String txt] (string-height default-font txt)))
+
+(defn string-width
+  ([f ^String txt]  
+   (let [^Font fnt (get-font f)
+         ^FontMetrics fm (.getFontMetrics font-graphics fnt)
+         ^Rectangle2D bv (.getStringBounds fm txt font-graphics)]
+       (.getWidth bv)))
+  ([^String txt] (string-width default-font txt)))
+
 
 (defn ^Font resize-font [^Font f ^double newsize]
   (.deriveFont f newsize))

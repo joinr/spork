@@ -506,6 +506,10 @@
   (draw-string    [canvas color font s x y]  "Draws a string at x,y.")
   (draw-image     [canvas img transparency x y] "Draws an IBitmap at x,y."))
 
+(defprotocol IBoundedCanvas
+  (canvas-width  [c])
+  (canvas-height [c]))
+
 (defprotocol ITextRenderer
   (text-width     [canvas txt] "Gets the weidth of txt on canvas, in pixels.")
   (text-height    [canvas txt] "Gets the height of txt on canvas, in pixels."))

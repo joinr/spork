@@ -40,7 +40,7 @@
   (->rectangle color x y w w))
 
 (defshape text [color font txt x y]
-  (f/string-bounds font txt)
+  (f/string-bounds font txt x y)
   (c/draw-string c color font txt x y))
 
 (defn ->plain-text 
