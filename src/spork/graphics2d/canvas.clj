@@ -551,6 +551,15 @@
   (shape-bounds [s]   "Get a bounding box for the shape.")
   (draw-shape   [s c] "Draw the shape onto a canvas."))
 
+;; ;;Shapes that define themselves relative to exogenous values...
+;; ;;Used to implement panning and zooming....typically relative to a
+;; ;;viewport and some offset in terms of pan (translation) and
+;; ;;scale (zoom)
+;; (defprotocol IReactiveShape
+;;   (reactive-bounds [s]   "Get a bounding box for the shape.")
+;;   (draw-reactive-shape   [s c] "Draw the shape onto a canvas."))
+
+
 (defn shape-seq?
   "Function that determines if the collection is a simple sequence of things 
    that can be drawn using IShape, or if, despite being a sequence, already 
@@ -590,3 +599,11 @@
   IShape
   (draw-shape [shp c] (draw-shape (deref shp) c))
   (shape-bounds [shp] (shape-bounds (deref shp))))
+
+;;For reactive shapes....
+(def ^:dynamic *pan*            (atom 0.0))
+(def ^:dynamic *zoom*           (atom 1.0))
+(def ^:dynamic *canvas-width*   (atom 0.0))
+(def ^:dynamic *canvas-height*  (atom 0.0))
+(defn canvas-bounds! [] (spatial/bbox 0 0 @*canvas-width* @*canvas-height*))
+  

@@ -507,14 +507,45 @@
         (loop [acc c 
                idx 0]
           (if (== idx bound) acc
-              (recur (draw-shape (translate (* idx step) 0  vline) acc)
+              (recur (draw-shape (translate (+ (* idx step) x1) y1  vline) acc)
                      (unchecked-inc idx))))))))          
+
+;; (defn ->vlines-off [color x1 y1 h n step off]
+;;   (let [w (* step n)
+;;         b (space/bbox 0 0 w h)
+;;         vline (image/shape->img (->line color 1 0 1 h))
+;;         bound (inc n)
+;;         l  (Math/abs (- off x1))]
+;;     (reify IShape
+;;       (shape-bounds [s] b)
+;;       (draw-shape [s c]
+;;         (loop [acc c 
+;;                idx 0]
+;;           (if (== idx bound) acc
+;;               (recur (draw-shape (translate (+ (* idx step) x1) y1  vline) acc)
+;;                      (unchecked-inc idx))))))))
+
 
 (defn ->grid [w h wn hn]
   [(->vlines :black 0 0 h wn  (/ w wn))
    (->hlines :black 0 0 w  hn (/ h hn))])
 
 (defn ->graph-paper [color w h & {:keys [n xscale yscale] :or {n 10}}]
+  (let [xscale (or xscale (float (/ w n)))
+        yscale (or yscale (float (/ h n)))
+        b (space/bbox 0 0 w h)
+        across (->hlines color 0 0 w n xscale)
+        up     (->vlines color 0 0 h n yscale)]
+    (reify IShape 
+      (shape-bounds [s]   b)
+      (draw-shape   [s c] 
+        (->> c 
+            (draw-shape across)
+            (draw-shape up))))))
+
+;;the graph lines are a function of the canvas-width and canvas-height.
+;;It's a procedural shape.
+(defn ->reactive-graph-paper [color w h & {:keys [n xscale yscale] :or {n 10}}]
   (let [xscale (or xscale (float (/ w n)))
         yscale (or yscale (float (/ h n)))
         b (space/bbox 0 0 w h)
