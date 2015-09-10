@@ -41,7 +41,7 @@
 ;;this is somewhat hackish at the moment...
 (defn -init [width height painter]
   (let [^BufferedImage buffer (jgraphics/make-imgbuffer  width height)
-        ^Graphics2D bg (.getGraphics buffer)]
+        bg (jgraphics/->canvas-graphics (.getGraphics buffer) width height)]
     [[]
      (->ppdata  width height  painter
                 bg  buffer nil)]))
