@@ -91,7 +91,7 @@
   (shape-bounds [s]   (spatial/bbox 0 0 width height))
   (draw-shape   [s c] (draw-image c data transparency 0 0))
   I2DGraphicsProvider
-  (get-graphics [s] (get-graphics-img data))
+  (get-graphics [s] (get-graphics data))
   ICanvas2D
   (get-context    [canvas] 
     (get-context data)) 

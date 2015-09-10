@@ -202,7 +202,7 @@
          ))))
 
 (defn iconify [img & {:keys [w h flipped?]
-                      :or {w 50 h 50 flipped? true}}]
+                      :or {w 50 h 50 flipped? false}}]
   (let [{:keys [width height]} (canvas/shape-bounds img)
         [xscale yscale]        (fit-ratio width height w h)
         _                      (println [xscale yscale])

@@ -10,10 +10,10 @@
 (defprotocol ICanvasPanel
   (^clojure.lang.IFn getPaintf   [obj])
   (setPainter                    [obj atm])
-  (^Graphics2D getBufferGraphics [obj])
+  (^spork.graphics2d.canvas.swing.CanvasGraphics getBufferGraphics [obj])
   (^BufferedImage getBuffer      [obj]))
 
-(defrecord ppdata [width height painter ^Graphics2D bg ^BufferedImage buffer  meta]
+(defrecord ppdata [width height painter bg ^BufferedImage buffer  meta]
   ICanvasPanel
   (getPaintf [obj] painter)
   (setPainter [obj atm] (reset! painter @atm))
@@ -24,7 +24,7 @@
    :extends javax.swing.JPanel
    :implements [clojure.lang.IMeta
                 clojure.lang.IObj
-                clojure.lang.IDeref
+                clojure.lang.IDeref                
                 ]
    :name    spork.cljgui.components.PaintPanel
    :state   state
@@ -47,21 +47,21 @@
                 bg  buffer nil)]))
 
 
-(defn -deref    [this]    (.state this))
-(defn -withMeta [this m]  this)
+(defn -deref    [^spork.cljgui.components.PaintPanel this]    (.state this))
+(defn -withMeta [^spork.cljgui.components.PaintPanel this m]  this)
 (defn -meta     [this]    nil)
   
 ;;This is our primary wrapper.  Allows us to avoid reflection warnings
 ;;(and the creation of tons of java.lang.reflector objects when we're calling
 ;;paintComponent (as we would via proxy).
 (defn -paint [this ^Graphics g]
-  (let [^javax.swing.JComponent that this]
-    (do ; (.parentPaint that g)
-      ((.getPaintf ^spork.cljgui.components.PaintPanel.ICanvasPanel
-                   (.state this))
-       g))))
+  (let [^spork.cljgui.components.PaintPanel.ICanvasPanel s (.state ^spork.cljgui.components.PaintPanel this)
+        ^javax.swing.JComponent this this]
+    (do  ((.getPaintf s)
+          (.getBufferGraphics s))
+         (jgraphics/draw-image* g (.getBuffer s) 0 0))))
 
-(defn -removeNotify [this]
+(defn -removeNotify [^spork.cljgui.components.PaintPanel this]
   (do (println "removing!")      
       (.parentRemoveAll    this)
       (.parentRemoveNotify this)

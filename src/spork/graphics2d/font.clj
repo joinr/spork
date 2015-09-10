@@ -11,7 +11,7 @@
 ;;this is what we use by default.
 (def default-font (Font. Font/DIALOG Font/PLAIN 12))
 ;;it'd be nice to import all the fonts...
-(def font-graphics (.getGraphics (BufferedImage. 1 1 BufferedImage/TYPE_INT_RGB)))
+(def ^Graphics2D font-graphics (.getGraphics (BufferedImage. 1 1 BufferedImage/TYPE_INT_RGB)))
 (def fonts (atom {:default default-font}))
 
 (defn get-font [f] (if (instance? java.awt.Font f) f (get @fonts f)))

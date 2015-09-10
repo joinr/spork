@@ -510,6 +510,8 @@
   (canvas-width  [c])
   (canvas-height [c]))
 
+(defprotocol ICartesian)
+                                  
 (defprotocol ITextRenderer
   (text-width     [canvas txt] "Gets the weidth of txt on canvas, in pixels.")
   (text-height    [canvas txt] "Gets the height of txt on canvas, in pixels."))

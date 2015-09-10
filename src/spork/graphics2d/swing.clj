@@ -238,14 +238,15 @@
   (do (.drawImage g img x y null-observer)
     g))
 
-(defn draw-image-cartesian [^Graphics g ^BufferedImage img   x  y]
+(defn draw-image-cartesian [^Graphics2D g ^BufferedImage img   x  y]
   (let [yoffset (+ (.getHeight img) y)
         txform (.getTransform g)]
-    (doto g
-      (.translate 0.0 (double yoffset))
-      (.scale  1.0 -1.0)
-      (.drawImage img (double x) (double y) null-observer)
-      (.setTransform txform))))
+    (do 
+      (.translate g 0.0 (double yoffset))
+      (.scale  g 1.0 -1.0)
+      (.drawImage ^Graphics g img (double x) (double y) ^ImageObserver null-observer)
+      (.setTransform g txform)
+      g)))
 
 (defn draw-string-cartesian [^Graphics2D g ^String s x y]
   (let [yoffset  0.0;(f/string-height s)  ;(-  y)
@@ -417,6 +418,7 @@
   (make-bitmap    [cg w h transp] (make-imgbuffer w h transp) cg)
   clojure.lang.IDeref
   (deref [obj] g)
+  ICartesian
   )
 
 ;;Wraps an existing canvas item and makes it into a smart cartesian
