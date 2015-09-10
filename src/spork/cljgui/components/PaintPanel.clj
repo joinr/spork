@@ -13,12 +13,12 @@
   (^spork.graphics2d.canvas.swing.CanvasGraphics getBufferGraphics [obj])
   (^BufferedImage getBuffer      [obj]))
 
-(defrecord ppdata [width height painter bg ^BufferedImage buffer  meta]
+(defrecord ppdata [width height painter bg ^BufferedImage buffer  metadata]
   ICanvasPanel
-  (getPaintf [obj] painter)
-  (setPainter [obj atm] (reset! painter @atm))
-  (getBufferGraphics [obj] bg)
-  (getBuffer [obj] buffer))
+  (getPaintf         [obj]      painter)
+  (setPainter        [obj atm] (reset! painter @atm))
+  (getBufferGraphics [obj]      bg)
+  (getBuffer         [obj]      buffer))
     
 (gen-class
    :extends javax.swing.JPanel
@@ -44,12 +44,16 @@
         bg (jgraphics/->canvas-graphics (.getGraphics buffer) width height)]
     [[]
      (->ppdata  width height  painter
-                bg  buffer nil)]))
-
+                bg  buffer (atom {}))]))
 
 (defn -deref    [^spork.cljgui.components.PaintPanel this]    (.state this))
-(defn -withMeta [^spork.cljgui.components.PaintPanel this m]  this)
-(defn -meta     [this]    nil)
+(defn -withMeta [^spork.cljgui.components.PaintPanel this m]
+  (do (when-let [oldm  (.metadata (.state this))]
+        (reset!  oldm m))
+      this))
+(defn -meta     [^spork.cljgui.components.PaintPanel this]
+  (when-let [m (.metadata (.state this))]
+    @m))
   
 ;;This is our primary wrapper.  Allows us to avoid reflection warnings
 ;;(and the creation of tons of java.lang.reflector objects when we're calling
