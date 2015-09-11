@@ -510,20 +510,56 @@
               (recur (draw-shape (translate (+ (* idx step) x1) y1  vline) acc)
                      (unchecked-inc idx))))))))          
 
-;; (defn ->vlines-off [color x1 y1 h n step off]
-;;   (let [w (* step n)
-;;         b (space/bbox 0 0 w h)
-;;         vline (image/shape->img (->line color 1 0 1 h))
-;;         bound (inc n)
-;;         l  (Math/abs (- off x1))]
-;;     (reify IShape
-;;       (shape-bounds [s] b)
-;;       (draw-shape [s c]
-;;         (loop [acc c 
-;;                idx 0]
-;;           (if (== idx bound) acc
-;;               (recur (draw-shape (translate (+ (* idx step) x1) y1  vline) acc)
-;;                      (unchecked-inc idx))))))))
+;;We're repeating a shape until we exceed a criteria (outside the view).
+;;So, we have a shape defined relative to a view.
+;;Say, a line.  We can have infinite lines if, when we move the view,
+;;we change the starting point of our stepping criteria.
+;;If we offset left, we drawlines until our next line exceeds the view, starting
+;;from the first visible line.
+
+(defn next-line [w xprev step]
+  (let [xnext (+ xprev step)]
+    (when (<= xnext w)
+      xnext)))
+
+;;we're repeating a shape, spanning an interval, starting from an initial
+;;point.  That's the declarative operation.  Basically, we draw the
+;;shape at every point.  Note that if the shape spans vertically, we
+;;get an "infinite" arrangement of shapes, i.e. a grid.
+(defn repeat-across [shp x1 y w step]
+  (let [bbox (space/bbox x1 y  w (:height (shape-bounds shp)))
+        x    (atom x1)
+        cursor (translate x (atom y) shp)
+        cursor-at! (fn [n] (do (reset! x n)
+                               cursor))
+        bound (+ x1 w)]
+    (reify IShape
+      (shape-bounds [s] bbox)
+      (draw-shape [s c]
+        (loop [acc c 
+               xprev (- x1  (mod @canvas/*pan* step))]
+          (if (>= xprev bound) acc
+              (recur (draw-shape (cursor-at! xprev)  acc)
+                     (unchecked-add xprev step))))))))
+(defn ->scrolling-lines [x1 y1 w h step]
+  (let [ln (image/shape->img (->line :black 1 0 1 h))]
+    (repeat-across ln x1 y1 w step)))
+                                      
+;;So then, first-line is just the offset applied to the start of the view.
+(defn ->vlines-off [color x1 y1 h w step off]
+  (let [xprev (- x1 off)        
+        b (space/bbox 0 0 w h)
+        vline (image/shape->img (->line color 1 0 1 h))
+        bound w
+        l  (Math/abs (- x1 off))]
+    (reify IShape
+      (shape-bounds [s] b)
+      (draw-shape [s c]
+        (loop [acc c 
+               idx 0]
+          (if (== idx bound) acc
+              (recur (draw-shape (translate (+ (* idx step) l) y1  vline) acc)
+                     (unchecked-inc idx))))))))
 
 
 (defn ->grid [w h wn hn]
@@ -543,6 +579,11 @@
             (draw-shape across)
             (draw-shape up))))))
 
+
+;;If we conceptualize it as a tiled object in which we can compute new tiles...
+;;We define a tile by the dimensions of the canvas.   So, a 300x300 is a tile.
+;;As we pan l/r, we move from the current tile to the next.
+;;Really, we're tiling...
 ;;the graph lines are a function of the canvas-width and canvas-height.
 ;;It's a procedural shape.
 (defn ->reactive-graph-paper [color w h & {:keys [n xscale yscale] :or {n 10}}]
@@ -557,6 +598,8 @@
         (->> c 
             (draw-shape across)
             (draw-shape up))))))
+
+;;how would we tile a rectangle?
 
 (defn ->legend-entry [txt color]
   (let [lbl (spork.geometry.shapes/->plain-text :black  (str txt "  ") 0 10)
