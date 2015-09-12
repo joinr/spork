@@ -545,8 +545,7 @@
               l     (+ x1    xpan)
               first-step (- l (mod xpan step))
               bound (+ l w)
-              _ (reset! y-rev (- y @canvas/*ypan*))
-                            _ (println [@canvas/*xpan* l first-step bound]) ]
+              _ (reset! y-rev (- y @canvas/*ypan*))]
           (loop [acc c 
                  xprev first-step]
             (if (> xprev bound) acc
