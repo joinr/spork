@@ -20,7 +20,23 @@
            [spork.cljgui.components PaintPanel]
            ))
 
- 
+
+
+;;This is basic gui stuff to walk the swing gui tree, finding components
+;;and such.  We use it to do selection and querying pretty easily.
+(defn get-name [obj] (or (.getName obj) ""))
+(defn gui-tree [o]   (tree-seq #(pos? (.getComponentCount %)) #(.getComponents %) o))
+(defn walk-gui
+  ([f obj] (map f (gui-tree obj)))
+  ([obj]   (walk-gui (juxt #(get-name %) #(.hashCode %) type)  obj)))
+(defn find-gui    [pred obj]  (filter pred (walk-gui identity obj)))
+(defn get-canvas  [obj]       (first (find-gui #(.contains ^String (get-name %) "Canvas") obj)))
+(defn clear-canvas! [obj]
+  (let [c (get-canvas obj)]
+    (do (spork.graphics2d.image/clear-buffered-image
+         (:buffer    (or (meta c) (deref c))))
+      nil)))
+
 (defn get-events [obj]  (:event-stream (meta obj)))
  
 (defn ->ui-spec [name & {:keys [doc event-type event] :as opts}]

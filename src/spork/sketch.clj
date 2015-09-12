@@ -12,6 +12,9 @@
             [spork.protocols [spatial :as space]]
             [spork.geometry.shapes :refer :all]
             [spork.cljgui.components [swing :as gui]]
+            [spork.events [base :as evt]
+                          [native :as nat]
+                          [observe :as obs]]
             ))
 
 ;;These are brittle, but work until I found a better way around the problem.
@@ -575,34 +578,54 @@
   ([x1 y1 w h n] (->scrolling-grid x1 y1 w h n n))
   ([x1 y1 w h]   (->scrolling-grid x1 y1 w h 10)))
 
-(defn moving-grid [w h n]
-  (let [xpan  (atom 0)
-        ypan  (atom 0)
-        xzoom (atom 1.0)
-        yzoom (atom 1.0)
-        background (->scrolling-grid 0 0 w h n)
-        clear      (image/shape->img (->rectangle :grey 0 0 w h))
-        p          (gui/new-paintpanel w h (fn [c] (canvas/with-movement {:xpan xpan
-                                                                          :ypan ypan
-                                                                          :xzoom xzoom
-                                                                          :yzoom yzoom}                                                     
-                                                       (canvas/draw-shape
-                                                        (smooth
-                                                         [clear
-                                                          background]) c))))
-        m          (nat/get-observer  p :mouse)
-        mousemove  (->> (obs/cyclical-obs (:released m) (:dragged m))
-                        (obs/map-obs (fn [[^java.awt.event.MouseEvent l ^java.awt.event.MouseEvent r]]
-                                       [(-  (.getX l) (.getX r))
-                                        ;;flip the order, since we're in cartesian coords....
-                                        (-  (.getY r) (.getY l))
-                                        ])))
-        _          (obs/subscribe (fn [[xd yd]] (do (when-not (zero? xd) (swap! xpan + xd))
-                                                    (when-not (zero? yd) (swap! ypan + yd))
-                                                    (.repaint p))) mousemove)]
+;;This allows us to have a concise way to thread user
+;;interaction into the scene.
+(defn ->interactor
+  ([xpan ypan xzoom yzoom shp]
+   (let [interactive-shape (translate xpan ypan
+                                      (scale xzoom yzoom
+                                             shp))]
+     (reify
+       canvas/IShape
+       (shape-bounds [s] (canvas/shape-bounds interactive-shape))
+       (draw-shape [s c]
+         (canvas/with-movement {:xpan  xpan
+                                :ypan  ypan
+                                :xzoom xzoom
+                                :yzoom yzoom}
+           (canvas/draw-shape shp c)))
+       clojure.lang.IDeref
+       (deref [o] {:xpan xpan :ypan ypan :xzoom xzoom :yzoom yzoom}))))
+  ([shp] (->interactor (atom 0.0) (atom 0.0) (atom 1.0) (atom 1.0) shp)))
+
+
+(defn ->painting [w h shp]
+   (let [myshape    (->interactor shp)
+         {:keys [xpan ypan]} @myshape
+         p          (gui/new-paintpanel w h (fn [c] (canvas/draw-shape myshape c)))
+         m          (nat/get-observer  p :mouse)
+         mousemove  (->> (obs/cyclical-obs (:released m) (:dragged m))
+                         (obs/map-obs (fn [[^java.awt.event.MouseEvent l ^java.awt.event.MouseEvent r]]
+                                        [(-  (.getX l) (.getX r))
+                                         ;;flip the order, since we're in cartesian coords....
+                                         (-  (.getY r) (.getY l))
+                                         ])))
+         _          (obs/subscribe (fn [[xd yd]] (do (when-not (zero? xd) (swap! xpan + xd))
+                                                     (when-not (zero? yd) (swap! ypan + yd))
+                                                     (.repaint p))) mousemove)
+         p   (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))]
     (gui/toggle-top
      (gui/display (gui/empty-frame)
-                  p))))        
+                  p))))
+
+(defn moving-grid [w h n]
+  (let [background (->scrolling-grid 0 0 w h n)
+        clear      (image/shape->img (->rectangle :grey 0 0 w h))]
+    (->painting w h [clear background])))
+      
+
+
+  
                                       
 ;;So then, first-line is just the offset applied to the start of the view.
 (defn ->vlines-off [color x1 y1 h w step off]
