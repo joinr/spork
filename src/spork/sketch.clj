@@ -649,10 +649,9 @@
      (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))))
 
 (defn paint! [w h shp]
-              (gui/toggle-top
-               (gui/view (gui/empty-frame)
-                         (->painting w h shp))))                              
-               
+  (gui/toggle-top
+   (gui/view (gui/empty-frame)
+             (->painting w h shp))))
 
 (defn moving-grid [w h n]
   (let [background (->scrolling-grid 0 0 w h n)
@@ -675,6 +674,10 @@
         (->> c 
             (draw-shape across)
             (draw-shape up))))))
+
+(defn ->live-axis [])
+
+;(defn ->container [x y width height]
 
 
 ;;If we conceptualize it as a tiled object in which we can compute new tiles...
