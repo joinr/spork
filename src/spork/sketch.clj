@@ -429,6 +429,16 @@
 ;;   (shape-bounds [s] (shape-bounds shp))
 ;;   (draw-shape [s c] (draw-shape shp c)))
 
+(defn elevated-activities [records event->color]
+  (let [sorted (sort-by (juxt :start :duration) records)  
+        [elevated hmax wmax] (reduce (fn [[xs height width] x] 
+                                       (let [act (->activity x :event->color event->color)]
+                                         [(conj xs (translate 0.0 height act)) 
+                                          (+ height (:height (shape-bounds act)))
+                                          (max width (+ (:start x) (:duration x)))]))
+                                     [[] 0.0 0.0] sorted)]
+    [elevated hmax wmax]))    
+  
 ;;should render us a track of each event, with a track-name to the
 ;;left of the track.  Events in the track are rendered on top of each other.
 (defn ->track [records & {:keys [track-name track-height track-width event->color] 
@@ -437,14 +447,8 @@
                                  track-width  400
                                  event->color *event->color*}}]
   (let [label  (->label (str track-name) 0 0)
-        lwidth 100 ; (:width (shape-bounds label))
-        sorted (sort-by (juxt :start :duration) records)                
-        [elevated hmax wmax] (reduce (fn [[xs height width] x] 
-                                       (let [act (->activity x :event->color event->color)]
-                                         [(conj xs (translate 0.0 height act)) 
-                                          (+ height (:height (shape-bounds act)))
-                                          (max width (+ (:start x) (:duration x)))]))
-                                       [[] 0.0 0.0] sorted)
+        lwidth 100 ; (:width (shape-bounds label))            
+        [elevated hmax wmax] (elevated-activities records event->color)
         hscale 0.5
         background    ;(when (> (:start (first sorted)) 0)
                (->rectangle :lightgray 0 0  wmax track-height)
@@ -590,7 +594,6 @@
      x1 y1 h h)
     ))
 
-
 (defn ->scrolling-grid
   ([x1 y1 w h xstep ystep]
    [(->scrolling-columns 0 0 w h (/ w xstep))
@@ -642,19 +645,20 @@
                                   yd (-  (.getY l) (.getY r) )]
                               (do (when-not (zero? xd) (swap! xpan + xd))
                                   (when-not (zero? yd) (swap! ypan + yd))
-                                  (.repaint p))))))
-         p   (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))]
-    (gui/toggle-top
-     (gui/display (gui/empty-frame)
-                  p))))
+                                  (.repaint p))))))]
+     (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))))
+
+(defn paint! [w h shp]
+              (gui/toggle-top
+               (gui/view (gui/empty-frame)
+                         (->painting w h shp))))                              
+               
 
 (defn moving-grid [w h n]
   (let [background (->scrolling-grid 0 0 w h n)
         clear      (image/shape->img (->rectangle :grey 0 0 w h))]
     (->painting w h [clear background])))
       
-
-
 (defn ->grid [w h wn hn]
   [(->vlines :black 0 0 h wn  (/ w wn))
    (->hlines :black 0 0 w  hn (/ h hn))])
@@ -693,7 +697,6 @@
             (draw-shape up))))))
 
 ;;how would we tile a rectangle?
-
 (defn ->legend-entry [txt color]
   (let [lbl (spork.geometry.shapes/->plain-text :black  (str txt "  ") 0 10)
         h   (spork.protocols.spatial/get-height (spork.protocols.spatial/get-bounding-box lbl))]
