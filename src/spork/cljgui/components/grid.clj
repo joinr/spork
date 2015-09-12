@@ -151,15 +151,13 @@
     [(->tile-path size (bres-line2 x0 y0 x1 y1))
      (->line :red (* x0 size) (* y0 size)  (* x1 size) (* y1 size))]))
 
-
 (defn bres-lerp
   "Given two mouse coordinates, linearly interpolate the coords based on 
    bresenham's line algorithm.  Returns a vector of coordinates."
   [[x y] [x2 y2]]
   (if (and (<= (dist x x2) 1) (<= (dist y y2) 1)) 
     [[x2 y2]]
-    (bres-line2 x y x2 y2)))
-          
+    (bres-line2 x y x2 y2)))          
 
 (defn mouse-lerp
   "An observer that buffers mouse coordinates, and linearly interpolates them 

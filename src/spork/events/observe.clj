@@ -321,27 +321,28 @@
                            (alter-atom! r args)))
           _ (->> toggleobs 
               (subscribe endcycle))]              
-			    (bind-observable 
-			      (fn [subscribers able obs]
-              (let [oldargs (atom nil)]
-			          (subscribe! origin
-				          (make-observer 
-				            (fn [newargs]
-                        (let [c @cycle
-                              res @oldargs]                  
-						              (do                      
-			                      (cond (= c :startcycle)
-                                    (do (alter-atom! cycle :cycling)
-                                        (alter-atom! oldargs newargs))
-                                  (= c :cycling) 
-                                    (do
-                                     (if-not (nil? res)
-                                       (update! obs [res newargs]))
-			                               (alter-atom! oldargs newargs))
-			                            (= c :ended)                            
-				                            (do ;(println "recycling" [res newargs])
-				                                (startcycle oldargs nil))))))))))
-			      origin)))
+      (bind-observable 
+       (fn [subscribers able obs]
+         (let [oldargs (atom nil)]
+           (subscribe! origin
+             (make-observer 
+              (fn [newargs]
+                (let [c @cycle
+                      res @oldargs]                  
+                  (do                      
+                    (cond (= c :startcycle)
+                            (do (alter-atom! cycle :cycling)
+                                (alter-atom! oldargs newargs))
+                          (= c :cycling) 
+                            (do
+                              (if-not (nil? res)
+                                (update! obs [res newargs]))
+                              (alter-atom! oldargs newargs))
+                          (= c :ended)                            
+                            (do ;(println "recycling" [res newargs])
+                              (startcycle oldargs nil))))))))))
+       origin)))
+
 
 (defn through-obs 
   "Similar to map-obs, in that it returns an observable based on origin, 

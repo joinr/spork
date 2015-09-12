@@ -536,14 +536,73 @@
     (reify IShape
       (shape-bounds [s] bbox)
       (draw-shape [s c]
-        (loop [acc c 
-               xprev (- x1  (mod @canvas/*pan* step))]
-          (if (>= xprev bound) acc
-              (recur (draw-shape (cursor-at! xprev)  acc)
-                     (unchecked-add xprev step))))))))
-(defn ->scrolling-lines [x1 y1 w h step]
+        (let [step (* step @canvas/*xzoom*)]
+          (loop [acc c 
+                 xprev (- x1  (mod @canvas/*xpan* step))]
+            (if (>= xprev bound) acc
+                (recur (draw-shape (cursor-at! xprev)  acc)
+                       (unchecked-add xprev step)))))))))
+
+(defn repeat-up [shp x y1 h step]
+  (let [bbox (space/bbox x y1  (:width (shape-bounds shp)) h)
+        y    (atom y1)
+        cursor (translate (atom x) y shp)
+        cursor-at! (fn [n] (do (reset! y n)
+                               cursor))
+        bound  (+ y1 h)]
+    (reify IShape
+      (shape-bounds [s] bbox)
+      (draw-shape [s c]
+        (let [step (* step @canvas/*yzoom*)]
+          (loop [acc c 
+                 yprev (- y1  (mod @canvas/*ypan* step))]
+            (if (>= yprev bound) acc
+                (recur (draw-shape (cursor-at! yprev)  acc)
+                       (unchecked-add yprev step)))))))))
+
+(defn ->scrolling-columns [x1 y1 w h step]
   (let [ln (image/shape->img (->line :black 1 0 1 h))]
     (repeat-across ln x1 y1 w step)))
+
+(defn ->scrolling-rows [x1 y1 w h step]
+  (let [ln (image/shape->img (->line :black 0 1 w 1))]
+    (repeat-up ln x1 y1 w step)))
+
+(defn ->scrolling-grid
+  ([x1 y1 w h xstep ystep]
+   [(->scrolling-columns 0 0 w h (/ w xstep))
+    (->scrolling-rows 0 0 w h (/ h ystep))])
+  ([x1 y1 w h n] (->scrolling-grid x1 y1 w h n n))
+  ([x1 y1 w h]   (->scrolling-grid x1 y1 w h 10)))
+
+(defn moving-grid [w h n]
+  (let [xpan  (atom 0)
+        ypan  (atom 0)
+        xzoom (atom 1.0)
+        yzoom (atom 1.0)
+        background (->scrolling-grid 0 0 w h n)
+        clear      (image/shape->img (->rectangle :grey 0 0 w h))
+        p          (gui/new-paintpanel w h (fn [c] (canvas/with-movement {:xpan xpan
+                                                                          :ypan ypan
+                                                                          :xzoom xzoom
+                                                                          :yzoom yzoom}                                                     
+                                                       (canvas/draw-shape
+                                                        (smooth
+                                                         [clear
+                                                          background]) c))))
+        m          (nat/get-observer  p :mouse)
+        mousemove  (->> (obs/cyclical-obs (:released m) (:dragged m))
+                        (obs/map-obs (fn [[^java.awt.event.MouseEvent l ^java.awt.event.MouseEvent r]]
+                                       [(-  (.getX l) (.getX r))
+                                        ;;flip the order, since we're in cartesian coords....
+                                        (-  (.getY r) (.getY l))
+                                        ])))
+        _          (obs/subscribe (fn [[xd yd]] (do (when-not (zero? xd) (swap! xpan + xd))
+                                                    (when-not (zero? yd) (swap! ypan + yd))
+                                                    (.repaint p))) mousemove)]
+    (gui/toggle-top
+     (gui/display (gui/empty-frame)
+                  p))))        
                                       
 ;;So then, first-line is just the offset applied to the start of the view.
 (defn ->vlines-off [color x1 y1 h w step off]

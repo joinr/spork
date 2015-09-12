@@ -600,10 +600,43 @@
   (draw-shape [shp c] (draw-shape (deref shp) c))
   (shape-bounds [shp] (shape-bounds (deref shp))))
 
+
+;;Zooming and panning are dynamic transforms applied at
+;;runtime to scaling and translation respectively.  We use panning and
+;;zooming to allow the user to interact with views.  These are also
+;;highly useful for things like procedural or tiled shapes that
+;;are defined as a function of "how far" the view has panned.  Interactive
+;;plots are a good example of this.
+
 ;;For reactive shapes....
-(def ^:dynamic *pan*            (atom 0.0))
-(def ^:dynamic *zoom*           (atom 1.0))
-(def ^:dynamic *canvas-width*   (atom 0.0))
-(def ^:dynamic *canvas-height*  (atom 0.0))
+(def ^:dynamic *xpan*            (atom 0.0))
+(def ^:dynamic *ypan*            (atom 0.0))
+(def ^:dynamic *xzoom*           (atom 1.0))
+(def ^:dynamic *yzoom*           (atom 1.0))
+(def ^:dynamic *canvas-width*    (atom 0.0))
+(def ^:dynamic *canvas-height*   (atom 0.0))
 (defn canvas-bounds! [] (spatial/bbox 0 0 @*canvas-width* @*canvas-height*))
-  
+
+;;Allows controls to assume local panning information (and updates)
+;;for reactive rendering, particularly for procedural shapes.
+(defmacro with-pan [xypan & expr]
+  `(binding [~'spork.graphics2d.canvas/*xpan* (first ~xypan)
+             ~'spork.graphics2d.canvas/*ypan* (second ~xypan)]
+     ~@expr))
+
+;;Allows controls to assume local zooming information (and updates)
+;;for reactive rendering, particularly for procedural shapes.
+(defmacro with-zoom [xyzoom & expr]
+  `(binding [~'spork.graphics2d.canvas/*xzoom* (first ~xyzoom)
+             ~'spork.graphics2d.canvas/*yzoom* (second ~xyzoom)]
+     ~@expr))
+
+(defmacro with-movement
+  [{:keys [xpan ypan xzoom yzoom]
+    :or {xpan 'spork.graphics2d.canvas/*xpan*
+         ypan 'spork.graphics2d.canvas/*ypan*
+         xzoom 'spork.graphics2d.canvas/*xzoom*
+         yzoom 'spork.graphics2d.canvas/*yzoom*}} & expr]
+  `(with-pan [~xpan ~ypan]
+     (with-zoom [~xzoom ~yzoom]
+       ~@expr)))

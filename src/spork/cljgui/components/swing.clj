@@ -1056,18 +1056,36 @@
     pnl))
         
 
+;;creates a mouse adapter that listen to mouse events from the panel and
+;;translates them into pan and zoom alterations.
+;; (defn ->navigator [& {:keys [pan zoom]}
+;;                    {:or {pan canvas/*pan*
+;;                          zoom canvas/*zoom*}}]
+;;   (let [last-point (atom nil)        
+;;         deltax (^int fn [^int x] (- (aget xy 0) 
+        
+;;   (proxy [MouseAdapter] []
+;;     (mouseClicked [^MouseEvent e]
+;;       (if (= (.getButton e) MouseEvent/BUTTON3)))
+;;     (mouseDragged [^MouseEvent e]
+       
+;;       ))
+
 (defmethod view :default [s & {:keys [title cached?] :or {title "Shape" :cached? false}}] 
   (if (satisfies? j2d/IShape s)
     (let [{:keys [x y width height]} (j2d/shape-bounds s)
           paintf (if (atom? s) (fn [c] (j2d/draw-shape @s c))
                      (fn [c] (j2d/draw-shape s c)))
-          panel  (->> ((if cached? 
-                         cached-paintpanel
-                         paintpanel)
+          panel  (->> (;(if cached? 
+                         ;cached-paintpanel
+                         ;paintpanel
+                                        ;)
+                       new-paintpanel
                        (inc (+ x width)) ;;check this...for duplicate.
                        (inc (+ y height))
                        paintf)                      
-                      (add-repaint-watch! s))]
+                      (add-repaint-watch! s))
+           ]
       (->scrollable-view panel :title title))))
 
 (defn swing-canvas [width height] 
