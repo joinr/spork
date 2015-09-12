@@ -640,3 +640,6 @@
   `(with-pan [~xpan ~ypan]
      (with-zoom [~xzoom ~yzoom]
        ~@expr)))
+
+;;tag protocol that tells us not to translate it reactively.
+(defprotocol IReactiveShape)

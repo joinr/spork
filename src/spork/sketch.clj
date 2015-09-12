@@ -531,34 +531,46 @@
 ;;get an "infinite" arrangement of shapes, i.e. a grid.
 (defn repeat-across [shp x1 y w step]
   (let [bbox (space/bbox x1 y  w (:height (shape-bounds shp)))
-        x    (atom x1)
-        cursor (translate x (atom y) shp)
+        x     (atom x1)
+        y-rev (atom y)
+        cursor (translate x y-rev shp)
         cursor-at! (fn [n] (do (reset! x n)
                                cursor))
-        bound (+ x1 w)]
+        ]
     (reify IShape
       (shape-bounds [s] bbox)
       (draw-shape [s c]
-        (let [step (* step @canvas/*xzoom*)]
+        (let [xpan  (- @canvas/*xpan*)
+              step  (* step  @canvas/*xzoom*)
+              l     (+ x1    xpan)
+              first-step (- l (mod xpan step))
+              bound (+ l w)
+              _ (reset! y-rev (- y @canvas/*ypan*))
+                            _ (println [@canvas/*xpan* l first-step bound]) ]
           (loop [acc c 
-                 xprev (- x1  (mod @canvas/*xpan* step))]
-            (if (>= xprev bound) acc
+                 xprev first-step]
+            (if (> xprev bound) acc
                 (recur (draw-shape (cursor-at! xprev)  acc)
                        (unchecked-add xprev step)))))))))
 
 (defn repeat-up [shp x y1 h step]
   (let [bbox (space/bbox x y1  (:width (shape-bounds shp)) h)
         y    (atom y1)
-        cursor (translate (atom x) y shp)
+        x-rev (atom x)
+        cursor (translate x-rev y shp)
         cursor-at! (fn [n] (do (reset! y n)
-                               cursor))
-        bound  (+ y1 h)]
+                               cursor))]
     (reify IShape
       (shape-bounds [s] bbox)
       (draw-shape [s c]
-        (let [step (* step @canvas/*yzoom*)]
+        (let [ypan  (- @canvas/*ypan*)
+              step  (* step  @canvas/*yzoom*)
+              l     (+ y1   ypan)
+              first-step (- l (mod ypan step))
+              _     (reset! x-rev (- x @canvas/*xpan*))
+              bound (+ l h)]
           (loop [acc c 
-                 yprev (- y1  (mod @canvas/*ypan* step))]
+                 yprev first-step]
             (if (>= yprev bound) acc
                 (recur (draw-shape (cursor-at! yprev)  acc)
                        (unchecked-add yprev step)))))))))
@@ -571,12 +583,31 @@
   (let [ln (image/shape->img (->line :black 0 1 w 1))]
     (repeat-up ln x1 y1 w step)))
 
+(defn ->plane [color x1 y1 w h]
+  (let [pl (image/shape->img (->rectangle color x1 y1 w h))]
+    (repeat-up
+     pl
+  ;   (repeat-across  pl x1 y1 w w)
+     x1 y1 h h)
+    ))
+
+
 (defn ->scrolling-grid
   ([x1 y1 w h xstep ystep]
    [(->scrolling-columns 0 0 w h (/ w xstep))
     (->scrolling-rows 0 0 w h (/ h ystep))])
   ([x1 y1 w h n] (->scrolling-grid x1 y1 w h n n))
   ([x1 y1 w h]   (->scrolling-grid x1 y1 w h 10)))
+
+(defn ->scrolling-grid2
+  ([x1 y1 w h xstep ystep]
+   (let [gridsample (image/shape->img [(->scrolling-columns 0 0 w h (/ w xstep))
+                                       (->scrolling-rows 0 0 w h (/ h ystep))])]
+     (repeat-up      
+      (repeat-across gridsample x1 y1 w w)
+      x1 y1 h h)))
+  ([x1 y1 w h n] (->scrolling-grid2 x1 y1 w h n n))
+  ([x1 y1 w h]   (->scrolling-grid2 x1 y1 w h 10)))
 
 ;;This allows us to have a concise way to thread user
 ;;interaction into the scene.
@@ -592,27 +623,27 @@
          (canvas/with-movement {:xpan  xpan
                                 :ypan  ypan
                                 :xzoom xzoom
-                                :yzoom yzoom}
-           (canvas/draw-shape shp c)))
+                                :yzoom yzoom}           
+           (canvas/draw-shape interactive-shape c)))
        clojure.lang.IDeref
        (deref [o] {:xpan xpan :ypan ypan :xzoom xzoom :yzoom yzoom}))))
   ([shp] (->interactor (atom 0.0) (atom 0.0) (atom 1.0) (atom 1.0) shp)))
 
-
 (defn ->painting [w h shp]
    (let [myshape    (->interactor shp)
          {:keys [xpan ypan]} @myshape
-         p          (gui/new-paintpanel w h (fn [c] (canvas/draw-shape myshape c)))
-         m          (nat/get-observer  p :mouse)
+         ^spork.cljgui.components.PaintPanel p
+         (gui/new-paintpanel w h #(canvas/draw-shape myshape %) )
+         m          (nat/get-observer  p :mouse)         
          mousemove  (->> (obs/cyclical-obs (:released m) (:dragged m))
-                         (obs/map-obs (fn [[^java.awt.event.MouseEvent l ^java.awt.event.MouseEvent r]]
-                                        [(-  (.getX l) (.getX r))
-                                         ;;flip the order, since we're in cartesian coords....
-                                         (-  (.getY r) (.getY l))
-                                         ])))
-         _          (obs/subscribe (fn [[xd yd]] (do (when-not (zero? xd) (swap! xpan + xd))
-                                                     (when-not (zero? yd) (swap! ypan + yd))
-                                                     (.repaint p))) mousemove)
+                         (obs/subscribe
+                          (fn [[^java.awt.event.MouseEvent l ^java.awt.event.MouseEvent r]]
+                            (let [xd (-   (.getX r) (.getX l))
+                                  ;;flip the order, since we're in cartesian coords....
+                                  yd (-  (.getY l) (.getY r) )]
+                              (do (when-not (zero? xd) (swap! xpan + xd))
+                                  (when-not (zero? yd) (swap! ypan + yd))
+                                  (.repaint p))))))
          p   (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))]
     (gui/toggle-top
      (gui/display (gui/empty-frame)
@@ -623,25 +654,6 @@
         clear      (image/shape->img (->rectangle :grey 0 0 w h))]
     (->painting w h [clear background])))
       
-
-
-  
-                                      
-;;So then, first-line is just the offset applied to the start of the view.
-(defn ->vlines-off [color x1 y1 h w step off]
-  (let [xprev (- x1 off)        
-        b (space/bbox 0 0 w h)
-        vline (image/shape->img (->line color 1 0 1 h))
-        bound w
-        l  (Math/abs (- x1 off))]
-    (reify IShape
-      (shape-bounds [s] b)
-      (draw-shape [s c]
-        (loop [acc c 
-               idx 0]
-          (if (== idx bound) acc
-              (recur (draw-shape (translate (+ (* idx step) l) y1  vline) acc)
-                     (unchecked-inc idx))))))))
 
 
 (defn ->grid [w h wn hn]

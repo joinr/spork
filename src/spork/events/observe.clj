@@ -42,6 +42,34 @@
 
 (ns spork.events.observe)
 
+(defprotocol ICell
+  (set-x! [cl x])
+  (set-y! [cl y])
+  (get-x! [cl])
+  (get-y! [cl]))
+
+(deftype cell [^:unsynchronized-mutable x ^:unsynchronized-mutable y]
+  clojure.lang.Indexed
+  (nth [obj idx] (case idx
+                   0 x
+                   1 y
+                   (throw (Exception. (str "index out of bounds!")))))
+  (nth [obj idx not-found] (case idx
+                             0 x
+                             1 y
+                             not-found))
+  ICell
+  (set-x! [cl v] (do (set! x v) cl))
+  (set-y! [cl v] (do (set! y v) cl))
+  (get-x! [cl] x)
+  (get-y! [cl] y))
+
+(defn push-cell! [cl v]
+  (let [old (get-y! cl)]
+    (-> cl
+        (set-x! old)
+        (set-y! v))))
+        
 (defprotocol observer 
   (update! [obs arg] "Inform the observer obs that arg has happened.  
                       This typically implies that obs will call a function
@@ -55,6 +83,7 @@
    "Return all subscribers associated with observable able")
   (clear-subscribers! [able] 
    "Remove all subscribers from observable able."))
+;;deprecated
 (defn alter-atom! [a v]
   (compare-and-set! a @a v))
 
@@ -84,9 +113,9 @@
 	  (let [subscribers (atom [])]
 	    (reify observable 
 	      (subscribe! [able obs] (subscribef subscribers able obs))
-        (notify! [able arg] (doseq [o (deref subscribers)] (update! o arg)))
+        (notify! [able arg] (reduce (fn [acc o] (update! o arg)) nil (deref subscribers)))
         (get-subscribers [able] subscribers)
-        (clear-subscribers! [able] (do (alter-atom! subscribers []))))))
+        (clear-subscribers! [able] (do (reset! subscribers []))))))
   
   ([] (make-observable default-subscribe)))
 
@@ -128,7 +157,7 @@
 	      (subscribe! [able obs] (subscribef subscribers able obs))
         (notify! [able arg] (doseq [o (deref subscribers)] (update! o arg)))
         (get-subscribers [able] subscribers)
-        (clear-subscribers! [able] (do (alter-atom! subscribers []))))))
+        (clear-subscribers! [able] (do (reset! subscribers []))))))
   ([] (make-observable default-subscribe)))
 
 (defn map-obs
@@ -197,7 +226,7 @@
 	      (make-observer 
          (fn [v] (let [init @state
                        result (f init v)]
-                   (do (alter-atom! state result)
+                   (do (reset! state result)
                      result))))) 
      origin)))
 
@@ -230,10 +259,10 @@
 	            (fn [v] (let [result (conj @state v)]
 	                      (if (= n (count result))
 	                        (do 
-	                          (alter-atom! state []) 
+	                          (reset! state []) 
 	                          (update! obs result))
 	                        (do 
-	                          (alter-atom! state result))))))))
+	                          (reset! state result))))))))
        origin)))                                                                                                    
 
 ;(defn toggle-obs 
@@ -292,13 +321,15 @@
   [origin]
     (bind-observable 
       (fn [subscribers able obs]
-        (let [oldargs (atom nil)]
+        (let [;oldargs (atom nil)
+              argpair    (cell. nil nil)]
           (subscribe! origin
 	          (make-observer 
-	            (fn [newargs]             
-	              (if-not (nil? @oldargs)
-                  (update! obs [@oldargs newargs]))
-	              (do (alter-atom! oldargs newargs)))))))
+                   (fn [newargs]
+                     (do (push-cell! argpair newargs)
+                         (when-not (nil? (get-y! argpair))                        
+                           (update! obs argpair))
+	              ))))))
       origin)) 
 
 (defn cyclical-obs
@@ -313,34 +344,33 @@
     (let [cycle (atom :ended)
           endcycle (fn [_] (do
                              ;(println "cycle ended")
-                             (alter-atom! cycle :ended)))
+                             (reset! cycle :ended)))
           startcycle (fn [r args] 
                        (do
                            ;(println "starting cycle")
-                           (alter-atom! cycle :startcycle)
-                           (alter-atom! r args)))
+                           (reset! cycle :startcycle)
+                           (set-x! r  args)
+                           (set-y! r  nil)))
           _ (->> toggleobs 
               (subscribe endcycle))]              
       (bind-observable 
        (fn [subscribers able obs]
-         (let [oldargs (atom nil)]
+         (let [argpair (cell. nil nil)]
            (subscribe! origin
              (make-observer 
               (fn [newargs]
-                (let [c @cycle
-                      res @oldargs]                  
+                (let [c @cycle]                  
                   (do                      
                     (cond (= c :startcycle)
-                            (do (alter-atom! cycle :cycling)
-                                (alter-atom! oldargs newargs))
+                          (do (reset! cycle :cycling)
+                              (push-cell! argpair newargs))
                           (= c :cycling) 
-                            (do
-                              (if-not (nil? res)
-                                (update! obs [res newargs]))
-                              (alter-atom! oldargs newargs))
+                          (do  (push-cell! argpair newargs)
+                               (when-not (nil? (get-x! argpair))                                 
+                                 (update! obs argpair)))
                           (= c :ended)                            
                             (do ;(println "recycling" [res newargs])
-                              (startcycle oldargs nil))))))))))
+                              (startcycle argpair nil))))))))))
        origin)))
 
 
@@ -464,7 +494,7 @@
   (subscribe! [able obs] (default-subscribe subscribers able obs))
   (notify! [able arg] (doseq [o (deref subscribers)] (update! o arg)))
   (get-subscribers [able] subscribers)
-  (clear-subscribers! [able] (do (alter-atom! subscribers [])))
+  (clear-subscribers! [able] (do (reset! subscribers [])))
   IEmitter
   (begin-emit! [e] (do (send-off source start-emit f e)
                      e))
