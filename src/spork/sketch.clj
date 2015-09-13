@@ -518,13 +518,13 @@
               (recur (draw-shape (translate (+ (* idx step) x1) y1  vline) acc)
                      (unchecked-inc idx))))))))          
 
-(defrecord plot-area [axes x y w h xscale yscale background area]
-  canvas/IShape
-  (draw-shape [s c]
-    (canvas/draw-shape [background
-                        axes
-                        area] c))
-  (shape-bounds [s] (space/bbox x y w h)))
+;; (defrecord plot-area [axes x y w h xscale yscale background area]
+;;   canvas/IShape
+;;   (draw-shape [s c]
+;;     (canvas/draw-shape [background
+;;                         axes
+;;                         area] c))
+;;   (shape-bounds [s] (space/bbox x y w h)))
 
 ;;so the plot is already at 1..... along the bottom, we want to offset by this amount
 (defn ->ax [w h]
@@ -533,16 +533,21 @@
 
 ;;coordinates are local to the plot's transform.  So, if we want to plot a shape,
 ;;the plot transforms the the shape to its local coordinate system, then acts 
-(defn ->plot [w h xscale yscale background area]
-  (let [axes [(->line :black 0 0 0 h)
-              (->line :black 0 0 w 0)]]             
-    (reify canvas/IShape
-      (draw-shape [s c]
-        (canvas/draw-shape [(or background pass)
-                            axes
+(defn ->plot
+  ([w h area {:keys [xscale yscale background]
+                        :or   {xscale 1.0
+                               yscale 1.0
+                               background pass}}]                               
+   (let [axes [(->line :black 0 0 0 h)
+               (->line :black 0 0 w 0)]]             
+     (reify canvas/IShape
+       (draw-shape [s c]
+         (canvas/draw-shape [background
+                             axes
                             (scale xscale yscale
-                                     area)] c))
-      (shape-bounds [s] (space/bbox 0 0 w h)))))
+                                   area)] c))
+       (shape-bounds [s] (space/bbox 0 0 w h)))))
+  ([w h area] (->plot w h area {})))
 
 
 (comment
