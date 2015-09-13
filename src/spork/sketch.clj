@@ -323,8 +323,9 @@
     (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
     (draw-shape   [s c] (draw-string c color :default txt x (+ y (- *font-height* 2))))))
 
-;;Drawing events and tracks.
 
+
+;;Drawing events and tracks.
 (def simple-activity {:start 0 :duration 100 :name "The Activity!" :quantity 10} )
 (def simple-track
   [{:start 15 :duration 25   :name "A" :quantity 10}
@@ -517,6 +518,41 @@
               (recur (draw-shape (translate (+ (* idx step) x1) y1  vline) acc)
                      (unchecked-inc idx))))))))          
 
+(defrecord plot-area [axes x y w h xscale yscale background area]
+  canvas/IShape
+  (draw-shape [s c]
+    (canvas/draw-shape [background
+                        axes
+                        area] c))
+  (shape-bounds [s] (space/bbox x y w h)))
+
+;;so the plot is already at 1..... along the bottom, we want to offset by this amount
+(defn ->ax [w h]
+  [(->line :black 1 1 1 h)
+   (->line :black 1 1 w 1)])
+
+;;coordinates are local to the plot's transform.  So, if we want to plot a shape,
+;;the plot transforms the the shape to its local coordinate system, then acts 
+(defn ->plot [w h xscale yscale background area]
+  (let [axes [(->line :black 0 0 0 h)
+              (->line :black 0 0 w 0)]]             
+    (reify canvas/IShape
+      (draw-shape [s c]
+        (canvas/draw-shape [(or background pass)
+                            axes
+                            (scale xscale yscale
+                                     area)] c))
+      (shape-bounds [s] (space/bbox 0 0 w h)))))
+
+
+(comment
+  (->plot 600 600 1 1 (->plane :grey 0 0 600 600)
+          (vec (for [i (range 100)]
+                 (->rectangle :red
+                              (* i 10)
+                              (rand-int 600)  10 10))))
+ )
+
 ;;We're repeating a shape until we exceed a criteria (outside the view).
 ;;So, we have a shape defined relative to a view.
 ;;Say, a line.  We can have infinite lines if, when we move the view,
@@ -586,13 +622,15 @@
   (let [ln (image/shape->img (->line :black 0 1 w 1))]
     (repeat-up ln x1 y1 w step)))
 
-(defn ->plane [color x1 y1 w h]
-  (let [pl (image/shape->img (->rectangle color x1 y1 w h))]
-    (repeat-up
-     pl
-  ;   (repeat-across  pl x1 y1 w w)
-     x1 y1 h h)
-    ))
+(defn ->plane
+  ([color x1 y1 w h]
+   (let [pl (image/shape->img (->rectangle color x1 y1 w h))]
+     (repeat-up
+      pl
+                                        ;   (repeat-across  pl x1 y1 w w)
+      x1 y1 h h)
+     ))
+  ([color w h] (->plane color 0 0 w h)))
 
 (defn ->scrolling-grid
   ([x1 y1 w h xstep ystep]
@@ -649,9 +687,8 @@
      (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))))
 
 (defn paint! [w h shp]
-  (gui/toggle-top
    (gui/view (gui/empty-frame)
-             (->painting w h shp))))
+             (->painting w h shp)))
 
 (defn moving-grid [w h n]
   (let [background (->scrolling-grid 0 0 w h n)
