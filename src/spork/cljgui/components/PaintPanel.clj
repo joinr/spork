@@ -60,8 +60,10 @@
 ;;paintComponent (as we would via proxy).
 (defn -paint [this ^Graphics g]
   (let [^spork.cljgui.components.PaintPanel.ICanvasPanel s (.state ^spork.cljgui.components.PaintPanel this)
+        ;_ (.parentPaint this g)
         ^javax.swing.JComponent this this]
-    (do  ((.getPaintf s)
+    (do  
+         ((.getPaintf s)
           (.getBufferGraphics s))
          (jgraphics/draw-image* g (.getBuffer s) 0 0))))
 

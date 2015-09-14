@@ -35,9 +35,11 @@
            (postf (str "Buffer saved to:" filepath)))))
 
 (defn ^BufferedImage read-buffered-image [filepath]
-   (let [tgt (clojure.java.io/file filepath)]         
-     (assert (.exists tgt)) 
-     (ImageIO/read tgt)))
+  (if (string? filepath)
+    (let [tgt (clojure.java.io/file filepath)]         
+      (assert (.exists tgt)) 
+      (ImageIO/read tgt))
+    (ImageIO/read filepath)))
 
 (defn clear-region [^Graphics2D g x y width height]
   (let [composite     (.getComposite g)]
