@@ -627,9 +627,11 @@
   (let [ln (image/shape->img (->line :black 0 1 w 1))]
     (repeat-up ln x1 y1 w step)))
 
+;;This is currently a problem, the plane doesn't cover the viewport entirely.
+;;Should fix this.
 (defn ->plane
   ([color x1 y1 w h]
-   (let [pl (image/shape->img (->rectangle color x1 y1 w h))]
+   (let [pl (image/shape->img (->rectangle color x1 y1  w h))]
      (repeat-up
       pl
                                         ;   (repeat-across  pl x1 y1 w w)
