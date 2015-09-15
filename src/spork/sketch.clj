@@ -37,13 +37,14 @@
       (draw-shape shp (set-state c  {:antialias true})))))
 
 (defn thicken [amount shp]
-  (reify IShape
-    (shape-bounds [s] (shape-bounds shp))
-    (draw-shape   [s c]
-      (let [strk (canvas/get-stroke c)
-            new-stroke (stroke/widen amount strk)]
-        (canvas/with-stroke new-stroke c
-          #(canvas/draw-shape shp %))))))
+  (if (= amount 1.0) shp
+      (reify IShape
+        (shape-bounds [s] (shape-bounds shp))
+        (draw-shape   [s c]
+          (let [strk (canvas/get-stroke c)
+                new-stroke (stroke/widen amount strk)]
+            (canvas/with-stroke new-stroke c
+              #(canvas/draw-shape shp %)))))))
   
 (defn stroke-by [width shp]
   (reify IShape
@@ -655,16 +656,26 @@
                        (unchecked-add yprev step)))))))))
 
 (defn ->scrolling-columns
-  ([x1 y1 w h step color]
-   (let [ln (image/shape->img (->line color 1 0 1 h))]
+  ([x1 y1 w h step color thickness]
+   (let [ln ;(image/shape->img
+         (thicken thickness (->line color 1 0 1 h))
+     ;    )
+     ]
      (repeat-across ln x1 y1 w step)))
-  ([x1 y1 w h step] (->scrolling-columns x1 y1 w h step :black)))
+  ([x1 y1 w h step color]
+   (->scrolling-columns x1 y1 w h step :black 1.0))
+  ([x1 y1 w h step] (->scrolling-columns x1 y1 w h step :black 1.0)))
 
 (defn ->scrolling-rows
-  ([x1 y1 w h step color]
-   (let [ln (image/shape->img (->line color 0 1 w 1))]
+  ([x1 y1 w h step color thickness]
+   (let [ln ;(image/shape->img
+             (thicken thickness (->line color 0 1 w 1))
+             ;)
+         ]
      (repeat-up ln x1 y1 w step)))
-  ([x1 y1 w h step] (->scrolling-rows x1 y1 w h step :black)))
+  ([x1 y1 w h step color]
+   (->scrolling-columns x1 y1 w h step :black 1.0))
+  ([x1 y1 w h step] (->scrolling-rows x1 y1 w h step :black 1.0)))
 
 ;;This is currently a problem, the plane doesn't cover the viewport entirely.
 ;;Should fix this.
@@ -682,13 +693,15 @@
 ;;ggplot does the same thing, we just have two scrolling grids.
 ;;There's a major and a minor grid.  The minor grid is drawn first.
 (defn ->scrolling-grid
-  ([x1 y1 w h xstep ystep color]
-   [(->scrolling-columns x1 y1 w h (/ w xstep) color)
-    (->scrolling-rows x1 y1 w h (/ h ystep) color)])
+  ([x1 y1 w h xstep ystep color thickness]
+   [(->scrolling-columns x1 y1 w h (/ w xstep) color thickness)
+    (->scrolling-rows x1 y1 w h (/ h ystep) color thickness)])
+  ([w h xstep ystep color thickness]
+   (->scrolling-grid 0 0  w h  xstep ystep color thickness))
   ([w h xstep ystep color]
-   (->scrolling-grid 0 0  w h  xstep ystep color))
+   (->scrolling-grid 0 0  w h  xstep ystep color 1.0))
   ([w h xstep ystep]
-   (->scrolling-grid  w h xstep ystep :black)))
+   (->scrolling-grid  w h xstep ystep :black 1.0)))
 
   ;; ([x1 y1 w h n] (->scrolling-grid x1 y1 w h n n))
   ;; ([x1 y1 w h]   (->scrolling-grid x1 y1 w h 10)))
@@ -703,22 +716,64 @@
   ([x1 y1 w h n] (->scrolling-grid2 x1 y1 w h n n))
   ([x1 y1 w h]   (->scrolling-grid2 x1 y1 w h 10)))
 
-
-;;gg defaults to having minors be half of majors.
-(defn ->gg-scrolling [w h xstep ystep]
-  (->scrolling-grid w h xstep ystep :white))
+(def +maj-width+ 2.2)
 
 ;grammar of graphics style grid plots.
 (defn ->gg-plotarea [w h xstep ystep]
-  (let [maj (->gg-scrolling w h xstep ystep)
-        min (->gg-scrolling w h (/ xstep 2.0) (/ ystep 2.0))]
-    [;(->plane :light-grey w h)
-     
-     maj
-     min]))
-  
-;;we need to have scrolling axes...
+  (let [maj (->scrolling-grid w h xstep ystep :white +maj-width+)
+        min (->scrolling-grid w h (* xstep 2.0) (* ystep 2.0) :white 1.0)]
+    [(->plane :light-grey w h)
+     min
+     maj]))
 
+;;we have a range.
+;;we want to distribute the range across a span, so that the
+;;numbers step evenly.
+;;Aesthetic axes akin to ggplot.
+;;first thing is to evenly distribute the ticks.
+;;then scale the numbers as a function of their inter-tick-width.
+;;We need to know how much we'd have to scale the numbers....
+;;I think ggplot offsets the first tick enough so that the
+;;numbers are visible.
+;;Ah, if we have a grid, we know that steps correspond to numbers...
+;;so, really just grid ticks -> numbs.  
+(defn ->gg-haxis [label l r  height width thickness steps]
+  (let [lbounds     (f/string-bounds (str l))
+        lwidth      (:width lbounds)
+        rwidth      (:width (f/string-bounds (str r)))
+        nheight     (:height lbounds)
+        tick-height (- height nheight)
+        lheight     (+ tick-height nheight)
+        tick        (->line :black 0 nheight 0 height)
+        spread      (- r l)
+        xscale      (float ( / width spread))
+        step        (double (/ spread steps))
+        scaled-step (* xscale step)
+        bounds      (space/bbox (- lwidth) 0 (+ width rwidth) (max height lheight nheight))
+        centered-numb (fn [canv n x]
+                          (let [lbl (str n)
+                                halfw (/ (:width (f/string-bounds lbl)) 2.0)]
+                            (draw-string canv :black :default lbl (- x halfw)  0)))]
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [offset 0
+               n      l
+               canv c]
+          (if (> n r) 
+            canv
+            (recur (+ offset scaled-step)
+                   (+ n step)
+                   (-> (draw-shape (translate offset 0 tick)
+                                   canv)
+;                       (draw-image tick :translucent (* idx step) tick-height)
+                       
+                       (centered-numb n offset)
+                       ))))))))
+        
+(defn ->gg-vaxis [label ])
+
+;;we need to have scrolling axes...
 
 ;;This allows us to have a concise way to thread user
 ;;interaction into the scene.
