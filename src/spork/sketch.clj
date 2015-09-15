@@ -726,6 +726,10 @@
      min
      maj]))
 
+
+                          
+                  
+    
 ;;we have a range.
 ;;we want to distribute the range across a span, so that the
 ;;numbers step evenly.
@@ -770,9 +774,50 @@
                        
                        (centered-numb n offset)
                        ))))))))
-        
-(defn ->gg-vaxis [label ])
 
+
+;;this is actually a plot.
+(comment
+  (paint! 620 600
+          (translate 10 0
+                     (above (->gg-haxis "Blah" 0 200 10  600 1.0 4)
+                            [(->gg-plotarea 620 600 4 4)
+                             [(vec (for [i (range 100)]
+                                    (->rectangle :red (rand-int 600) (rand-int 600) 10 10)))
+                              (vec (for [i (range 100)]
+                                (->rectangle :blue (rand-int i) (rand-int i) 10 10)))]])))
+)
+(defn ->gg-vaxis [label l r  height width thickness steps]
+  (let [lbounds     (f/string-bounds (str l))
+        lwidth      (:width lbounds)
+        rwidth      (:width (f/string-bounds (str r)))
+        nheight     (:height lbounds)
+        tick-height (- height nheight)
+        lheight     (+ tick-height nheight)
+        tick        (->line :black 0 nheight 0 height)
+        spread      (- r l)
+        xscale      (float ( / width spread))
+        step        (double (/ spread steps))
+        scaled-step (* xscale step)
+        bounds      (space/bbox (- lwidth) 0 (+ width rwidth) (max height lheight nheight))
+        centered-numb (fn [canv n x]
+                          (let [lbl (str n)
+                                halfw (/ (:width (f/string-bounds lbl)) 2.0)]
+                            (draw-string canv :black :default lbl (- x halfw)  0)))]
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [offset 0
+               n      l
+               canv c]
+          (if (> n r) 
+            canv
+            (recur (+ offset scaled-step)
+                   (+ n step)
+                   (-> (draw-shape (translate offset 0 tick)
+                                   canv)
+                       (centered-numb n offset)
+                       ))))))))
 ;;we need to have scrolling axes...
 
 ;;This allows us to have a concise way to thread user
