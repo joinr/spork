@@ -380,7 +380,7 @@
     (draw-image-cartesian g (as-buffered-image img (bitmap-format img)) x y)
     cg)
   IStroked
-   (get-stroke [cg] (.getStroke g) cg)
+   (get-stroke [cg] (.getStroke g))
    (set-stroke [cg  s] (do (.setStroke g ^Stroke s) cg))
   ITextRenderer
   (text-width     [cg txt] (f/string-width (.getFont g) txt))

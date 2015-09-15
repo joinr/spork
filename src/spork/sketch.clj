@@ -8,7 +8,8 @@
   (:require [spork.graphics2d.canvas :as canvas :refer :all ]
             [spork.graphics2d [image :as image]
                               [swing :as provider]
-                              [font :as f]]
+                              [font :as f]
+                              [stroke :as stroke]]
             [spork.protocols [spatial :as space]]
             [spork.geometry.shapes :refer :all]
             [spork.cljgui.components [swing :as gui]]
@@ -26,17 +27,32 @@
 (def ^:dynamic *current-sketch* nil)
 (def ^:dynamic *anti-aliasing*  nil)
 
-
-
 ;;current options are :title and :cached?
 (defn sketch [the-shapes & opts] (apply gui/view the-shapes opts))
-
 
 (defn smooth [shp]
   (reify IShape
     (shape-bounds [s] (shape-bounds shp))
     (draw-shape [s c]
       (draw-shape shp (set-state c  {:antialias true})))))
+
+(defn thicken [amount shp]
+  (reify IShape
+    (shape-bounds [s] (shape-bounds shp))
+    (draw-shape   [s c]
+      (let [strk (canvas/get-stroke c)
+            new-stroke (stroke/widen amount strk)]
+        (canvas/with-stroke new-stroke c
+          #(canvas/draw-shape shp %))))))
+  
+(defn stroke-by [width shp]
+  (reify IShape
+    (shape-bounds [s] (shape-bounds shp))
+    (draw-shape   [s c]
+      (let [strk (canvas/get-stroke c)
+            new-stroke (stroke/stroke-of-width width strk)]
+        (canvas/with-stroke new-stroke c
+          #(canvas/draw-shape shp %))))))
 
 ;;Buffered image was killing us here with memory leakage.  So for now,
 ;;we just do immediate mode drawing.
@@ -279,6 +295,21 @@
             (recur (unchecked-inc idx)
                    (draw-image canv tick :translucent 0 (* idx step)))))))))
 
+;; (defprotocol IScale
+;;   (min-val [s])
+;;   (max-val [s]))
+
+;(defrecord dynascale [data min max steps tick-height spread])
+
+;; (defn gg-points [data steps]
+;;   (let [sorted (vec (sort data))
+;;         l (first sorted)
+;;         r (last sorted)
+;;         spread (- r l)
+;;         step (long (/ spread steps))
+;;         nums (mapv #(+ 1 (* step %)) (range steps))
+;;         bound (unchecked-inc steps)]
+    
 (defn ->ggscale [data color width height & {:keys [steps] :or {steps 6}}]
   (let [tick-height (/ height 2.0)
         tick    (:source (make-sprite :translucent (->line color 0 0 0 tick-height) 0 0))
@@ -550,6 +581,10 @@
   ([w h area] (->plot w h area {})))
 
 
+;(defn ->2DPlot [w h {:keys [xscale yscale xmin xmax ymin ymax xmajor ymajor xminor yminor]}]
+  ;;we have a plot.
+  ;;the plot has labels.
+
 (comment
   (->plot 600 600 1 1 (->plane :grey 0 0 600 600)
           (vec (for [i (range 100)]
@@ -619,13 +654,17 @@
                 (recur (draw-shape (cursor-at! yprev)  acc)
                        (unchecked-add yprev step)))))))))
 
-(defn ->scrolling-columns [x1 y1 w h step]
-  (let [ln (image/shape->img (->line :black 1 0 1 h))]
-    (repeat-across ln x1 y1 w step)))
+(defn ->scrolling-columns
+  ([x1 y1 w h step color]
+   (let [ln (image/shape->img (->line color 1 0 1 h))]
+     (repeat-across ln x1 y1 w step)))
+  ([x1 y1 w h step] (->scrolling-columns x1 y1 w h step :black)))
 
-(defn ->scrolling-rows [x1 y1 w h step]
-  (let [ln (image/shape->img (->line :black 0 1 w 1))]
-    (repeat-up ln x1 y1 w step)))
+(defn ->scrolling-rows
+  ([x1 y1 w h step color]
+   (let [ln (image/shape->img (->line color 0 1 w 1))]
+     (repeat-up ln x1 y1 w step)))
+  ([x1 y1 w h step] (->scrolling-rows x1 y1 w h step :black)))
 
 ;;This is currently a problem, the plane doesn't cover the viewport entirely.
 ;;Should fix this.
@@ -639,12 +678,20 @@
      ))
   ([color w h] (->plane color 0 0 w h)))
 
+
+;;ggplot does the same thing, we just have two scrolling grids.
+;;There's a major and a minor grid.  The minor grid is drawn first.
 (defn ->scrolling-grid
-  ([x1 y1 w h xstep ystep]
-   [(->scrolling-columns 0 0 w h (/ w xstep))
-    (->scrolling-rows 0 0 w h (/ h ystep))])
-  ([x1 y1 w h n] (->scrolling-grid x1 y1 w h n n))
-  ([x1 y1 w h]   (->scrolling-grid x1 y1 w h 10)))
+  ([x1 y1 w h xstep ystep color]
+   [(->scrolling-columns x1 y1 w h (/ w xstep) color)
+    (->scrolling-rows x1 y1 w h (/ h ystep) color)])
+  ([w h xstep ystep color]
+   (->scrolling-grid 0 0  w h  xstep ystep color))
+  ([w h xstep ystep]
+   (->scrolling-grid  w h xstep ystep :black)))
+
+  ;; ([x1 y1 w h n] (->scrolling-grid x1 y1 w h n n))
+  ;; ([x1 y1 w h]   (->scrolling-grid x1 y1 w h 10)))
 
 (defn ->scrolling-grid2
   ([x1 y1 w h xstep ystep]
@@ -655,6 +702,23 @@
       x1 y1 h h)))
   ([x1 y1 w h n] (->scrolling-grid2 x1 y1 w h n n))
   ([x1 y1 w h]   (->scrolling-grid2 x1 y1 w h 10)))
+
+
+;;gg defaults to having minors be half of majors.
+(defn ->gg-scrolling [w h xstep ystep]
+  (->scrolling-grid w h xstep ystep :white))
+
+;grammar of graphics style grid plots.
+(defn ->gg-plotarea [w h xstep ystep]
+  (let [maj (->gg-scrolling w h xstep ystep)
+        min (->gg-scrolling w h (/ xstep 2.0) (/ ystep 2.0))]
+    [;(->plane :light-grey w h)
+     
+     maj
+     min]))
+  
+;;we need to have scrolling axes...
+
 
 ;;This allows us to have a concise way to thread user
 ;;interaction into the scene.
@@ -693,10 +757,14 @@
                                   (.repaint p))))))]
      (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))))
 
-(defn paint! [w h shp]
+(defn paint!
+  ([w h shp]
    (gui/view (gui/empty-frame)
              (->painting w h shp)))
-
+  ([shp]
+   (let [{:keys [x y width height]} (canvas/shape-bounds shp)]
+     (paint! width height shp))))
+  
 (defn moving-grid [w h n]
   (let [background (->scrolling-grid 0 0 w h n)
         clear      (image/shape->img (->rectangle :grey 0 0 w h))]
