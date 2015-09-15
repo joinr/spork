@@ -351,9 +351,10 @@
 
 ;;need to change this to use ->text, which has bounds based off font metrics...
 (defn ->label [txt x y & {:keys [color] :or {color :black}}]
-  (reify IShape
-    (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
-    (draw-shape   [s c] (draw-string c color :default txt x (+ y (- *font-height* 2))))))
+  (->plain-text color txt x y))
+  ;; (reify IShape
+  ;;   (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
+  ;;   (draw-shape   [s c] (draw-string c color :default txt x  y ))))
 
 
 
@@ -726,10 +727,10 @@
      min
      maj]))
 
+(defprotocol IPadded
+  (hpad [s])
+  (vpad [s]))
 
-                          
-                  
-    
 ;;we have a range.
 ;;we want to distribute the range across a span, so that the
 ;;numbers step evenly.
@@ -743,19 +744,19 @@
 ;;so, really just grid ticks -> numbs.  
 (defn ->gg-haxis [label l r  height width thickness steps]
   (let [lbounds     (f/string-bounds (str l))
+        rbounds     (f/string-bounds (str r))
         lwidth      (:width lbounds)
-        rwidth      (:width (f/string-bounds (str r)))
-        nheight     (:height lbounds)
-        tick-height (- height nheight)
-        lheight     (+ tick-height nheight)
+        rwidth      (:width rbounds)
+        nheight     (max (:height lbounds) (:height rbounds))
+        height      (if (< height nheight) (+ nheight 5) height) 
         tick        (->line :black 0 nheight 0 height)
         spread      (- r l)
         xscale      (float ( / width spread))
         step        (double (/ spread steps))
         scaled-step (* xscale step)
-        bounds      (space/bbox (- lwidth) 0 (+ width rwidth) (max height lheight nheight))
+        bounds        (space/bbox (/ (- lwidth) 2.0) 0 (+ lwidth width rwidth)  height)
         centered-numb (fn [canv n x]
-                          (let [lbl (str n)
+                          (let [lbl (str (long n))
                                 halfw (/ (:width (f/string-bounds lbl)) 2.0)]
                             (draw-string canv :black :default lbl (- x halfw)  0)))]
     (reify IShape
@@ -770,56 +771,86 @@
                    (+ n step)
                    (-> (draw-shape (translate offset 0 tick)
                                    canv)
-;                       (draw-image tick :translucent (* idx step) tick-height)
-                       
                        (centered-numb n offset)
-                       ))))))))
+                       )))))
+      IPadded
+      (hpad [s] (/ (- lwidth 2.0)))
+      (vpad [s] height))))
 
 
+;;We can offset by the tick-height + the string-width.  That will
+;;right-align us.
+;(defn ->qplot [points 
+;;same sas
+(defn ->gg-vaxis [label l r  height width thickness steps]
+  (let [lbounds       (f/string-bounds (str (max l r)))
+        label-height  (:height   lbounds)
+        label-width   (:width lbounds)
+        tick-height   (/ label-height 2.0) ;ignore.
+        tick-width    tick-height
+        axis-width    (+ label-width tick-width)
+        tick          (->line :black label-width 0 (+ label-width tick-width) 0)
+        spread        (- r l)
+        scale         (float  (/ height spread))
+        step          (double (/ spread steps)) 
+        scaled-step   (* scale step)
+        bounds        (space/bbox 0 0 axis-width (+ height label-height) )
+        centered-numb (fn [canv n y]
+                        (let [lbl (str (long n))
+                              {:keys [height width]} (f/string-bounds lbl)
+                              halfh (/ height  2.0)
+                              offset (- label-width width)]
+                          (draw-string canv :black :default lbl offset (+  (- y halfh) 2)
+                                       )))
+        ;)
+    ]
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]        
+        (loop [offset 0
+               n      l
+               canv c]
+          (if (> n r) 
+            canv
+            (do (println n)
+                (recur (+ offset scaled-step)
+                       (+ n step)
+                       (-> (draw-shape (translate 0 offset tick)
+                                       canv)
+                                        (centered-numb n offset)
+                                        ))))))
+      IPadded
+      (hpad [s] axis-width)
+      (vpad [s] 0))))
+;;we need to have scrolling axes...
 ;;this is actually a plot.
 (comment
+  (def blues (->point-cloud (->rectangle :blue 0 0 10 10)
+                        (into [] (for [i (range 1000)]
+                                   [(rand-int 600) (rand-int 600)]))))
+  (def reds  (->point-cloud (->rectangle :red 0 0 10 10)
+                        (into [] (for [i (range 1000)]
+                                   [(rand-int 600) (rand-int 600)]))))
   (paint! 620 600
           (translate 10 0
                      (above (->gg-haxis "Blah" 0 200 10  600 1.0 4)
                             [(->gg-plotarea 620 600 4 4)
-                             [(vec (for [i (range 100)]
-                                    (->rectangle :red (rand-int 600) (rand-int 600) 10 10)))
-                              (vec (for [i (range 100)]
-                                (->rectangle :blue (rand-int i) (rand-int i) 10 10)))]])))
-)
-(defn ->gg-vaxis [label l r  height width thickness steps]
-  (let [lbounds     (f/string-bounds (str l))
-        lwidth      (:width lbounds)
-        rwidth      (:width (f/string-bounds (str r)))
-        nheight     (:height lbounds)
-        tick-height (- height nheight)
-        lheight     (+ tick-height nheight)
-        tick        (->line :black 0 nheight 0 height)
-        spread      (- r l)
-        xscale      (float ( / width spread))
-        step        (double (/ spread steps))
-        scaled-step (* xscale step)
-        bounds      (space/bbox (- lwidth) 0 (+ width rwidth) (max height lheight nheight))
-        centered-numb (fn [canv n x]
-                          (let [lbl (str n)
-                                halfw (/ (:width (f/string-bounds lbl)) 2.0)]
-                            (draw-string canv :black :default lbl (- x halfw)  0)))]
-    (reify IShape
-      (shape-bounds [s]   bounds) 
-      (draw-shape   [s c]
-        (loop [offset 0
-               n      l
-               canv c]
-          (if (> n r) 
-            canv
-            (recur (+ offset scaled-step)
-                   (+ n step)
-                   (-> (draw-shape (translate offset 0 tick)
-                                   canv)
-                       (centered-numb n offset)
-                       ))))))))
-;;we need to have scrolling axes...
 
+                             (fade 0.5 [reds blues])])))
+  (def h (->gg-haxis "Blee" 0 200   10 600 1.0 4))
+  (def v (->gg-vaxis "Blah" 0 200 600  10 1.0 4))
+
+  (sketch [(translate  (hpad h) (vpad h) v)
+                       (translate  (hpad v) (vpad v) h)])
+  (paint! 600 600
+          [(translate (hpad h) (vpad h) v)
+           (translate (hpad v) (vpad v) h)
+           (translate (max (hpad v) (hpad h))
+                      (max (vpad v) (vpad h))
+                       [(->gg-plotarea 600 600 4 4)
+                        (fade 0.5 [reds blues])])
+           ])
+  )
 ;;This allows us to have a concise way to thread user
 ;;interaction into the scene.
 (defn ->interactor
