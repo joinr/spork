@@ -433,7 +433,7 @@
 ;;will be drawn with their origin at the bottom-left (like the cartesian plane),
 ;;and not reflected.
 (defn ->canvas-graphics [^Graphics2D g width height]
-  (let [g (doto g (.translate 1.0 (double height))
+  (let [g (doto g (.translate 1.0 (double (dec height)))
                   (.scale   1.0 -1.0))]
     (CanvasGraphics. g width height)))
 

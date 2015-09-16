@@ -149,9 +149,9 @@
                 (do (draw-shape s 
                                 (translate-2d
                                     (bitmap-graphics b) 
-                                        ;(* -1 x) ;(* -1 y)
-                                        x
-                                        y
+                                        (* -1 x) (* -1 y)
+                                        ;x
+                                        ;y
                                               ))  b)
                 (inc width) (inc height) transparency)))
   ([s] (shape->img :translucent s)))
