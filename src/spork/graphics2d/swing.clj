@@ -377,7 +377,7 @@
   (draw-string    [cg color font s x y]     
     (with-color (get-gui-color color) g 
       (fn [gr]
-        (with-font (f/get-font font) gr
+        (with-font font gr
           #(draw-string-cartesian  % (str s) (float x) (float y)))))
       cg)  
   (draw-image [cg img transparency x y]
