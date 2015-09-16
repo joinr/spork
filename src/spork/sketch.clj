@@ -204,7 +204,8 @@
            (let [newshp (translate centerx centery
                                    (rotate @theta
                                            (translate  (- centerx) (- centery) shp)))]
-             (draw-shape newshp c))))))))
+             (draw-shape newshp c)))))))))
+
 (defn scale [xscale yscale shp]
   (if (not (and (atom? xscale) (atom? yscale)))
     (let [xscale (double xscale)
@@ -932,45 +933,6 @@
                        [(->gg-plotarea 600 600 4 4)
                         (fade 0.5 [reds blues])])
            ])
-  ;; (defn plot-xy! [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel] :or
-  ;;                           {xlabel "X"
-  ;;                            ylabel "Y"
-  ;;                            h 600
-  ;;                            w 600}}]
-  ;;   (let [{:keys [x y width height]} (shape-bounds points)
-  ;;         ymin (double (or ymin y))
-  ;;         ymax (double (or ymax (+ y height)))
-  ;;         xmin (double (or xmin  x))
-  ;;         xmax (double (or xmax (+ x width)))
-  ;;         yspan  (- ymax ymin)
-  ;;         xspan  (- xmax xmin)
-  ;;         xscale (/ xspan yspan)
-  ;;         yscale (/  height yspan)
-  ;;         xscale (* xscale yscale)          
-  ;;         hax      (->gg-haxis  xmin xmax   10    w  1.0 4)
-  ;;         vax      (->gg-vaxis  ymin ymax   h  10   1.0 4)
-  ;;         xlbl   (->plain-text :black 22 xlabel (/ w 2.0) 0 )
-  ;;         ylbl   (spin (/ Math/PI 2.0) (->plain-text :black 22 ylabel 0 (/ h 2.0)))
-  ;;         pts    (image/shape->img (scale xscale yscale
-  ;;                                       (fade 0.5 points)))
-  ;;         h-offset (hpad vax)
-  ;;         v-offset (vpad hax)]
-  ;;     (paint!  w h
-  ;;             [(->plane :white 0 0 w h)
-  ;;              (beside ylbl
-  ;;                      (above
-  ;;                       [(translate (hpad hax) (vpad hax) vax)
-  ;;                        (translate (hpad vax) (vpad vax) hax)
-  ;;                        (translate (max (hpad vax) (hpad hax))
-  ;;                                   (max (vpad vax) (vpad hax))
-  ;;                                   [(->gg-plotarea w h 4 4)
-  ;;                                    ;(scale xscale yscale
-  ;;                                       ;       (fade 0.2 points))
-  ;;                                    pts
-  ;;                                    ]
-  ;;                                   )]
-  ;;                       xlbl))]
-  ;;             )))
   )
 
 
@@ -1086,10 +1048,13 @@
      (map #(java.awt.Color. ^long (nth % 0) ^long (nth % 1) ^long (nth % 2)) (canvas/random-color-palette s v)))
   ([] (palette 0.2 0.65)))
 
-
-
+;;There's a difference in displaying the intercepts.  We don't want to confound
+;;scaling and translating.  By tying the scales to the mins/maxes, we unintentionally
+;;zoom.  What we're really wanting to do is define a view over the unscaled data.
+;;If we change the span, however, we are changing the scale....
 (defn plot-xy! [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
-                                 xlabel-font ylabel-font title title-font cached] :or
+                                 xlabel-font ylabel-font title title-font cached
+                                 xn yn] :or
                           {xlabel "X"
                            ylabel "Y"
                            title "The Plot"
@@ -1098,21 +1063,25 @@
                            xlabel-font default-plot-font
                            ylabel-font default-plot-font
                            title-font default-plot-font
-                           cached true}}]
+                           cached true
+                           xn 4 yn 4}}]
   (let [{:keys [x y width height]} (shape-bounds points)
-        ymin (double (or ymin y))
-        ymax (double (or ymax (+ y height)))
-        xmin (double (or xmin  x))
-        xmax (double (or xmax (+ x width)))
-        yspan    (- ymax ymin)
-        xspan    (- xmax xmin)
-        xscale   (/ xspan yspan)
-        yscale   (/  height yspan)
-        xscale   (* xscale yscale)          
-        hax      (->gg-haxis  xmin xmax   10    w  :size 20)
-        hwidth   (:width (shape-bounds hax))
-        vax      (->gg-vaxis  ymin ymax   h  10    :size 20)
-        vheight  (:height (shape-bounds vax)) 
+        ymin       (double (or ymin y))
+        ymax       (double (or ymax (+ y height)))
+        xmin       (double (or xmin  x))
+        xmax       (double (or xmax (+ x width)))
+        yspan      (- ymax ymin)
+        xspan      (- xmax xmin)
+        xscale     (/ xspan yspan)
+        yscale     (/  height yspan)
+        xscale     (* xscale yscale)
+        plotxscale (/ w xspan )
+        plotyscale (/ h yspan ) 
+        
+        hax        (->gg-haxis  xmin xmax   10    w  :size 20 :steps xn)
+        hwidth     (:width (shape-bounds hax))
+        vax        (->gg-vaxis  ymin ymax   h  10    :size 20 :steps yn)
+        vheight    (:height (shape-bounds vax)) 
         xlbl       (->text :black xlabel-font xlabel 0 0 )
         ttl        (->text :black title-font title 0 0 )
         ttl-bounds (shape-bounds ttl)
@@ -1126,7 +1095,7 @@
         ttl        (translate (- centerx (/ ttl-width 2.0)) 0 ttl)
         ylbl       (translate 0 (/ h 2.0)  (vertical-text  (->text :black ylabel-font ylabel 0 0)))
         y-width    (:width (shape-bounds ylbl))
-        pts        ((if cached image/shape->img identity) (scale xscale yscale points))
+        pts        ((if cached image/shape->img identity) points)
         h-offset   (hpad vax)
         v-offset   (vpad hax)
         plot-x     (max (hpad vax) (hpad hax))
@@ -1138,10 +1107,9 @@
         sc           (min total-height total-width)
 
         pady         (if (= sc total-height)  0 (- plot-h h))
-        padx         (if (= sc total-width)  0 (- plot-w w))
-        _ (println [padx pady xscale yscale] )]
+        padx         (if (= sc total-width)  0 (- plot-w w))]
     (paint!  w h
-             [;(->plane :white 0 0 w h)
+             [(->plane :white 0 0 w h)
               (translate (/ padx 2.0) (/ pady 2.0)
                   (above (smooth ttl)
                      (scale sc sc
@@ -1152,12 +1120,14 @@
                                       (translate plot-x
                                                  plot-y
                                                  [(->gg-plotarea w
-                                                                 h  4 4)
-                                                  
-                                                  ;(scale xscale yscale
-                                                        ; (translate  ;xmin
-                                                        ;  ymin
-                                                          pts])
+                                                                 h  xn yn)
+                                                   (translate  (- x  xmin)
+                                                               (- y ymin)
+                                                              (scale plotxscale plotyscale
+                                                                      
+                                                               pts
+                                                               )
+                                                   )])
                                         ;)
                                       ]
                                      (translate plot-x 0 (smooth xlbl)))

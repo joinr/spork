@@ -8,13 +8,15 @@
   (:use [spork.graphics2d.canvas])
   (:require [spork.protocols [spatial :as spatial]]
             [spork.graphics2d.swing.shared :refer
-             [null-observer get-transparency +clear+ opaque]])
+             [null-observer get-transparency +clear+ opaque]]
+            [spork.graphics2d.swing :as swing])
   (:import [java.awt GraphicsEnvironment  GraphicsDevice GraphicsConfiguration 
             Transparency Graphics2D AlphaComposite Color]
            [java.awt.image BufferedImage ImageObserver]
            [javax.imageio ImageIO]))
 
-(defn ^Graphics2D get-graphics-img [^BufferedImage img] (.getGraphics img))
+(defn  get-graphics-img [^BufferedImage img]
+  (swing/->canvas-graphics (.getGraphics img) (.getWidth img) (.getHeight img))) 
 
 (defn ^BufferedImage make-imgbuffer 
   ([w h ^Transparency t]
@@ -145,8 +147,12 @@
                                                        transparency))]
        (->image :buffered-image 
                 (do (draw-shape s 
-                                (translate-2d (bitmap-graphics b) 
-                                              (* -1 x) (* -1 y)))  b)
+                                (translate-2d
+                                    (bitmap-graphics b) 
+                                        ;(* -1 x) ;(* -1 y)
+                                        x
+                                        y
+                                              ))  b)
                 (inc width) (inc height) transparency)))
   ([s] (shape->img :translucent s)))
 

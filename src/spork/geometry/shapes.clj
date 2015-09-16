@@ -265,18 +265,18 @@
 ;;A generic xy pointcloud.
 (defn ->point-cloud [xy->point coords]
   (let [draw-point!
-             (if (satisfies? c/IShape xy->point)
-               (let [tx   (atom 0)
-                     ty   (atom 0)
-                     sprt (spork.graphics2d.image/shape->img xy->point)]
-                 (fn [c x y]  (c/with-translation x y c
-                                  #(c/draw-shape  sprt %))))
-               (let [get-point! (spork.util.general/memo-fn [x y]
-                                  (spork.graphics2d.image/shape->img (xy->point x y)))]
-                 (fn [c x y]
-                   (c/with-translation x y c
-                     #(c/draw-shape (get-point! x y) %))
-                   c)))                                                                
+;             (if (satisfies? c/IShape xy->point)
+        (let [tx   (atom 0)
+              ty   (atom 0)
+              sprt (spork.graphics2d.image/shape->img xy->point)]
+          (fn [c x y]  (c/with-translation x y c
+                         #(c/draw-shape  sprt %))))
+               ;; (let [get-point! (spork.util.general/memo-fn [x y]
+               ;;                    (spork.graphics2d.image/shape->img (xy->point x y)))]
+               ;;   (fn [c x y]
+               ;;     (c/with-translation x y c
+               ;;       #(c/draw-shape (get-point! x y) %))
+               ;;     c))
         [xmin xmax ymin ymax]
             (reduce (fn [[xm xmx ym ymx] [x y]]
                       [(min x xm) (max x xmx)
@@ -286,7 +286,8 @@
                      Double/MAX_VALUE
                      Double/MIN_VALUE]
                     coords)
-        bnds (spork.protocols.spatial/bbox xmin ymin (- xmax xmin) (- ymax ymin))]
+       {:keys [x y width height]} (c/shape-bounds xy->point)
+        bnds (spork.protocols.spatial/bbox xmin ymin (max (- xmax xmin) width)  (max (- ymax ymin) height))]
     (reify c/IShape
       (shape-bounds [s] bnds)
       (draw-shape [s c] (reduce (fn [c xy]
