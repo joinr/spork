@@ -1052,7 +1052,7 @@
 ;;scaling and translating.  By tying the scales to the mins/maxes, we unintentionally
 ;;zoom.  What we're really wanting to do is define a view over the unscaled data.
 ;;If we change the span, however, we are changing the scale....
-(defn plot-xy! [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
+(defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
                                  xlabel-font ylabel-font title title-font cached
                                  xn yn] :or
                           {xlabel "X"
@@ -1108,30 +1108,25 @@
 
         pady         (if (= sc total-height)  0 (- plot-h h))
         padx         (if (= sc total-width)  0 (- plot-w w))]
-    (paint!  w h
-             [(->plane :white 0 0 w h)
-              (translate (/ padx 2.0) (/ pady 2.0)
-                  (above (smooth ttl)
-                     (scale sc sc
-                            (beside (smooth ylbl)
-                                    (above
-                                     [(translate (hpad hax) (vpad hax) (smooth vax))
-                                      (translate (hpad vax) (vpad vax) (smooth hax))
-                                      (translate plot-x
-                                                 plot-y
-                                                 [(->gg-plotarea w
-                                                                 h  xn yn)
-                                                   (translate  (- x  xmin)
-                                                               (- y ymin)
-                                                              (scale plotxscale plotyscale
-                                                                      
-                                                               pts
-                                                               )
-                                                   )])
-                                        ;)
-                                      ]
-                                     (translate plot-x 0 (smooth xlbl)))
-                                    )
-                            )))
-                     ]
-             )))
+    
+    [(->plane :white 0 0 w h)
+     (translate (/ padx 2.0) (/ pady 2.0)
+                (above (smooth ttl)
+                       (scale sc sc
+                              (beside (smooth ylbl)
+                                      (above
+                                       [(translate (hpad hax) (vpad hax) (smooth vax))
+                                        (translate (hpad vax) (vpad vax) (smooth hax))
+                                        (translate plot-x
+                                                   plot-y
+                                                   [(->gg-plotarea w
+                                                                   h  xn yn)
+                                                    (translate  (- x  xmin)
+                                                                (- y ymin)
+                                                                (scale plotxscale plotyscale
+                                                                       pts))])]
+                                       (translate plot-x 0 (smooth xlbl)))))))]))
+
+(defn plot-xy! [points & {:keys [w h] :as opts}]
+    (paint!  (apply ->plot (cons points opts))))
+            
