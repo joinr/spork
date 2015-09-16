@@ -109,7 +109,8 @@
       (draw-shape   [s c] (with-translation @tx @ty 
                             c #(draw-shape shp %))))))
 
-(defn above [s1 s2]
+;;inverted the order because we have a cartesian coordinate system now.
+(defn above [s2 s1]
   (let [bounds1 (shape-bounds  s1)
         bounds2 (shape-bounds  s2)
         wmax   (max (:width bounds1)  (:width bounds2))
@@ -178,9 +179,11 @@
              (draw-shape newshp c))))))))
 (defn scale [xscale yscale shp]
   (if (not (and (atom? xscale) (atom? yscale)))
-    (reify IShape 
-      (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
-      (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %))))
+    (let [xscale (double xscale)
+          yscale (double yscale)]
+      (reify IShape 
+        (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
+        (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %)))))
     (reify IShape 
       (shape-bounds [s]   (space/scale-bounds @xscale @yscale (shape-bounds shp)))    
       (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %))))))
@@ -888,27 +891,45 @@
                        [(->gg-plotarea 600 600 4 4)
                         (fade 0.5 [reds blues])])
            ])
-  (defn plot-xy! [points xmin xmax ymin ymax & {:keys [xlabel ylabel] :or
-                                                {xlabel "X"
-                                                 ylabel "Y"}}]
-    (let [yspan  (- ymax ymin)
+  (defn plot-xy! [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel] :or
+                            {xlabel "X"
+                             ylabel "Y"
+                             h 600
+                             w 600}}]
+    (let [{:keys [x y width height]} (shape-bounds points)
+          ymin (double (or ymin y))
+          ymax (double (or ymax (+ y height)))
+          xmin (double (or xmin  x))
+          xmax (double (or xmax (+ x width)))
+          yspan  (- ymax ymin)
           xspan  (- xmax xmin)
           xscale (/ xspan yspan)
-          yscale (/  600 yspan)
+          yscale (/  height yspan)
           xscale (* xscale yscale)          
-          h      (->gg-haxis  xmin xmax   10   600  1.0 4)
-          v      (->gg-vaxis  ymin ymax   600  10   1.0 4)
-          xlbl (->plain-text :black 18 xlabel)
-          ylbl (spin Math/PI (->plain-text :black 18 ylabel))]
-    (paint! 600 600
-          [(translate (hpad h) (vpad h) v)
-           (translate (hpad v) (vpad v) h)
-           (translate (max (hpad v) (hpad h))
-                      (max (vpad v) (vpad h))
-                      [(->gg-plotarea 600 600 4 4)
-                       (scale xscale yscale
-                                  (fade 0.2 points))])
-           ])))
+          hax      (->gg-haxis  xmin xmax   10    w  1.0 4)
+          vax      (->gg-vaxis  ymin ymax   h  10   1.0 4)
+          xlbl   (->plain-text :black 22 xlabel (/ w 2.0) 0 )
+          ylbl   (spin (/ Math/PI 2.0) (->plain-text :black 22 ylabel 0 (/ h 2.0)))
+          pts    (image/shape->img (scale xscale yscale
+                                        (fade 0.5 points)))
+          h-offset (hpad vax)
+          v-offset (vpad hax)]
+      (paint!  w h
+              [(->plane :white 0 0 w h)
+               (beside ylbl
+                       (above
+                        [(translate (hpad hax) (vpad hax) vax)
+                         (translate (hpad vax) (vpad vax) hax)
+                         (translate (max (hpad vax) (hpad hax))
+                                    (max (vpad vax) (vpad hax))
+                                    [(->gg-plotarea w h 4 4)
+                                     ;(scale xscale yscale
+                                        ;       (fade 0.2 points))
+                                     pts
+                                     ]
+                                    )]
+                        xlbl))]
+              )))
   )
 ;;This allows us to have a concise way to thread user
 ;;interaction into the scene.

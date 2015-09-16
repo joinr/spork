@@ -1,6 +1,7 @@
 (ns spork.graphics2d.canvas
   (:require [spork.protocols  [spatial :as spatial]]
-            [spork.graphics2d [primitive :as prim]]))
+            [spork.graphics2d [primitive :as prim]
+             [font :as f]]))
 
 ;We can actually do some cool stuff here...
 ;The absolute minimum primitives we need are...
@@ -410,6 +411,15 @@
       (-> (f (set-color ctx color))
         (set-color c))))
 
+(defn with-font
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the color of the context if necessary, then reverts to
+   the original color."
+  [the-font ctx f]
+  (let [old-font (get-font ctx)]
+      (-> (f (set-font ctx (f/get-font the-font)))
+        (set-font old-font))))
+
 (defn with-translation
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the translation of the context, applies f, then undoes
@@ -514,7 +524,9 @@
                                   
 (defprotocol ITextRenderer
   (text-width     [canvas txt] "Gets the weidth of txt on canvas, in pixels.")
-  (text-height    [canvas txt] "Gets the height of txt on canvas, in pixels."))
+  (text-height    [canvas txt] "Gets the height of txt on canvas, in pixels.")
+  (get-font       [canvas])
+  (set-font       [canvas f]))
 
 
 ;;__TODO__ Turn these stubs into protocol members.

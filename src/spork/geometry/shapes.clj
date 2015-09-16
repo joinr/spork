@@ -44,7 +44,7 @@
   (c/draw-string c color font txt x y))
 
 (defn ->plain-text 
-  ([color s x y]        (->text color :default s x y))
+  ([color s x y]        (->text color (f/get-font :default) s x y))
   ([color size txt x y] (->text color (f/resize-font f/default-font size) 
                                 txt x y)))
 

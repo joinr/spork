@@ -325,6 +325,8 @@
   ITextRenderer
   (text-width     [^Graphics2D canvas ^String txt] (.getWidth  (string-bounds canvas txt)))
   (text-height    [^Graphics2D canvas ^String txt] (.getHeight (string-bounds canvas txt)))
+  (get-font       [^Graphics2D g] (.getFont g))
+  (set-font       [^Graphics2D g f] (do (.setFont g ^Font f) g))
   ICanvas2DExtended
   (draw-polygon   [^Graphics2D g color ^Polygon points]
     (with-color (get-gui-color color) g
@@ -372,10 +374,12 @@
     (with-color (get-gui-color color) g 
       #(fill-circle % x y w h))
     cg)  
-  (draw-string    [cg color font s x y]
+  (draw-string    [cg color font s x y]     
     (with-color (get-gui-color color) g 
-      #(draw-string-cartesian  % (str s) (float x) (float y)))
-    cg)  
+      (fn [gr]
+        (with-font (f/get-font font) gr
+          #(draw-string-cartesian  % (str s) (float x) (float y)))))
+      cg)  
   (draw-image [cg img transparency x y]
     (draw-image-cartesian g (as-buffered-image img (bitmap-format img)) x y)
     cg)
@@ -385,6 +389,8 @@
   ITextRenderer
   (text-width     [cg txt] (f/string-width (.getFont g) txt))
   (text-height    [cg txt] (f/string-height (.getFont g)  txt))
+  (get-font       [cg] (.getFont g))
+  (set-font       [cg f] (do (.setFont g ^Font f) cg))
   ICanvas2DExtended
   (draw-polygon   [cg color points]
     (with-color (get-gui-color color) g
@@ -518,6 +524,8 @@
   ITextRenderer
   (text-width     [sg  txt] (.getWidth  (string-bounds g txt)))
   (text-height    [sg  txt] (.getHeight (string-bounds g txt)))
+  (get-font       [sg] (.getFont g))
+  (set-font       [sg f] (do (.setFont g ^Font f) sg))
   IStroked
   (get-stroke [sg]   (.getStroke g))
   (set-stroke [sg s] (swing-graphics. (doto g (.setStroke s)) options))
