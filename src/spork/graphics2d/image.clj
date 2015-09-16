@@ -143,17 +143,21 @@
    bounds."
   ([transparency s] 
      (let [{:keys [x y width height]} (shape-bounds s)
-           b (make-imgbuffer (inc width) (inc height) (get-transparency 
-                                                       transparency))]
+           b (make-imgbuffer width ;(inc width)
+                             height ;(inc height)
+                             (get-transparency 
+                              transparency))]
        (->image :buffered-image 
                 (do (draw-shape s 
                                 (translate-2d
                                     (bitmap-graphics b) 
-                                        (* -1 x) (* -1 y)
+                                        (dec (* -1 x)) (dec (* -1 y))
                                         ;x
                                         ;y
                                               ))  b)
-                (inc width) (inc height) transparency)))
+                width ;(inc width)
+                height;(inc height)
+                transparency)))
   ([s] (shape->img :translucent s)))
 
 

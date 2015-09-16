@@ -800,16 +800,22 @@
 ;;Ah, if we have a grid, we know that steps correspond to numbers...
 ;;so, really just grid ticks -> numbs.
 
+;;Excellent post from stackoverflow
+(defn round2 [precision d]
+  (let [factor (Math/pow 10 precision)]
+    (/ (Math/round (* d factor)) factor)))
+
 (def default-plot-font (f/->font "MONOSPACED" [:bold] 20))
 (defn ->gg-haxis [l r  height width & {:keys [thickness steps size font]
                                        :or {thickness 1.0
                                             steps 4
                                             size 12
-                                            font default-plot-font}}]
+                                            font default-plot-font
+                                            }}]
                   
   (let [fnt         (f/resize-font font size)
-        lbounds     (f/string-bounds fnt (str l))
-        rbounds     (f/string-bounds fnt (str r))
+        lbounds     (f/string-bounds fnt (str (round2 2 l)))
+        rbounds     (f/string-bounds fnt (str (round2 2 r)))
         lwidth      (:width lbounds)
         rwidth      (:width rbounds)
         nheight     (max (:height lbounds) (:height rbounds))
@@ -821,7 +827,7 @@
         scaled-step (* xscale step)
         bounds        (space/bbox (/ (- lwidth) 2.0) 0 (+ lwidth width rwidth)  height)
         centered-numb (fn [canv n x]
-                          (let [lbl (str (long n))
+                          (let [lbl (str (round2 2 n))
                                 halfw (/ (:width (f/string-bounds fnt lbl)) 2.0)]
                             (draw-string canv :black fnt lbl (- x halfw)  0)))]
     (reify IShape
@@ -853,7 +859,7 @@
                                             font default-plot-font
                                             size 12}}]
   (let [fnt           (f/resize-font font size)
-        lbounds       (f/string-bounds fnt (str (max l r)))
+        lbounds       (f/string-bounds fnt (str (round2 2 (max l r))))
         label-height  (:height   lbounds)
         label-width   (:width lbounds)
         tick-height   (/ label-height 2.0) ;ignore.
@@ -866,7 +872,7 @@
         scaled-step   (* scale step)
         bounds        (space/bbox 0 0 axis-width (+ height label-height) )
         centered-numb (fn [canv n y]
-                        (let [lbl (str (long n))
+                        (let [lbl (str (round2 2 n))
                               {:keys [height width]} (f/string-bounds fnt lbl)
                               halfh (/ height  2.0)
                               offset (- label-width width)]                          
@@ -1048,13 +1054,20 @@
      (map #(java.awt.Color. ^long (nth % 0) ^long (nth % 1) ^long (nth % 2)) (canvas/random-color-palette s v)))
   ([] (palette 0.2 0.65)))
 
+(defn uv->xy
+  ([xscale yscale u v]
+   (sketch/translate (/ u  xscale) (/ v yscale)
+                     shp)))
+
+     
 ;;There's a difference in displaying the intercepts.  We don't want to confound
 ;;scaling and translating.  By tying the scales to the mins/maxes, we unintentionally
 ;;zoom.  What we're really wanting to do is define a view over the unscaled data.
 ;;If we change the span, however, we are changing the scale....
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
                                  xlabel-font ylabel-font title title-font cached
-                                 xn yn] :or
+                               xn yn
+                               xscale yscale plotxscale plotyscale] :or
                           {xlabel "X"
                            ylabel "Y"
                            title "The Plot"
@@ -1064,7 +1077,8 @@
                            ylabel-font default-plot-font
                            title-font default-plot-font
                            cached true
-                           xn 4 yn 4}}]
+                           xn 4 yn 4
+                           }}]
   (let [{:keys [x y width height]} (shape-bounds points)
         ymin       (double (or ymin y))
         ymax       (double (or ymax (+ y height)))
@@ -1072,11 +1086,11 @@
         xmax       (double (or xmax (+ x width)))
         yspan      (- ymax ymin)
         xspan      (- xmax xmin)
-        xscale     (/ xspan yspan)
-        yscale     (/  height yspan)
-        xscale     (* xscale yscale)
-        plotxscale (/ w xspan )
-        plotyscale (/ h yspan ) 
+        xscale     (or xscale (/ xspan  yspan))
+        yscale     (or yscale (/ height yspan))
+        ;xscale     (* xscale yscale)
+        plotxscale (or plotxscale xscale) ;(* xscale (/ w xspan ))
+        plotyscale (or plotyscale yscale) ;(* yscale (/ h yspan ) )
         
         hax        (->gg-haxis  xmin xmax   10    w  :size 20 :steps xn)
         hwidth     (:width (shape-bounds hax))
@@ -1107,26 +1121,35 @@
         sc           (min total-height total-width)
 
         pady         (if (= sc total-height)  0 (- plot-h h))
-        padx         (if (= sc total-width)  0 (- plot-w w))]
-    
-    [(->plane :white 0 0 w h)
-     (translate (/ padx 2.0) (/ pady 2.0)
-                (above (smooth ttl)
-                       (scale sc sc
-                              (beside (smooth ylbl)
-                                      (above
-                                       [(translate (hpad hax) (vpad hax) (smooth vax))
-                                        (translate (hpad vax) (vpad vax) (smooth hax))
-                                        (translate plot-x
-                                                   plot-y
-                                                   [(->gg-plotarea w
-                                                                   h  xn yn)
-                                                    (translate  (- x  xmin)
-                                                                (- y ymin)
-                                                                (scale plotxscale plotyscale
-                                                                       pts))])]
-                                       (translate plot-x 0 (smooth xlbl)))))))]))
+        padx         (if (= sc total-width)  0 (- plot-w w))
+        plt    [(->plane :white 0 0 w h)
+                (translate (/ padx 2.0) (/ pady 2.0)
+                           (above (smooth ttl)
+                                  (scale sc sc
+                                         (beside (smooth ylbl)
+                                                 (above
+                                                  [(translate (hpad hax) (vpad hax) (smooth vax))
+                                                   (translate (hpad vax) (vpad vax) (smooth hax))
+                                                   (translate plot-x
+                                                              plot-y
+                                                              [(->gg-plotarea w
+                                                                              h  xn yn)
+                                                               (translate  x ;(- x  xmin) 
+                                                                           y ;(- y ymin)
+                                                                           (scale plotxscale plotyscale
+                                                                                  pts))])]
+                                                  (translate plot-x 0 (smooth xlbl)))))))]
+        bnds (shape-bounds plt)
+        xscl (]
+    (reify IShape
+      (shape-bounds [s] bnds)
+      (draw-shape [s c] (draw-shape plt c))
+      IShapeStack
+      (push-shape [stck s] (push-shape points))
+      (pop-shape [stck] stck)        
+      clojure.lang.IDeref
+      (deref [obj] {:xy->uv [plotxscale plotyscale]}))))
 
 (defn plot-xy! [points & {:keys [w h] :as opts}]
-    (paint!  (apply ->plot (cons points opts))))
+  (paint!  (apply ->plot (cons points (flatten (seq opts))))))
             
