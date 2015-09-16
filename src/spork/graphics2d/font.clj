@@ -8,6 +8,15 @@
            [java.awt.image BufferedImage ImageObserver]
            [java.awt.geom  Rectangle2D]))
 
+
+(def font-opts
+  {:plain  Font/PLAIN
+   :bold   Font/BOLD
+   :italic Font/ITALIC})
+
+(defn parse-opts [ks]
+  (reduce (fn [opt k]
+            (bit-or opt (int (get  font-opts k)))) 0  ks))
 ;;this is what we use by default.
 (def default-font (Font. Font/DIALOG Font/PLAIN 12))
 ;;it'd be nice to import all the fonts...
@@ -50,7 +59,8 @@
 (defn ^Font resize-font [^Font f ^double newsize]
   (.deriveFont f newsize))
 ;;lame.
-(defn ^Font ->font [name style size] (Font.  name style  size))
+(defn ^Font ->font [name style size]
+  (Font.  name (parse-opts style)  size))
 
 
 

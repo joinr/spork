@@ -6,11 +6,11 @@
 ;;a sort of skeleton scene graph, for simple 2d diagrams and plotting.
 (ns spork.sketch
   (:require [spork.graphics2d.canvas :as canvas :refer :all ]
+            [spork.protocols [spatial :as space]]
             [spork.graphics2d [image :as image]
                               [swing :as provider]
                               [font :as f]
                               [stroke :as stroke]]
-            [spork.protocols [spatial :as space]]
             [spork.geometry.shapes :refer :all]
             [spork.cljgui.components [swing :as gui]]
             [spork.events [base :as evt]
@@ -93,6 +93,19 @@
     (draw-shape   [s c] (with-translation (:width bounds1) 0 
                           (draw-shape s1 c) #(draw-shape s2 %))))))
 
+(defn <-beside [s1 s2]
+  (let [bounds1 (shape-bounds s1)
+        bounds2 (shape-bounds s2)
+        hmax (max (:height bounds1) (:height bounds2))
+        width (+ (:width bounds1) (:width bounds2))
+        new-bounds (space/bbox 0 0 width hmax)]
+  (reify IShape 
+    (shape-bounds [s] new-bounds)
+    (draw-shape   [s c] (with-translation (:width bounds2) 0 
+                          (draw-shape s2 c) #(draw-shape s1 %))))))
+
+
+  
 (defn background [color shp]
   (let [{:keys [x y width height]} (shape-bounds shp)]
     [(->rectangle color 0 0 (+ x width) (+ y height))
@@ -152,6 +165,21 @@
 ;;       (draw-shape   [s c] 
 ;;         (with-translation x y c  rotated)))))
 
+(defn vertical-text [shp]
+  (let [{:keys [x y height width]} (shape-bounds shp)
+        new-shp (if (and (zero? x) (zero? y))
+                  (translate height 0
+                             (rotate (/ Math/PI 2.0) shp))
+                  (translate height 0
+                             (translate (- x) (- y)
+                                        (rotate (/ Math/PI 2.0)
+                                                (translate x y shp)))))
+        bnds    (spork.protocols.spatial/bbox x y height width)]
+    (reify IShape
+      (shape-bounds [s] bnds)
+      (draw-shape [s c] (draw-shape new-shp c)))))
+
+                 
 (defn spin
   ([theta shp]
    (let [{:keys [x y width height] :as bnds} (shape-bounds shp)
@@ -168,7 +196,7 @@
                                           (translate  (- centerx) (- centery)shp)))]
          (reify IShape
            (shape-bounds [c]  new-bounds)
-           (draw-shape [s c]  (draw-shape new-shp c))))
+           (draw-shape [s c]  (draw-shape new-shp c)))
        (reify IShape
          (shape-bounds [c] (spork.protocols.spatial/get-bounding-box
                             (spork.protocols.spatial/spin-bounds @theta bnds)))
@@ -769,10 +797,18 @@
 ;;I think ggplot offsets the first tick enough so that the
 ;;numbers are visible.
 ;;Ah, if we have a grid, we know that steps correspond to numbers...
-;;so, really just grid ticks -> numbs.  
-(defn ->gg-haxis [l r  height width thickness steps]
-  (let [lbounds     (f/string-bounds (str l))
-        rbounds     (f/string-bounds (str r))
+;;so, really just grid ticks -> numbs.
+
+(def default-plot-font (f/->font "MONOSPACED" [:bold] 20))
+(defn ->gg-haxis [l r  height width & {:keys [thickness steps size font]
+                                       :or {thickness 1.0
+                                            steps 4
+                                            size 12
+                                            font default-plot-font}}]
+                  
+  (let [fnt         (f/resize-font font size)
+        lbounds     (f/string-bounds fnt (str l))
+        rbounds     (f/string-bounds fnt (str r))
         lwidth      (:width lbounds)
         rwidth      (:width rbounds)
         nheight     (max (:height lbounds) (:height rbounds))
@@ -785,8 +821,8 @@
         bounds        (space/bbox (/ (- lwidth) 2.0) 0 (+ lwidth width rwidth)  height)
         centered-numb (fn [canv n x]
                           (let [lbl (str (long n))
-                                halfw (/ (:width (f/string-bounds lbl)) 2.0)]
-                            (draw-string canv :black :default lbl (- x halfw)  0)))]
+                                halfw (/ (:width (f/string-bounds fnt lbl)) 2.0)]
+                            (draw-string canv :black fnt lbl (- x halfw)  0)))]
     (reify IShape
       (shape-bounds [s]   bounds) 
       (draw-shape   [s c]
@@ -810,8 +846,13 @@
 ;;right-align us.
 ;(defn ->qplot [points 
 ;;same sas
-(defn ->gg-vaxis [l r  height width thickness steps]
-  (let [lbounds       (f/string-bounds (str (max l r)))
+(defn ->gg-vaxis [l r  height width & {:keys [thickness steps size font]
+                                       :or {thickness 1.0
+                                            steps 4
+                                            font default-plot-font
+                                            size 12}}]
+  (let [fnt           (f/resize-font font size)
+        lbounds       (f/string-bounds fnt (str (max l r)))
         label-height  (:height   lbounds)
         label-width   (:width lbounds)
         tick-height   (/ label-height 2.0) ;ignore.
@@ -825,10 +866,10 @@
         bounds        (space/bbox 0 0 axis-width (+ height label-height) )
         centered-numb (fn [canv n y]
                         (let [lbl (str (long n))
-                              {:keys [height width]} (f/string-bounds lbl)
+                              {:keys [height width]} (f/string-bounds fnt lbl)
                               halfh (/ height  2.0)
-                              offset (- label-width width)]
-                          (draw-string canv :black :default lbl offset (+  (- y halfh) 2)
+                              offset (- label-width width)]                          
+                          (draw-string canv :black fnt lbl offset (+  (- y halfh) 2)
                                        )))
         ;)
     ]
@@ -891,46 +932,48 @@
                        [(->gg-plotarea 600 600 4 4)
                         (fade 0.5 [reds blues])])
            ])
-  (defn plot-xy! [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel] :or
-                            {xlabel "X"
-                             ylabel "Y"
-                             h 600
-                             w 600}}]
-    (let [{:keys [x y width height]} (shape-bounds points)
-          ymin (double (or ymin y))
-          ymax (double (or ymax (+ y height)))
-          xmin (double (or xmin  x))
-          xmax (double (or xmax (+ x width)))
-          yspan  (- ymax ymin)
-          xspan  (- xmax xmin)
-          xscale (/ xspan yspan)
-          yscale (/  height yspan)
-          xscale (* xscale yscale)          
-          hax      (->gg-haxis  xmin xmax   10    w  1.0 4)
-          vax      (->gg-vaxis  ymin ymax   h  10   1.0 4)
-          xlbl   (->plain-text :black 22 xlabel (/ w 2.0) 0 )
-          ylbl   (spin (/ Math/PI 2.0) (->plain-text :black 22 ylabel 0 (/ h 2.0)))
-          pts    (image/shape->img (scale xscale yscale
-                                        (fade 0.5 points)))
-          h-offset (hpad vax)
-          v-offset (vpad hax)]
-      (paint!  w h
-              [(->plane :white 0 0 w h)
-               (beside ylbl
-                       (above
-                        [(translate (hpad hax) (vpad hax) vax)
-                         (translate (hpad vax) (vpad vax) hax)
-                         (translate (max (hpad vax) (hpad hax))
-                                    (max (vpad vax) (vpad hax))
-                                    [(->gg-plotarea w h 4 4)
-                                     ;(scale xscale yscale
-                                        ;       (fade 0.2 points))
-                                     pts
-                                     ]
-                                    )]
-                        xlbl))]
-              )))
+  ;; (defn plot-xy! [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel] :or
+  ;;                           {xlabel "X"
+  ;;                            ylabel "Y"
+  ;;                            h 600
+  ;;                            w 600}}]
+  ;;   (let [{:keys [x y width height]} (shape-bounds points)
+  ;;         ymin (double (or ymin y))
+  ;;         ymax (double (or ymax (+ y height)))
+  ;;         xmin (double (or xmin  x))
+  ;;         xmax (double (or xmax (+ x width)))
+  ;;         yspan  (- ymax ymin)
+  ;;         xspan  (- xmax xmin)
+  ;;         xscale (/ xspan yspan)
+  ;;         yscale (/  height yspan)
+  ;;         xscale (* xscale yscale)          
+  ;;         hax      (->gg-haxis  xmin xmax   10    w  1.0 4)
+  ;;         vax      (->gg-vaxis  ymin ymax   h  10   1.0 4)
+  ;;         xlbl   (->plain-text :black 22 xlabel (/ w 2.0) 0 )
+  ;;         ylbl   (spin (/ Math/PI 2.0) (->plain-text :black 22 ylabel 0 (/ h 2.0)))
+  ;;         pts    (image/shape->img (scale xscale yscale
+  ;;                                       (fade 0.5 points)))
+  ;;         h-offset (hpad vax)
+  ;;         v-offset (vpad hax)]
+  ;;     (paint!  w h
+  ;;             [(->plane :white 0 0 w h)
+  ;;              (beside ylbl
+  ;;                      (above
+  ;;                       [(translate (hpad hax) (vpad hax) vax)
+  ;;                        (translate (hpad vax) (vpad vax) hax)
+  ;;                        (translate (max (hpad vax) (hpad hax))
+  ;;                                   (max (vpad vax) (vpad hax))
+  ;;                                   [(->gg-plotarea w h 4 4)
+  ;;                                    ;(scale xscale yscale
+  ;;                                       ;       (fade 0.2 points))
+  ;;                                    pts
+  ;;                                    ]
+  ;;                                   )]
+  ;;                       xlbl))]
+  ;;             )))
   )
+
+
 ;;This allows us to have a concise way to thread user
 ;;interaction into the scene.
 (defn ->interactor
@@ -976,6 +1019,9 @@
    (let [{:keys [x y width height]} (canvas/shape-bounds shp)]
      (paint! width height shp))))
   
+
+
+
 (defn moving-grid [w h n]
   (let [background (->scrolling-grid 0 0 w h n)
         clear      (image/shape->img (->rectangle :grey 0 0 w h))]
@@ -1039,3 +1085,83 @@
   ([s v]  
      (map #(java.awt.Color. ^long (nth % 0) ^long (nth % 1) ^long (nth % 2)) (canvas/random-color-palette s v)))
   ([] (palette 0.2 0.65)))
+
+
+
+(defn plot-xy! [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
+                                 xlabel-font ylabel-font title title-font cached] :or
+                          {xlabel "X"
+                           ylabel "Y"
+                           title "The Plot"
+                           h 600
+                           w 600
+                           xlabel-font default-plot-font
+                           ylabel-font default-plot-font
+                           title-font default-plot-font
+                           cached true}}]
+  (let [{:keys [x y width height]} (shape-bounds points)
+        ymin (double (or ymin y))
+        ymax (double (or ymax (+ y height)))
+        xmin (double (or xmin  x))
+        xmax (double (or xmax (+ x width)))
+        yspan    (- ymax ymin)
+        xspan    (- xmax xmin)
+        xscale   (/ xspan yspan)
+        yscale   (/  height yspan)
+        xscale   (* xscale yscale)          
+        hax      (->gg-haxis  xmin xmax   10    w  :size 20)
+        hwidth   (:width (shape-bounds hax))
+        vax      (->gg-vaxis  ymin ymax   h  10    :size 20)
+        vheight  (:height (shape-bounds vax)) 
+        xlbl       (->text :black xlabel-font xlabel 0 0 )
+        ttl        (->text :black title-font title 0 0 )
+        ttl-bounds (shape-bounds ttl)
+        ttl-width  (:width ttl-bounds)
+        ttl-height (:height ttl-bounds)
+        x-bounds   (shape-bounds xlbl)
+        x-height   (:height x-bounds)
+        x-width    (:width x-bounds)
+        centerx    (/ w 2.0)
+        xlbl       (translate (- centerx (/ x-width 2.0)) 0 xlbl)
+        ttl        (translate (- centerx (/ ttl-width 2.0)) 0 ttl)
+        ylbl       (translate 0 (/ h 2.0)  (vertical-text  (->text :black ylabel-font ylabel 0 0)))
+        y-width    (:width (shape-bounds ylbl))
+        pts        ((if cached image/shape->img identity) (scale xscale yscale points))
+        h-offset   (hpad vax)
+        v-offset   (vpad hax)
+        plot-x     (max (hpad vax) (hpad hax))
+        plot-y     (max (vpad vax) (vpad hax))
+        plot-w     (+ hwidth h-offset y-width)
+        plot-h     (+ vheight v-offset x-height)
+        total-height (/  h plot-h)
+        total-width  (/ w plot-w )
+        sc           (min total-height total-width)
+
+        pady         (if (= sc total-height)  0 (- plot-h h))
+        padx         (if (= sc total-width)  0 (- plot-w w))
+        _ (println [padx pady xscale yscale] )]
+    (paint!  w h
+             [;(->plane :white 0 0 w h)
+              (translate (/ padx 2.0) (/ pady 2.0)
+                  (above (smooth ttl)
+                     (scale sc sc
+                            (beside (smooth ylbl)
+                                    (above
+                                     [(translate (hpad hax) (vpad hax) (smooth vax))
+                                      (translate (hpad vax) (vpad vax) (smooth hax))
+                                      (translate plot-x
+                                                 plot-y
+                                                 [(->gg-plotarea w
+                                                                 h  4 4)
+                                                  
+                                                  ;(scale xscale yscale
+                                                        ; (translate  ;xmin
+                                                        ;  ymin
+                                                          pts])
+                                        ;)
+                                      ]
+                                     (translate plot-x 0 (smooth xlbl)))
+                                    )
+                            )))
+                     ]
+             )))

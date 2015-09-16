@@ -400,6 +400,12 @@
    (get-stroke [ctx])
    (set-stroke [ctx s]))
 
+(defprotocol ITextRenderer
+  (text-width     [canvas txt] "Gets the weidth of txt on canvas, in pixels.")
+  (text-height    [canvas txt] "Gets the height of txt on canvas, in pixels.")
+  (get-font       [canvas])
+  (set-font       [canvas f]))
+
 (defn with-color
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the color of the context if necessary, then reverts to
@@ -522,11 +528,7 @@
 
 (defprotocol ICartesian)
                                   
-(defprotocol ITextRenderer
-  (text-width     [canvas txt] "Gets the weidth of txt on canvas, in pixels.")
-  (text-height    [canvas txt] "Gets the height of txt on canvas, in pixels.")
-  (get-font       [canvas])
-  (set-font       [canvas f]))
+
 
 
 ;;__TODO__ Turn these stubs into protocol members.
