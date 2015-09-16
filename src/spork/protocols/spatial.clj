@@ -436,7 +436,7 @@
       (bbox xnew 
             ynew          
             (- (max w0  w1) xnew) 
-            (- (max h0 h1) ynew)))))o
+            (- (max h0 h1) ynew)))))
 
 (defn group-bounds
   "Merge multiple bounds into a single bounding box."
