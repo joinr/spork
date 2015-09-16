@@ -399,13 +399,13 @@
 
 (defn scale-bounds
   "Performs a 2D scale of [xscale yscale] on a bounding box." 
-  [xscale yscale {:keys [x y width height]}]
-  (bbox (* xscale x) (* yscale y) (* xscale width) (* yscale height)))
+  [xscale yscale {:keys [x y width height theta]}]
+  (bbox (* xscale x) (* yscale y) (* xscale width) (* yscale height) theta))
 
 (defn translate-bounds
   "Translates the bounding box's coordinates by x y."
-  [tx ty  {:keys [x y width height]}]
-  (bbox (+ tx x) (+ ty y) width height)) 
+  [tx ty  {:keys [x y width height theta]}]
+  (bbox (+ tx x) (+ ty y) width height theta)) 
 
 (defn rotate-bounds
   "Adds theta to the bounding box's rotation angle."
@@ -422,6 +422,7 @@
   ([theta bnds] 
      (let [[x y] (get-center bnds)]
        (spin-bounds theta x y bnds))))
+
 
 ;;This is erroneously labeled; w and h are actually x and y coords, 
 ;;extrema, not widths.

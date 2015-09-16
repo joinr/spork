@@ -140,17 +140,38 @@
 
 ;;rotates about a point....we probably should factor out spin-bounds
 ;;from this guy.
-(defn spin   [theta shp]
-  (throw (Exception. "Rotation on bounds is currenty jacked up, not working. Need to fix the math on this."))
-  (let [bnds  (shape-bounds shp)
-        [x y] (space/get-center bnds)
-        spun  (space/spin-bounds theta bnds)
-        rotated (fn [canv] (with-rotation theta canv #(draw-shape shp %)))]
-    (reify IShape 
-      (shape-bounds [s]   spun)
-      (draw-shape   [s c] 
-        (with-translation x y c  rotated)))))
+;; (defn spin   [theta shp]
+;;   ;(throw (Exception. "Rotation on bounds is currenty jacked up, not working. Need to fix the math on this."))
+;;   (let [bnds  (shape-bounds shp)
+;;         [x y] (space/get-center bnds)
+;;         spun  (space/spin-bounds theta bnds)
+;;         rotated (fn [canv] (with-rotation theta canv #(draw-shape shp %)))]
+;;     (reify IShape 
+;;       (shape-bounds [s]   spun)
+;;       (draw-shape   [s c] 
+;;         (with-translation x y c  rotated)))))
 
+(defn spin [theta shp]
+  (let [{:keys [x y width height] :as bnds} (shape-bounds shp)
+        centerx    (+ x (/ width  2.0))
+        centery    (+ y (/ height 2.0))]
+    (if (not (atom? theta))
+      (let [new-bounds (spork.protocols.spatial/get-bounding-box
+                         (spork.protocols.spatial/spin-bounds theta bnds))
+            new-shp   (translate centerx centery
+                                 (rotate theta
+                                         (translate  (- centerx) (- centery)shp)))]
+        (reify IShape
+          (shape-bounds [c]  new-bounds)
+          (draw-shape [s c]  (draw-shape new-shp c))))
+        (reify IShape
+          (shape-bounds [c] (spork.protocols.spatial/get-bounding-box
+                             (spork.protocols.spatial/spin-bounds @theta bnds)))
+          (draw-shape [s c]
+            (let [newshp (translate centerx centery
+                                    (rotate @theta
+                                            (translate  (- centerx) (- centery) shp)))]
+              (draw-shape newshp c)))))))
 (defn scale [xscale yscale shp]
   (if (not (and (atom? xscale) (atom? yscale)))
     (reify IShape 
@@ -255,14 +276,14 @@
     (stack (interleave xs (repeat separator)))))
 
 ;;work in progress.
-;(defn at-center [shp]
-;  (let [bounds (shape-bounds shp)
-;        centerx (/ (:width bounds) 2.0)
-;        centery (/ (:heigh bounds) 2.0)]    
-;  (reify IShape 
-;    (shape-bounds [s] bounds)
-;    (draw-shape   [s c] (with-translation centerx centery c
-;                          #(draw-shape shp %))))))
+;; (defn at-center [shp]
+;;  (let [bounds (shape-bounds shp)
+;;        centerx (/ (:width bounds) 2.0)
+;;        centery (/ (:heigh bounds) 2.0)]    
+;;  (reify IShape 
+;;    (shape-bounds [s] bounds)
+;;    (draw-shape   [s c] (with-translation centerx centery c
+;;                          #(draw-shape shp %))))))
 
 (defn ->ticks [color width height step]
   (let [tick   (:source (make-sprite :translucent (->line color 0 0 0 height) 0 0))
@@ -742,7 +763,7 @@
 ;;numbers are visible.
 ;;Ah, if we have a grid, we know that steps correspond to numbers...
 ;;so, really just grid ticks -> numbs.  
-(defn ->gg-haxis [label l r  height width thickness steps]
+(defn ->gg-haxis [l r  height width thickness steps]
   (let [lbounds     (f/string-bounds (str l))
         rbounds     (f/string-bounds (str r))
         lwidth      (:width lbounds)
@@ -782,7 +803,7 @@
 ;;right-align us.
 ;(defn ->qplot [points 
 ;;same sas
-(defn ->gg-vaxis [label l r  height width thickness steps]
+(defn ->gg-vaxis [l r  height width thickness steps]
   (let [lbounds       (f/string-bounds (str (max l r)))
         label-height  (:height   lbounds)
         label-width   (:width lbounds)
@@ -831,17 +852,30 @@
   (def reds  (->point-cloud (->rectangle :red 0 0 10 10)
                         (into [] (for [i (range 1000)]
                                    [(rand-int 600) (rand-int 600)]))))
+  (require '[spork.util.stats :as stats])
+
+  (def nd (stats/normal-dist 300 150))
+  (defn draw! []
+    (let [r (nd)]
+      (cond (< r 0) 0
+            (> r 600) 600
+            :else r)))
+  (def greens (->point-cloud (->rectangle :green 0 0 10 10)
+                             (into [] (for [i (range 10000)]
+                                        [(rand-int 600) (draw!)]))))
   (paint! 620 600
           (translate 10 0
                      (above (->gg-haxis "Blah" 0 200 10  600 1.0 4)
                             [(->gg-plotarea 620 600 4 4)
 
                              (fade 0.5 [reds blues])])))
-  (def h (->gg-haxis "Blee" 0 200   10 600 1.0 4))
-  (def v (->gg-vaxis "Blah" 0 200 600  10 1.0 4))
+  (def h (->gg-haxis  0 200   10 600 1.0 4))
+  (def v (->gg-vaxis  0 200 600  10 1.0 4))
 
   (sketch [(translate  (hpad h) (vpad h) v)
-                       (translate  (hpad v) (vpad v) h)])
+           (translate  (hpad v) (vpad v) h)])
+  
+  ;;this is an actual plot, correctly displayed and everything.
   (paint! 600 600
           [(translate (hpad h) (vpad h) v)
            (translate (hpad v) (vpad v) h)
@@ -850,6 +884,27 @@
                        [(->gg-plotarea 600 600 4 4)
                         (fade 0.5 [reds blues])])
            ])
+  (defn plot-xy! [points xmin xmax ymin ymax & {:keys [xlabel ylabel] :or
+                                                {xlabel "X"
+                                                 ylabel "Y"}}]
+    (let [yspan  (- ymax ymin)
+          xspan  (- xmax xmin)
+          xscale (/ xspan yspan)
+          yscale (/  600 yspan)
+          xscale (* xscale yscale)          
+          h      (->gg-haxis  xmin xmax   10   600  1.0 4)
+          v      (->gg-vaxis  ymin ymax   600  10   1.0 4)
+          xlbl (->plain-text :black 18 xlabel)
+          ylbl (spin Math/PI (->plain-text :black 18 ylabel))]
+    (paint! 600 600
+          [(translate (hpad h) (vpad h) v)
+           (translate (hpad v) (vpad v) h)
+           (translate (max (hpad v) (hpad h))
+                      (max (vpad v) (vpad h))
+                      [(->gg-plotarea 600 600 4 4)
+                       (scale xscale yscale
+                                  (fade 0.2 points))])
+           ])))
   )
 ;;This allows us to have a concise way to thread user
 ;;interaction into the scene.
