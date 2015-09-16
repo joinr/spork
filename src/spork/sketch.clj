@@ -151,27 +151,31 @@
 ;;       (draw-shape   [s c] 
 ;;         (with-translation x y c  rotated)))))
 
-(defn spin [theta shp]
-  (let [{:keys [x y width height] :as bnds} (shape-bounds shp)
-        centerx    (+ x (/ width  2.0))
-        centery    (+ y (/ height 2.0))]
-    (if (not (atom? theta))
-      (let [new-bounds (spork.protocols.spatial/get-bounding-box
+(defn spin
+  ([theta shp]
+   (let [{:keys [x y width height] :as bnds} (shape-bounds shp)
+         centerx    (+ x (/ width  2.0))
+         centery    (+ y (/ height 2.0))]
+     (spin theta shp centerx centery)))
+  ([theta shp centerx centery]
+   (let [bnds (shape-bounds shp)]
+     (if (not (atom? theta))
+       (let [new-bounds (spork.protocols.spatial/get-bounding-box
                          (spork.protocols.spatial/spin-bounds theta bnds))
-            new-shp   (translate centerx centery
-                                 (rotate theta
-                                         (translate  (- centerx) (- centery)shp)))]
-        (reify IShape
-          (shape-bounds [c]  new-bounds)
-          (draw-shape [s c]  (draw-shape new-shp c))))
-        (reify IShape
-          (shape-bounds [c] (spork.protocols.spatial/get-bounding-box
-                             (spork.protocols.spatial/spin-bounds @theta bnds)))
-          (draw-shape [s c]
-            (let [newshp (translate centerx centery
-                                    (rotate @theta
-                                            (translate  (- centerx) (- centery) shp)))]
-              (draw-shape newshp c)))))))
+             new-shp   (translate centerx centery
+                                  (rotate theta
+                                          (translate  (- centerx) (- centery)shp)))]
+         (reify IShape
+           (shape-bounds [c]  new-bounds)
+           (draw-shape [s c]  (draw-shape new-shp c))))
+       (reify IShape
+         (shape-bounds [c] (spork.protocols.spatial/get-bounding-box
+                            (spork.protocols.spatial/spin-bounds @theta bnds)))
+         (draw-shape [s c]
+           (let [newshp (translate centerx centery
+                                   (rotate @theta
+                                           (translate  (- centerx) (- centery) shp)))]
+             (draw-shape newshp c))))))))
 (defn scale [xscale yscale shp]
   (if (not (and (atom? xscale) (atom? yscale)))
     (reify IShape 
