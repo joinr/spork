@@ -608,6 +608,7 @@
   (push-shape [s shp])
   (pop-shape  [s]))
 
+
 ;;Allow mutable shapes. 
 (extend-type clojure.lang.Atom
   IShape

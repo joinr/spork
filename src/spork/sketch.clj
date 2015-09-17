@@ -1071,7 +1071,7 @@
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
                                  xlabel-font ylabel-font title title-font cached
                                xn yn
-                               xscale yscale plotxscale plotyscale] :or
+                               xscale yscale plotxscale plotyscale uv] :or
                           {xlabel "X"
                            ylabel "Y"
                            title "The Plot"
@@ -1152,7 +1152,8 @@
       (push-shape [stck s] (push-shape points s) stck)
       (pop-shape [stck] stck)        
       clojure.lang.IDeref
-      (deref [obj] {:xy->uv [plotxscale plotyscale]})
+      (deref [obj] {:xy->uv [(/ xspan w )  (/ yspan h)]
+                    :plot-area points})
       IWipeable
       (wipe [obj] (wipe points)))))
 
