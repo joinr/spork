@@ -888,7 +888,7 @@
                canv c]
           (if (> n r) 
             canv
-            (do (println n)
+            (do ; (println n)
                 (recur (+ offset scaled-step)
                        (+ n step)
                        (-> (draw-shape (translate 0 offset tick)
@@ -1054,12 +1054,16 @@
      (map #(java.awt.Color. ^long (nth % 0) ^long (nth % 1) ^long (nth % 2)) (canvas/random-color-palette s v)))
   ([] (palette 0.2 0.65)))
 
-(defn uv->xy
-  ([xscale yscale u v]
-   (sketch/translate (/ u  xscale) (/ v yscale)
-                     shp)))
 
-     
+(defn to-scale   [xscale u] (* u (/ 1.0 xscale)))
+(defn from-scale [xscale x] (* x xscale))
+
+(defn uv->xy
+  ([xscale yscale u v shp]
+   (translate (/ u  xscale) (/ v yscale)
+              shp)))
+
+
 ;;There's a difference in displaying the intercepts.  We don't want to confound
 ;;scaling and translating.  By tying the scales to the mins/maxes, we unintentionally
 ;;zoom.  What we're really wanting to do is define a view over the unscaled data.
@@ -1140,12 +1144,12 @@
                                                                                   pts))])]
                                                   (translate plot-x 0 (smooth xlbl)))))))]
         bnds (shape-bounds plt)
-        xscl (]
+        ]
     (reify IShape
       (shape-bounds [s] bnds)
       (draw-shape [s c] (draw-shape plt c))
       IShapeStack
-      (push-shape [stck s] (push-shape points))
+      (push-shape [stck s] (push-shape points s) stck)
       (pop-shape [stck] stck)        
       clojure.lang.IDeref
       (deref [obj] {:xy->uv [plotxscale plotyscale]}))))
