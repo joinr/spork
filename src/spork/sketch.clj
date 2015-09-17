@@ -893,7 +893,7 @@
                        (+ n step)
                        (-> (draw-shape (translate 0 offset tick)
                                        canv)
-                                        (centered-numb n offset)
+                                       (centered-numb n offset)
                                         ))))))
       IPadded
       (hpad [s] axis-width)
@@ -1152,7 +1152,9 @@
       (push-shape [stck s] (push-shape points s) stck)
       (pop-shape [stck] stck)        
       clojure.lang.IDeref
-      (deref [obj] {:xy->uv [plotxscale plotyscale]}))))
+      (deref [obj] {:xy->uv [plotxscale plotyscale]})
+      IWipeable
+      (wipe [obj] (wipe points)))))
 
 (defn plot-xy! [points & {:keys [w h] :as opts}]
   (paint!  (apply ->plot (cons points (flatten (seq opts))))))
