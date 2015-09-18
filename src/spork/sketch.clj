@@ -730,7 +730,7 @@
              (thicken thickness (->line color 0 1 w 1))
              ;)
          ]
-     (repeat-up ln x1 y1 w step)))
+     (repeat-up ln x1 y1 h step)))
   ([x1 y1 w h step color]
    (->scrolling-columns x1 y1 w h step :black 1.0))
   ([x1 y1 w h step] (->scrolling-rows x1 y1 w h step :black 1.0)))
@@ -825,7 +825,8 @@
         xscale      (float ( / width spread))
         step        (double (/ spread steps))
         scaled-step (* xscale step)
-        bounds        (space/bbox (/ (- lwidth) 2.0) 0 (+ lwidth width rwidth)  height)
+        bounds       ; (space/bbox (/ (- lwidth) 2.0) 0 (+ lwidth width rwidth)  height)
+                    (space/bbox (- (/ lwidth 2.0)) 0 (+ width  rwidth)  height)
         centered-numb (fn [canv n x]
                           (let [lbl (str (round2 2 n))
                                 halfw (/ (:width (f/string-bounds fnt lbl)) 2.0)]
@@ -845,7 +846,7 @@
                        (centered-numb n offset)
                        )))))
       IPadded
-      (hpad [s] (/ (- lwidth 2.0)))
+      (hpad [s] (/ lwidth 2.0))
       (vpad [s] height))))
 
 
@@ -870,13 +871,13 @@
         scale         (float  (/ height spread))
         step          (double (/ spread steps)) 
         scaled-step   (* scale step)
-        bounds        (space/bbox 0 0 axis-width (+ height label-height) )
+        bounds        (space/bbox 0 (/ label-height -4.0) axis-width (+ height (/ label-height 2.0) ))
         centered-numb (fn [canv n y]
                         (let [lbl (str (round2 2 n))
                               {:keys [height width]} (f/string-bounds fnt lbl)
-                              halfh (/ height  2.0)
+                              halfh (/ height  4.0)
                               offset (- label-width width)]                          
-                          (draw-string canv :black fnt lbl offset (+  (- y halfh) 2)
+                          (draw-string canv :black fnt lbl offset (- y halfh)
                                        )))
         ;)
     ]
@@ -1064,10 +1065,6 @@
               shp)))
 
 
-;;There's a difference in displaying the intercepts.  We don't want to confound
-;;scaling and translating.  By tying the scales to the mins/maxes, we unintentionally
-;;zoom.  What we're really wanting to do is define a view over the unscaled data.
-;;If we change the span, however, we are changing the scale....
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
                                  xlabel-font ylabel-font title title-font cached
                                xn yn
@@ -1132,7 +1129,7 @@
                                   (scale sc sc
                                          (beside (smooth ylbl)
                                                  (above
-                                                  [(translate (hpad hax) (vpad hax) (smooth vax))
+                                                  [(translate 0 (vpad hax) (smooth vax))
                                                    (translate (hpad vax) (vpad vax) (smooth hax))
                                                    (translate plot-x
                                                               plot-y
@@ -1160,3 +1157,125 @@
 (defn plot-xy! [points & {:keys [w h] :as opts}]
   (paint!  (apply ->plot (cons points (flatten (seq opts))))))
             
+
+;;attempt to clean up plot
+(comment
+
+  ;;There's a difference in displaying the intercepts.  We don't want to confound
+;;scaling and translating.  By tying the scales to the mins/maxes, we unintentionally
+;;zoom.  What we're really wanting to do is define a view over the unscaled data.
+;;If we change the span, however, we are changing the scale....
+(defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
+                                 xlabel-font ylabel-font title title-font cached
+                               xn yn
+                               xscale yscale plotxscale plotyscale uv] :or
+                          {xlabel "X"
+                           ylabel "Y"
+                           title "The Plot"
+                           h 600
+                           w 600
+                           xlabel-font default-plot-font
+                           ylabel-font default-plot-font
+                           title-font default-plot-font
+                           cached true
+                           xn 4 yn 4
+                           }}]
+  (let [{:keys [x y width height]} (shape-bounds points)
+        ymin       (double (or ymin y))
+        ymax       (double (or ymax (+ y height)))
+        xmin       (double (or xmin  x))
+        xmax       (double (or xmax (+ x width)))
+        yspan      (- ymax ymin)
+        xspan      (- xmax xmin)
+        xscale     (or xscale (/   xspan width))
+        yscale     (or yscale (/  yspan height))
+        ;xscale     (* xscale yscale)
+        plotxscale (or plotxscale xscale) ;(* xscale (/ w xspan ))
+        plotyscale (or plotyscale yscale) ;(* yscale (/ h yspan ) )
+        
+        hax        (->gg-haxis  xmin xmax   10    w  :size 20 :steps xn)
+        hwidth     (:width (shape-bounds hax))
+        vax        (->gg-vaxis  ymin ymax   h  10    :size 20 :steps yn)
+        vheight    (:height (shape-bounds vax)) 
+        xlbl       (->text :black xlabel-font xlabel 0 0 )
+        ttl        (->text :black title-font title 0 0 )
+        ttl-bounds (shape-bounds ttl)
+        ttl-width  (:width ttl-bounds)
+        ttl-height (:height ttl-bounds)
+        x-bounds   (shape-bounds xlbl)
+        x-height   (:height x-bounds)
+        x-width    (:width x-bounds)
+        centerx    (/ w 2.0)
+        xlbl       (translate (- centerx (/ x-width 2.0))   0 xlbl)
+        ttl        (translate (- centerx (/ ttl-width 2.0)) 0 ttl)
+        ylbl       (translate 0 (/ h 2.0)  (vertical-text  (->text :black ylabel-font ylabel 0 0)))
+        y-width    (:width (shape-bounds ylbl))
+        pts        ((if cached image/shape->img identity) points)
+        h-offset   (hpad vax)
+        v-offset   (vpad hax)
+        plot-x     (max (hpad vax) (hpad hax))
+        plot-y     (max (vpad vax) (vpad hax))
+        plot-w     (+ hwidth (- h-offset) y-width)
+        plot-h     (+ vheight v-offset x-height)
+        total-height (/  h plot-h)
+        total-width  (/ w plot-w )
+        sc           (min total-height total-width)
+        pady       0;  (if (= sc total-height)  0  (- plot-h h))
+        padx       0 ; (if (= sc total-width)  0  (- plot-w w))
+        _          (println [plot-x plot-y plot-w plot-h total-height total-width padx pady sc y-width
+                             plotxscale plotyscale]) 
+        plt  
+        [(->plane :white w h)
+         ;(scale 1.0 1.0 ;sc sc
+          ;           (translate (/ padx 2.0) (/ pady 2.0)
+                                ;(above (outline (smooth ttl))                                       
+                                 ;      (beside (outline (smooth ylbl))
+                                  ;               (above
+                                     (->scaled-origin w h hax vax                                                      
+                                                      [(->gg-plotarea w
+                                                                      h  xn yn)
+                                                       (translate  x ;(- x  xmin) 
+                                                                   y ;(- y ymin)
+                                        ;(scale plotxscale plotyscale
+                                                                   pts
+                                        ;            )
+                                                                   )])]
+                                        ;(translate plot-x 0 (smooth xlbl))
+                                                  
+    ;    )
+                                                  
+                        
+        bnds (shape-bounds plt)
+        ]
+    (reify IShape
+      (shape-bounds [s] bnds)
+      (draw-shape [s c] (draw-shape plt c))
+      IShapeStack
+      (push-shape [stck s] (push-shape points s) stck)
+      (pop-shape [stck] stck)        
+      clojure.lang.IDeref
+      (deref [obj] {:xy->uv [(/ xspan w )  (/ yspan h)]
+                    :plot-area points})
+      IWipeable
+      (wipe [obj] (wipe points)))))
+)
+;; (defn ->scaled-origin
+;;   ([w h xmin xmax xn ymin ymax yn shp]
+;;    (->scaled-origin w h (->gg-haxis xmin xmax 10 w  :size 15 :steps xn)
+;;                         (->gg-vaxis ymin ymax h  10 :size 15 :steps yn)
+;;                     shp))
+;;   ([w h hax vax shp]
+;;    (let [plot-x     (max (hpad vax) (hpad hax))
+;;          plot-y     (max (vpad vax) (vpad hax))
+;;          prescaled   [(translate   (hpad vax) (vpad vax) (smooth  hax))
+;;                       (translate 0 (vpad hax) (smooth  vax))
+;;                       (translate  plot-x
+;;                                   plot-y
+;;                                         ;(- 1.0 xscale) (- 1.0 yscale)
+;;                                   shp)
+;;                       {:keys [x y width height]} (shape-bounds prescaled)]
+;;          xoff    (- width  w)
+;;          yoff    (- height h)         
+;;          xscale  (/ plot-x w)
+;;          yscale  (/ plot-y h)])))
+         

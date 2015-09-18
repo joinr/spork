@@ -8,7 +8,6 @@
            [java.awt.image BufferedImage ImageObserver]
            [java.awt.geom  Rectangle2D]))
 
-
 (def font-opts
   {:plain  Font/PLAIN
    :bold   Font/BOLD
