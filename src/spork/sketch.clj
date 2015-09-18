@@ -1060,9 +1060,9 @@
 (defn from-scale [xscale x] (* x xscale))
 
 (defn uv->xy
-  ([xscale yscale u v shp]
+  [xscale yscale u v shp]
    (translate (/ u  xscale) (/ v yscale)
-              shp)))
+              shp))
 
 
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
