@@ -1,8 +1,8 @@
 ;;Init is still jacked up....trying to figure out constructors, plus we get reflection warnings, blah.
 (ns spork.cljgui.components.PaintPanel
   (:import [java.awt.image  BufferedImage]
-         [java.awt Graphics2D Graphics]
-         [javax.swing JComponent ImageIcon]
+           [java.awt Graphics2D Graphics]
+           [javax.swing JComponent ImageIcon]
          )
   (:require [spork.graphics2d.canvas]
             [spork.graphics2d.swing :as jgraphics]))

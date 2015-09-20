@@ -1,6 +1,7 @@
  (ns spork.cljgui.components.swing
-  (:require [spork.graphics2d [canvas :as j2d]
-                              [swing :as jgraphics]]
+   (:require [spork.graphics2d [canvas :as j2d]
+                               [image  :as image]
+                               [swing :as jgraphics]]
             [spork.mvc :refer :all]
             [spork.events [base :as events]
                           [observe :as obs]
@@ -33,7 +34,7 @@
 (defn get-canvas  [obj]       (first (find-gui #(.contains ^String (get-name %) "Canvas") obj)))
 (defn clear-canvas! [obj]
   (let [c (get-canvas obj)]
-    (do (spork.graphics2d.image/clear-buffered-image
+    (do (image/clear-buffered-image
          (:buffer    (or (meta c) (deref c))))
       nil)))
 
