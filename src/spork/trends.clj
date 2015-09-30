@@ -1,7 +1,18 @@
 (ns spork.trends
   (:require [spork.graphics2d [canvas :as canvas]]
             [spork.sketch :refer :all]
+            [spork.geometry.shapes :refer :all]
             [spork.util.temporal :as temp]))
+
+(defn unroll-map [m]
+  (for [[tr xs] m
+        x xs]
+    (into [tr] x)))
+
+(defn roll-map [txys]
+  (reduce (fn [acc [tr x y]]
+            (assoc acc tr (conj (get acc tr []) [x y]))) {} txys))
+
 
 ;;__Abstract Trend Type__
 ;;We'll work with trends a lot, specifically live or dynamic trends.  These trends
@@ -76,7 +87,7 @@
                         (->area (trend-color tr) 0 0 xys))
                       (sort-by (fn [[tr _]]  (trend-order tr))
                                (seq  trend-pts)))]
-    (sketch/stack areas)))
+    (stack areas)))
 
 ;;can we introduce multiple samplers?
 ;;A discrete sampler for every batch of known points?

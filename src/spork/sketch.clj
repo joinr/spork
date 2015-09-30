@@ -1065,10 +1065,7 @@
               shp))
 
 
-;;In the abstract, we can visualize the deployment events as a scatter-plot.
-;;Since the values coming across the channel are [x y] coordinates, we can simply
-;;plot them on a scatter.  Assuming we know the time horizon (currently it's 600),
-;;simply plot across a static image.
+;;Produces a sized canvas that can accept shapes.
 (defn ->xy-trend-plot
   [& {:keys [width height background initial-clear
                       plot-by on-input]
