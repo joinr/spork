@@ -1065,6 +1065,39 @@
               shp))
 
 
+;;In the abstract, we can visualize the deployment events as a scatter-plot.
+;;Since the values coming across the channel are [x y] coordinates, we can simply
+;;plot them on a scatter.  Assuming we know the time horizon (currently it's 600),
+;;simply plot across a static image.
+(defn ->xy-trend-plot
+  [& {:keys [width height background initial-clear
+                      plot-by on-input]
+               :or {get-color (fn [_] :black)
+                    width     600
+                    height    600
+                    xscale    1.0
+                    yscale    1.0
+                    background :grey
+                    plot-by identity}}]
+  (let [trend-box     (->rec [] width height)
+        clear-canvas! (fn [] (canvas/push-shape trend-box
+                                                (->rectangle background 0 0 width height)))
+        _ (when initial-clear (clear-canvas!))
+        ]
+    (reify canvas/IShape
+      (shape-bounds [obj] (canvas/shape-bounds trend-box))
+      (draw-shape [shp c] (canvas/draw-shape trend-box c))
+      canvas/IShapeStack
+      (push-shape [obj s]
+        (do (canvas/push-shape trend-box  s))
+            
+            obj)
+      (pop-shape [obj] obj)
+      canvas/IWipeable
+      (wipe [obj] (clear-canvas!))
+      clojure.lang.IDeref
+      (deref [obj] trend-box))))
+
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
                                  xlabel-font ylabel-font title title-font cached
                                xn yn
