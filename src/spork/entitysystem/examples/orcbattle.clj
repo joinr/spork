@@ -264,8 +264,6 @@
     (-> new-game 
         (add-entity   (player hero-id))
         (add-entities (random-monsters! n))))
-
-
   
 ;;Entity Properties
 ;;=================
@@ -275,9 +273,9 @@
 ;;might be nice to define language support for properties....
 ;(defproperty live? (pos? [:basic-stats :health]))
 
-(defn active? [e] (-> (entity-components e) :basicstats :agility pos?))
-(defn effects [e] (-> (entity-components e) :effects))
-
+(defn active?  [e] (-> (entity-components e) :basicstats :agility pos?))
+(defn effects  [e] (-> (entity-components e) :effects))
+(defn visible? [e] (-> (entity-components e) :visage))
 
 ;;Killing an entity means removing it from the store.
 (defn kill-entity [g id] (drop-entity g id))
@@ -297,7 +295,6 @@
 ;;Subsystems
 ;;==========
 
-
 ;;Spawning 
 
 ;;Combat 
@@ -308,20 +305,11 @@
 
 ;;Rendering
 
-
-
-
-;(property live? [e] (pos? (basic-stats health]))
-
 ;;we can reform that into an entity query...
 ;; (defquery current-monsters [store] 
 ;;   {:components [monster player]
 ;;    :where      [(> ?entity-health 10)]})
 
 
-;;testing
-(comment
-(def g (random-game))
-)
          
 

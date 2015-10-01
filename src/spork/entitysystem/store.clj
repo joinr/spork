@@ -12,8 +12,7 @@
 ;unitdata or demanddata classes.  They have a significant amount of 
 ;functionality associated with (and stuck IN) the class.  There is a sense of 
 ;modularity in the sense that unit policy, behavior, etc. are also objects with 
-                                        ;independent functions.  However, the design suff
-ers from extensibility due to
+;independent functions.  However, the design suffers from extensibility due to
 ;the encapsulation of domain-specific data and functionality, particularly where 
 ;more than one domain may be accessed.   We have to define the relation between 
 ;unitdata and policy explicitly in the unitdata class…indiciating that all 
@@ -97,6 +96,8 @@ ers from extensibility due to
     (entity. name (dissoc components (component-domain c) c)))
   (get-component [e domain] (get components domain))
   (entity-components [e] components))
+
+;;What we really want here is a flyweight entity container...
 
 (extend-protocol IEntity 
   nil 
@@ -240,7 +241,7 @@ ers from extensibility due to
     (EntityStore. (assoc entity-map id (conj (get entity-map id #{}) domain)) 
                   (assoc-in domain-map [domain id] data)))
   (drop-entry [db id domain]
-    (let [cnext (dissoc domain-map domain id)
+    (let [cnext (update-in domain-map [domain] dissoc id)
           enext (let [parts (disj (get entity-map id) domain)]
                       (if (zero? (count parts))
                         (dissoc entity-map id)
@@ -452,7 +453,10 @@ ers from extensibility due to
 ;The simplified records are represented as a key-value pair. 
 ;So the entity store is a simple key-value store. 
 
-
+;; (deftype entity-cursor [host id components]
+;;   (
+  
+  
 ;Porting the SQL-like language in Peter Seibel's excellent Practical Common Lisp
 (defn select-entities
   "Acts like a SQL select, in which components are analogous to single-column
@@ -468,7 +472,7 @@ ers from extensibility due to
                        (= join-by :union)  entity-union
                        :else join-by)]                       
   (reduce (fn [acc f] (if (nil? f) acc (f acc))) 
-      (get-entities store (joinfunc store (if (coll? from) from [from])))
+      (get-entities store (joinfunc store (if (coll? from) from [from]))) ;returns ids
       [(when where 
          (fn [es] (filter where es))) 
        (when order-by
@@ -480,7 +484,7 @@ ers from extensibility due to
                                   where nil
                                   order-by nil}}]
   (->> (select-entities  store 
-         {:from from :join-by join-by :where where :order-by order-by})
+         :from from :join-by join-by :where where :order-by order-by)
        (add-entities emptystore)))
 
 ;;build queries on this...
