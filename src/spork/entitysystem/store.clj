@@ -709,12 +709,52 @@
              m (merge (meta name) {:doc doc :arglists (list 'quote (list args))})]
          `(def ~(with-meta name m)  
             (entity-spec ~args ~specs ~components)))
-         (throw (Exception. "Entity spec is invalid!")))))
+       (throw (Exception. "Entity spec is invalid!")))))
+
+(defn all-entities [ces components]
+  (let [entity->record (fn [e] (reduce (fn [acc c]
+                                         (assoc acc c (val (get-entry ces e c))))
+                                       {:id e} components))]
+    (reify
+      clojure.core.protocols/CollReduce
+      (coll-reduce [this f1]
+        (clojure.core.protocols/coll-reduce this f1 (f1)))
+      (coll-reduce [this f1 init]
+        (->>  (entity-union ces components)
+              (clojure.core.reducers/map entity->record )
+              (reduce f1 init)))
+      clojure.lang.Seqable
+      (seq [this] (map entity->record (entity-union ces components))))))
+
+(defn only-entities [ces components]
+  (let [entity->record (fn [e] (reduce (fn [acc c]
+                                         (assoc acc c (val (get-entry ces e c))))
+                                       {:id e} components))]
+    (reify
+      clojure.core.protocols/CollReduce
+      (coll-reduce [this f1]
+        (clojure.core.protocols/coll-reduce this f1 (f1)))
+      (coll-reduce [this f1 init]
+        (->>  (entity-intersection ces components)
+              (clojure.core.reducers/map entity->record)
+              (reduce f1 init)))
+      clojure.lang.Seqable
+      (seq [this] (map entity->record (entity-intersection ces components))))))
 
 ;;testing
-(comment 
-
+(comment
+  (defn simple [nd & {:keys [transform background]}]
+    (let  [cnv (doto (picc/->canvas)
+                     (.setPreferredSize (java.awt.Dimension. 600 600)))
+           layer (.getLayer cnv)
+           _     (when transform (.setTransform layer transform))
+           _     (when background (if (picc/node? background)
+                                    (picc/add-child! layer nd)
+                                    (.setPaint (.getCamera cnv) background)))]
+      (picc/add-child! layer nd)
+      (picc/show! cnv)))
 )
+
 
 
 ;;Different IEntityStore implementations.  Displaced
