@@ -270,6 +270,21 @@
 (defn disj-entity [db id xs] 
   (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
 
+;;Todo
+;;Replace this with more efficient algorithm.  Right now,
+;;we're removing entry by entry.  It's probably faster to
+;;dissoc the domain from the store, and walk all effected entities,
+;;or better yet, collect all effected entities in batch,
+;;then walk them (and dissoc the domains from the store).
+(defn drop-domains [ces ds]
+  (reduce  (fn [acc d]
+             (reduce-kv (fn [acc ent _]
+                          (drop-entry acc ent d))
+                        acc (get-domain acc d)))
+           ces ds))
+
+(defn drop-domain [ces d]  (drop-domains ces [d]))
+
 ;; (comment ;testing
 
 ;; (def db (conj-entity emptystore 2 {:age 22 :name "some-entity"}))
