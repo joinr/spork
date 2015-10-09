@@ -21,21 +21,24 @@
 
 (def inf (java.lang.Double/POSITIVE_INFINITY))
 
-(defrecord FSMdata [curstate prevstate nextstate 
-                    timeinstate timeinstateprior duration durationprior
-                    statestart statehistory])
+(defrecord statedata [curstate prevstate nextstate 
+                      timeinstate timeinstateprior duration durationprior
+                      statestart statehistory])
 
-(def blank-data (FSMData. nil nil nil 0 0 inf inf 0 [])) 
+(def blank-data (statedata. nil nil nil 0 0 inf inf 0 [])) 
   
 
 (defn change-state [fsm newstate & [newduration followingstate instant]]
-  (merge fsm {:currentstate newstate 
+  (merge fsm {:curstate newstate 
               :nextstate followingstate
               :statehistory (conj (:statehistory fsm) newstate)
-              :duration newduration}))
+              :duration newduration
+              :timeinstate 0}))
 
-(defn remaining [fsm]
-  (- (:duration fsm) (:timeinstate fsm)))
+(defn remaining [fsm]  
+   (- (:duration fsm) (:timeinstate fsm)))
+
+            
 
 ;'Quick, instantaneous blips between state changes, usually with the intent to revert back soonafter
 ;Public Sub BlipState(newstate As String, Optional followingstate As String)
@@ -52,6 +55,8 @@
 ;    duration = 0
 ;End If
 ;End Sub
+
+
 ;'TODO -> wrap this into a list of states ....
 ;'newstate
 ;'Write now, it only goes back one, then cycles on infinitely between 2 states, only really good for
@@ -73,19 +78,19 @@
 ;duration = DurationPrior
 ;timeinstate = timeinstatePrior
 ;
+
 ;'PreviousState
 ;'DurationPrior
 ;'tmpstate
 ;'tmpdur
 ;StateHistory.add CurrentState 'shows the reversion
 ;End Sub
-;Public Function Progress() As Single
-;
-;If duration <> infinite And duration <> 0 Then
-;    Progress = timeinstate / duration
-;Else
-;    Progress = 0
-;End If
-;
-;End Function
 
+(defn progress [{:keys [duration timeinstate] :as sd}] 
+  (if (and (pos? duration) (not= duration inf))
+    (double (/ timeinstate duration))
+    0))
+
+
+(defn add-duration [{:keys [timeinstate] :as sd} amt]
+  (assoc sd :timeinstate (+ timeinstate amt)))
