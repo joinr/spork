@@ -106,14 +106,33 @@
 
 (defn behavior? [obj] (satisfies? IBehaviorTree obj))
 
+;;We can extend our interpreter to understand more...
+;;Right now, it only understands functions and behavior nodes.
+;;Functions are expected to be :: context -> 'a.
+;;What if they return a behavior?  It's useful to
+;;implictly evaluate the resulting behavior with the given context...
+;;acting as an implict pipeline.  Is this akin to a stack-based language
+;;where we're passing arguments implictly (via the stack)?
+;; (defn beval
+;;   "Maps a behavior tree onto a context, returning the familiar 
+;;   [[:fail | :success | :run] resulting-context] pair."
+;;   [b ctx]
+;;   (cond (behavior? b) (behave b ctx) ;;same as beval....
+;;         (fn? b)       (b ctx)))
 
+;;are there any atomic behaviors that we can define beval with?
+;;I.e. leaves in the computation....
+;;As stated, behave always maps context to [[fail success run] context]
+;;Ah...but functions can return behaviors or modified contexts.
+;;If it returns a vector, we should terminate evaluation.
 (defn beval
   "Maps a behavior tree onto a context, returning the familiar 
   [[:fail | :success | :run] resulting-context] pair."
   [b ctx]
-  (cond (behavior? b) (behave b ctx)
-        (fn? b) (b ctx)))
-
+  (cond (vector? b)   b ;;result with context stored in meta.
+        (behavior? b) (behave b ctx) ;;evaluate the behavior node.                        
+        (fn? b)       (beval (b ctx) ctx) ;;apply the function to the current context
+        :else (throw (Exception. (str ["Cannot evaluate" b " in " ctx])))))
 ;;convenience? macros...at least it standardizes success and failure,
 ;;provides an API for communicating results.
 (defmacro success [expr]  `(vector :success ~expr))
