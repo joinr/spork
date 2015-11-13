@@ -129,15 +129,17 @@
   "Maps a behavior tree onto a context, returning the familiar 
   [[:fail | :success | :run] resulting-context] pair."
   [b ctx]
-  (cond (vector? b)   b ;;result with context stored in meta.
-        (behavior? b) (behave b ctx) ;;evaluate the behavior node.                        
-        (fn? b)       (beval (b ctx) ctx) ;;apply the function to the current context
+  (cond (vector?   b)   b ;;result with context stored in meta.
+        (behavior? b)  (behave b ctx) ;;evaluate the behavior node.                        
+        (fn?       b)  (beval (b ctx) ctx) ;;apply the function to the current context
         :else (throw (Exception. (str ["Cannot evaluate" b " in " ctx])))))
+
+;;we could probably just make these functions...
 ;;convenience? macros...at least it standardizes success and failure,
 ;;provides an API for communicating results.
 (defmacro success [expr]  `(vector :success ~expr))
-(defmacro fail [expr]  `(vector :fail ~expr))
-(defmacro run [expr]  `(vector :run ~expr))
+(defmacro fail [expr]     `(vector :fail ~expr))
+(defmacro run [expr]      `(vector :run ~expr))
 
 (defn success? "Indicates if the behavior succeded."
   [res]
