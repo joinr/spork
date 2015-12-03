@@ -12,7 +12,6 @@
 (ns spork.util.io
     (:require [clojure [string :as strlib] 
                        [set :as setlib]]
-              [clojure.contrib [json :as json]]
               [clojure.java [io :as io]]
               [clojure [pprint :as pp]]))
 
