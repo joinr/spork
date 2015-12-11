@@ -25,7 +25,7 @@
                  (let [t       (:t e)
                        data    (:data e)]
                    (case (:type e)
-;                     :resampling [es actives :changed]
+                     :resampling [es actives :sampled]
                      :add (let [to-drop (drop-demand (+ t (duration-func data)) data)
                                 nxt     (conj es [to-drop (:t to-drop)])]
                             [nxt 
@@ -38,13 +38,19 @@
                              (map (fn [x] [(add-demand (start-func x) x) (start-func x)]) xs))]
   (gen/unfold (fn [state]  (empty? (first state)))  ;halt when no more events.            
               (fn [state]                
-                (let [es      (first state)
+                (let [es      (first  state)
                       actives (second state)
                       s       (nth state 2)
                       event               (peek es)
-                      remaining-events    (pop es)
-                      current-time        (:t event)]
-                  (handle event [remaining-events actives s]))) 
+                      remaining-events    (pop  es)
+                      current-time        (:t   event)]
+                  (if (or (= s :sampled)
+                          (when-let [ne (peek remaining-events)]
+                            (= current-time (:t ne))))
+                    (handle event [remaining-events actives s])
+                    (handle event [(conj remaining-events [(resample current-time)
+                                                           current-time])
+                                   actives s])))) 
               [initial-events #{} :init])))
 
 ;; (defn temporal-profile
