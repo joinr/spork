@@ -2,9 +2,9 @@
 ;;ordered quality, like event streams, data that has a notion of start and 
 ;;duration, etc. 
 (ns spork.util.temporal
-  (:require [spork.util [generators :as gen]]
-            [spork.data [priorityq :as pq]]
-            [clojure.core [reducers :as r]]))
+  (:require [spork.util   [generators :as gen]]
+            [spork.data   [priorityq  :as pq]]
+            [clojure.core [reducers   :as r]]))
 
 ;;Note -> sorted set was originally a problem here.  I have resulted
 ;;to using a priority queue.
@@ -44,7 +44,7 @@
                       event               (peek es)
                       remaining-events    (pop  es)
                       current-time        (:t   event)]
-                  (if (or (= s :sampled)
+                  (if (or (= (:type event) :resampling)
                           (when-let [ne (peek remaining-events)]
                             (= current-time (:t ne))))
                     (handle event [remaining-events actives s])
