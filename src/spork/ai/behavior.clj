@@ -104,7 +104,8 @@
   ;; (invoke [obj arg] (f arg))
   )
 
-(defn behavior? [obj] (satisfies? IBehaviorTree obj))
+;;note, originally used satisfies? but extends? is much faster..
+(defn behavior? [obj] (extends? IBehaviorTree (class obj)))
 
 ;;We can extend our interpreter to understand more...
 ;;Right now, it only understands functions and behavior nodes.
@@ -129,10 +130,11 @@
   "Maps a behavior tree onto a context, returning the familiar 
   [[:fail | :success | :run] resulting-context] pair."
   [b ctx]
-  (cond (vector?   b)   b ;;result with context stored in meta.
-        (behavior? b)  (behave b ctx) ;;evaluate the behavior node.                        
+  (cond (vector?   b)   b ;;result with context stored in meta.        
         (fn?       b)  (beval (b ctx) ctx) ;;apply the function to the current context
-        :else (throw (Exception. (str ["Cannot evaluate" b " in " ctx])))))
+        :else (behavior? b)  (behave b ctx) ;;evaluate the behavior node.
+                                        ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
+        ))
 
 ;;we could probably just make these functions...
 ;;convenience? macros...at least it standardizes success and failure,
