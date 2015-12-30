@@ -1,6 +1,7 @@
 ;;An implementation of an entity store, based on an entity-component
 ;;architecture.    Might rename this to "CENTS" "Component Entity System"
-(ns spork.entitysystem.store)
+(ns spork.entitysystem.store
+  (:require [clojure.core.reducers :as r]))
 
 ;A component-based architecture is a collection of Domains, Systems, Components,
 ;and entities.  
@@ -392,17 +393,39 @@
   [db domains]
   (->> domains 
     (map #((comp set entities-in) db %)) 
-    (reduce clojure.set/union))) 
-    
+    (reduce clojure.set/union)))
+
+;;this is putting us on the critical path, and it's slow as-is.
+;;Coercing to sets and computing intersection is apparently slower
+;;than we'd like.  Since we use this A LOT, we want other ways to
+;;determine intersection...One way is to hash-and-count...
+;; (defn entity-intersection
+;;   "Returns the logical intersection of entities across one or more domains, 
+;;    retuning a set of entity ids, in which each entity is a member of 
+;;    all domains."
+;;   [db domains]
+;;   (->> domains 
+;;     (map #((comp set entities-in) db %)) 
+;;     (reduce clojure.set/intersection)))
+
 (defn entity-intersection
   "Returns the logical intersection of entities across one or more domains, 
    retuning a set of entity ids, in which each entity is a member of 
    all domains."
   [db domains]
-  (->> domains 
-    (map #((comp set entities-in) db %)) 
-    (reduce clojure.set/intersection)))
-
+  (let [n (count domains) ;;number we have to have to have intersection...
+        ]
+    (->> domains 
+         (r/mapcat #(entities-in db %))         
+         (frequencies) ;;probably slow...
+         (reduce-kv (fn [acc k qty]
+                      (if (== qty n)
+                        (conj! acc k)
+                        acc))
+                    (transient [])
+                    )
+         (persistent!))))
+                   
 (defn key->symbol [k]
   (symbol (subs (str k) 1)))
 
