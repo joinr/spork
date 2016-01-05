@@ -132,7 +132,7 @@
   [b ctx]
   (cond (vector?   b)   b ;;result with context stored in meta.        
         (fn?       b)  (beval (b ctx) ctx) ;;apply the function to the current context
-        :else (behavior? b)  (behave b ctx) ;;evaluate the behavior node.
+        :else (behave b ctx) ;;evaluate the behavior node.
                                         ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
         ))
 
