@@ -69,7 +69,7 @@
   (draw-shape    [shp c] (draw-image c shp (.getTransparency shp) 0 0))
   (shape-bounds  [shp] (spork.protocols.spatial/bbox 0 0 (.getWidth shp) (.getHeight shp)))
   IShapeStack
-  (push-shape [c shp] (do (draw-shape  shp (get-graphics c)) c))
+  (push-shape [c shp] (do (draw-shape  shp (get-graphics-img c)) c))
   (pop-shape [c shp] c)
   IBoundedCanvas
   (canvas-width  [c] (.getWidth c))
@@ -95,36 +95,36 @@
   (shape-bounds [s]   (spatial/bbox 0 0 width height))
   (draw-shape   [s c] (draw-image c data transparency 0 0))
   I2DGraphicsProvider
-  (get-graphics [s] (get-graphics data))
+  (get-graphics [s] (get-graphics-img data))
   ICanvas2D
   (get-context    [canvas] 
     (get-context data)) 
   (set-context    [ig ctx]  
     (assoc ig :data (set-context data ctx))) 
   (draw-point     [ig color x y w] 
-    (do (draw-point (get-graphics data) color x y w) ig))    
+    (do (draw-point (get-graphics-img data) color x y w) ig))    
   (draw-line      [ig color x1 y1 x2 y2]
-    (do (draw-line (get-graphics data) color x1 y1 x2 y2) ig))
+    (do (draw-line (get-graphics-img data) color x1 y1 x2 y2) ig))
   (draw-rectangle [ig color x y w h]  
-    (do (draw-rectangle (get-graphics data) color x y w h) ig))
+    (do (draw-rectangle (get-graphics-img data) color x y w h) ig))
   (fill-rectangle [ig color x y w h]  
-    (do (fill-rectangle (get-graphics data) color x y w h) ig))
+    (do (fill-rectangle (get-graphics-img data) color x y w h) ig))
   (draw-ellipse   [ig color x y w h]  
-    (do (draw-ellipse (get-graphics data) color x y w h) ig))
+    (do (draw-ellipse (get-graphics-img data) color x y w h) ig))
   (fill-ellipse   [ig color x y w h]  
-    (do (fill-ellipse (get-graphics data) color x y w h) ig))
+    (do (fill-ellipse (get-graphics-img data) color x y w h) ig))
   (draw-string    [ig color font s x y] 
-    (do (draw-string (get-graphics data) color font s x y) ig))
+    (do (draw-string (get-graphics-img data) color font s x y) ig))
   (draw-image     [ig img transparency x y] 
-    (do (draw-image (get-graphics data) img transparency x y) ig))
+    (do (draw-image (get-graphics-img data) img transparency x y) ig))
   ICanvas2DExtended
-  (draw-polygon   [ig color  points] (do (draw-polygon (get-graphics data) color points) ig))
-  (fill-polygon   [ig color  points] (do (fill-polygon (get-graphics data) color points) ig))
-  (draw-path      [ig points] (do (draw-path (get-graphics data) points) ig))
-  (draw-poly-line [ig pline]  (do (draw-poly-line (get-graphics data) pline) ig))
-  (draw-quad      [ig tri]    (do (draw-quad (get-graphics data) tri) ig))
+  (draw-polygon   [ig color  points] (do (draw-polygon (get-graphics-img data) color points) ig))
+  (fill-polygon   [ig color  points] (do (fill-polygon (get-graphics-img data) color points) ig))
+  (draw-path      [ig points] (do (draw-path (get-graphics-img data) points) ig))
+  (draw-poly-line [ig pline]  (do (draw-poly-line (get-graphics-img data) pline) ig))
+  (draw-quad      [ig tri]    (do (draw-quad (get-graphics-img data) tri) ig))
   IInternalDraw
-  (-draw-shapes [ig xs] (let [g (get-graphics data)]
+  (-draw-shapes [ig xs] (let [g (get-graphics-img data)]
                           (do (draw-shapes g xs)
                             ig))))
   
