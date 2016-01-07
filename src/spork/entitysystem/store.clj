@@ -100,6 +100,10 @@
 
 ;;What we really want here is a flyweight entity container...
 
+;;We can define entity-reductions which allow the dsl to extend for reduce...
+;;(entity-merge ent {component val*}) => update the entries in the db via assoc
+;;and friends.  Could further optimize via diffing and other stuff.
+
 (extend-protocol IEntity 
   nil 
   (entity-name [n] nil)
@@ -749,6 +753,7 @@
             (entity-spec ~args ~specs ~components)))
        (throw (Exception. "Entity spec is invalid!")))))
 
+;;This is where a flyweight entity would come in handy.
 (defn all-entities [ces components]
   (let [entity->record (fn [e] (reduce (fn [acc c]
                                          (assoc acc c (val (get-entry ces e c))))

@@ -5,8 +5,8 @@
 ;So we define a simple class that can provide a default implementation for 
 ;make-bitmap, which "everyone" can use....
 (ns spork.graphics2d.image
-  (:use [spork.graphics2d.canvas])
-  (:require [spork.protocols [spatial :as spatial]]
+  (:require [spork.graphics2d.canvas :refer :all] 
+            [spork.protocols [spatial :as spatial]]
             [spork.graphics2d.swing.shared :refer
              [null-observer get-transparency +clear+ opaque]]
             [spork.graphics2d.swing :as swing])
@@ -15,8 +15,14 @@
            [java.awt.image BufferedImage ImageObserver]
            [javax.imageio ImageIO]))
 
+;;duplicated due to weird import statements...
+(defn ->canvas-graphics [^Graphics2D g width height]
+  (let [g (doto g (.translate 1.0 (double (dec height)))
+                  (.scale   1.0 -1.0))]
+    (spork.graphics2d.swing.CanvasGraphics. g width height)))
+
 (defn  get-graphics-img [^BufferedImage img]
-  (swing/->canvas-graphics (.getGraphics img) (.getWidth img) (.getHeight img))) 
+  (->canvas-graphics (.getGraphics img) (.getWidth img) (.getHeight img))) 
 
 (defn ^BufferedImage make-imgbuffer 
   ([w h ^Transparency t]

@@ -2,11 +2,11 @@
 ;Currently the default, although we should have plenty of other pluggable
 ;backends. 
 (ns spork.graphics2d.swing
-  (:use     [spork.graphics2d.canvas])
-  (:require [spork.graphics2d.swing.shared :refer
-             [null-observer get-transparency +clear+ opaque]]
+  (:require [spork.graphics2d.canvas :refer :all]
             [spork.graphics2d [font :as f]]
-            [spork.protocols [spatial :as s]])
+            [spork.protocols [spatial :as s]]
+            [spork.graphics2d.swing.shared :refer
+             [null-observer get-transparency +clear+ opaque]])
   (:import  [java.awt AlphaComposite Graphics Graphics2D GraphicsEnvironment 
              FontMetrics GraphicsDevice GraphicsConfiguration Polygon Point 
              Rectangle Shape Dimension Color Transparency Component Stroke GradientPaint]

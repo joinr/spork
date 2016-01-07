@@ -14,6 +14,8 @@
       (draw-shape [shp c] c)
       (shape-bounds [c] ebox))))
 
+;;we can probably cache these better...
+
 ;;The value here is a bit dubious, but it saves on some boilerplate..
 (defmacro defshape [name args bounds draw-body & specs]
   `(defrecord ~name [~@args] 

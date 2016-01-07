@@ -621,6 +621,7 @@
   [(->line :black 1 1 1 h)
    (->line :black 1 1 w 1)])
 
+(comment
 ;;coordinates are local to the plot's transform.  So, if we want to plot a shape,
 ;;the plot transforms the the shape to its local coordinate system, then acts 
 (defn ->plot
@@ -644,7 +645,6 @@
   ;;we have a plot.
   ;;the plot has labels.
 
-(comment
   (->plot 600 600 1 1 (->plane :grey 0 0 600 600)
           (vec (for [i (range 100)]
                  (->rectangle :red
@@ -1095,6 +1095,8 @@
       clojure.lang.IDeref
       (deref [obj] trend-box))))
 
+;;would be nice to have a plotting-function or something, so we can
+;;have a nice interface to the plot.
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
                                  xlabel-font ylabel-font title title-font cached
                                xn yn
