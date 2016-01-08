@@ -204,3 +204,15 @@
                     {:a :red :b :blue :c :green}
                     nil
                     (spork.protocols.spatial/bbox 0 0 1 1)))
+
+
+(defn trends-from [trs & {:keys [ctor]
+                        :or {ctor ->dirty-live-trends}}]
+  (let [[l r] (reduce (fn [[l r] [k idx v]]
+                        [(assoc l k idx)
+                         (assoc l k v)])
+                      [{} {}] 
+                      (map-indexed (fn [idx [k v]]
+                                     [k idx v])
+                                    (partition 2 trs)))]
+    (ctor [] l r)))
