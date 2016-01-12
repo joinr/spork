@@ -210,7 +210,7 @@
                         :or {ctor ->dirty-live-trends}}]
   (let [[l r] (reduce (fn [[l r] [k idx v]]
                         [(assoc l k idx)
-                         (assoc l k v)])
+                         (assoc r k v)])
                       [{} {}] 
                       (map-indexed (fn [idx [k v]]
                                      [k idx v])

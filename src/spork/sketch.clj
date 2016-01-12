@@ -787,7 +787,7 @@
 (defprotocol IPadded
   (hpad [s])
   (vpad [s]))
-
+  
 ;;we have a range.
 ;;we want to distribute the range across a span, so that the
 ;;numbers step evenly.
@@ -1126,8 +1126,10 @@
         plotyscale (or plotyscale yscale) ;(* yscale (/ h yspan ) )
         
         hax        (->gg-haxis  xmin xmax   10    w  :size 20 :steps xn)
+        haxcache   (image/shape->img (smooth hax))
         hwidth     (:width (shape-bounds hax))
         vax        (->gg-vaxis  ymin ymax   h  10    :size 20 :steps yn)
+        vaxcache   (image/shape->img (smooth vax))
         vheight    (:height (shape-bounds vax)) 
         xlbl       (->text :black xlabel-font xlabel 0 0 )
         ttl        (->text :black title-font title 0 0 )
@@ -1161,8 +1163,11 @@
                                   (scale sc sc
                                          (beside (smooth ylbl)
                                                  (above
-                                                  [(translate 0 (vpad hax) (smooth vax))
-                                                   (translate (hpad vax) (vpad vax) (smooth hax))
+                                                  [(translate 0 (vpad hax) ;(smooth vax)
+                                                                             vaxcache)
+                                                   (translate (hpad vax) (vpad vax) ;(smooth hax)
+                                                                                    haxcache
+                                                               )
                                                    (translate plot-x
                                                               plot-y
                                                               [(->gg-plotarea w
