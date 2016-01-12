@@ -307,6 +307,19 @@
 ;; (drop-entry db 2    :age 22) 
 ;; )
 
+;;Convenience operations on the entity store.
+;;
+;;note: these could be pulled out into the entitystore api. We'll see if they
+;;work out.
+(defn gete     [brd nm k]
+  (when-let [e (get-entry brd nm k)]
+    (val e)))
+;;this is a little hackish, we need to remove the mapentry storage, for now it'll work.
+(defn assoce   [brd nm k v] (add-entry  brd nm k (->component k v)))
+(defn dissoce  [brd nm k]   (drop-entry brd nm  k))
+(defn mergee   [brd nm m]
+  (reduce-kv (fn [acc c v]
+               (assoce acc nm c v)) brd m))
 
 ;protocol-derived functionality 
 
