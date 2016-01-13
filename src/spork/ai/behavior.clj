@@ -313,3 +313,91 @@
     ->while
     always-succeed
     always-fail])
+
+
+;;__Evaluating Behaviors in Context__
+;;A binding for the default context.  If no context is provided,
+;;we use this for implicit context, and require that it is bound
+;;during evaluation.
+(def ^:dynamic *ctx*)
+;;Auxilliary function.
+;;This just does the plumbing for us and lifts keys out of the environment.
+(defmacro key-fn
+  [vars & body]
+   `(fn [{:keys [~@vars] :as ~'ctx}]
+      ~@body))
+
+;;we're going to transform a (fn ... [args] body) into something
+;;like (defn ~name ~doc? [args] body)
+;;so really, just replacing (fn []) with (defn ~name ~doc) in the outer
+;;form...
+(defmacro fn->defn
+  ([name-opts expr]
+   (let [name-opts (if (coll? name-opts) name-opts
+                       [name-opts])
+         [fst args body] (macroexpand-1 expr)]
+     `(defn ~@name-opts ~args ~body)))
+  ([name docstring expr]
+   `(fn->defn [~name ~docstring] ~expr)))
+
+;;behavior functions automatically provide us with implicit failure if we
+;;return nil.  Note the binding of the symbl 'ctx . Since we're using the
+;;key-fn macro, when we unpack the key-fn, we automatically bind the map
+;;containing its args to a 'ctx var in the lexical scope of the function.
+;;Thus, we are guaranteed to have 'ctx available for binding in dynamic scope.
+;;bevals the whatever body evaluates to, in the *ctx*.  This should let us
+;;get away from having to define explicit continuation of evaluation,
+;;and move behavior composition into spork.ai.behavior/beval where it belongs,
+;;or into the specific nodes or functions for custom control flow.
+(defmacro befn
+  ([vars body]
+   `(key-fn ~vars
+            (binding [~'spork.ai.behavior/*ctx* ~'ctx]
+              (if-let [res# ~body]
+                (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
+                (fail ~'spork.ai.behavior/*ctx*)))))
+  ([name vars body]
+   `(fn->defn ~name
+       (key-fn ~vars
+               (binding [~'spork.ai.behavior/*ctx* ~'ctx]
+                 (if-let [res# ~body]
+                   (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
+                   (fail ~'spork.ai.behavior/*ctx*))))))
+  ([name docstring vars body]
+   `(befn [~name ~docstring] ~vars ~body)))
+
+;;These are primitive actions...
+;;We should probably include these in the entity environment...
+;;bind the keys to vals in the environmental context, returning a successful
+;;computation.
+;;This is similar to monadic bind, at least in meaning.  We associate new
+;;values to keys in the environment local to the compuatation (psuedo monad).
+;;Note: we could easily alter bind! to use atoms instead, and take
+;;advantage of mutation.  This is a trivial optimization to exploit
+;;in the future.
+;;Note: could be a macro....may be more efficient (not creating intermediate
+;;map or doing a reduction).
+(defn bind!
+  ([kvps ctx]
+   (success 
+    (reduce-kv (fn [acc k v]
+                 (assoc acc k v)) ctx kvps)))
+  ([kvps] (bind! kvps spork.ai.behavior/*ctx*)))
+
+;;removes bindings..
+(defn drop!
+  ([ks ctx]
+   (success (reduce (fn [acc k] (dissoc acc k)) ctx ks)))
+  ([ks] (drop! ks spork.ai.behavior/*ctx*)))
+
+
+(defmacro ->? [vars & body] `(->pred (key-fn ~vars ~@body)))  
+(defn ->prop? [k v] (->pred (fn [ctx] (= (get ctx k) v))))
+(defmacro ->let [[symbs ctx] & body]
+  `(fn [{:keys [~@symbs] :as ~ctx}]
+     (if-let [inner# ~@body]
+       (if (spork.ai.behavior/behavior? inner#)
+         (spork.ai.behavior/beval
+          inner# ~ctx)
+         inner#)
+       [:fail ~ctx])))
