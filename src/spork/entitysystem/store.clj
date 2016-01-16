@@ -262,10 +262,10 @@
                         (entity. id comps)))
   (conj-entity     [db id components] 
       (if (map? components) 
-        (reduce-kv (fn [acc dom dat]
+        (reduce-kv (fn [^EntityStore acc dom dat]
                      (.add-entry acc id dom dat))
                    db components)
-        (reduce (fn [acc domdat] (.add-entry acc id (first domdat) (second domdat)))
+        (reduce (fn [^EntityStore acc domdat] (.add-entry acc id (first domdat) (second domdat)))
                 db components))))
 
 (def emptystore (->EntityStore {} {}))

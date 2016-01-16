@@ -834,7 +834,7 @@
     (reify IShape
       (shape-bounds [s]   bounds) 
       (draw-shape   [s c]
-        (loop [offset 0
+        (loop [offset 0.0
                n      l
                canv c]
           (if (> n r) 
@@ -884,7 +884,7 @@
     (reify IShape
       (shape-bounds [s]   bounds) 
       (draw-shape   [s c]        
-        (loop [offset 0
+        (loop [offset 0.0
                n      l
                canv c]
           (if (> n r) 
