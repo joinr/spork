@@ -579,26 +579,40 @@
 
 (defn entity-reducer
   "Intermediate function to build traversable sequences of entity records.  Can be coerced 
-   to a seq, a reducer, or a KVReducible."
-  [get-entities ces components]
-  (let [entity->record (fn [e] (reduce (fn [acc c]
-                                         (assoc acc c (val (get-entry ces e c))))
-                                       {:id e} components))]
-    (reify
-      clojure.core.protocols/IKVReduce
-      (kv-reduce [amap f init]
-        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
-              (reduce (fn [acc e]
-                        (f acc e (entity->record e))) init)))
-      clojure.core.protocols/CollReduce
-      (coll-reduce [this f1]
-        (clojure.core.protocols/coll-reduce this f1 (f1)))
-      (coll-reduce [this f1 init]
-        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
-              (clojure.core.reducers/map entity->record )
-              (reduce f1 init)))
-      clojure.lang.Seqable
-      (seq [this] (map entity->record (get-entities ces components))))))
+   to a seq, a reducer, or a KVReducible.  If no components are supplied, defaults to 
+   returning all of the entity's components. get-ids may be a sequence of entity ids, or 
+   more typically, a function of ces->components->[id] "
+  ([get-ids ces] (entity-reducer get-ids ces nil))
+  ([get-ids ces components]
+   (let [entity->record (if (seq components)
+                          (fn [id] (reduce (fn [acc c]
+                                             (assoc acc c (val (get-entry ces id c))))
+                                           {:id id} components))
+                          (fn [id] (reduce (fn [acc c]
+                                             (assoc acc c (val (get-entry ces id c))))
+                                           {:id id} (domains-of ces id))))
+         get-ids (cond (fn? get-ids) get-ids
+                       (or (identical? get-ids :*)
+                           (identical? get-ids :all)) (fn [ces _] (keys (entities ces)))
+                       (seq get-ids) (fn [ces components] (vec get-ids))
+                       :else (throw (Exception.
+                                     (str ("get-ids must be a seq of entity ids, a function, or :*/:all ;"
+                                           get-ids)))))]
+     (reify
+       clojure.core.protocols/IKVReduce
+       (kv-reduce [amap f init]
+         (->>  (get-ids ces components) ;produces a reducible/foldable vector.
+               (reduce (fn [acc id]
+                         (f acc id (entity->record id))) init)))
+       clojure.core.protocols/CollReduce
+       (coll-reduce [this f1]
+         (clojure.core.protocols/coll-reduce this f1 (f1)))
+       (coll-reduce [this f1 init]
+         (->>  (get-ids ces components) ;produces a reducible/foldable vector.
+               (clojure.core.reducers/map entity->record )
+               (reduce f1 init)))
+       clojure.lang.Seqable
+       (seq [this] (map entity->record (get-ids ces components)))))))
 
 (defn all-entities
   "Select entities that have all components"
