@@ -547,10 +547,15 @@
 ;The simplified records are represented as a key-value pair. 
 ;So the entity store is a simple key-value store. 
 
-;; (deftype entity-cursor [host id components]
+
+;;if we have a flyweight entity, it'd be
+;;the id, a pointer to the ces, and any cached components. we currently have.
+;;upon reading a component, we update the cache.
+;;note: another option is that we develop a cursor type specifically for the entitystore.
+;;this provides field-level access to the entity.
+;; (deftype entity-cursor [host id components cache]
 ;;   (
-  
-  
+
 ;Porting the SQL-like language in Peter Seibel's excellent Practical Common Lisp
 (defn select-entities
   "Acts like a SQL select, in which components are analogous to single-column
@@ -571,6 +576,39 @@
          (fn [es] (filter where es))) 
        (when order-by
          (fn [es] (sort-by order-by es)))])))
+
+(defn entity-reducer
+  "Intermediate function to build traversable sequences of entity records.  Can be coerced 
+   to a seq, a reducer, or a KVReducible."
+  [get-entities ces components]
+  (let [entity->record (fn [e] (reduce (fn [acc c]
+                                         (assoc acc c (val (get-entry ces e c))))
+                                       {:id e} components))]
+    (reify
+      clojure.core.protocols/IKVReduce
+      (kv-reduce [amap f init]
+        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
+              (reduce (fn [acc e]
+                        (f acc e (entity->record e))) init)))
+      clojure.core.protocols/CollReduce
+      (coll-reduce [this f1]
+        (clojure.core.protocols/coll-reduce this f1 (f1)))
+      (coll-reduce [this f1 init]
+        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
+              (clojure.core.reducers/map entity->record )
+              (reduce f1 init)))
+      clojure.lang.Seqable
+      (seq [this] (map entity->record (get-entities ces components))))))
+
+(defn all-entities
+  "Select entities that have all components"
+  [ces components]
+  (entity-reducer entity-union ces))
+
+(defn only-entities
+  "Select entities that have only the specified components"
+  [ces components]
+  (entity-reducer entity-intersection ces))
 
 (defn select-store [store & {:keys [from join-by where order-by] 
                              :or {from (domain-keys store)
@@ -805,39 +843,6 @@
             (entity-spec ~args ~specs ~components)))
        (throw (Exception. "Entity spec is invalid!")))))
 
-
-(defn entity-reducer
-  "Intermediate function to build traversable sequences of entity records.  Can be coerced 
-   to a seq, a reducer, or a KVReducible."
-  [get-entities ces components]
-  (let [entity->record (fn [e] (reduce (fn [acc c]
-                                         (assoc acc c (val (get-entry ces e c))))
-                                       {:id e} components))]
-    (reify
-      clojure.core.protocols/IKVReduce
-      (kv-reduce [amap f init]
-        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
-              (reduce (fn [acc e]
-                        (f acc e (entity->record e))) init)))
-      clojure.core.protocols/CollReduce
-      (coll-reduce [this f1]
-        (clojure.core.protocols/coll-reduce this f1 (f1)))
-      (coll-reduce [this f1 init]
-        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
-              (clojure.core.reducers/map entity->record )
-              (reduce f1 init)))
-      clojure.lang.Seqable
-      (seq [this] (map entity->record (get-entities ces components))))))
-
-(defn all-entities
-  "Select entities that have all components"
-  [ces components]
-  (entity-reducer entity-union ces))
-
-(defn only-entities
-  "Select entities that have only the specified components"
-  [ces components]
-  (entity-reducer entity-intersection ces))
 
 ;;This is where a flyweight entity would come in handy.
 ;; (defn all-entities [ces components]
