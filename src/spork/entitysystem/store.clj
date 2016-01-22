@@ -603,12 +603,12 @@
 (defn all-entities
   "Select entities that have all components"
   [ces components]
-  (entity-reducer entity-union ces))
+  (entity-reducer entity-union ces components))
 
 (defn only-entities
   "Select entities that have only the specified components"
   [ces components]
-  (entity-reducer entity-intersection ces))
+  (entity-reducer entity-intersection ces components)) 
 
 (defn select-store [store & {:keys [from join-by where order-by] 
                              :or {from (domain-keys store)
