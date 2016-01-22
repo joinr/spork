@@ -95,8 +95,8 @@
     (entity. name (assoc components (component-domain c) c)))
   (disj-component [e c] 
     (entity. name (dissoc components (component-domain c) c)))
-  (get-component [e domain] (get components domain))
-  (entity-components [e] components))
+  (get-component [e domain]          (get components domain))
+  (entity-components [e]             components))
 
 ;;What we really want here is a flyweight entity container...
 
@@ -452,24 +452,36 @@
 ;;     (map #((comp set entities-in) db %)) 
 ;;     (reduce clojure.set/intersection)))
 
+
+;;we could have this return a reducer instead of building the
+;;transient collection, eliminates the need for a transient.
+;;the only problem we have is..
+;;we get a reducible collection of
+;; {k xs}
+
+;;we want to count collections...
+;;so [k | k <- (k,v), (k,v) <- kvps, where (count v) = n]
+;;can we fold this? or do we kv reduce it...
+;;frequencies creates a transient map too.
+
 (defn entity-intersection
   "Returns the logical intersection of entities across one or more domains, 
-   retuning a set of entity ids, in which each entity is a member of 
+   returning a set of entity ids, in which each entity is a member of 
    all domains."
   [db domains]
   (let [n (count domains) ;;number we have to have to have intersection...
         ]
     (->> domains 
-         (r/mapcat #(entities-in db %))         
-         (frequencies) ;;probably slow...
-         (reduce-kv (fn [acc k qty]
+         (r/mapcat #(entities-in db %)) ;concated rediucible seq of all the keys in each component, entitiy ids.         
+         (frequencies) ;probably slow...
+         (reduce-kv (fn [acc k qty] ;this is actually faster than r/filtering...
                       (if (== qty n)
                         (conj! acc k)
                         acc))
                     (transient [])
-                    )
+                    )         
          (persistent!))))
-                   
+
 (defn key->symbol [k]
   (symbol (subs (str k) 1)))
 
@@ -793,36 +805,70 @@
             (entity-spec ~args ~specs ~components)))
        (throw (Exception. "Entity spec is invalid!")))))
 
-;;This is where a flyweight entity would come in handy.
-(defn all-entities [ces components]
+
+(defn entity-reducer
+  "Intermediate function to build traversable sequences of entity records.  Can be coerced 
+   to a seq, a reducer, or a KVReducible."
+  [get-entities ces components]
   (let [entity->record (fn [e] (reduce (fn [acc c]
                                          (assoc acc c (val (get-entry ces e c))))
                                        {:id e} components))]
     (reify
+      clojure.core.protocols/IKVReduce
+      (kv-reduce [amap f init]
+        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
+              (reduce (fn [acc e]
+                        (f acc e (entity->record e))) init)))
       clojure.core.protocols/CollReduce
       (coll-reduce [this f1]
         (clojure.core.protocols/coll-reduce this f1 (f1)))
       (coll-reduce [this f1 init]
-        (->>  (entity-union ces components)
+        (->>  (get-entities ces components) ;produces a reducible/foldable vector.
               (clojure.core.reducers/map entity->record )
               (reduce f1 init)))
       clojure.lang.Seqable
-      (seq [this] (map entity->record (entity-union ces components))))))
+      (seq [this] (map entity->record (get-entities ces components))))))
 
-(defn only-entities [ces components]
-  (let [entity->record (fn [e] (reduce (fn [acc c]
-                                         (assoc acc c (val (get-entry ces e c))))
-                                       {:id e} components))]
-    (reify
-      clojure.core.protocols/CollReduce
-      (coll-reduce [this f1]
-        (clojure.core.protocols/coll-reduce this f1 (f1)))
-      (coll-reduce [this f1 init]
-        (->>  (entity-intersection ces components)
-              (clojure.core.reducers/map entity->record)
-              (reduce f1 init)))
-      clojure.lang.Seqable
-      (seq [this] (map entity->record (entity-intersection ces components))))))
+(defn all-entities
+  "Select entities that have all components"
+  [ces components]
+  (entity-reducer entity-union ces))
+
+(defn only-entities
+  "Select entities that have only the specified components"
+  [ces components]
+  (entity-reducer entity-intersection ces))
+
+;;This is where a flyweight entity would come in handy.
+;; (defn all-entities [ces components]
+;;   (let [entity->record (fn [e] (reduce (fn [acc c]
+;;                                          (assoc acc c (val (get-entry ces e c))))
+;;                                        {:id e} components))]
+;;     (reify
+;;       clojure.core.protocols/CollReduce
+;;       (coll-reduce [this f1]
+;;         (clojure.core.protocols/coll-reduce this f1 (f1)))
+;;       (coll-reduce [this f1 init]
+;;         (->>  (entity-union ces components) ;produces a reducible/foldable vector.
+;;               (clojure.core.reducers/map entity->record )
+;;               (reduce f1 init)))
+;;       clojure.lang.Seqable
+;;       (seq [this] (map entity->record (entity-union ces components))))))
+
+;; (defn only-entities [ces components]
+;;   (let [entity->record (fn [e] (reduce (fn [acc c]
+;;                                          (assoc acc c (val (get-entry ces e c))))
+;;                                        {:id e} components))]
+;;     (reify
+;;       clojure.core.protocols/CollReduce
+;;       (coll-reduce [this f1]
+;;         (clojure.core.protocols/coll-reduce this f1 (f1)))
+;;       (coll-reduce [this f1 init]
+;;         (->>  (entity-intersection ces components)
+;;               (clojure.core.reducers/map entity->record)
+;;               (reduce f1 init)))
+;;       clojure.lang.Seqable
+;;       (seq [this] (map entity->record (entity-intersection ces components))))))
 
 ;;testing
 (comment
