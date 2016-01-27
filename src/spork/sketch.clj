@@ -969,6 +969,16 @@
          ^spork.cljgui.components.PaintPanel p
          (gui/new-paintpanel w h #(canvas/draw-shape myshape %) )
          m          (nat/get-observer  p :mouse)         
+         mousemove  (obs/cyclical-obs (:released m) (:dragged m))                    
+         ]
+     (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))))
+
+(defn ->interactive-painting [w h shp]
+   (let [myshape    (->interactor shp)
+         {:keys [xpan ypan]} @myshape
+         ^spork.cljgui.components.PaintPanel p
+         (gui/new-paintpanel w h #(canvas/draw-shape myshape %) )
+         m          (nat/get-observer  p :mouse)         
          mousemove  (->> (obs/cyclical-obs (:released m) (:dragged m))
                          (obs/subscribe
                           (fn [[^java.awt.event.MouseEvent l ^java.awt.event.MouseEvent r]]
@@ -977,7 +987,8 @@
                                   yd (-  (.getY l) (.getY r) )]
                               (do (when-not (zero? xd) (swap! xpan + xd))
                                   (when-not (zero? yd) (swap! ypan + yd))
-                                  (.repaint p))))))]
+                                  (.repaint p))))))
+         ]
      (with-meta p (merge @myshape {:mouse-obs m :mousemove mousemove}))))
 
 (defn paint!
