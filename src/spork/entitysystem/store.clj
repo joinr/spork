@@ -612,7 +612,9 @@
                (clojure.core.reducers/map entity->record )
                (reduce f1 init)))
        clojure.lang.Seqable
-       (seq [this] (map entity->record (get-ids ces components)))))))
+       (seq [this] (map entity->record (get-ids ces components)))
+       clojure.lang.Counted
+       (count [this] (count (get-ids ces components)))))))
 
 (defn all-entities
   "Select entities that have all components"
