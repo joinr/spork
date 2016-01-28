@@ -27,6 +27,52 @@
 (def ^:dynamic *current-sketch* nil)
 (def ^:dynamic *anti-aliasing*  nil)
 
+;;note: this only works with swing atm...it should, ideally,
+;;be decoupled from the backend.
+(defn analyze
+  "Allows us to break a shape down into its primitive drawing 
+   instructions."
+  [shp]
+  (let [{:keys [x y width height]} (shape-bounds shp)
+        width (+ x width)
+        height (+ y height)
+        dg (provider/->debug-graphics width height)]
+     (get-path (draw-shape shp dg))))
+
+;;simple compiler for graphics instructions...
+;;we basically trim down the state changes required to draw the shape.
+(defn simplify [xs]
+  (transduce (comp (partition-by first)
+                   (map  (fn xd [instructions]
+                           (case (ffirst instructions)
+                             :translate    (reduce (fn collapse [[_ x y] [_ x2 y2]]
+                                                                [:translate (+ x x2) (+ y y2)])
+                                                              instructions)
+                             :scale        (reduce (fn collapse [[ins x y] [_ x2 y2]]
+                                                                [:scale (* x x2) (* y y2)])
+                                                              instructions)
+                             (last instructions))))                 
+                   (filter (fn f [x]
+                             (case (first x)
+                               :translate (or (not (zero? (nth x 1))) (not (zero? (nth x 2))))
+                               :scale     (and (not= (nth x 1) 1.0) (not= (nth x 2) 1.0))
+                               true))))
+             (completing
+              (fn xd [acc x] (conj acc x)))
+             [] xs))
+
+(defn deconstruct
+  "Given a shp, returns all the primitive shapes and their transforms.  Also records any state changes 
+  in order."
+  [shp]
+  (transduce (filter (fn [xs]
+                       (not (#{:translate :scale :rotate} (first xs)))))
+             (completing
+              (fn [acc shp]
+                (conj acc shp)))
+             []
+             (simplify (analyze shp))))
+
 ;;current options are :title and :cached?
 (defn sketch [the-shapes & opts] (apply gui/view the-shapes opts))
 
@@ -36,6 +82,9 @@
     (draw-shape [s c]
       (draw-shape shp (set-state c  {:antialias true})))))
 
+;; (def thick-stroke
+;;   (memoize (fn [amount strk]
+             
 (defn thicken [amount shp]
   (if (= amount 1.0) shp
       (reify IShape
@@ -105,7 +154,7 @@
                           (draw-shape s2 c) #(draw-shape s1 %))))))
 
 
-  
+
 (defn background [color shp]
   (let [{:keys [x y width height]} (shape-bounds shp)]
     [(->rectangle color 0 0 (+ x width) (+ y height))
@@ -113,10 +162,11 @@
 
 (defn translate [tx ty shp]
   (if (not (and (atom? tx) (atom? ty)))
-    (reify IShape 
-      (shape-bounds [s] (space/translate-bounds tx ty (shape-bounds shp)))
-      (draw-shape   [s c] (with-translation tx ty 
-                            c #(draw-shape shp %))))
+    (if (and (zero? tx) (zero? ty) ) shp
+        (reify IShape 
+          (shape-bounds [s] (space/translate-bounds tx ty (shape-bounds shp)))
+          (draw-shape   [s c] (with-translation tx ty 
+                                c #(draw-shape shp %)))))
     (reify IShape 
       (shape-bounds [s] (space/translate-bounds @tx @ty (shape-bounds shp)))
       (draw-shape   [s c] (with-translation @tx @ty 
@@ -210,12 +260,13 @@
   (if (not (and (atom? xscale) (atom? yscale)))
     (let [xscale (double xscale)
           yscale (double yscale)]
-      (reify IShape 
-        (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
-        (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %)))))
+      (if (and (== xscale 1.0) (== yscale 1.0)) shp
+          (reify IShape 
+            (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
+            (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %)))))
     (reify IShape 
       (shape-bounds [s]   (space/scale-bounds @xscale @yscale (shape-bounds shp)))    
-      (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %))))))
+      (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %)))))))
 
 (def ^:dynamic *cartesian* nil)
 (defn cartesian [shp]
@@ -716,10 +767,10 @@
 (defn ->scrolling-columns
   ([x1 y1 w h step color thickness]
    (let [ln ;(image/shape->img
-         (thicken thickness (->line color 1 0 1 h))
+          (->line color 1 0 1 h)
      ;    )
      ]
-     (repeat-across ln x1 y1 w step)))
+     (thicken thickness (repeat-across ln x1 y1 w step))))
   ([x1 y1 w h step color]
    (->scrolling-columns x1 y1 w h step :black 1.0))
   ([x1 y1 w h step] (->scrolling-columns x1 y1 w h step :black 1.0)))
@@ -727,10 +778,10 @@
 (defn ->scrolling-rows
   ([x1 y1 w h step color thickness]
    (let [ln ;(image/shape->img
-             (thicken thickness (->line color 0 1 w 1))
+              (->line color 0 1 w 1)
              ;)
          ]
-     (repeat-up ln x1 y1 h step)))
+    (thicken thickness (repeat-up ln x1 y1 h step))))
   ([x1 y1 w h step color]
    (->scrolling-columns x1 y1 w h step :black 1.0))
   ([x1 y1 w h step] (->scrolling-rows x1 y1 w h step :black 1.0)))
@@ -1137,10 +1188,10 @@
         plotyscale (or plotyscale yscale) ;(* yscale (/ h yspan ) )
         
         hax        (->gg-haxis  xmin xmax   10    w  :size 20 :steps xn)
-        haxcache   (image/shape->img (smooth hax))
+        haxcache   (smooth hax); (image/shape->img (smooth hax))
         hwidth     (:width (shape-bounds hax))
         vax        (->gg-vaxis  ymin ymax   h  10    :size 20 :steps yn)
-        vaxcache   (image/shape->img (smooth vax))
+        vaxcache   (smooth vax);(image/shape->img (smooth vax))
         vheight    (:height (shape-bounds vax)) 
         xlbl       (->text :black xlabel-font xlabel 0 0 )
         ttl        (->text :black title-font title 0 0 )
@@ -1168,6 +1219,7 @@
 
         pady         (if (= sc total-height)  0 (- plot-h h))
         padx         (if (= sc total-width)  0 (- plot-w w))
+        plotarea     (->gg-plotarea w h  xn yn)
         plt    [(->plane :white 0 0 w h)
                 (translate (/ padx 2.0) (/ pady 2.0)
                            (above (smooth ttl)
@@ -1181,8 +1233,7 @@
                                                                )
                                                    (translate plot-x
                                                               plot-y
-                                                              [(->gg-plotarea w
-                                                                              h  xn yn)
+                                                              [plotarea
                                                                (translate  x ;(- x  xmin) 
                                                                            y ;(- y ymin)
                                                                            (scale plotxscale plotyscale

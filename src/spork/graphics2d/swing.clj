@@ -427,6 +427,103 @@
   ICartesian
   )
 
+
+;;Wow...this opens up all sorts of ways to optimize, we can do
+;;a render queue...
+(deftype DebugGraphics [^Graphics2D g  width  height instructions]
+  ICanvas2D
+  (get-context    [cg]  cg)
+  (set-context    [cg ctx] (throw (Exception. "not implemented")))  
+  (draw-point     [cg color x1 y1 w]    
+    (swap! instructions conj  [:point color x1 y1 w (get-transform cg)])
+    cg)     
+  (draw-line      [cg color x1 y1 x2 y2]
+    (swap! instructions conj  [:line color x1 y1 x2 y2 (get-transform cg)])
+     cg)
+  (draw-rectangle [cg color x y w h]
+    (swap! instructions conj
+           [:rectangle color x y w h (get-transform cg)])
+    cg)
+  (fill-rectangle [cg color x y w h]
+    (let [c  (if (nil? color) :black color)]
+      (swap! instructions conj [:fill-rectangle color x y w h (get-transform cg)])
+      cg ))
+  (draw-ellipse   [cg color x y w h]
+    (swap! instructions conj  [:ellipse color x y w h (get-transform cg)])
+    cg)
+  (fill-ellipse   [cg color x y w h]
+    (swap! instructions conj [:fill-ellipse color x y w h (get-transform cg)])
+    cg)
+  (draw-string    [cg color font s x y]
+    (swap! instructions conj [:string color font s x y (get-transform cg)])
+    cg)  
+  (draw-image [cg img transparency x y]
+    (swap! instructions conj [:image img transparency x y (get-transform cg)])
+    cg)
+  IStroked
+   (get-stroke [cg] (.getStroke g))
+   (set-stroke [cg  s] (do (.setStroke g ^Stroke s)
+                           (swap! instructions conj [:stroke s]))
+     cg)
+  ITextRenderer
+  (text-width     [cg txt] (f/string-width (.getFont g) txt))
+  (text-height    [cg txt] (f/string-height (.getFont g)  txt))
+  (get-font       [cg] (.getFont g))
+  (set-font       [cg f] (do (.setFont g ^Font f)
+                             (swap! instructions conj  [:font f])
+                             cg))
+  ICanvas2DExtended
+  (draw-polygon   [cg color points]
+    (swap! instructions conj  [:poloygon color points (get-transform cg)])
+    cg)
+  (fill-polygon   [cg color points]
+    (swap! instructions conj  [:fill-polygon color points (get-transform cg)])
+    cg)
+  (draw-path      [cg points] (not-implemented draw-path))
+  (draw-poly-line [cg pline]  (not-implemented draw-poly-line))
+  (draw-quad      [cg tri]    (not-implemented draw-quad))
+  IBoundedCanvas
+  (canvas-width   [c] width)
+  (canvas-height  [c] height)
+  IGraphicsContext
+  (get-alpha      [cg] (get-composite g))
+  (get-transform  [cg] (get-transform* g))
+  (get-color      [cg] (get-current-color g))     
+  (set-color      [cg c]
+    (do (set-gui-color g 
+                       (get-gui-color c))
+        (swap! instructions conj  [:color c])
+        cg))
+  (set-alpha      [cg a]
+    (do (set-composite g (make-alphacomposite a))
+        (swap! instructions conj [:alpha a])
+        cg))
+  (set-transform  [cg t]
+    (do (set-transform* g t)
+        (swap! instructions conj  [:transform t])
+        cg))  
+  (translate-2d   [cg x y]
+    (doto g (.translate (int x) (int y)))
+    (swap! instructions conj  [:translate x y])
+    cg)
+  (scale-2d       [cg x y]
+    (doto g (.scale  x  y))
+    (swap! instructions conj  [:scale x y])
+    cg)
+  (rotate-2d      [cg theta]
+    (doto g (.rotate (float theta)))
+    (swap! instructions conj  [:rotate theta])
+    cg)
+  (set-state      [cg state] (interpret-state state g) cg)
+  (make-bitmap    [cg w h transp] (make-imgbuffer w h transp) cg)
+  clojure.lang.IDeref
+  (deref [obj] {:g g :instructions instructions})
+  ICartesian
+  IPathable
+  (get-path [obj] @instructions)
+  )
+
+
 ;;Wraps an existing canvas item and makes it into a smart cartesian
 ;;coordinate system-based canvas, allowing us to draw images and strings
 ;;unaltered.  Standard shapes will be reflected normally, strings and images
@@ -436,7 +533,32 @@
   (let [g (doto g (.translate 1.0 (double (dec height)))
                   (.scale   1.0 -1.0))]
     (CanvasGraphics. g width height)))
+;;debug graphics lets us walk the set of instructions and get
+;;a sense of the layout when we render a shape.  Useful for deriving
+;;absolute coordinates from a high-level scene.  Allows us to capture
 
+;;hmmm...we might be able to optimize the scene....
+;;symbolically...
+
+;;what we could do is...
+;;coerce the structure into an intermediate representation.
+;;The could be compiled into a piccolo scene graph (or other
+;;SG type).
+
+;;If there are static elements, we can compile them to
+;;an image layer, and only re-render layers that are
+;;dynamic or important...Also opens the ability to
+;;render dirty graphics...if we know the regions of
+;;the shape ahead of time, we have a tree that can
+;;be walked.  No updating bvh, just walk the
+;;static scene and render changes to dynamic elements....
+(defn ->debug-graphics [width height]
+  (let [bg (make-imgbuffer 1 1)
+        ^Graphics2D g (.getGraphics bg)
+        g (doto g (.translate 1.0 (double (dec height)))
+                   (.scale   1.0 -1.0))]
+    (DebugGraphics. g width height (atom []))))
+  
 ;a set of rendering options specific to the j2d context.
 ;We can expose these options for low-level stuff later.
 ;Right now, they don't do anything...

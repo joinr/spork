@@ -565,6 +565,9 @@
   (shape-bounds [s]   "Get a bounding box for the shape.")
   (draw-shape   [s c] "Draw the shape onto a canvas."))
 
+(defprotocol IPathable
+  (get-path [s] "return a vector of drawing instructions that describe the shape"))
+
 ;; ;;Shapes that define themselves relative to exogenous values...
 ;; ;;Used to implement panning and zooming....typically relative to a
 ;; ;;viewport and some offset in terms of pan (translation) and
