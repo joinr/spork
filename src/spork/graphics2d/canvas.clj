@@ -393,8 +393,12 @@
     (scale-2d       [ctx x y])
     (rotate-2d      [ctx theta])
     (set-state      [ctx state])
-    (make-bitmap    [ctx w h transp])) 
+    (make-bitmap    [ctx w h transp])
+    (get-debug      [ctx]))
 
+(defprotocol IGraphicsLog
+  (log [ctx msg]))
+ 
 ;;slight hack to enable some visual trickery.
 (defprotocol IStroked
    (get-stroke [ctx])
@@ -406,18 +410,40 @@
   (get-font       [canvas])
   (set-font       [canvas f]))
 
-(defn with-color
+;;__loggable graphics operations__
+(defmacro with-log
+  ([begin end ctx body]
+   `(if (spork.graphics2d.canvas/get-debug ~ctx)
+      (let [~ctx (spork.graphics2d.canvas/log ~ctx ~begin)
+            res# ~body]
+        (spork.graphics2d.canvas/log res# ~end))
+      ~body))
+  ([msg ctx body] (with-log msg msg ctx body)))
+
+(defmacro defop [nm doc args body]
+  (let [ctx (some (fn [s] (when (= (name s) "ctx") s)) args)]
+    (assert ctx "expected one arg to spork.graphics2d.canvas/defop to be 'ctx")
+    `(let [begin# [:begin (quote ~nm)]
+           end#   [:end (quote ~nm)]
+           ]     
+       (~'defn ~nm ~doc [~@args]
+         (with-log begin# end# ~ctx
+           ~body)))))
+
+;;__fundamental transforms__
+;;we can change back by swapping defop for defn fyi.
+          
+;; ;;original definitions (for now)...
+(defop with-color
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the color of the context if necessary, then reverts to
    the original color."
   [color ctx f]
   (let [c (get-color ctx)]
-;    (if (rgba-equal c color)
-;      (f ctx)
-      (-> (f (set-color ctx color))
+    (-> (f (set-color ctx color))
         (set-color c))))
 
-(defn with-font
+(defop with-font
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the color of the context if necessary, then reverts to
    the original color."
@@ -426,23 +452,23 @@
       (-> (f (set-font ctx (f/get-font the-font)))
         (set-font old-font))))
 
-(defn with-translation
+(defop with-translation
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the translation of the context, applies f, then undoes
    the translation."
   [x y ctx f] 
   (-> (f (translate-2d ctx x y))
-    (translate-2d (* -1 x) (* -1 y))))
+      (translate-2d (* -1 x) (* -1 y))))
 
-(defn with-rotation
+(defop with-rotation
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the rotation of the context, applies f, then undoes
    the rotation."
   [theta ctx f] 
   (-> (f (rotate-2d ctx theta))
-    (rotate-2d (* -1 theta))))
+      (rotate-2d (* -1  theta))))
 
-(defn with-scale
+(defop with-scale
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the translation of the context, applies f, then undoes
    the translation."
@@ -450,7 +476,7 @@
   (-> (f (scale-2d ctx (double xscale)  (double yscale)))
     (scale-2d (double (/ 1  xscale)) (double (/ 1  yscale)))))
 
-(defn with-transform
+(defop with-transform
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the rotation of the context, applies f, then undoes
    the rotation."
@@ -459,7 +485,7 @@
     (-> (f (set-transform ctx xform))
       (set-transform xform0))))
 
-(defn with-alpha
+(defop with-alpha
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    temporarily changes the alpha blending of the context, applies f, then undoes
    the blend."
@@ -468,14 +494,14 @@
     (-> (f (set-alpha ctx alpha))
       (set-alpha alpha0))))
 
-(defn with-stroke
+(defop with-stroke
   "Given a drawing function f, where f::IStroked->IStroked, 
    temporarily changes the stroke of the context, applies f, then undoes
    the blend."
   [stroke ctx f]
   (let [stroke0 (get-stroke ctx)]
     (-> (f (set-stroke ctx stroke))
-      (set-stroke stroke0))))
+        (set-stroke stroke0))))
 
 ;note - there are different ways to blend and composite two images...
 ;OpenGL uses a slew of blending rules and a blendfunction (these are built-in).
@@ -576,7 +602,12 @@
 ;;   (reactive-bounds [s]   "Get a bounding box for the shape.")
 ;;   (draw-reactive-shape   [s c] "Draw the shape onto a canvas."))
 
-
+;;==Performance Note===
+;;the use of satisfies?, while idiomatic, also hurts performance quite a bit.
+;;if we're on the critical path, we can get more by squeezing these calls
+;;into extends?.  That might be more efficient...although it depends on if
+;;the overhead matters since we're reducing over multiple shapes.  may be
+;;inconsequential.
 (defn shape-seq?
   "Function that determines if the collection is a simple sequence of things 
    that can be drawn using IShape, or if, despite being a sequence, already 
@@ -596,10 +627,14 @@
       (fn [c s] (if (not (shape-seq? s)) (draw-shape s c) (draw-shapes c s))) 
       c xs)))
 
+(defop group "Delimits drawing a group of shapes" [xs ctx]
+    (draw-shapes ctx xs))
+
 (extend-protocol IShape 
   clojure.lang.PersistentVector
   (shape-bounds [xs] (when xs (spatial/group-bounds (map shape-bounds xs))))
-  (draw-shape   [xs c] (draw-shapes c xs)))
+  (draw-shape   [xs c]  ;(draw-shapes c xs)))
+    (group xs c)))
 
 ;;maybe....
 (defn draw [s c]

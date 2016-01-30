@@ -172,10 +172,111 @@
 ;            10 40
 ;            50 80])
 
+;;so, all this came about as a result of trying to reify the existing
+;;sketch api into something that can be interpreted into a scene
+;;(for rendering in piccolo2d and friends).
+;;The original api focused on elements defined in canvas/graphics.
+;;around the graphicscontext protocol.
+;;in truth, MOST of the drawing calls are fixed around calls to
+;;supplemental functions in the canvas ns,
+;;namely the with-[] series of graphics swaps.
+;;the existing api uses (with-blah arg1 arg2 .... ctx)
+;;so that we can pipeline the operations through.
+;;If we use a protocol-defined context, then we
+;;end up with (with-blah ctx arg1 arg2.....) etc.
+;;The initial idea was to just implement these
+;;with macros and define them per implementation.
+;;Another option is to define some way of tagging
+;;the graphics operation, via an annotation, so
+;;that we can get all the good stuff.
+;;Perhaps a better mechanism is just to generate the
+;;ast directly, i.e. build the nodes (rather than
+;;operate on the graphics canvas itself, recording
+;;the instructions as output).
+;;This would be more straightforward, and allow us to
+;;port to more infrastructures (just define interpreters
+;;for the ast to whatever backend).
+(defmacro swap-graphics
+  [nm ctx-name f new-expr]
+  (let [old (gensym (str "old-" nm))
+        get (symbol (str "spork.graphics2d.canvas/get-" nm))
+        set (symbol (str "spork.graphics2d.canvas/set-" nm))
+        ]
+    `(let [~old (~get ~ctx-name)]
+       (-> (~f (~set ~ctx-name ~new-expr))
+           (~set ~old)))))
+               
+;;original definitions (for now)...
+(defmacro with-color*
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the color of the context if necessary, then reverts to
+   the original color."
+  [color ctx f]
+  `(swap-graphics ~'color ~ctx ~f ~color))
 
+(defmacro with-font*
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the color of the context if necessary, then reverts to
+   the original color."
+  [font ctx f]
+  `(swap-graphics ~'font ~ctx ~f (~'spork.graphics2d.font/get-font ~font)))
 
+(defmacro with-translation*
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the translation of the context, applies f, then undoes
+   the translation."
+  [x y ctx f] 
+  `(-> (~f (spork.graphics2d.canvas/translate-2d ~ctx ~x ~y))
+       (spork.graphics2d.canvas/translate-2d (* -1 ~x) (* -1 ~y))))
 
+(defmacro with-rotation*
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the rotation of the context, applies f, then undoes
+   the rotation."
+  [theta ctx f] 
+  `(-> (~f (spork.graphics2d.canvas/rotate-2d ~ctx ~theta))
+    (spork.graphics2d.canvas/rotate-2d (* -1 ~theta))))
 
+(defmacro with-scale*
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the translation of the context, applies f, then undoes
+   the translation."
+  [xscale yscale ctx f] 
+  `(-> (~f (spork.graphics2d.canvas/scale-2d ~ctx (double ~xscale)  (double ~yscale)))
+    (spork.graphics2d.canvas/scale-2d (double (/ 1  ~xscale)) (double (/ 1  ~yscale)))))
 
+(defmacro with-transform*
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the rotation of the context, applies f, then undoes
+   the rotation."
+  [xform ctx f]
+  `(swap-graphics ~'transform ~ctx ~f  ~xform))
 
+(defmacro with-alpha*
+  "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
+   temporarily changes the alpha blending of the context, applies f, then undoes
+   the blend."
+  [alpha ctx f]
+  `(swap-graphics ~'alpha ~ctx ~f  ~alpha))
+
+(defmacro with-stroke*
+  "Given a drawing function f, where f::IStroked->IStroked, 
+   temporarily changes the stroke of the context, applies f, then undoes
+   the blend."
+  [stroke ctx f]
+  `(swap-graphics ~'stroke ~ctx ~f  ~stroke))
+(defn body [nm args]
+  (let [ex (symbol (str nm "*"))]        
+    `(~nm [~@args]
+          ~(macroexpand-1 (macroexpand-1 `(~ex ~@args))))))
+
+(def default-graphics-implementation
+  {:alpha       (body 'with-font '[alpha ctx f]) 
+   :stroke      (body 'with-stroke '[stroke ctx f])
+   :transform   (body 'with-transform '[xform ctx f])
+   :rotation    (body 'with-rotation '[theta ctx f])
+   :scale       (body 'with-scale  '[xscale yscale ctx f])
+   :translation (body 'with-translation  '[x y ctx f]) 
+   :color       (body 'with-color  '[color ctx f]) 
+   :font        (body 'with-font '[font ctx f])})
 

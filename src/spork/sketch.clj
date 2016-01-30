@@ -36,8 +36,10 @@
   (let [{:keys [x y width height]} (shape-bounds shp)
         width (+ x width)
         height (+ y height)
-        dg (provider/->debug-graphics width height)]
-     (get-path (draw-shape shp dg))))
+        dg (provider/->debug-graphics width height)
+        init-stroke (get-stroke dg)]
+    (vary-meta (get-path (draw-shape shp dg))
+               assoc :init-stroke init-stroke)))
 
 ;;simple compiler for graphics instructions...
 ;;we basically trim down the state changes required to draw the shape.
@@ -59,19 +61,43 @@
                                true))))
              (completing
               (fn xd [acc x] (conj acc x)))
-             [] xs))
+             (vary-meta [] assoc :init-stroke (:init-stroke (meta xs)))
+             xs))
 
 (defn deconstruct
   "Given a shp, returns all the primitive shapes and their transforms.  Also records any state changes 
   in order."
   [shp]
-  (transduce (filter (fn [xs]
-                       (not (#{:translate :scale :rotate} (first xs)))))
-             (completing
-              (fn [acc shp]
-                (conj acc shp)))
-             []
-             (simplify (analyze shp))))
+  (let [xs (simplify (analyze shp))
+        m  (meta xs)]
+    (transduce (filter (fn [xs]
+                         (not (#{:translate :scale :rotate} (first xs)))))
+               (completing
+                (fn [acc shp]
+                  (conj acc shp)))
+               (vary-meta [] assoc :init-stroke (:init-stroke m))
+               xs)))
+
+(defn draw-instructions
+  "Given a sequence of graphics instructions (xs), draw them sequentially to 
+   the canvas c."
+  [xs c]
+  (reduce (fn [c x]
+            (case (first x)
+              :line    (let [[_ clr x y x2 y2 xform] x]
+                          (-> (set-transform c xform)
+                              (draw-line clr x y x2 y2)))
+              :string  (let [[_ clr font s x y xform] x]
+                         (-> (set-transform c xform)
+                             (draw-string clr font s x y)))
+              :image   (let [[_  img transparency x y xform] x]
+                         (-> (set-transform c xform) 
+                             (draw-image img transparency x y)))
+              :stroke  (set-stroke c (second x))
+              :alpha   (set-alpha  c (second x))
+              (:begin :end) c ;no-ops
+              (throw (Exception. (str "unhandled instruction:" x)))))
+          c xs))
 
 ;;current options are :title and :cached?
 (defn sketch [the-shapes & opts] (apply gui/view the-shapes opts))
@@ -228,7 +254,6 @@
     (reify IShape
       (shape-bounds [s] bnds)
       (draw-shape [s c] (draw-shape new-shp c)))))
-
                  
 (defn spin
   ([theta shp]
@@ -263,10 +288,10 @@
       (if (and (== xscale 1.0) (== yscale 1.0)) shp
           (reify IShape 
             (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
-            (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %)))))
+            (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %))))))
     (reify IShape 
       (shape-bounds [s]   (space/scale-bounds @xscale @yscale (shape-bounds shp)))    
-      (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %)))))))
+      (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %))))))
 
 (def ^:dynamic *cartesian* nil)
 (defn cartesian [shp]

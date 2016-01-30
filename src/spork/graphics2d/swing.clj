@@ -422,6 +422,15 @@
   
   (set-state      [cg state] (interpret-state state g) cg)
   (make-bitmap    [cg w h transp] (make-imgbuffer w h transp) cg)
+  (get-debug      [ctx] false)
+  ;; ICompoundContext
+  ;; (with-color       [color ctx f]    (canvas/with-color* color ctx f))
+  ;; (with-font        [the-font ctx f] (canvas/with-font*  the-font ctx f))
+  ;; (with-translation [x y ctx f]      (canvas/with-translation* x y ctx f))
+  ;; (with-rotation    [theta ctx f]    (canvas/with-rotation* theta ctx f))
+  ;; (with-scale       [xscale yscale ctx f] (canvas/with-scale* xscale yscale ctx f))
+  ;; (with-alpha       [alpha ctx f]    (canvas/with-alpha* alpha ctx f))
+  ;; (with-stroke      [stroke ctx f]   (canvas/with-stroke* stroke ctx f))
   clojure.lang.IDeref
   (deref [obj] g)
   ICartesian
@@ -516,11 +525,14 @@
     cg)
   (set-state      [cg state] (interpret-state state g) cg)
   (make-bitmap    [cg w h transp] (make-imgbuffer w h transp) cg)
+  (get-debug      [ctx] true)
   clojure.lang.IDeref
   (deref [obj] {:g g :instructions instructions})
   ICartesian
   IPathable
   (get-path [obj] @instructions)
+  IGraphicsLog
+  (log [ctx msg] (do (swap! instructions conj msg) ctx))
   )
 
 
@@ -556,7 +568,7 @@
   (let [bg (make-imgbuffer 1 1)
         ^Graphics2D g (.getGraphics bg)
         g (doto g (.translate 1.0 (double (dec height)))
-                   (.scale   1.0 -1.0))]
+                  (.scale   1.0 -1.0))]
     (DebugGraphics. g width height (atom []))))
   
 ;a set of rendering options specific to the j2d context.
@@ -582,7 +594,8 @@
   (rotate-2d      [ctx theta] (doto ctx (.rotate (float theta))))
   
   (set-state      [ctx state] (interpret-state state ctx))
-  (make-bitmap    [ctx w h transp] (make-imgbuffer w h transp)))
+  (make-bitmap    [ctx w h transp] (make-imgbuffer w h transp))
+  (get-debug      [ctx] false))
 
 ;;THis is probably overkill...I think all we need (and are using) is CanvasGraphics.
 ;encapsulation for everything swing...plumbing mostly.
@@ -613,7 +626,8 @@
   (set-state      [ctx state]     (swing-graphics.  (interpret-state state ctx)
                                                     options))
   (make-bitmap    [ctx w h transp] (make-imgbuffer w h 
-                                       (get-transparency transp)))
+                                                   (get-transparency transp)))
+  (get-debug      [ctx] false)
   ICanvas2D
   (get-context    [sg]  g)
   (set-context    [sg ctx] (swing-graphics. ctx options))  
