@@ -27,6 +27,15 @@
 (def ^:dynamic *current-sketch* nil)
 (def ^:dynamic *anti-aliasing*  nil)
 
+
+;;primitive shape analysis...
+;;these functions help us to deconstruct the operations implicit in our shape
+;;combinators, and let us get at the ast behind them, as well as the
+;;primitive instructions.
+;;Note: perhaps a "better" model would be to revert to the
+;;scene-graph API I built originally (of which sketch was a
+;;distillation).  
+
 ;;note: this only works with swing atm...it should, ideally,
 ;;be decoupled from the backend.
 (defn analyze
@@ -99,6 +108,92 @@
               (throw (Exception. (str "unhandled instruction:" x)))))
           c xs))
 
+(defn node? [x]
+  (#{:stroke
+    :alpha
+    :translate
+    :rotate
+     :font} (first x)))
+
+(def ops #{:begin :end})
+(defn closes? [[l t1] [r t2]]
+  (and (identical? l :begin)
+       (identical? r :end)
+       (= t1 t2)))
+(defn primitive? [itm]
+  (do ;(println itm)
+      (not (ops (first itm)))))
+
+;;note on "naming"
+;;we can use metadata via the ^tag to indicate shapes that we'd like to
+;;"name" in a particular group of shapes.  Given that information, we
+;;have the opportunity to communicate said information in the node's
+;;output when rendering.  This is actually going pretty ass-backwards.
+;;                                        ;
+
+;;we know that getting a segment, or block, from a flat seq will leave us
+;;with [seg unparsed] as the result.
+;;this is ridiculous, I should be able to pop out a block parser in no time.
+;;we either have a primitive, which we conjoin onto the acc, or a segment,
+;;which we get via get-segments again.
+;;we need to keep track of the fact that we're in a segment though.
+;;as we recurse, we need to know what we're looking for to close the current
+;;segment at each level of recursion.
+(defn first-vector [xs]
+  (let [x (first xs)]
+    (if (vector? x) x nil)))
+
+;;note: we may have implicit groups...specifically custom rendering
+;;functions that aren't prepended with :begin and :end.
+;;in this case, it's just a primitive vov...
+;;so, we want to 
+(defn next-segment
+  [l init xs]
+   (loop [acc         init
+          remaining   xs]    
+     (if-let [x   (first-vector remaining)]
+       (cond (primitive? x) (recur (conj acc x) (rest remaining)) ;;add it to the acc
+             (and l (closes? l x))   ; we have a left already...
+             ;;we completed a segment.
+             (do ;(println [(clojure.string/join (repeat @lvl "-")) :closing x])
+                                        ;(swap! lvl dec)
+               [(conj acc x) (rest remaining)])
+              :else 
+              (let [;; _ (swap! lvl inc)
+                    ;; _ (println [(clojure.string/join (repeat @lvl "-")) :recursing x])
+                    [seg rem] (next-segment x [x] (rest remaining))]
+                (recur (conj acc seg) rem)))
+       acc)))
+
+(defn get-segments [xs]
+  (let [res (next-segment nil [] xs)]
+    (if (primitive? (first res))
+      (-> (into '[[:begin group]]
+                res)
+          (conj '[:end group])))))             
+
+(defn segments->tree [vov]
+  (cond (keyword? (first vov)) vov
+        (vector?  (first vov))                     
+        (let [n        (case  (keyword (second (first vov)))
+                         :group 1
+                         2)
+              [t & xs :as nd]   (nth vov (dec n))
+              tl (fn [xs] (if (== n 2) (butlast xs) xs))]
+          {:node nd  :children (vec (map segments->tree  (tl  (butlast  (drop n  vov)))))}
+          )))
+
+;; (defn shape->nodes [shp]
+;;   (-> (analyze shp)
+;;       (next-segment)
+;;       (first)
+;;       (segments->tree)))
+
+(defn shape->nodes [shp]
+  (->> (analyze shp)
+       (get-segments)
+       (segments->tree)))
+      
 ;;current options are :title and :cached?
 (defn sketch [the-shapes & opts] (apply gui/view the-shapes opts))
 
@@ -178,8 +273,6 @@
     (shape-bounds [s] new-bounds)
     (draw-shape   [s c] (with-translation (:width bounds2) 0 
                           (draw-shape s2 c) #(draw-shape s1 %))))))
-
-
 
 (defn background [color shp]
   (let [{:keys [x y width height]} (shape-bounds shp)]
@@ -975,6 +1068,52 @@
       IPadded
       (hpad [s] axis-width)
       (vpad [s] 0))))
+
+(defn ->gg-vaxis2 [l r  height width & {:keys [thickness steps size font]
+                                       :or {thickness 1.0
+                                            steps 4
+                                            font default-plot-font
+                                            size 12}}]
+  (let [fnt           (f/resize-font font size)
+        lbounds       (f/string-bounds fnt (str (round2 2 (max l r))))
+        label-height  (:height   lbounds)
+        label-width   (:width lbounds)
+        tick-height   (/ label-height 2.0) ;ignore.
+        tick-width    tick-height
+        axis-width    (+ label-width tick-width)
+        tick          (->line :black label-width 0 (+ label-width tick-width) 0)
+        spread        (- r l)
+        scale         (float  (/ height spread))
+        step          (double (/ spread steps)) 
+        scaled-step   (* scale step)
+        bounds        (space/bbox 0 (/ label-height -4.0) axis-width (+ height (/ label-height 2.0) ))
+        centered-numb (fn [canv n y]
+                        (let [lbl (str (round2 2 n))
+                              {:keys [height width]} (f/string-bounds fnt lbl)
+                              halfh (/ height  4.0)
+                              offset (- label-width width)]                          
+                          (draw-string canv :black fnt lbl offset (- y halfh)
+                                       )))
+        ;)
+    ]
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]        
+        (loop [offset 0.0
+               n      l
+               canv c]
+          (if (> n r) 
+            canv
+            (do ; (println n)
+                (recur (+ offset scaled-step)
+                       (+ n step)
+                       (-> (draw-shape (translate 0 offset tick)
+                                       canv)
+                                       (centered-numb n offset)
+                                        ))))))
+      IPadded
+      (hpad [s] axis-width)
+      (vpad [s] 0))))
 ;;we need to have scrolling axes...
 ;;this is actually a plot.
 (comment
@@ -1245,25 +1384,33 @@
         pady         (if (= sc total-height)  0 (- plot-h h))
         padx         (if (= sc total-width)  0 (- plot-w w))
         plotarea     (->gg-plotarea w h  xn yn)
-        plt    [(->plane :white 0 0 w h)
+        plt    [^{:id :background}
+                (->plane :white 0 0 w h)
+                ^{:id :plot}
                 (translate (/ padx 2.0) (/ pady 2.0)
-                           (above (smooth ttl)
+                           (above ^{:id :title} (smooth ttl)
                                   (scale sc sc
-                                         (beside (smooth ylbl)
+                                         (beside ^{:id :y-label} (smooth ylbl)
                                                  (above
                                                   [(translate 0 (vpad hax) ;(smooth vax)
-                                                                             vaxcache)
+                                                              ^{:id :vertical-axis}
+                                                              vaxcache)
                                                    (translate (hpad vax) (vpad vax) ;(smooth hax)
-                                                                                    haxcache
+                                                              ^{:id :horizontal-axis}
+                                                              haxcache
                                                                )
                                                    (translate plot-x
                                                               plot-y
-                                                              [plotarea
+                                                              [^{:id :plot-area}
+                                                               plotarea                                                               
                                                                (translate  x ;(- x  xmin) 
                                                                            y ;(- y ymin)
                                                                            (scale plotxscale plotyscale
+                                                                                  ^{:id :marks}
                                                                                   pts))])]
-                                                  (translate plot-x 0 (smooth xlbl)))))))]
+                                                  (translate plot-x 0
+                                                             ^{:id :x-label}
+                                                             (smooth xlbl)))))))]
         bnds (shape-bounds plt)
         ]
     (reify IShape
