@@ -204,6 +204,6 @@
 
 ;;now we define combinators on these nodes...
 ;;we should be able to build up more complex expressions...
-(defn smooth [shp children] (state  {:antialias true} children))
+(defn smooth [children] (state  {:antialias true} children))
 
 

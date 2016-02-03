@@ -568,7 +568,7 @@
    (let [gridsample (image/shape->img [(->scrolling-columns 0 0 w h (/ w xstep))
                                        (->scrolling-rows 0 0 w h (/ h ystep))])]
      (repeat-up
-      x1 y1 h h
+      x1 y1 h hr
       (repeat-across x1 y1 w w gridsample)
       )))
   ([x1 y1 w h n] (->scrolling-grid2 x1 y1 w h n n))
@@ -951,6 +951,8 @@
       clojure.lang.IDeref
       (deref [obj] trend-box))))
 
+(defmacro template [expr]
+  
 ;;would be nice to have a plotting-function or something, so we can
 ;;have a nice interface to the plot.
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
@@ -1014,33 +1016,27 @@
         pady         (if (= sc total-height)  0 (- plot-h h))
         padx         (if (= sc total-width)  0 (- plot-w w))
         plotarea     (->gg-plotarea w h  xn yn)
-        plt    [^{:id :background}
-                (->plane :white 0 0 w h)
-                ^{:id :plot}
+        plt    [(tag {:id :background} (->plane :white 0 0 w h))
                 (translate (/ padx 2.0) (/ pady 2.0)
-                           (above ^{:id :title} (smooth ttl)
-                                  (scale sc sc
-                                         (beside ^{:id :y-label} (smooth ylbl)
-                                                 (above
-                                                  [(translate 0 (vpad hax) ;(smooth vax)
-                                                              ^{:id :vertical-axis}
-                                                              vaxcache)
-                                                   (translate (hpad vax) (vpad vax) ;(smooth hax)
-                                                              ^{:id :horizontal-axis}
-                                                              haxcache
-                                                               )
-                                                   (translate plot-x
-                                                              plot-y
-                                                              [^{:id :plot-area}
-                                                               plotarea                                                               
-                                                               (translate  x ;(- x  xmin) 
-                                                                           y ;(- y ymin)
-                                                                           (scale plotxscale plotyscale
-                                                                                  ^{:id :marks}
-                                                                                  pts))])]
-                                                  (translate plot-x 0
-                                                             ^{:id :x-label}
-                                                             (smooth xlbl)))))))]
+                  (above
+                     (tag {:id :title} (smooth ttl))
+                     (scale sc sc
+                       (beside
+                        (tag {:id :ylabel} (smooth ylbl))
+                        (above
+                         [(translate 0 (vpad hax) ;(smooth vax)
+                           (tag {:id :verticalaxis}   vaxcache))
+                          (translate (hpad vax) (vpad vax) ;(smooth hax)
+                            (tag {:id :horizontalaxis} haxcache))
+                          (translate plot-x
+                                     plot-y
+                                     [(tag {:id :plotarea}  plotarea)
+                                      (translate  x ;( x  xmin) 
+                                                  y ;( y ymin)
+                                                  (scale plotxscale plotyscale
+                                                         (tag {:id :marks} pts)))])]
+                         (translate plot-x 0
+                           (tag {:id :xlabel} (smooth xlbl))))))))]
         bnds (shape-bounds plt)
         ]
     (reify IShape
