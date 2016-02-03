@@ -744,6 +744,7 @@
       IPadded
       (hpad [s] axis-width)
       (vpad [s] 0))))
+
 ;;we need to have scrolling axes...
 ;;this is actually a plot.
 (comment
@@ -1054,7 +1055,24 @@
 
 (defn plot-xy! [points & {:keys [w h] :as opts}]
   (paint!  (apply ->plot (cons points (flatten (seq opts))))))
-            
+
+;;allows us to print out an annotated tree of properties.
+;;I'm debating going full serial with this...
+(defn annotate [shp]
+  (cond (map? shp)
+        (let [m (get (meta shp) :properties)
+              kids (:children shp)
+              xs (if (vector? kids) 
+                   (mapv annotate kids)
+                   (annotate kids))]
+          (assoc shp :properties m :children xs))                                  
+        (vector? shp)
+        {:type :group
+         :properties (get (meta shp) :properties)
+         :children (mapv annotate shp)}
+        :else
+        shp))
+    
 
 ;;attempt to clean up plot
 (comment
