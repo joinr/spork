@@ -569,7 +569,7 @@
 
 ;these are fancy rendering options.  We prefer them if supported.
 ;if the device supports them, then we'll use them.  Otherwise, we use the 
-;primtive drawing functions above to draw.  ;;These are actually our primitive 
+;primitive drawing functions above to draw.  ;;These are actually our primitive 
 ;drawing operations...
 (defprotocol ICanvas2DExtended
   (draw-polygon   [canvas color points] "Outlines a polygon defined by points.")
@@ -632,7 +632,9 @@
 
 (extend-protocol IShape 
   clojure.lang.PersistentVector
-  (shape-bounds [xs] (when xs (spatial/group-bounds (map shape-bounds xs))))
+  (shape-bounds [xs]    
+      (or (get (meta xs) :shape-bounds) ;check the cache.
+          (when xs (spatial/group-bounds (map shape-bounds xs)))))
   (draw-shape   [xs c]  ;(draw-shapes c xs)))
     (group xs c)))
 
@@ -645,6 +647,9 @@
 (defprotocol IShapeStack
   (push-shape [s shp])
   (pop-shape  [s]))
+
+(defprotocol IShapeable
+  (as-shape [obj]))
 
 ;;Allow mutable shapes. 
 (extend-type clojure.lang.Atom

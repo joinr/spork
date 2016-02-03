@@ -6,17 +6,61 @@
 ;;a sort of skeleton scene graph, for simple 2d diagrams and plotting.
 (ns spork.sketch
   (:require [spork.graphics2d.canvas :as canvas :refer :all ]
-            [spork.protocols [spatial :as space]]
+            [spork.protocols [spatial :as space]]            
             [spork.graphics2d [image :as image]
                               [swing :as provider]
                               [font :as f]
-                              [stroke :as stroke]]
+                              [stroke :as stroke]
+                              [scene :as scene]]
             [spork.geometry.shapes :refer :all]
+            [spork.util.metaprogramming :as meta]
             [spork.cljgui.components [swing :as gui]]
             [spork.events [base :as evt]
                           [native :as nat]
                           [observe :as obs]]
             ))
+
+;;okay...
+;;a bit of a shift here.
+;;we're going to go back to the scene graph implementation,
+;;at least the node implementation from before.
+;;We'll define a set of nodes...
+;;state
+;;transform
+;;geometry
+;;These control the depiction of the scene.
+;;Nodes have children.
+;;Node bounds are eagerly evaluated.
+;;Later, we'll extend the node protocol
+;;to piccolo nodes, so we get compatibility
+;;with everything, as well as an
+;;intermediate representation for the
+;;scene.
+
+;;I have all the fundamental scene nodes defined/ported to
+;;graphics2d.scene, so we'll pull them in here like we had
+;;before.
+
+(meta/import-vars
+ [spork.graphics2d.scene
+  with-bounds 
+  defnode
+  translate 
+  scale    
+  rotate   
+  fade     
+  stroke    
+  thicken 
+  color 
+  state
+  smooth])
+
+;;this allows us to tag nodes easily.
+(defmacro tag [props obj]
+  `(vary-meta ~obj assoc :properties ~props))
+
+(definline atom? [x]
+  `(instance? ~'clojure.lang.Atom ~x))
 
 ;;These are brittle, but work until I found a better way around the problem.
 
@@ -26,204 +70,119 @@
 
 (def ^:dynamic *current-sketch* nil)
 (def ^:dynamic *anti-aliasing*  nil)
-
-
-;;primitive shape analysis...
-;;these functions help us to deconstruct the operations implicit in our shape
-;;combinators, and let us get at the ast behind them, as well as the
-;;primitive instructions.
-;;Note: perhaps a "better" model would be to revert to the
-;;scene-graph API I built originally (of which sketch was a
-;;distillation).  
-
-;;note: this only works with swing atm...it should, ideally,
-;;be decoupled from the backend.
-(defn analyze
-  "Allows us to break a shape down into its primitive drawing 
-   instructions."
-  [shp]
-  (let [{:keys [x y width height]} (shape-bounds shp)
-        width (+ x width)
-        height (+ y height)
-        dg (provider/->debug-graphics width height)
-        init-stroke (get-stroke dg)]
-    (vary-meta (get-path (draw-shape shp dg))
-               assoc :init-stroke init-stroke)))
-
-;;simple compiler for graphics instructions...
-;;we basically trim down the state changes required to draw the shape.
-(defn simplify [xs]
-  (transduce (comp (partition-by first)
-                   (map  (fn xd [instructions]
-                           (case (ffirst instructions)
-                             :translate    (reduce (fn collapse [[_ x y] [_ x2 y2]]
-                                                                [:translate (+ x x2) (+ y y2)])
-                                                              instructions)
-                             :scale        (reduce (fn collapse [[ins x y] [_ x2 y2]]
-                                                                [:scale (* x x2) (* y y2)])
-                                                              instructions)
-                             (last instructions))))                 
-                   (filter (fn f [x]
-                             (case (first x)
-                               :translate (or (not (zero? (nth x 1))) (not (zero? (nth x 2))))
-                               :scale     (and (not= (nth x 1) 1.0) (not= (nth x 2) 1.0))
-                               true))))
-             (completing
-              (fn xd [acc x] (conj acc x)))
-             (vary-meta [] assoc :init-stroke (:init-stroke (meta xs)))
-             xs))
-
-(defn deconstruct
-  "Given a shp, returns all the primitive shapes and their transforms.  Also records any state changes 
-  in order."
-  [shp]
-  (let [xs (simplify (analyze shp))
-        m  (meta xs)]
-    (transduce (filter (fn [xs]
-                         (not (#{:translate :scale :rotate} (first xs)))))
-               (completing
-                (fn [acc shp]
-                  (conj acc shp)))
-               (vary-meta [] assoc :init-stroke (:init-stroke m))
-               xs)))
-
-(defn draw-instructions
-  "Given a sequence of graphics instructions (xs), draw them sequentially to 
-   the canvas c."
-  [xs c]
-  (reduce (fn [c x]
-            (case (first x)
-              :line    (let [[_ clr x y x2 y2 xform] x]
-                          (-> (set-transform c xform)
-                              (draw-line clr x y x2 y2)))
-              :string  (let [[_ clr font s x y xform] x]
-                         (-> (set-transform c xform)
-                             (draw-string clr font s x y)))
-              :image   (let [[_  img transparency x y xform] x]
-                         (-> (set-transform c xform) 
-                             (draw-image img transparency x y)))
-              :stroke  (set-stroke c (second x))
-              :alpha   (set-alpha  c (second x))
-              (:begin :end) c ;no-ops
-              (throw (Exception. (str "unhandled instruction:" x)))))
-          c xs))
-
-(defn node? [x]
-  (#{:stroke
-    :alpha
-    :translate
-    :rotate
-     :font} (first x)))
-
-(def ops #{:begin :end})
-(defn closes? [[l t1] [r t2]]
-  (and (identical? l :begin)
-       (identical? r :end)
-       (= t1 t2)))
-(defn primitive? [itm]
-  (do ;(println itm)
-      (not (ops (first itm)))))
-
-;;note on "naming"
-;;we can use metadata via the ^tag to indicate shapes that we'd like to
-;;"name" in a particular group of shapes.  Given that information, we
-;;have the opportunity to communicate said information in the node's
-;;output when rendering.  This is actually going pretty ass-backwards.
-;;                                        ;
-
-;;we know that getting a segment, or block, from a flat seq will leave us
-;;with [seg unparsed] as the result.
-;;this is ridiculous, I should be able to pop out a block parser in no time.
-;;we either have a primitive, which we conjoin onto the acc, or a segment,
-;;which we get via get-segments again.
-;;we need to keep track of the fact that we're in a segment though.
-;;as we recurse, we need to know what we're looking for to close the current
-;;segment at each level of recursion.
-(defn first-vector [xs]
-  (let [x (first xs)]
-    (if (vector? x) x nil)))
-
-;;note: we may have implicit groups...specifically custom rendering
-;;functions that aren't prepended with :begin and :end.
-;;in this case, it's just a primitive vov...
-;;so, we want to 
-(defn next-segment
-  [l init xs]
-   (loop [acc         init
-          remaining   xs]    
-     (if-let [x   (first-vector remaining)]
-       (cond (primitive? x) (recur (conj acc x) (rest remaining)) ;;add it to the acc
-             (and l (closes? l x))   ; we have a left already...
-             ;;we completed a segment.
-             (do ;(println [(clojure.string/join (repeat @lvl "-")) :closing x])
-                                        ;(swap! lvl dec)
-               [(conj acc x) (rest remaining)])
-              :else 
-              (let [;; _ (swap! lvl inc)
-                    ;; _ (println [(clojure.string/join (repeat @lvl "-")) :recursing x])
-                    [seg rem] (next-segment x [x] (rest remaining))]
-                (recur (conj acc seg) rem)))
-       acc)))
-
-(defn get-segments [xs]
-  (let [res (next-segment nil [] xs)]
-    (if (primitive? (first res))
-      (-> (into '[[:begin group]]
-                res)
-          (conj '[:end group])))))             
-
-(defn segments->tree [vov]
-  (cond (keyword? (first vov)) vov
-        (vector?  (first vov))                     
-        (let [n        (case  (keyword (second (first vov)))
-                         :group 1
-                         2)
-              [t & xs :as nd]   (nth vov (dec n))
-              tl (fn [xs] (if (== n 2) (butlast xs) xs))]
-          {:node nd  :children (vec (map segments->tree  (tl  (butlast  (drop n  vov)))))}
-          )))
-
-;; (defn shape->nodes [shp]
-;;   (-> (analyze shp)
-;;       (next-segment)
-;;       (first)
-;;       (segments->tree)))
-
-(defn shape->nodes [shp]
-  (->> (analyze shp)
-       (get-segments)
-       (segments->tree)))
       
 ;;current options are :title and :cached?
 (defn sketch [the-shapes & opts] (apply gui/view the-shapes opts))
 
-(defn smooth [shp]
-  (reify IShape
-    (shape-bounds [s] (shape-bounds shp))
-    (draw-shape [s c]
-      (draw-shape shp (set-state c  {:antialias true})))))
 
-;; (def thick-stroke
-;;   (memoize (fn [amount strk]
-             
-(defn thicken [amount shp]
-  (if (= amount 1.0) shp
-      (reify IShape
-        (shape-bounds [s] (shape-bounds shp))
-        (draw-shape   [s c]
-          (let [strk (canvas/get-stroke c)
-                new-stroke (stroke/widen amount strk)]
-            (canvas/with-stroke new-stroke c
-              #(canvas/draw-shape shp %)))))))
-  
-(defn stroke-by [width shp]
-  (reify IShape
-    (shape-bounds [s] (shape-bounds shp))
-    (draw-shape   [s c]
-      (let [strk (canvas/get-stroke c)
-            new-stroke (stroke/stroke-of-width width strk)]
-        (canvas/with-stroke new-stroke c
-          #(canvas/draw-shape shp %))))))
+;;ported
+(defn beside [s1 s2]
+  (let [bounds1 (shape-bounds s1)
+        bounds2 (shape-bounds s2)
+        hmax (max (:height bounds1) (:height bounds2))
+        width (+ (:width bounds1) (:width bounds2))
+        new-bounds (space/bbox 0 0 width hmax)]
+    (with-bounds new-bounds
+      [s1
+       (translate (:width bounds1) 0 s2)])))
+
+(defn <-beside [s1 s2]
+  (let [bounds1 (shape-bounds s1)
+        bounds2 (shape-bounds s2)
+        hmax (max (:height bounds1) (:height bounds2))
+        width (+ (:width bounds1) (:width bounds2))
+        new-bounds (space/bbox 0 0 width hmax)]
+    (with-bounds new-bounds 
+      [s2 (translate (:width bounds2) 0 s1)])))
+
+(defn background [color shp]
+  (let [{:keys [x y width height]} (shape-bounds shp)]
+    [(->rectangle color 0 0 (+ x width) (+ y height))
+     shp]))
+
+(defn above [s2 s1]
+  (let [bounds1 (shape-bounds  s1)
+        bounds2 (shape-bounds  s2)
+        wmax   (max (:width bounds1)  (:width bounds2))
+        height (+   (:height bounds1) (:height bounds2))
+        new-bounds (space/bbox 0 0 wmax height)]
+    (with-bounds new-bounds
+      [s1
+       (translate 0 (:height bounds1) s2)])))
+
+(defn vertical-text [shp]
+  (let [{:keys [x y height width]} (shape-bounds shp)
+        bnds    (spork.protocols.spatial/bbox x y height width)]
+    ;(with-bounds bnds
+    (if (and (zero? x) (zero? y))
+      (translate height 0
+                 (rotate (/ Math/PI 2.0) shp))
+      (translate height 0
+                 (translate (- x) (- y)
+                            (rotate (/ Math/PI 2.0)
+                                    (translate x y shp)))))))
+
+
+(defn spin
+  ([theta shp]
+   (let [{:keys [x y width height] :as bnds} (shape-bounds shp)
+         centerx    (+ x (/ width  2.0))
+         centery    (+ y (/ height 2.0))]
+     (spin theta shp centerx centery)))
+  ([theta shp centerx centery]
+   (translate centerx centery
+              (rotate theta
+                      (translate  (- centerx) (- centery) shp)))))
+     
+
+(defn outline [s & {:keys [color] :or {color :black}}]
+  (let [bounds (shape-bounds s)]
+    [s
+     (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
+
+(defn stack [shapes] (reduce above  shapes))
+(defn shelf [shapes] (reduce beside shapes))
+
+(defn delineate [xs] 
+  (let [group-bounds (shape-bounds xs)
+        width        (- (:width group-bounds) 3)
+        separator    (->line :black (:x group-bounds)
+                                    (dec (:y group-bounds))
+                                    width 
+                                    (dec (:y group-bounds)))]
+    (stack (interleave xs (repeat separator)))))
+
+(defn ->ticks [color width height step]
+  (let [tick   (:source (make-sprite :translucent (->line color 0 0 0 height) 0 0))
+        n      (quot width step)
+        bound  (unchecked-inc n)
+        bounds (space/bbox 0 0 width height)]                                                                                    
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [idx 0
+               canv c]
+          (if (== idx bound) 
+            canv
+            (recur (unchecked-inc idx)
+                   (draw-image canv tick :translucent (* idx step) 0))))))))
+
+(defn ->vticks [color width height step]
+  (let [tick   (:source (make-sprite :translucent (->line color 0 0 width 0) 0 0))
+        n      (quot height step)
+        bound  (unchecked-inc n)
+        bounds (space/bbox 0 0 width height)]                                                                                    
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [idx 0
+               canv c]
+          (if (== idx bound) 
+            canv
+            (recur (unchecked-inc idx)
+                   (draw-image canv tick :translucent 0 (* idx step)))))))))
+;;
+
 
 ;;Buffered image was killing us here with memory leakage.  So for now,
 ;;we just do immediate mode drawing.
@@ -246,175 +205,6 @@
       (shape-bounds [s] bnds)
       (draw-shape [s c]
        (spork.graphics2d.image/clear-region c x y w h)))))
-              
-
-(definline atom? [x]
-  `(instance? ~'clojure.lang.Atom ~x))
-
-;;image combinators 
-(defn beside [s1 s2]
-  (let [bounds1 (shape-bounds s1)
-        bounds2 (shape-bounds s2)
-        hmax (max (:height bounds1) (:height bounds2))
-        width (+ (:width bounds1) (:width bounds2))
-        new-bounds (space/bbox 0 0 width hmax)]
-  (reify IShape 
-    (shape-bounds [s] new-bounds)
-    (draw-shape   [s c] (with-translation (:width bounds1) 0 
-                          (draw-shape s1 c) #(draw-shape s2 %))))))
-
-(defn <-beside [s1 s2]
-  (let [bounds1 (shape-bounds s1)
-        bounds2 (shape-bounds s2)
-        hmax (max (:height bounds1) (:height bounds2))
-        width (+ (:width bounds1) (:width bounds2))
-        new-bounds (space/bbox 0 0 width hmax)]
-  (reify IShape 
-    (shape-bounds [s] new-bounds)
-    (draw-shape   [s c] (with-translation (:width bounds2) 0 
-                          (draw-shape s2 c) #(draw-shape s1 %))))))
-
-(defn background [color shp]
-  (let [{:keys [x y width height]} (shape-bounds shp)]
-    [(->rectangle color 0 0 (+ x width) (+ y height))
-     shp]))
-
-(defn translate [tx ty shp]
-  (if (not (and (atom? tx) (atom? ty)))
-    (if (and (zero? tx) (zero? ty) ) shp
-        (reify IShape 
-          (shape-bounds [s] (space/translate-bounds tx ty (shape-bounds shp)))
-          (draw-shape   [s c] (with-translation tx ty 
-                                c #(draw-shape shp %)))))
-    (reify IShape 
-      (shape-bounds [s] (space/translate-bounds @tx @ty (shape-bounds shp)))
-      (draw-shape   [s c] (with-translation @tx @ty 
-                            c #(draw-shape shp %))))))
-
-;;inverted the order because we have a cartesian coordinate system now.
-(defn above [s2 s1]
-  (let [bounds1 (shape-bounds  s1)
-        bounds2 (shape-bounds  s2)
-        wmax   (max (:width bounds1)  (:width bounds2))
-        height (+   (:height bounds1) (:height bounds2))
-        new-bounds (space/bbox 0 0 wmax height)]
-  (reify IShape 
-    (shape-bounds [s] new-bounds)
-    (draw-shape   [s c] (with-translation  0 (:height bounds1) 
-                          (draw-shape s1 c) #(draw-shape s2 %))))))
-(defn fade [alpha shp]
-  (if (not (atom? alpha))
-    (reify IShape 
-      (shape-bounds [s] (shape-bounds shp))
-      (draw-shape   [s c] (with-alpha  alpha 
-                            c #(draw-shape shp %))))
-    (reify IShape 
-      (shape-bounds [s] (shape-bounds shp))
-      (draw-shape   [s c] (with-alpha  @alpha 
-                            c #(draw-shape shp %))))))
-(defn rotate [theta shp]
-  (if (not (atom? theta))
-    (reify IShape 
-      (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
-      (draw-shape   [s c] (with-rotation theta  c #(draw-shape shp %))))
-    (reify IShape 
-      (shape-bounds [s]   (space/rotate-bounds @theta (shape-bounds shp)))
-      (draw-shape   [s c] (with-rotation @theta  c #(draw-shape shp %))))))
-
-;;rotates about a point....we probably should factor out spin-bounds
-;;from this guy.
-;; (defn spin   [theta shp]
-;;   ;(throw (Exception. "Rotation on bounds is currenty jacked up, not working. Need to fix the math on this."))
-;;   (let [bnds  (shape-bounds shp)
-;;         [x y] (space/get-center bnds)
-;;         spun  (space/spin-bounds theta bnds)
-;;         rotated (fn [canv] (with-rotation theta canv #(draw-shape shp %)))]
-;;     (reify IShape 
-;;       (shape-bounds [s]   spun)
-;;       (draw-shape   [s c] 
-;;         (with-translation x y c  rotated)))))
-
-(defn vertical-text [shp]
-  (let [{:keys [x y height width]} (shape-bounds shp)
-        new-shp (if (and (zero? x) (zero? y))
-                  (translate height 0
-                             (rotate (/ Math/PI 2.0) shp))
-                  (translate height 0
-                             (translate (- x) (- y)
-                                        (rotate (/ Math/PI 2.0)
-                                                (translate x y shp)))))
-        bnds    (spork.protocols.spatial/bbox x y height width)]
-    (reify IShape
-      (shape-bounds [s] bnds)
-      (draw-shape [s c] (draw-shape new-shp c)))))
-                 
-(defn spin
-  ([theta shp]
-   (let [{:keys [x y width height] :as bnds} (shape-bounds shp)
-         centerx    (+ x (/ width  2.0))
-         centery    (+ y (/ height 2.0))]
-     (spin theta shp centerx centery)))
-  ([theta shp centerx centery]
-   (let [bnds (shape-bounds shp)]
-     (if (not (atom? theta))
-       (let [new-bounds (spork.protocols.spatial/get-bounding-box
-                         (spork.protocols.spatial/spin-bounds theta bnds))
-             new-shp   (translate centerx centery
-                                  (rotate theta
-                                          (translate  (- centerx) (- centery)shp)))]
-         (reify IShape
-           (shape-bounds [c]  new-bounds)
-           (draw-shape [s c]  (draw-shape new-shp c)))
-       (reify IShape
-         (shape-bounds [c] (spork.protocols.spatial/get-bounding-box
-                            (spork.protocols.spatial/spin-bounds @theta bnds)))
-         (draw-shape [s c]
-           (let [newshp (translate centerx centery
-                                   (rotate @theta
-                                           (translate  (- centerx) (- centery) shp)))]
-             (draw-shape newshp c)))))))))
-
-(defn scale [xscale yscale shp]
-  (if (not (and (atom? xscale) (atom? yscale)))
-    (let [xscale (double xscale)
-          yscale (double yscale)]
-      (if (and (== xscale 1.0) (== yscale 1.0)) shp
-          (reify IShape 
-            (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
-            (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %))))))
-    (reify IShape 
-      (shape-bounds [s]   (space/scale-bounds @xscale @yscale (shape-bounds shp)))    
-      (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %))))))
-
-(def ^:dynamic *cartesian* nil)
-(defn cartesian [shp]
-  (let [bounds  (spork.protocols.spatial/scale-bounds 1.0 -1.0 (shape-bounds shp))
-        y       (spork.protocols.spatial/get-bottom bounds)
-        reflected (scale 1.0 -1.0 shp)]
-    (reify IShape 
-      (shape-bounds [s] bounds)
-      (draw-shape [s c] 
-        (if *cartesian* (draw-shape s c)
-            (binding [*cartesian* true]
-              (with-translation 0 (- (:height bounds) y) c 
-                #(draw-shape reflected %))))))))
-
-(defn uncartesian [shp]
-  (let [bounds    (spork.protocols.spatial/scale-bounds 1.0 -1.0 (shape-bounds shp))
-        y         (spork.protocols.spatial/get-bottom bounds)  
-        reflected (scale 1.0 -1.0 shp)]
-    (reify IShape 
-      (shape-bounds [s] bounds)
-      (draw-shape [s c] 
-        (if *cartesian* (binding [*cartesian* nil]
-                          (with-translation 0 (+ (:height bounds) y) c 
-                            #(draw-shape reflected %)))
-            (draw-shape shp c))))))
-
-(defn outline [s & {:keys [color] :or {color :black}}]
-  (let [bounds (shape-bounds s)]
-    [s
-     (->wire-rectangle color (:x bounds) (:y bounds) (:width bounds) (:height bounds))]))
 
 
 ;;Operations on images and icons.
@@ -436,16 +226,16 @@
     [ar
      (* w->h ar)]))
 
-
 (defn flip [img]
   (let [bnds (canvas/shape-bounds img)]
-      (translate (/ (:width bnds) 2.0) (/ (:height bnds) 2.0)                        
-         (rotate Math/PI
-           (scale -1.0 1.0
-                          (translate (/ (:width bnds) -2.0) (/ (:height bnds) -2.0)
-                                            img)
+    (tag {:class :flip}
+        (translate (/ (:width bnds) 2.0) (/ (:height bnds) 2.0)                        
+                   (rotate Math/PI
+                           (scale -1.0 1.0
+                                  (translate (/ (:width bnds) -2.0) (/ (:height bnds) -2.0)
+                                             img)
                          )
-         ))))
+         )))))
 
 (defn iconify [img & {:keys [w h flipped?]
                       :or {w 50 h 50 flipped? false}}]
@@ -467,60 +257,7 @@
 ;;   bounds))]))
 
 
-(defn stack [shapes] (reduce above  shapes))
-(defn shelf [shapes] (reduce beside shapes))
 
-
-(defn delineate [xs] 
-  (let [group-bounds (shape-bounds xs)
-        width        (- (:width group-bounds) 3)
-        separator    (->line :black (:x group-bounds)
-                                    (dec (:y group-bounds))
-                                    width 
-                                    (dec (:y group-bounds)))]
-    (stack (interleave xs (repeat separator)))))
-
-;;work in progress.
-;; (defn at-center [shp]
-;;  (let [bounds (shape-bounds shp)
-;;        centerx (/ (:width bounds) 2.0)
-;;        centery (/ (:heigh bounds) 2.0)]    
-;;  (reify IShape 
-;;    (shape-bounds [s] bounds)
-;;    (draw-shape   [s c] (with-translation centerx centery c
-;;                          #(draw-shape shp %))))))
-
-(defn ->ticks [color width height step]
-  (let [tick   (:source (make-sprite :translucent (->line color 0 0 0 height) 0 0))
-        n      (quot width step)
-        bound  (unchecked-inc n)
-        bounds (space/bbox 0 0 width height)]                                                                                    
-    (reify IShape
-      (shape-bounds [s]   bounds) 
-      (draw-shape   [s c]
-        (loop [idx 0
-               canv c]
-          (if (== idx bound) 
-            canv
-            (recur (unchecked-inc idx)
-                   (draw-image canv tick :translucent (* idx step) 0))))))))
-        ;; half-height (/ height 2.0)
-        ;; ln     (->line color 0 half-height width half-height)          
-  
-(defn ->vticks [color width height step]
-  (let [tick   (:source (make-sprite :translucent (->line color 0 0 width 0) 0 0))
-        n      (quot height step)
-        bound  (unchecked-inc n)
-        bounds (space/bbox 0 0 width height)]                                                                                    
-    (reify IShape
-      (shape-bounds [s]   bounds) 
-      (draw-shape   [s c]
-        (loop [idx 0
-               canv c]
-          (if (== idx bound) 
-            canv
-            (recur (unchecked-inc idx)
-                   (draw-image canv tick :translucent 0 (* idx step)))))))))
 
 ;; (defprotocol IScale
 ;;   (min-val [s])
@@ -578,22 +315,6 @@
 ;;need to change this to use ->text, which has bounds based off font metrics...
 (defn ->label [txt x y & {:keys [color] :or {color :black}}]
   (->plain-text color txt x y))
-  ;; (reify IShape
-  ;;   (shape-bounds [s]   (space/bbox x y (* (count txt) *font-width*) *font-height*))    
-  ;;   (draw-shape   [s c] (draw-string c color :default txt x  y ))))
-
-
-
-;;Drawing events and tracks.
-(def simple-activity {:start 0 :duration 100 :name "The Activity!" :quantity 10} )
-(def simple-track
-  [{:start 15 :duration 25   :name "A" :quantity 10}
-   {:start 200 :duration 250 :name "B" :quantity 10}
-   {:start 150 :duration 10  :name "C" :quantity 10}
-   {:start 22  :duration 5   :name "D" :quantity 10}])
-(def random-track 
-  (vec  (map (fn [idx] {:start (inc (rand-int 600)) :duration (inc (rand-int 100)) :name (str "event_" idx) :quantity (inc (rand-int 30))})
-             (range 100))))
 
 (defn ->labeled-box  [txt label-color color x y w h]
   (if (empty? txt) 
@@ -603,150 +324,13 @@
           centerx    (+ x 1)
 ;          half-width (* (/ (count txt) 2.0) *font-width*)        
           scalex     1.0 ;(if (< half-width half-dur) 1.0  (/ half-dur half-width))
-          centery    0
-          label      (scale scalex 1.0 (uncartesian (->label txt centerx centery :color label-color)))]
-      (reify IShape 
-        (shape-bounds [s]   (shape-bounds r))
-        (draw-shape   [s c] (draw-shape [r label] c))))))
+          centery    0]          
+      (with-bounds (shape-bounds r)
+        [r
+         (scale scalex 1.0  (->label txt centerx centery :color label-color))])
+      )))
 
-;;For drawing Activities, we'll allow a dynamic color map.  This lets
-;;us change colors and stuff...
 
-(def ^:dynamic *color-map* {:default :blue})
-(defmacro with-color-map [key->color & body]
-  `(binding [~'*color-map* ~key->color]
-     ~@body))
-;;Allows us to define a bunch of colors, ala let-binding, 
-;;and have them inserted into the color-map.  High level method 
-;;for defining color pallettes.
-(defmacro with-colors [color-binds & body]
-  `(with-color-map (into *color-map* (partition 2 ~color-binds))
-     ~@body))
-
-;;We have a binding that maps events to colors, a single-arity
-;;function.  By default, we look at the event name.   Callers can 
-;;overload this by supplying their own event->color function, or 
-;;by altering the color-map.
-(def ^:dynamic *event->color* (fn [e] (get *color-map* (get e :name :default))))
-(defmacro with-event->color [event->color & body]
-  `(binding [~'spork.sketch/*event->color*  ~event->color]
-     ~@body))
-
-(def ^:dynamic *track-options* {:activity-labels true 
-                                :track-labels true})
-(defmacro hiding-labels [& body]
-  `(binding [~'spork.sketch/*track-options* (merge ~'spork.sketch/*track-options* 
-                                                   {:activity-labels nil 
-                                                    :track-labels nil})]
-     ~@body))
-
-(defmacro with-track-scale [expr & body]
-  `(binding [~'spork.sketch/*track-options* (assoc ~'spork.sketch/*track-options* 
-                                                   {:track-scale ~expr})]
-     ~@body))
-  
-(defn activity-labels? [] (get *track-options* :activity-labels))
-(defn track-labels? [] (get *track-options*    :track-labels))
-
-(defn ->activity 
-  [{:keys [start duration name quantity] :as e} & {:keys [get-color label-color event->color] 
-                                                   :or   {event->color *event->color* label-color :white}}]
-  (let [h  (if (= quantity 10) quantity (+ 10 (* 3 (Math/log10 quantity))))
-        b  (if (activity-labels?) 
-               (->labeled-box name label-color (or (event->color e) :blue) start 0 duration h)
-               (->rectangle (or (event->color e) :blue) start 0 duration h))               
-           ;;(->rectangle (get color-map name :blue) start 0 duration  h)
-        ]
-    (outline b)))
-
-(def  ->vline (image/shape->img (->line :black 0 0 0 10)))
-(def  ->hline (image/shape->img (->line :black 0 0 10 0)))
-(defn ->axis  [min max step-width]
-  (let [tick   (fn [x] (translate x 0 ->vline))]        
-    (translate 0 *font-height*     
-     (image/shape->img 
-       [(->line :black min 0 max 0)
-        (image/shape->img 
-          (into [] (map tick (range min (inc max) step-width))))]))))
-
-(defn ->xaxis  [min max step-width]
-  (let [tick   (fn [x] (translate x 0 ->vline))]        
-    (translate 0 *font-height*     
-     (image/shape->img 
-       [(->line :black min 0 max 0)
-        (image/shape->img 
-          (into [] (map tick (range min (inc max) step-width))))]))))
-
-(defn ->yaxis  [min max step-width]
-  (let [tick   (fn [x] (translate 0 x ->hline))]        
-    (image/shape->img 
-     [(->line :black  10 min   10 max)
-      (image/shape->img 
-       (into [] (map tick (range min (inc max) step-width))))])))
-
-;; (defrecord event-track [records name height width event->color min max shp]
-;;   IShape 
-;;   (shape-bounds [s] (shape-bounds shp))
-;;   (draw-shape [s c] (draw-shape shp c)))
-
-(defn elevated-activities [records event->color]
-  (let [sorted (sort-by (juxt :start :duration) records)  
-        [elevated hmax wmax] (reduce (fn [[xs height width] x] 
-                                       (let [act (->activity x :event->color event->color)]
-                                         [(conj xs (translate 0.0 height act)) 
-                                          (+ height (:height (shape-bounds act)))
-                                          (max width (+ (:start x) (:duration x)))]))
-                                     [[] 0.0 0.0] sorted)]
-    [elevated hmax wmax]))    
-  
-;;should render us a track of each event, with a track-name to the
-;;left of the track.  Events in the track are rendered on top of each other.
-(defn ->track [records & {:keys [track-name track-height track-width event->color] 
-                          :or   {track-name (str (gensym "Track ")) 
-                                 track-height 400 
-                                 track-width  400
-                                 event->color *event->color*}}]
-  (let [label  (->label (str track-name) 0 0)
-        lwidth 100 ; (:width (shape-bounds label))            
-        [elevated hmax wmax] (elevated-activities records event->color)
-        hscale 0.5
-        background    ;(when (> (:start (first sorted)) 0)
-               (->rectangle :lightgray 0 0  wmax track-height)
-        vscale (/ track-height hmax)
-        track-box (stack [[background
-                           (scale 1.0 vscale (cartesian (into [] elevated)))]
-                          (->ggscale [0 wmax] :black wmax 30)
-                          (scale 2.0 2.0 (->label "Start Time" (/ wmax 4.0) 0))])]
-    (if (track-labels?)
-      (beside [(->rectangle :white 0 0 lwidth track-height)
-               label]
-              track-box)
-      track-box)))
-
-(defn ->tracks [track-seq]
-  (delineate 
-   (into [] (for [[name records] (sort-by first track-seq)]           
-              (->track records :track-name name)))))
-
-(defn colored-rects [n]
-  (let [rects  (->> [:red :blue :green]
-                    (map (fn [clr]
-                           (spork.geometry.shapes/->rectangle clr
-                                                              0  0 100 100)))
-                    (map image/shape->img))]
-    (image/shape->img (reduce beside
-                                (take n (cycle rects))))))
-(defn colored-rects! [n]
-  (into []
-    (take n
-     (map-indexed
-      (fn [i clr]
-        (spork.geometry.shapes/->rectangle clr
-          (+ 0 (+ (* i 100) 10)) 0 80 100)) (cycle [:red :blue :green])))))
-
-(defn colored-paper [w h]
-  (let [xs (colored-rects w)]
-    (delineate (into [] (take h (repeat xs))))))
     
 
 (defn ->hlines [color x1 y1 w n step]
@@ -833,11 +417,29 @@
     (when (<= xnext w)
       xnext)))
 
+(defn repeat-across [x1 y w step shp] 
+  (let [bbox (space/bbox x1 y  w (:height (shape-bounds shp)))]
+    (with-bounds bbox 
+      {:type :repeat-across
+       :x1 x1
+       :y y
+       :w w
+       :step step
+       :children
+       (let [l     x1
+             first-step l
+             bound (+ l w)]
+         (loop [acc [] 
+                xprev first-step]
+           (if (> xprev bound) acc
+               (recur (conj acc (translate xprev y shp))
+                      (unchecked-add xprev step)))))})))
+
 ;;we're repeating a shape, spanning an interval, starting from an initial
 ;;point.  That's the declarative operation.  Basically, we draw the
 ;;shape at every point.  Note that if the shape spans vertically, we
 ;;get an "infinite" arrangement of shapes, i.e. a grid.
-(defn repeat-across [shp x1 y w step]
+(defn repeat-across! [x1 y w step shp]
   (let [bbox (space/bbox x1 y  w (:height (shape-bounds shp)))
         x     (atom x1)
         y-rev (atom y)
@@ -860,7 +462,38 @@
                 (recur (draw-shape (cursor-at! xprev)  acc)
                        (unchecked-add xprev step)))))))))
 
-(defn repeat-up [shp x y1 h step]
+(defn repeat-up [x y1 h step shp]
+  (let [bbox (space/bbox x y1  (:width (shape-bounds shp)) h)
+        y    y1
+        x-rev x]
+    (with-bounds bbox
+      {:x x
+       :y1 y1
+       :h h
+       :step step
+       :children
+       (let [l     y1
+             first-step l 
+             bound (+ l h)]
+         (loop [acc [] 
+                yprev first-step]
+           (if (>= yprev bound) acc
+               (recur (conj acc (translate x yprev shp))
+                      (unchecked-add yprev step)))))})))
+;;problem here.
+;;we don't actually "want" to create lots of little shapes.
+;;This is a case where the repetition combinator comes into
+;;some conflict with the creation of nodes, at least in the
+;;classical sense.  Unless we create a "repeat" node...
+;;When we get the scene from a set of nodes, we end up with
+;;the concrete instances manifested as a transforms and primitive
+;;instructions...
+;;Also, shapes are immutable values, but their transforms
+;;are not.  So, the transform + shape gives us an instance.
+;;We could formalize this and have a geometry node be the
+;;combination of a shape and a transform, giving us the
+;;instance.
+(defn repeat-up! [x y1 h step shp]
   (let [bbox (space/bbox x y1  (:width (shape-bounds shp)) h)
         y    (atom y1)
         x-rev (atom x)
@@ -888,7 +521,7 @@
           (->line color 1 0 1 h)
      ;    )
      ]
-     (thicken thickness (repeat-across ln x1 y1 w step))))
+     (thicken thickness (repeat-across x1 y1 w step ln))))
   ([x1 y1 w h step color]
    (->scrolling-columns x1 y1 w h step :black 1.0))
   ([x1 y1 w h step] (->scrolling-columns x1 y1 w h step :black 1.0)))
@@ -899,7 +532,7 @@
               (->line color 0 1 w 1)
              ;)
          ]
-    (thicken thickness (repeat-up ln x1 y1 h step))))
+    (thicken thickness (repeat-up x1 y1 h step ln))))
   ([x1 y1 w h step color]
    (->scrolling-columns x1 y1 w h step :black 1.0))
   ([x1 y1 w h step] (->scrolling-rows x1 y1 w h step :black 1.0)))
@@ -910,9 +543,9 @@
   ([color x1 y1 w h]
    (let [pl (image/shape->img (->rectangle color x1 y1  w h))]
      (repeat-up
-      pl
+      
                                         ;   (repeat-across  pl x1 y1 w w)
-      x1 y1 h h)
+      x1 y1 h h pl)
      ))
   ([color w h] (->plane color 0 0 w h)))
 
@@ -930,16 +563,14 @@
   ([w h xstep ystep]
    (->scrolling-grid  w h xstep ystep :black 1.0)))
 
-  ;; ([x1 y1 w h n] (->scrolling-grid x1 y1 w h n n))
-  ;; ([x1 y1 w h]   (->scrolling-grid x1 y1 w h 10)))
-
 (defn ->scrolling-grid2
   ([x1 y1 w h xstep ystep]
    (let [gridsample (image/shape->img [(->scrolling-columns 0 0 w h (/ w xstep))
                                        (->scrolling-rows 0 0 w h (/ h ystep))])]
-     (repeat-up      
-      (repeat-across gridsample x1 y1 w w)
-      x1 y1 h h)))
+     (repeat-up
+      x1 y1 h h
+      (repeat-across x1 y1 w w gridsample)
+      )))
   ([x1 y1 w h n] (->scrolling-grid2 x1 y1 w h n n))
   ([x1 y1 w h]   (->scrolling-grid2 x1 y1 w h 10)))
 
@@ -1017,7 +648,6 @@
       IPadded
       (hpad [s] (/ lwidth 2.0))
       (vpad [s] height))))
-
 
 ;;We can offset by the tick-height + the string-width.  That will
 ;;right-align us.
@@ -1421,7 +1051,8 @@
       (pop-shape [stck] stck)        
       clojure.lang.IDeref
       (deref [obj] {:xy->uv [(/ xspan w )  (/ yspan h)]
-                    :plot-area points})
+                    :plot-area points
+                    :plot plt})
       IWipeable
       (wipe [obj] (wipe points)))))
 
@@ -1550,3 +1181,306 @@
 ;;          xscale  (/ plot-x w)
 ;;          yscale  (/ plot-y h)])))
          
+
+(comment
+
+  ;;obe.
+(defn smooth [shp]
+  (reify IShape
+    (shape-bounds [s] (shape-bounds shp))
+    (draw-shape [s c]
+      (draw-shape shp (set-state c  {:antialias true})))))
+
+
+;;this is a transform of the rendering
+;;state.  All child nodes, i.e. anything
+;;later in the pipeline, will have the
+;;global stroke set to a thicker amount.
+(defn thicken [amount shp]
+  (if (= amount 1.0) shp
+      (reify IShape
+        (shape-bounds [s] (shape-bounds shp))
+        (draw-shape   [s c] 
+          (let [strk (canvas/get-stroke c)
+                new-stroke (stroke/widen amount strk)]
+            (canvas/with-stroke new-stroke c
+              #(canvas/draw-shape shp %)))))))
+  
+(defn stroke-by [width shp]
+  (reify IShape
+    (shape-bounds [s] (shape-bounds shp))
+    (draw-shape   [s c]
+      (let [strk (canvas/get-stroke c)
+            new-stroke (stroke/stroke-of-width width strk)]
+        (canvas/with-stroke new-stroke c
+          #(canvas/draw-shape shp %))))))
+;;image combinators 
+(defn beside [s1 s2]
+  (let [bounds1 (shape-bounds s1)
+        bounds2 (shape-bounds s2)
+        hmax (max (:height bounds1) (:height bounds2))
+        width (+ (:width bounds1) (:width bounds2))
+        new-bounds (space/bbox 0 0 width hmax)]
+  (reify IShape 
+    (shape-bounds [s] new-bounds)
+    (draw-shape   [s c] (with-translation (:width bounds1) 0 
+                          (draw-shape s1 c) #(draw-shape s2 %))))))
+
+(defn <-beside [s1 s2]
+  (let [bounds1 (shape-bounds s1)
+        bounds2 (shape-bounds s2)
+        hmax (max (:height bounds1) (:height bounds2))
+        width (+ (:width bounds1) (:width bounds2))
+        new-bounds (space/bbox 0 0 width hmax)]
+  (reify IShape 
+    (shape-bounds [s] new-bounds)
+    (draw-shape   [s c] (with-translation (:width bounds2) 0 
+                          (draw-shape s2 c) #(draw-shape s1 %))))))
+
+(defn background [color shp]
+  (let [{:keys [x y width height]} (shape-bounds shp)]
+    [(->rectangle color 0 0 (+ x width) (+ y height))
+     shp]))
+
+(defn translate [tx ty shp]
+  (if (not (and (atom? tx) (atom? ty)))
+    (if (and (zero? tx) (zero? ty) ) shp
+        (reify IShape 
+          (shape-bounds [s] (space/translate-bounds tx ty (shape-bounds shp)))
+          (draw-shape   [s c] (with-translation tx ty 
+                                c #(draw-shape shp %)))))
+    (reify IShape 
+      (shape-bounds [s] (space/translate-bounds @tx @ty (shape-bounds shp)))
+      (draw-shape   [s c] (with-translation @tx @ty 
+                            c #(draw-shape shp %))))))
+
+;;this becomes a higher-order combinator..
+;;a way to define a translation.
+
+;;inverted the order because we have a cartesian coordinate system now.
+(defn above [s2 s1]
+  (let [bounds1 (shape-bounds  s1)
+        bounds2 (shape-bounds  s2)
+        wmax   (max (:width bounds1)  (:width bounds2))
+        height (+   (:height bounds1) (:height bounds2))
+        new-bounds (space/bbox 0 0 wmax height)]
+  (reify IShape 
+    (shape-bounds [s] new-bounds)
+    (draw-shape   [s c] (with-translation  0 (:height bounds1) 
+                          (draw-shape s1 c) #(draw-shape s2 %))))))
+(defn fade [alpha shp]
+  (if (not (atom? alpha))
+    (reify IShape 
+      (shape-bounds [s] (shape-bounds shp))
+      (draw-shape   [s c] (with-alpha  alpha 
+                            c #(draw-shape shp %))))
+    (reify IShape 
+      (shape-bounds [s] (shape-bounds shp))
+      (draw-shape   [s c] (with-alpha  @alpha 
+                            c #(draw-shape shp %))))))
+(defn rotate [theta shp]
+  (if (not (atom? theta))
+    (reify IShape 
+      (shape-bounds [s]   (space/rotate-bounds theta (shape-bounds shp)))
+      (draw-shape   [s c] (with-rotation theta  c #(draw-shape shp %))))
+    (reify IShape 
+      (shape-bounds [s]   (space/rotate-bounds @theta (shape-bounds shp)))
+      (draw-shape   [s c] (with-rotation @theta  c #(draw-shape shp %))))))
+
+;;rotates about a point....we probably should factor out spin-bounds
+;;from this guy.
+;; (defn spin   [theta shp]
+;;   ;(throw (Exception. "Rotation on bounds is currenty jacked up, not working. Need to fix the math on this."))
+;;   (let [bnds  (shape-bounds shp)
+;;         [x y] (space/get-center bnds)
+;;         spun  (space/spin-bounds theta bnds)
+;;         rotated (fn [canv] (with-rotation theta canv #(draw-shape shp %)))]
+;;     (reify IShape 
+;;       (shape-bounds [s]   spun)
+;;       (draw-shape   [s c] 
+;;         (with-translation x y c  rotated)))))
+
+(defn vertical-text [shp]
+  (let [{:keys [x y height width]} (shape-bounds shp)
+        new-shp (if (and (zero? x) (zero? y))
+                  (translate height 0
+                             (rotate (/ Math/PI 2.0) shp))
+                  (translate height 0
+                             (translate (- x) (- y)
+                                        (rotate (/ Math/PI 2.0)
+                                                (translate x y shp)))))
+        bnds    (spork.protocols.spatial/bbox x y height width)]
+    (reify IShape
+      (shape-bounds [s] bnds)
+      (draw-shape [s c] (draw-shape new-shp c)))))
+                 
+(defn spin
+  ([theta shp]
+   (let [{:keys [x y width height] :as bnds} (shape-bounds shp)
+         centerx    (+ x (/ width  2.0))
+         centery    (+ y (/ height 2.0))]
+     (spin theta shp centerx centery)))
+  ([theta shp centerx centery]
+   (let [bnds (shape-bounds shp)]
+     (if (not (atom? theta))
+       (let [new-bounds (spork.protocols.spatial/get-bounding-box
+                         (spork.protocols.spatial/spin-bounds theta bnds))
+             new-shp   (translate centerx centery
+                                  (rotate theta
+                                          (translate  (- centerx) (- centery)shp)))]
+         (reify IShape
+           (shape-bounds [c]  new-bounds)
+           (draw-shape [s c]  (draw-shape new-shp c)))
+       (reify IShape
+         (shape-bounds [c] (spork.protocols.spatial/get-bounding-box
+                            (spork.protocols.spatial/spin-bounds @theta bnds)))
+         (draw-shape [s c]
+           (let [newshp (translate centerx centery
+                                   (rotate @theta
+                                           (translate  (- centerx) (- centery) shp)))]
+             (draw-shape newshp c)))))))))
+
+(defn scale [xscale yscale shp]
+  (if (not (and (atom? xscale) (atom? yscale)))
+    (let [xscale (double xscale)
+          yscale (double yscale)]
+      (if (and (== xscale 1.0) (== yscale 1.0)) shp
+          (reify IShape 
+            (shape-bounds [s]   (space/scale-bounds xscale yscale (shape-bounds shp)))    
+            (draw-shape   [s c] (with-scale xscale yscale c #(draw-shape shp %))))))
+    (reify IShape 
+      (shape-bounds [s]   (space/scale-bounds @xscale @yscale (shape-bounds shp)))    
+      (draw-shape   [s c] (with-scale @xscale @yscale c #(draw-shape shp %))))))
+
+(def ^:dynamic *cartesian* nil)
+(defn cartesian [shp]
+  (let [bounds  (spork.protocols.spatial/scale-bounds 1.0 -1.0 (shape-bounds shp))
+        y       (spork.protocols.spatial/get-bottom bounds)
+        reflected (scale 1.0 -1.0 shp)]
+    (reify IShape 
+      (shape-bounds [s] bounds)
+      (draw-shape [s c] 
+        (if *cartesian* (draw-shape s c)
+            (binding [*cartesian* true]
+              (with-translation 0 (- (:height bounds) y) c 
+                #(draw-shape reflected %))))))))
+
+(defn uncartesian [shp]
+  (let [bounds    (spork.protocols.spatial/scale-bounds 1.0 -1.0 (shape-bounds shp))
+        y         (spork.protocols.spatial/get-bottom bounds)  
+        reflected (scale 1.0 -1.0 shp)]
+    (reify IShape 
+      (shape-bounds [s] bounds)
+      (draw-shape [s c] 
+        (if *cartesian* (binding [*cartesian* nil]
+                          (with-translation 0 (+ (:height bounds) y) c 
+                            #(draw-shape reflected %)))
+            (draw-shape shp c))))))
+
+(defn stack [shapes] (reduce above  shapes))
+(defn shelf [shapes] (reduce beside shapes))
+
+
+(defn delineate [xs] 
+  (let [group-bounds (shape-bounds xs)
+        width        (- (:width group-bounds) 3)
+        separator    (->line :black (:x group-bounds)
+                                    (dec (:y group-bounds))
+                                    width 
+                                    (dec (:y group-bounds)))]
+    (stack (interleave xs (repeat separator)))))
+
+;;work in progress.
+;; (defn at-center [shp]
+;;  (let [bounds (shape-bounds shp)
+;;        centerx (/ (:width bounds) 2.0)
+;;        centery (/ (:heigh bounds) 2.0)]    
+;;  (reify IShape 
+;;    (shape-bounds [s] bounds)
+;;    (draw-shape   [s c] (with-translation centerx centery c
+;;                          #(draw-shape shp %))))))
+
+(defn ->ticks [color width height step]
+  (let [tick   (:source (make-sprite :translucent (->line color 0 0 0 height) 0 0))
+        n      (quot width step)
+        bound  (unchecked-inc n)
+        bounds (space/bbox 0 0 width height)]                                                                                    
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [idx 0
+               canv c]
+          (if (== idx bound) 
+            canv
+            (recur (unchecked-inc idx)
+                   (draw-image canv tick :translucent (* idx step) 0))))))))
+        ;; half-height (/ height 2.0)
+        ;; ln     (->line color 0 half-height width half-height)          
+  
+(defn ->vticks [color width height step]
+  (let [tick   (:source (make-sprite :translucent (->line color 0 0 width 0) 0 0))
+        n      (quot height step)
+        bound  (unchecked-inc n)
+        bounds (space/bbox 0 0 width height)]                                                                                    
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [idx 0
+               canv c]
+          (if (== idx bound) 
+            canv
+            (recur (unchecked-inc idx)
+                   (draw-image canv tick :translucent 0 (* idx step)))))))))
+)
+
+
+;;examples
+(comment
+  (defn colored-rects! [n]
+  (into []
+    (take n
+     (map-indexed
+      (fn [i clr]
+        (spork.geometry.shapes/->rectangle clr
+                                           (+ 0 (+ (* i 100) 10)) 0 80 100)) (cycle [:red :blue :green])))))
+
+  (defn colored-paper [w h]
+  (let [xs (colored-rects w)]
+    (delineate (into [] (take h (repeat xs))))))
+
+
+(def  ->vline (image/shape->img (->line :black 0 0 0 10)))
+(def  ->hline (image/shape->img (->line :black 0 0 10 0)))
+(defn ->axis  [min max step-width]
+  (let [tick   (fn [x] (translate x 0 ->vline))]        
+    (translate 0 *font-height*     
+     (image/shape->img 
+       [(->line :black min 0 max 0)
+        (image/shape->img 
+          (into [] (map tick (range min (inc max) step-width))))]))))
+
+(defn ->xaxis  [min max step-width]
+  (let [tick   (fn [x] (translate x 0 ->vline))]        
+    (translate 0 *font-height*     
+     (image/shape->img 
+       [(->line :black min 0 max 0)
+        (image/shape->img 
+          (into [] (map tick (range min (inc max) step-width))))]))))
+
+(defn ->yaxis  [min max step-width]
+  (let [tick   (fn [x] (translate 0 x ->hline))]        
+    (image/shape->img 
+     [(->line :black  10 min   10 max)
+      (image/shape->img 
+       (into [] (map tick (range min (inc max) step-width))))])))
+
+(defn colored-rects [n]
+  (let [rects  (->> [:red :blue :green]
+                    (map (fn [clr]
+                           (spork.geometry.shapes/->rectangle clr
+                                                              0  0 100 100)))
+                    (map image/shape->img))]
+    (image/shape->img (reduce beside
+                                (take n (cycle rects))))))
+  
+)
