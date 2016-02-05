@@ -606,7 +606,7 @@
     (/ (Math/round (* d factor)) factor)))
 
 (def default-plot-font (f/->font "MONOSPACED" [:bold] 20))
-(defn ->gg-haxis [l r  height width & {:keys [thickness steps size font]
+(defn ->gg-haxis! [l r  height width & {:keys [thickness steps size font]
                                        :or {thickness 1.0
                                             steps 4
                                             size 12
@@ -631,6 +631,73 @@
                           (let [lbl (str (round2 2 n))
                                 halfw (/ (:width (f/string-bounds fnt lbl)) 2.0)]
                             (draw-string canv :black fnt lbl (- x halfw)  0)))]
+    (reify IShape
+      (shape-bounds [s]   bounds) 
+      (draw-shape   [s c]
+        (loop [offset 0.0
+               n      l
+               canv c]
+          (if (> n r) 
+            canv
+            (recur (+ offset scaled-step)
+                   (+ n step)
+                   (-> (draw-shape (translate offset 0 tick)
+                                   canv)
+                       (centered-numb n offset)
+                       )))))
+      IPadded
+      (hpad [s] (/ lwidth 2.0))
+      (vpad [s] height))))
+
+(defn centered [shp] 
+  (let [halfw (/  (:width (shape-bounds shp)) ;(f/string-bounds fnt lbl))
+                 2.0)]
+    (tag {:style :centered}
+         (translate (- halfw) 0
+                    shp))))
+
+(defn middled [x y shp]
+  (let [halfh (/  (:height (shape-bounds shp)) ;(f/string-bounds fnt lbl))
+                  2.0)]
+    (tag {:style :middled}
+         (translate 0 (- y halfh)
+                    shp))))
+
+(defn ->middled [fnt x y lbl] 
+  (let [halfh (/ (:height (f/string-bounds fnt lbl)) 2.0)]
+    (->text :black fnt lbl x (- y  halfh))))
+
+(defn ->centered-number
+  ([fnt x n]
+   (centered
+     (->text fnt (str (round2 2 n))))))
+
+(defn ->gg-haxis [l r  height width & {:keys [thickness steps size font]
+                                       :or {thickness 1.0
+                                            steps 4
+                                            size 12
+                                            font default-plot-font
+                                            }}]
+                  
+  (let [fnt         (f/resize-font font size)
+        lbounds     (f/string-bounds fnt (str (round2 2 l)))
+        rbounds     (f/string-bounds fnt (str (round2 2 r)))
+        lwidth      (:width lbounds)
+        rwidth      (:width rbounds)
+        nheight     (max (:height lbounds) (:height rbounds))
+        height      (if (< height nheight) (+ nheight 5) height) 
+        tick        (->line :black 0 nheight 0 height)
+        spread      (- r l)
+        xscale      (float ( / width spread))
+        step        (double (/ spread steps))
+        scaled-step (* xscale step)
+        bounds       ; (space/bbox (/ (- lwidth) 2.0) 0 (+ lwidth width rwidth)  height)
+                    (space/bbox (- (/ lwidth 2.0)) 0 (+ width  rwidth)  height)
+        centered-numb (fn [n x]
+                          (let [lbl (str (round2 2 n))
+                                halfw (/ (:width (f/string-bounds fnt lbl)) 2.0)]
+                            (->text :black fnt lbl (- x halfw) y)))
+                            ]
     (reify IShape
       (shape-bounds [s]   bounds) 
       (draw-shape   [s c]
@@ -952,8 +1019,6 @@
       clojure.lang.IDeref
       (deref [obj] trend-box))))
 
-(defmacro template [expr]
-  
 ;;would be nice to have a plotting-function or something, so we can
 ;;have a nice interface to the plot.
 (defn ->plot [points & {:keys [h w xmin xmax ymin ymax xlabel ylabel
@@ -1059,17 +1124,25 @@
 ;;allows us to print out an annotated tree of properties.
 ;;I'm debating going full serial with this...
 (defn annotate [shp]
-  (cond (map? shp)
+  (cond (and (map? shp) (not (record? shp)))
         (let [m (get (meta shp) :properties)
               kids (:children shp)
               xs (if (vector? kids) 
                    (mapv annotate kids)
                    (annotate kids))]
-          (assoc shp :properties m :children xs))                                  
+          (-> (if m (assoc shp :properties m) shp)
+              (assoc  :children xs)))
         (vector? shp)
-        {:type :group
-         :properties (get (meta shp) :properties)
-         :children (mapv annotate shp)}
+        (let [xs (mapv annotate shp)
+              properties (get (meta shp) :properties)]
+          (if properties
+            {:type :group
+             :properties (get (meta shp) :properties)
+             :children xs}
+            {:type :group
+             :children xs}))
+        (record? shp)
+        (assoc shp :type (type shp))
         :else
         shp))
     

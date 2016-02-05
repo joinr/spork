@@ -1,7 +1,7 @@
 (ns spork.graphics2d.canvas
   (:require [spork.protocols  [spatial :as spatial]]
             [spork.graphics2d [primitive :as prim]
-             [font :as f]]))
+                              [font :as f]]))
 
 ;We can actually do some cool stuff here...
 ;The absolute minimum primitives we need are...
