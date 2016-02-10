@@ -568,7 +568,7 @@
    (let [gridsample (image/shape->img [(->scrolling-columns 0 0 w h (/ w xstep))
                                        (->scrolling-rows 0 0 w h (/ h ystep))])]
      (repeat-up
-      x1 y1 h hr
+      x1 y1 h h
       (repeat-across x1 y1 w w gridsample)
       )))
   ([x1 y1 w h n] (->scrolling-grid2 x1 y1 w h n n))
@@ -670,7 +670,7 @@
 (defn ->centered-number
   ([fnt x n]
    (centered
-     (->text fnt (str (round2 2 n))))))
+     (->text fnt (str (round2 2 n)) x 0))))
 
 (defn ->gg-haxis [l r  height width & {:keys [thickness steps size font]
                                        :or {thickness 1.0
@@ -696,7 +696,7 @@
         centered-numb (fn [n x]
                           (let [lbl (str (round2 2 n))
                                 halfw (/ (:width (f/string-bounds fnt lbl)) 2.0)]
-                            (->text :black fnt lbl (- x halfw) y)))
+                            (->text :black fnt lbl (- x halfw) 0)))
                             ]
     (reify IShape
       (shape-bounds [s]   bounds) 

@@ -5,11 +5,12 @@
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]
             [clojure.core.reducers :as r]
+            [spork.util.reducers]
             [spork.util [clipboard :as board] [parsing :as parse]]
-            [spork.cljgui.components [swing :as gui]])
+            [spork.cljgui.components [swing :as gui]]
+            [spork.util.general  :as general :refer [align-by]])
   (:use [spork.util.vector]
         [spork.util.record  :only [serial-field-comparer key-function]]
-        [spork.util.general :only [align-by]]
         [clojure.pprint :only [pprint]])) 
 
 ;Moved generic protocols to util.protocols
@@ -102,7 +103,7 @@
         (if (= nextcount maxcount) 
           (recur maxcount (rest remaining) dirty?) 
           (recur (max maxcount nextcount) (rest remaining) true)))))) 
- 
+
 ;;Consider making this seqable...turning it into a deftype.
 (defrecord column-table [fields columns] 
   ITabular  
@@ -110,19 +111,20 @@
     (table-columns [x] columns) 
   ITabularMaker 
     (-make-table [x fields columns]  
-       (column-table. fields (normalize-columns columns)))
+      (column-table. fields (normalize-columns columns)))    
   clojure.core.protocols/CollReduce
   (coll-reduce [this f]  
     (let [bound   (count fields)
           rbound  (dec (count (first columns)))
-          cursor  (transient {})
+          cursor  {} ;(transient {})
           idx (atom 0)
           fetch-record (fn [n m] 
                          (loop [m m
                                 i 0]
                            (if (== i bound) m
                                (recur 
-                                (assoc! m (nth fields i)
+                                (assoc ;assoc!
+                                 m (nth fields i)
                                           (nth (nth columns i) n))
                                 (unchecked-inc i)))))
           next-record! (fn [] (if (== @idx rbound) nil
@@ -140,14 +142,15 @@
   (coll-reduce [this f init]
     (let [bound   (count fields)
           rbound  (dec (count (first columns)))
-          cursor  (transient {})
+          cursor  {};(transient {})
           idx (atom -1) ;ugh...negative really?
           fetch-record (fn [n m] 
                          (loop [m m
                                 i 0]
                            (if (== i bound) m
                                (recur 
-                                (assoc! m (nth fields i)
+                                (assoc ;assoc!
+                                 m (nth fields i)
                                           (nth (nth columns i) n))
                                 (unchecked-inc i)))))
           next-record! (fn [] (if (== @idx rbound) nil
@@ -158,7 +161,8 @@
           (if (reduced? ret) @ret
               (if-let [nxt (next-record!)]                
                   (recur (f ret nxt))
-                  ret)))))))
+                  ret))))))
+  )
 
 (defn make-table  
   "Constructs a new table either directly from a vector of fields and  
@@ -430,16 +434,35 @@
   (reduce (fn [acc [j x]] (assoc acc j (conj (get acc j) x)))
           columns (map-indexed vector rowvector)))
 
-
+;;we're using lazy seq here..
+;;map-indexed vector...
+;;another optimization is to use a reducer..
+;;since it's a reduction, we could just go low-level here.
+;;could also use transducer...
+(comment 
 (defn- conj-row! [transientcolumns rowvector] 
   (reduce (fn [acc [j x]] (assoc! acc j (conj! (get acc j) x))) 
           transientcolumns (map-indexed vector rowvector)))
+)
 
+(defn- conj-row! [transientcolumns rowvector]
+  (let [bound (count rowvector)]
+    (loop [j 0
+           acc transientcolumns]
+      (if (== j bound) acc
+          (recur (unchecked-inc j)
+                 (assoc! acc j (conj! (get acc j)
+                                      (nth rowvector j))))))))
+
+(defn first-any [xs]
+  (if (seq? xs)  (first xs)
+      (r/first xs)))
+      
 (defn conj-rows
   "Conjoins multiple rowvectors.  Should be fast, using transients.
    Returns a persistent collection."
   [columns rowvectors]
-  (assert (= (count (first rowvectors)) (count columns)))
+  (assert (= (count (first-any rowvectors)) (count columns)))
   (persistent-columns! 
     (reduce conj-row! (transient-columns columns) rowvectors)))  
 
@@ -628,36 +651,50 @@
 ;;moment.
 
 (defn pair [a b] [a b])
-(def re-tab (re-pattern (str \tab))) 
-(def split-by-tab #(strlib/split % re-tab))
+(def re-tab (re-pattern (str \tab)))
+;;split-by-tab is hurting is.
+;;specifically, because of the overhead of having
+;;to create all the intermediate vectors we're
+;;parsing.
+;; (def split-by-tab
+;;   #(strlib/split % re-tab))
+;;Roughly 2X as fast as clojure.string/split
+;;Note, it doesn't cost us much to wrap it as a
+;;persistent vector.
+(defn split-by-tab [^String s]
+  (clojure.lang.LazilyPersistentVector/createOwning
+   (.split s "\t")
+   )
+)
+
+(defn ^java.io.BufferedReader get-reader [s]
+  (if (general/path? s) (clojure.java.io/reader s)
+      (general/string-reader s)))
+
+;;probably replace this with iota...
+(defn lines [^String s]
+  (reify 
+    clojure.core.protocols/CollReduce
+    (coll-reduce [this f]
+      (with-open [^java.io.BufferedReader rdr (get-reader s)]
+        (if-let [l1 (.readLine rdr)]
+          (if-let [l2 (.readLine rdr)]            
+            (loop [acc (f l1 l2)]
+              (if (reduced? acc) acc
+                  (if-let [line (.readLine rdr)]
+                    (recur (f acc line))
+                    acc)))
+            l1)
+          nil)))
+    (coll-reduce [this f init]
+      (with-open [^java.io.BufferedReader rdr (get-reader s)]
+        (loop [acc init]
+          (if (reduced? acc) acc
+              (if-let [line (.readLine rdr)]
+                (recur (f acc line))
+                acc)))))))    
 
 ;older table abstraction, based on maps and records...
-
-(defn tabdelimited->table 
-  "Return a map-based table abstraction from reading a string of tabdelimited 
-   text.  The default string parser tries to parse an item as a number.  In 
-   cases where there is an E in the string, parsing may return a number or 
-   infinity.  Set the :parsemode key to any value to anything other than 
-   :scientific to avoid parsing scientific numbers."
-   [s & {:keys [parsemode keywordize-fields? schema] 
-         :or   {parsemode :scientific
-                keywordize-fields? true
-                schema {}}}] 
-  (let [lines (strlib/split-lines s)
-        tbl   (->column-table 
-                 (vec (map (if keywordize-fields?  
-                             (comp keyword clojure.string/trim)
-                             identity) (split-by-tab (first lines)))) 
-                 [])
-        parsef (parse/parsing-scheme schema :default-parser  
-                 (if (= parsemode :scientific) parse/parse-string
-                     parse/parse-string-nonscientific))
-        fields (table-fields tbl)      
-        parse-rec (comp (parse/vec-parser fields parsef) split-by-tab)]
-      (->> (conj-rows (empty-columns (count (table-fields tbl))) 
-                      (map parse-rec (rest lines)))
-           (assoc tbl :columns)))) 
-
 (defn lines->table 
   "Return a map-based table abstraction from reading lines of tabe delimited text.  
    The default string parser tries to parse an item as a number.  In 
@@ -671,16 +708,105 @@
   (let [tbl   (->column-table 
                  (vec (map (if keywordize-fields?  
                              (comp keyword clojure.string/trim)
-                             identity) (split-by-tab (first lines)))) 
+                             identity) (split-by-tab (first-any lines)))) 
                  [])
         parsef (parse/parsing-scheme schema :default-parser  
                  (if (= parsemode :scientific) parse/parse-string
                      parse/parse-string-nonscientific))
         fields (table-fields tbl)      
-        parse-rec (comp (parse/vec-parser fields parsef) split-by-tab)]
+        parse-rec (comp (parse/vec-parser! fields parsef) split-by-tab)]
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 
-                      (map parse-rec (rest lines)))
-           (assoc tbl :columns)))) 
+                      (r/map parse-rec (r/drop 1 lines)))
+           (assoc tbl :columns))))
+(comment 
+(defn tabdelimited->table 
+  "Return a map-based table abstraction from reading a string of tabdelimited 
+   text.  The default string parser tries to parse an item as a number.  In 
+   cases where there is an E in the string, parsing may return a number or 
+   infinity.  Set the :parsemode key to any value to anything other than 
+   :scientific to avoid parsing scientific numbers."
+   [s & {:keys [parsemode keywordize-fields? schema] 
+         :or   {parsemode :scientific
+                keywordize-fields? true
+                schema {}}}]
+   (let [lines (strlib/split-lines s)
+         tbl   (->column-table 
+                (vec (map (if keywordize-fields?  
+                            (comp keyword clojure.string/trim)
+                            identity) (split-by-tab (first lines)))) 
+                [])
+         parsef (parse/parsing-scheme schema :default-parser  
+                                      (if (= parsemode :scientific) parse/parse-string
+                                          parse/parse-string-nonscientific))
+         fields (table-fields tbl)      
+         parse-rec (comp (parse/vec-parser fields parsef) split-by-tab)]
+     (->> (conj-rows (empty-columns (count (table-fields tbl))) 
+                     (map parse-rec (rest lines)))
+          (assoc tbl :columns))))
+)
+
+
+(defn tabdelimited->table 
+  "Return a map-based table abstraction from reading a string of tabdelimited 
+   text.  The default string parser tries to parse an item as a number.  In 
+   cases where there is an E in the string, parsing may return a number or 
+   infinity.  Set the :parsemode key to any value to anything other than 
+   :scientific to avoid parsing scientific numbers."
+   [s & {:keys [parsemode keywordize-fields? schema] 
+         :or   {parsemode :scientific
+                keywordize-fields? true
+                schema {}}}]
+   (with-open [^java.io.Reader rdr (if (general/path? s)
+                                     (clojure.java.io/reader s)
+                                     (general/string-reader s))]
+     (lines->table (line-seq rdr)
+                   :parsemode parsemode
+                   :keywordize-fields? keywordize-fields?
+                   :schema schema)))
+
+;;another option here is to parse the lines into columns, then simply
+;;append the columns.  As it stands, we have a lot of intermediate vectors
+;;being created...If we have a vector of parsers, it makes it easier to
+;;just build of n vectors of columns, rather than produce an intermediate
+;;vector for each row, and then convert to rows at the end...
+
+;;We can also save some time and space if we just use a single array
+;;buffer...as long as we're copying the array we're okay..
+(defn lines->columns 
+  "Return a vector of columns from reading lines of tabe delimited text.  
+   The default string parser tries to parse an item as a number.  In 
+   cases where there is an E in the string, parsing may return a number or 
+   infinity.  Set the :parsemode key to any value to anything other than 
+   :scientific to avoid parsing scientific numbers.  Avoid creating 
+   intermediate row collections.  If we have a vector parser, we just 
+   reduce over it, building up the columns as we go.  This should 
+   allow us to avoid lots of intermediate vectors as the current scheme 
+   follows."
+   [lines & {:keys [parsemode keywordize-fields? schema] 
+             :or   {parsemode :scientific
+                    keywordize-fields? true
+                    schema {}}}] 
+  (let [tbl   (->column-table 
+                 (vec (map (if keywordize-fields?  
+                             (comp keyword clojure.string/trim)
+                             identity)
+                           (split-by-tab (first lines)))) 
+                 [])
+        parsef (parse/parsing-scheme schema :default-parser  
+                 (if (= parsemode :scientific)
+                     parse/parse-string
+                     parse/parse-string-nonscientific))
+        fields (table-fields tbl)
+        ;;if we can give a reducible seq to conj-rows, it'll work...       
+        ;;We could use mutable record to get the fields...
+        parse-rec (comp (parse/vec-parser fields parsef)
+                        split-by-tab)]
+    (->> (conj-rows (empty-columns (count (table-fields tbl)))
+                    ;We don't really want to create a lazy seq here.  parse-rec makes a vector.
+                    ;so we create a million vectors.
+                    (map parse-rec (rest lines)) ;lazy sequence.
+                    )
+         (assoc tbl :columns))))
 
 (defn record-seq  
 	"Returns a sequence of records from the underlying table representation. 
@@ -817,6 +943,61 @@
   (gui/->scrollable-view 
    (gui/->swing-table (get-fields obj)   
                       (table-rows obj) :sorted sorted)))
+
+;;Additional patches for extended table functionality.
+ (defn paste-table! [t]  (spork.util.clipboard/paste! (table->tabdelimited t)))
+ (defn add-index [t] (conj-field [:index (take (record-count t) (iterate inc 0))] t))
+ (defn no-colon [s]   (if (or (keyword? s)
+                              (and (string? s) (= (first s) \:)))
+                        (subs (str s) 1)))
+
+ (defn collapse [t root-fields munge-fields key-field val-field]
+   (let [root-table (select :fields root-fields   :from t)]
+     (->>  (for [munge-field munge-fields]
+             (let [munge-col  (select-fields [munge-field] t)
+                   munge-name (first (get-fields munge-col))
+                   
+                   key-col    [key-field (into [] (take (record-count root-table) 
+                                                        (repeat munge-name)))]
+                   val-col    [val-field  (first (vals (get-field munge-name munge-col)))]]
+               (conj-fields [key-col val-col] root-table)))
+           (concat-tables)          
+           (select-fields  (into root-fields [key-field val-field])))))
+
+ (defn rank-by  
+   ([trendf rankf trendfield rankfield t]
+      (->> (for [[tr xs] (group-by trendf  (table-records t))] 
+             (map-indexed (fn [idx r] (assoc r trendfield tr  rankfield idx)) (sort-by rankf xs)))
+           (reduce      concat)
+           (records->table)
+           (select-fields (into (table-fields t) [trendfield rankfield]))))
+   ([trendf rankf t] (rank-by trendf rankf :trend :rank t)))
+
+ (defn ranks-by [names-trends-ranks t]    
+   (let [indexed (add-index t)
+         new-fields (atom [])
+         idx->rankings 
+         (doall (for [[name [trendf rankf]] names-trends-ranks]
+                  (let [rankfield (keyword (str (no-colon name) "-rank"))
+                        _ (swap! new-fields into [name rankfield])]
+                    (->> indexed
+                         (rank-by trendf rankf name rankfield)
+                         (select-fields [:index name rankfield])
+                         (reduce (fn [acc r]
+                                   (assoc acc (:index r) [(get r name) (get r rankfield)])) {})))))]
+     (conj-fields      
+      (->> idx->rankings
+           (reduce (fn [l r] 
+                     (reduce-kv (fn [acc idx xs]
+                                  (update-in acc [idx]
+                                             into xs))
+                                l r)))
+           (sort-by first)
+           (mapv second)
+           (spork.util.vector/transpose)
+           (mapv vector @new-fields)
+           )
+      indexed)))
 
 (comment   ;testing.... 
   (def mytable  (conj-fields [[:first ["tom" "bill"]] 

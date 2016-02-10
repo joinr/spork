@@ -7,6 +7,7 @@
 ;;It's much much better to use a standard parser for each field, if the 
 ;;field is a known type.
 
+;;Borrowed from Incanter Source code, credit David Liebke 
 (defn parse-string 
 	"Parses a string, trying various number formats.  Note, scientific numbers,
 	 or strings with digits sandwiching an E or an e will be parsed as numbers,
@@ -128,34 +129,13 @@
                     xs))))))
 )
 
-;;This is actually marginally faster than using transients.
-;;Go figure.
-(defn vec-parser 
-  "Given a set of fields, and a function that maps a field name to 
-   a parser::string->'a, returns a function that consumes a sequence
-   of strings, and parses fields with the corresponding 
-   positional parser.  Alternately, caller may supply a parser as a 
-   single argument, to be applied to a vector of strings."
-  ([fields field->value]
-     (let [xs->values (vec (map #(partial field->value %) fields))]
-       (fn [xs]
-         (loop [acc []
-                idx 0]
-           (if (= idx (count xs->values)) acc
-               (recur (conj acc ((nth xs->values idx) (nth xs idx)))
-                      (inc idx)))))))
-  ([f] 
-     (let [parsefunc (lookup-parser f identity)]
-       (fn [xs]         
-          (reduce (fn [acc x] 
-                    (conj acc (parsefunc x)))  []
-                    xs)))))
-
 ;;There's some loosery-goosiness to tab delimited parsing, 
 ;;that happens when we're parsing tab delimited strings.
 ;;we want to allow a clean parse if the last field in a 
 ;;record is empty.
 
+(defn partial2 [f arg] (fn part [x] (f arg x))) 
+
 (defn vec-parser 
   "Given a set of fields, and a function that maps a field name to 
    a parser::string->'a, returns a function that consumes a sequence
@@ -163,20 +143,61 @@
    positional parser.  Alternately, caller may supply a parser as a 
    single argument, to be applied to a vector of strings."
   ([fields field->value]
-     (let [xs->values (vec (map #(partial field->value %) fields))]
-       (fn [xs]
-         (loop [acc []
-                idx 0]
-           (if (= idx (count xs->values)) acc
-               (recur (conj acc ((nth xs->values idx) (nth xs idx)))
-                      (inc idx)))))))
+   (let [xs->values  (vec (map #(partial2 field->value %) fields))
+         bound       (count xs->values)
+         uptolast    (dec bound)]
+     (fn [xs]
+       (let [res 
+             (loop [acc []
+                    idx 0]
+               (if (= idx uptolast) acc
+                   (recur (conj acc ((nth xs->values idx) (nth xs idx)))
+                          (inc idx))))]
+         (conj res 
+                   (cond (== (count xs) bound) 
+                         ((nth xs->values uptolast) (nth xs uptolast)) ;;append the last result
+                         (== (count xs) uptolast) nil))))))      ;;add an empty value                 
   ([f] 
-     (let [parsefunc (lookup-parser f identity)]
-       (fn [xs]         
-          (reduce (fn [acc x] 
-                    (conj acc (parsefunc x)))  []
-                    xs)))))
+   (let [parsefunc (lookup-parser f identity)]
+     (fn [xs]         
+       (reduce (fn [acc x] 
+                 (conj acc (parsefunc x)))  []
+                 xs)))))
 
+;;another option is...
+;;as part of the parsing function, we conj the result onto the
+;;vector..
+;;Alternately, we return a reducible seq.
+;;a way around this would be to have a reducible
+;;line-splitter...
+
+(defn vec-parser! 
+  "Mutable.  Given a set of fields, and a function that maps a field name to 
+   a parser::string->'a, returns a function that consumes a sequence
+   of strings, and parses fields with the corresponding 
+   positional parser.  Alternately, caller may supply a parser as a 
+   single argument, to be applied to a vector/array of strings."
+  ([fields field->value]
+   (let [xs->values  (vec (map #(partial2 field->value %) fields))
+         bound       (count xs->values)
+         uptolast    (dec bound)
+         row         (object-array bound)]
+     (fn [xs]
+       (let [res (loop [idx 0]
+                   (if (== idx uptolast) row
+                       (do (aset row idx ((nth xs->values idx) (nth xs idx)))
+                           (recur (unchecked-inc idx)))))]
+         (do (aset row uptolast
+                   (if (== (count xs) bound) 
+                     ((nth xs->values uptolast) (nth xs uptolast)) ;;append the last result
+                     nil))
+             row)))))      ;;add an empty value                 
+  ([f] 
+   (let [parsefunc (lookup-parser f identity)]
+     (fn [xs]         
+       (reduce (fn [acc x] 
+                 (conj acc (parsefunc x)))  []
+                 xs)))))
 
 (defn record-parser 
   "Given an implied schema as indicated by the map, returns a function that

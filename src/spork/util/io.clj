@@ -149,6 +149,7 @@
      (try ~@body
           (finally (delete-file-recursively dir#)))))   
 
+;;replace with mapv...this is old and not needed.  also not a huge deal though.
 (defn vector-map
   "Helper function to keep vector->vector transforms."
   [f v]

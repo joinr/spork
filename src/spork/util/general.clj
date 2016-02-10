@@ -3,6 +3,18 @@
 (ns spork.util.general
   (:require [clj-tuple :as tup]))
 
+(defn ^java.io.BufferedReader string-reader [^String s]
+  (-> (java.io.StringReader. s) (java.io.BufferedReader.)))
+
+;;This is actually a pretty naive way to parse paths...but I think it'll work for
+;;our use cases.
+(defn path? [s]
+  (with-open [rdr (string-reader s)]
+    (let [[l1 l2] (take 2 (line-seq rdr))]
+      (when  (and (nil? l2)
+                  (seq (re-seq #"\\|/" s)))
+        true))))
+
 (defmacro clone-meta [obj expr]
   `(with-meta ~expr (meta ~obj)))
 
