@@ -51,12 +51,13 @@
 (def parse-defaults 
   {:string identity
    :text   identity
-   :boolean (fn [^String x] (Boolean/parseBoolean x))
+   :boolean (^boolean fn [^String x] (Boolean/parseBoolean x))
    :number  (fn [^String x] (try (Integer/parseInt x)
                                   (catch NumberFormatException _
                                     (Double/parseDouble x))))
-   :keyword (fn [^String x] (keyword x))
+   :keyword (^clojure.lang.Keyword fn [^String x] (keyword x))
    :float  (^double fn [^String x] (Double/parseDouble x))
+   :double (^double fn [^String x] (Double/parseDouble x))
    :int    (^int fn [^String x]    (Integer/parseInt x))
    :long   (^int fn [^String x]    (Long/parseLong x))
    :date   (^java.util.Date fn [^String x] (java.util.Date. x))

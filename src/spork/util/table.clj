@@ -8,7 +8,8 @@
             [spork.util.reducers]
             [spork.util [clipboard :as board] [parsing :as parse]]
             [spork.cljgui.components [swing :as gui]]
-            [spork.util.general  :as general :refer [align-by]])
+            [spork.util.general  :as general :refer [align-by]]
+            [clojure.core.rrb-vector :as rrb])
   (:use [spork.util.vector]
         [spork.util.record  :only [serial-field-comparer key-function]]
         [clojure.pprint :only [pprint]])) 
@@ -103,6 +104,17 @@
         (if (= nextcount maxcount) 
           (recur maxcount (rest remaining) dirty?) 
           (recur (max maxcount nextcount) (rest remaining) true)))))) 
+
+;;We're offering primitive columns now, using rrb-vectors (until clojure
+;;core actually accepts the patch for transients in vector-of for gvec).
+;;This should allow us to have a more efficient storage of our tables,
+;;particularly if we provide types for them (like int and friends).
+;;The biggest reason for this change is to help with memory restricted
+;;environs, specifically when we're working with larger datasets. Ideally,
+;;we can keep 99% of our interface and get some serious space savings without
+;;sacrifing performance.  It may be that space savings end up going toward
+;;our strings though, which is a beneifit/limitation of the JVM.
+;;RRBVectors may also be desireable for our CES...
 
 ;;Consider making this seqable...turning it into a deftype.
 (defrecord column-table [fields columns] 

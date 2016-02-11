@@ -467,7 +467,8 @@
         y    y1
         x-rev x]
     (with-bounds bbox
-      {:x x
+      {:type :repeat-up
+       :x x
        :y1 y1
        :h h
        :step step
@@ -587,7 +588,18 @@
 (defprotocol IPadded
   (hpad [s])
   (vpad [s]))
-  
+
+(extend-protocol IPadded
+  clojure.lang.PersistentArrayMap
+  (hpad [s] (get (meta s) :hpad 0))
+  (vpad [s] (get (meta s) :vpad 0))
+  clojure.lang.PersistentHashMap
+  (hpad [s] (get (meta s) :hpad 0))
+  (vpad [s] (get (meta s) :vpad 0))
+  clojure.lang.PersistentVector
+  (hpad [s] (get (meta s) :hpad 0))
+  (vpad [s] (get (meta s) :vpad 0)))
+
 ;;we have a range.
 ;;we want to distribute the range across a span, so that the
 ;;numbers step evenly.
@@ -708,9 +720,9 @@
             canv
             (recur (+ offset scaled-step)
                    (+ n step)
-                   (-> (draw-shape (translate offset 0 tick)
+                   (-> (draw-shape [(translate offset 0 tick)                                   
+                                    (centered-numb n offset)]
                                    canv)
-                       (centered-numb n offset)
                        )))))
       IPadded
       (hpad [s] (/ lwidth 2.0))
@@ -738,13 +750,14 @@
         step          (double (/ spread steps)) 
         scaled-step   (* scale step)
         bounds        (space/bbox 0 (/ label-height -4.0) axis-width (+ height (/ label-height 2.0) ))
-        centered-numb (fn [canv n y]
+        centered-numb (fn [n y]
                         (let [lbl (str (round2 2 n))
                               {:keys [height width]} (f/string-bounds fnt lbl)
                               halfh (/ height  4.0)
                               offset (- label-width width)]                          
-                          (draw-string canv :black fnt lbl offset (- y halfh)
-                                       )))
+                          ;(draw-string canv :black fnt lbl offset (- y halfh)
+                          ;             )
+                          (->text :black fnt lbl offset (- y halfh))))
         ;)
     ]
     (reify IShape
@@ -758,9 +771,9 @@
             (do ; (println n)
                 (recur (+ offset scaled-step)
                        (+ n step)
-                       (-> (draw-shape (translate 0 offset tick)
-                                       canv)
-                                       (centered-numb n offset)
+                       (draw-shape [(translate 0 offset tick)
+                                    (centered-numb n offset)]
+                                   canv
                                         ))))))
       IPadded
       (hpad [s] axis-width)
@@ -1146,7 +1159,6 @@
         :else
         shp))
     
-
 ;;attempt to clean up plot
 (comment
 
