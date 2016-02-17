@@ -51,16 +51,16 @@
 (def parse-defaults 
   {:string identity
    :text   identity
-   :boolean (^boolean fn [^String x] (Boolean/parseBoolean x))
-   :number  (fn [^String x] (try (Integer/parseInt x)
+   :boolean (^boolean fn parse-boolean [^String x] (Boolean/parseBoolean x))
+   :number  (fn parse-number [^String x] (try (Integer/parseInt x)
                                   (catch NumberFormatException _
                                     (Double/parseDouble x))))
    :keyword (^clojure.lang.Keyword fn [^String x] (keyword x))
-   :float  (^double fn [^String x] (Double/parseDouble x))
-   :double (^double fn [^String x] (Double/parseDouble x))
-   :int    (^int fn [^String x]    (Integer/parseInt x))
-   :long   (^int fn [^String x]    (Long/parseLong x))
-   :date   (^java.util.Date fn [^String x] (java.util.Date. x))
+   :float  (^double fn parse-float  [^String x]    (Double/parseDouble x))
+   :double (^double fn parse-double [^String x]    (Double/parseDouble x))
+   :int    (^int    fn parse-int    [^String x]    (Integer/parseInt x))
+   :long   (^long   fn parse-long   [^String x]    (Long/parseLong x))
+   :date   (^java.util.Date fn parse-date [^String x] (java.util.Date. x))
    :clojure clojure.edn/read-string
    :symbol  clojure.edn/read-string
    :literal clojure.edn/read-string

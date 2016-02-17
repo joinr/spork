@@ -401,8 +401,8 @@
 (defn ^JTable ->swing-table [column-names column-vals 
                            & {:keys [sorted] :or {sorted false}}]
   (doto (JTable. (Vector. (map #(Vector. %) column-vals))
-                             (Vector. column-names))
-                    (.setAutoCreateRowSorter sorted)))
+                 (Vector. column-names))
+    (.setAutoCreateRowSorter sorted)))
 
 (defn ^ListModel ->list-model [coll & {:keys [item-at] 
                                        :or {item-at  (fn [index] 

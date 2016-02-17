@@ -30,6 +30,6 @@
                  [org.clojure/core.match "0.2.1"]
                  [iota "1.1.2"]
                  [org.clojure/core.rrb-vector "0.0.11"]
-                 [clojure-watch "LATEST"] ;ephemeral dependency.
+;                 [clojure-watch "LATEST"] ;ephemeral dependency.
                  ]
   :jvm-opts ^:replace ["-Xmx500m" "-XX:NewSize=200m"])

@@ -50,7 +50,10 @@
     (field-vals [x] ((comp first vals) x)) 
   clojure.lang.PersistentVector 
     (field-name [x] (first  x)) 
-    (field-vals [x] (or (second x) [])))
+    (field-vals [x] (or (second x) []))
+    clojure.lang.MapEntry
+    (field-name [x] (key  x)) 
+    (field-vals [x] (or (val x) [])))
 
 (declare empty-table 
          -conj-field
@@ -185,12 +188,9 @@
     :field2 [column2-values]} " 
   ([fields columns] 
     (->column-table fields (normalize-columns columns))) 
-  ([Ifields] (->> (if (map? Ifields)  
-                       (reverse Ifields) 
-                       Ifields) 
-                  (fn [specs] (make-table (vec (map field-name specs)) 
-                                          (vec (map field-vals specs))))))) 
-     
+  ([Ifields] (reduce (fn [acc fld]
+                      (conj-field  [(field-name fld) (field-vals fld)] acc)) (->column-table [] []) (seq Ifields))))
+              
 (def empty-table (make-table [] [] ))
 (defn ordered-table?
   "Indicates if tbl implements table fields in an unordered fashion."
@@ -758,6 +758,77 @@
 )
 
 
+(comment 
+(defn words-by
+  "Efficient implementation of tab delimited value splitter."
+  ([f init  delim ^CharSequence x]
+   (let [delim (char delim)
+         bound (count x)
+         lastc (unchecked-dec bound)
+         chars (char ...)
+         lr->word (fn [l r]
+                    (loop [idx l]
+                      ))
+         ]
+     (loop [idx   0
+            l     0
+            acc   init]
+       (if (or (reduced? acc)
+               (== idx bound))
+         (if (pos? (- lastc l))
+           (f acc (.subSequence x l bound))
+           acc )
+         (let [ c (.charAt x idx)
+               delim?  (= c delim)]
+           (cond (and delim? (< l idx)) ;found a word
+                 (let [nxt (.subSequence x l idx)]
+                   (recur idx
+                         idx
+                         (f acc nxt)))
+                 delim? ;new word..
+                 (recur (unchecked-inc idx)
+                        (unchecked-inc idx)
+                        acc)
+                 :else
+                 ;(or (zero? idx) (zero? l))
+                 (recur (unchecked-inc idx)
+                        l
+                        acc)
+                  ;(throw (Exception. (str [:uncaught-case acc])))
+                   ))))))
+  ([delim x] (words-by conj [] delim x))
+  ([x] (words-by \tab x)))
+
+                    ;;new word....
+                     
+                             
+                  
+                 
+;    (reduce [o f])
+ ; (reify clojure.core.ISeq
+ ;   (seq [obj]
+
+  
+(defn select-text-fields
+  "Allows us to select a subset of the text fields
+   from a sequence of lines.  In other words, it helps 
+   us to eliminate parsing, and thus storing, lots of 
+   extraneous data.  For in memory parsing, this should
+   be a pretty significant benefit.  Right now, it appears
+   that text is killing us in overhead."
+  [flds ls]
+  (let [headers (first ls)
+        ks (if (map? flds) (keys flds) flds)
+        nums  (vec (sort (mapv first ks)))
+        extract (fn [^String ln]
+                  (reduce ... ))
+        ]))
+    ;;we now know the positions to retain.  Everything else is dropped.
+    ;;we want to return a modified view of the underlying sequence that
+    ;;only keeps the nth positions we identified.
+  
+)
+
 (defn tabdelimited->table 
   "Return a map-based table abstraction from reading a string of tabdelimited 
    text.  The default string parser tries to parse an item as a number.  In 
@@ -775,6 +846,8 @@
                    :parsemode parsemode
                    :keywordize-fields? keywordize-fields?
                    :schema schema)))
+
+
 
 ;;another option here is to parse the lines into columns, then simply
 ;;append the columns.  As it stands, we have a lot of intermediate vectors
