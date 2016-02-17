@@ -59,7 +59,8 @@
          -conj-field
          -disj-field
          make-table
-         table->map)
+         table->map
+         conj-field)
 
 (defn find-where
   "Similar to clojure.core/some...except it returns the indices where any member 
