@@ -1,6 +1,10 @@
-;TOM SPOON 9 July 2012 
-;A simple library for reading and writing tabular representations of data.
-;Uses map as a container.
+;;TOM SPOON 9 July 2012 
+;;A simple library for reading and writing tabular representations of data.
+;;Uses map as a container.
+;;Vector-of-vector columnar data store.  Backing vectors may be primitive,
+;;or rrb-trees or anything that implements persistentvector.
+;;Pending implementation of clojure.core.matrix.dataset protocols to
+;;enable compatibility with other apps.
 (ns spork.util.table
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]
