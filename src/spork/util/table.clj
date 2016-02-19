@@ -735,6 +735,60 @@
    (.split s "\t")
    ))
 
+
+;;if we're reading into a buffer.
+;;we can get a view on the buffer as a sequence of buffers...
+;;init [0 0] [0..... 4096]
+;;read (<= 4096)
+;;[0 4096] [a b c d ..... blah]
+;;now that we have this, we can load our chararray.
+;;note: we can also tune the buffer to available system
+;;memory.
+
+;;so, if we're interested in breaking lines, all we need to
+
+;; (definterface ILineReader
+;;   (^String readLine [])
+;;   (byteLine         []))
+
+;; (deftype FastReader [^:unsynchronized-mutable ^chars array ^java.io.BufferedInputStream fbi ^:unsynchronized-mutable ^int length]
+;;   ILineReader
+;;   (byteLine [this]
+;;     (loop [start 0]
+;;       (let [len (.readLine fbi  ^bytes array start (- (alength ^bytes array) start)) ;number of bytes read.
+;;             ]
+;;         (if (neg? len) nil ;(String. ^bytes array start) ;no bytes read.
+;;             (if (== len  (- (alength ^bytes array) start) ) ;read bytes = number in the buffer.
+;;               (do ;(println [:read len :start start :length (alength ^bytes array)])
+;;                   (set! array (ByteArrays/grow ^bytes array (unchecked-inc (alength ^bytes array)))) ;grow the buffer, start at the next.
+;;                   (recur (unchecked-add start len)))
+;;                                         ;(String. ^bytes array 0 (unchecked-add start len))
+;;               (do (set! length len)
+;;                   this)
+;;               ))))))
+
+;; (defn next-line [^chars buff ^long offset ^long len]
+;;   (let [bound (unchecked-add idx len)]
+;;     (loop [idx offset]
+;;       (if (== idx bound) ;;ran out
+;;         -1
+;;         (if (== (int (aget ^chars buff idx)) 10)
+;;           idx
+;;           (recur (unchecked-inc idx)))))))
+
+;; (defn buffered-lines [n rdr]
+;;   (let [^chars buff (char-array n)]
+;;     (loop [l 0
+;;            r 0]
+;;       (let [len (.read rdr buff 0 n)]
+;;         ;;scan from the left to see if we have a line.
+;;         (if (pos? len) ;we got chars.
+;;           (let [nl (next-line buff l len)]
+            
+
+
+           
+
 ;older table abstraction, based on maps and records...
 (defn lines->table 
   "Return a map-based table abstraction from reading lines of tabe delimited text.  
@@ -769,20 +823,22 @@
   [ls schema & {:keys [parsemode keywordize-fields?] 
                 :or   {parsemode :scientific
                        keywordize-fields? true}}]
-  (let [raw-headers   (clojure.string/split  (first-any ls) #"\t" )
-        fields    (if keywordize-fields?
-                    (reduce (fn [acc h]                            
-                              (keyword (if (= (first h) \:) (subs h  1) h)))
-                            [] raw-headers))                                           
+  (let [raw-headers   (clojure.string/split  (first-any ls) #"\t" )        
+        fields        (mapv (fn [h]
+                              (let [root  (if (= (first h) \:) (subs h  1) h)]
+                                (if keywordize-fields?
+                                  (keyword root)
+                                  root)))
+                             raw-headers)                                           
         s         schema
         parser    (spork.util.parsing/parsing-scheme s)
         idx       (atom 0)
         idx->fld  (reduce (fn [acc h]
-                            (if (get s h)
+                            (if (get s h (get s (keyword h)))
                               (let [nxt (assoc acc @idx h)
                                     _   (swap! idx unchecked-inc)]
                                 nxt)
-                              (do (swap! idx unchecked-inc) acc))) {} raw-headers)
+                              (do (swap! idx unchecked-inc) acc))) {} fields)
         ;;throw an error if the fld is not in the schema.
         _ (let [known (set (vals idx->fld))
                 missing (filter (complement known) (keys s))]
@@ -817,7 +873,7 @@
                    :keywordize-fields? keywordize-fields?
                    :schema schema
                    :default-parser default-parser)
-     (typed-lines->table s (general/line-reducer s)
+     (typed-lines->table  (general/line-reducer s)
                          schema
                          :parsemode parsemode
                          :keywordize-fields? keywordize-fields?
