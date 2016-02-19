@@ -522,10 +522,6 @@
           (recur (unchecked-inc j)
                  (assoc! acc j (conj! (get acc j)
                                       (nth rowvector j))))))))
-
-(defn first-any [xs]
-  (if (seq? xs)  (first xs)
-      (r/first xs)))
       
 (defn conj-rows
   "Conjoins multiple rowvectors.  Should be fast, using transients.
@@ -735,60 +731,6 @@
    (.split s "\t")
    ))
 
-
-;;if we're reading into a buffer.
-;;we can get a view on the buffer as a sequence of buffers...
-;;init [0 0] [0..... 4096]
-;;read (<= 4096)
-;;[0 4096] [a b c d ..... blah]
-;;now that we have this, we can load our chararray.
-;;note: we can also tune the buffer to available system
-;;memory.
-
-;;so, if we're interested in breaking lines, all we need to
-
-;; (definterface ILineReader
-;;   (^String readLine [])
-;;   (byteLine         []))
-
-;; (deftype FastReader [^:unsynchronized-mutable ^chars array ^java.io.BufferedInputStream fbi ^:unsynchronized-mutable ^int length]
-;;   ILineReader
-;;   (byteLine [this]
-;;     (loop [start 0]
-;;       (let [len (.readLine fbi  ^bytes array start (- (alength ^bytes array) start)) ;number of bytes read.
-;;             ]
-;;         (if (neg? len) nil ;(String. ^bytes array start) ;no bytes read.
-;;             (if (== len  (- (alength ^bytes array) start) ) ;read bytes = number in the buffer.
-;;               (do ;(println [:read len :start start :length (alength ^bytes array)])
-;;                   (set! array (ByteArrays/grow ^bytes array (unchecked-inc (alength ^bytes array)))) ;grow the buffer, start at the next.
-;;                   (recur (unchecked-add start len)))
-;;                                         ;(String. ^bytes array 0 (unchecked-add start len))
-;;               (do (set! length len)
-;;                   this)
-;;               ))))))
-
-;; (defn next-line [^chars buff ^long offset ^long len]
-;;   (let [bound (unchecked-add idx len)]
-;;     (loop [idx offset]
-;;       (if (== idx bound) ;;ran out
-;;         -1
-;;         (if (== (int (aget ^chars buff idx)) 10)
-;;           idx
-;;           (recur (unchecked-inc idx)))))))
-
-;; (defn buffered-lines [n rdr]
-;;   (let [^chars buff (char-array n)]
-;;     (loop [l 0
-;;            r 0]
-;;       (let [len (.read rdr buff 0 n)]
-;;         ;;scan from the left to see if we have a line.
-;;         (if (pos? len) ;we got chars.
-;;           (let [nl (next-line buff l len)]
-            
-
-
-           
-
 ;older table abstraction, based on maps and records...
 (defn lines->table 
   "Return a map-based table abstraction from reading lines of tabe delimited text.  
@@ -879,6 +821,7 @@
                          :keywordize-fields? keywordize-fields?
                          :schema schema)))
 
+;;deprecated
 (defn record-seq  
 	"Returns a sequence of records from the underlying table representation. 
 	 Like a database, all records have identical fieldnames.
@@ -903,12 +846,17 @@
 (defn record->string [rec separator]
   (row->string (vals rec) separator))
 
-(defn table->lines [tbl &  {:keys [stringify-fields? row-writer row-separator] 
-                            :or   {stringify-fields? true 
-                                   row-writer  row->string
-                                   row-separator \newline}} ]
-  (let [row-writer (fn [xs] (str (row->string row-separator)))]
-    (reify clojure.core.protocols/CollReduce
+(defn table->lines
+  "Returns a Seqable and Reducible representation of strings delimited by row-separator 
+   for rows, and col-separator between columns."
+  [tbl &  {:keys [stringify-fields? row-writer row-separator col-separator] 
+           :or   {stringify-fields? true 
+                  row-writer  row->string
+                  col-separator \tab
+                  row-separator \newline}}]
+  (let [row-writer (fn [xs] (str (row->string col-separator xs) row-separator))]
+    (reify
+      clojure.core.protocols/CollReduce
       (coll-reduce [o f]      
         (->> (table-rows tbl)
              (r/map row-writer)
@@ -916,20 +864,20 @@
                                      (mapv field->string (table-fields tbl))
                                      (table-fields tbl))))))
       (coll-reduce [o f init]      
-        (->> (r/cat (if stringify-fields?
-                         (mapv field->string (table-fields tbl))
-                         (table-fields tbl))
-                       (table-rows tbl))                     
+        (->> (r/cat [(if stringify-fields?
+                       (mapv field->string (table-fields tbl))
+                       (table-fields tbl))]
+                    (table-rows tbl))                     
              (r/map row-writer)
              (reduce f init)))
       clojure.lang.ISeq
       (seq [o]
-        (->> (concat (if stringify-fields?
+        (->> (concat [(if stringify-fields?
                        (mapv field->string (table-fields tbl))
-                       (table-fields tbl))
+                       (table-fields tbl))]
                      (table-rows tbl))                     
              (map row-writer))))))
-    
+
 (defn table->string  
   "Render a table into a string representation.  Uses clojure.string/join for
    speed, which uses a string builder internally...if you pass it a separator.
@@ -937,15 +885,15 @@
    may supply a different function for writing each row via row-writer, as 
    well as a different row-separator.  row-writer::vector->string, 
    row-separator::char||string" 
-  [tbl & {:keys [stringify-fields? row-writer row-separator] 
+  [tbl & {:keys [stringify-fields? row-writer row-separator col-separator] 
           :or   {stringify-fields? true 
                  row-writer  row->string
-                 row-separator \newline}}]
-  (let [xs (concat (if stringify-fields? 
-                     [(vec (map field->string (table-fields tbl)))]  
-                     [(table-fields tbl)]) 
-                   (table-rows tbl))]
-    (strlib/join row-separator (map row-writer xs))))
+                 row-separator \newline
+                 col-separator \tab}}]
+  (strlib/join (table->lines tbl :stringify-fields? stringify-fields?
+                             :row-writer row-writer
+                             :row-separator row-separator
+                             :col-separator col-separator)))
 
 (defn table->tabdelimited
   "Render a table into a tab delimited representation."  
@@ -1005,7 +953,7 @@
 
 (defn slurp-records 
   "Parses string s into a record sequence."
-  [s] (record-seq (as-table s)))
+  [s] (table-records (as-table s)))
 
 (defn copy-records!
   "Copies a string from the system clipboard, assumed to be in tab delimited 
@@ -1023,6 +971,32 @@
    xs are records in a tabdelimited table."
   [xs]
   (board/paste! (spit-records xs)))
+
+;;this is a pretty useful util function.  could go in table.
+(defn records->file [xs dest]
+  (let [hd   (first xs)
+        flds (vec (keys hd))
+        sep  (str \tab)
+        header-record (reduce-kv (fn [acc k v]
+                                   (assoc acc k
+                                          (name k)))
+                                 hd
+                                 hd)
+        write-record! (fn [^java.io.BufferedWriter w r]
+                        (doto ^java.io.BufferedWriter
+                          (reduce (fn [^java.io.BufferedWriter w fld]
+                                    (let [x (get r fld)]
+                                      (doto w
+                                        (.write (str x))
+                                        (.write sep))))
+                                  w
+                                  flds)
+                            (.newLine)))]
+    (with-open [out (clojure.java.io/writer dest)]
+      (reduce (fn [o r]                
+                (write-record! o r))
+              (write-record! out header-record)       
+              xs))))
 
 ;establishes a simple table-viewer.
 ;we can probably create more complicated views later....
@@ -1049,6 +1023,7 @@
                               (and (string? s) (= (first s) \:)))
                         (subs (str s) 1)))
 
+;;These need documentation.  Using them in proc, but should be better.
  (defn collapse [t root-fields munge-fields key-field val-field]
    (let [root-table (select :fields root-fields   :from t)]
      (->>  (for [munge-field munge-fields]
@@ -1097,31 +1072,6 @@
            )
       indexed)))
 
-;;this is a pretty useful util function.  could go in table.
-(defn records->file [xs dest]
-  (let [hd   (first xs)
-        flds (vec (keys hd))
-        sep  (str \tab)
-        header-record (reduce-kv (fn [acc k v]
-                                   (assoc acc k
-                                          (name k)))
-                                 hd
-                                 hd)
-        write-record! (fn [^java.io.BufferedWriter w r]
-                        (doto ^java.io.BufferedWriter
-                          (reduce (fn [^java.io.BufferedWriter w fld]
-                                    (let [x (get r fld)]
-                                      (doto w
-                                        (.write (str x))
-                                        (.write sep))))
-                                  w
-                                  flds)
-                            (.newLine)))]
-    (with-open [out (clojure.java.io/writer dest)]
-      (reduce (fn [o r]                
-                (write-record! o r))
-              (write-record! out header-record)       
-              xs))))
 
 (comment   ;testing.... 
   (def mytable  (conj-fields [[:first ["tom" "bill"]] 

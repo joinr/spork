@@ -17,37 +17,6 @@
               [spork.util.general :as general]
               [clojure [pprint :as pp]]))
 
-
-;;replacement for line-seq, allows a more useful idiom
-;;for reading files, and is slightly more efficient (no intermediate
-;;calls to seq, less garbage).
-(defn line-reducer
-  "Given a string literal that encodes a path, or a newline-delimited 
-   sequence of lines, returns a reducible obj that iterates over each line (string) 
-   delimited by \newline."
-  [path-or-string]
-  (let [reader-fn (if (general/path? path-or-string)
-                    clojure.java.io/reader
-                    general/string-reader)]
-    (reify clojure.core.protocols/CollReduce
-      (coll-reduce [o f init]
-        (with-open [^java.io.BufferedReader rdr (reader-fn path-or-string)]
-          (loop [acc init]
-            (if (reduced? acc) @acc 
-                (if-let [ln (.readLine rdr)]
-                  (recur (f acc ln))
-                  acc)))))
-      (coll-reduce [o f]
-        (with-open [^java.io.BufferedReader rdr (reader-fn path-or-string)]
-          (if-let [l1 (.readLine rdr)]
-            (loop [acc l1]
-              (if (reduced? acc) @acc 
-                  (if-let [ln (.readLine rdr)]
-                    (recur (f acc ln))
-                    acc)))
-            nil)))
-      )))
-
 ;;a map of the environment vars, really handy.
 (def  env-map 
   (->> (System/getenv) (map (fn [[k v]] [(keyword k) v])) (into {})))
@@ -506,3 +475,59 @@
       nil)))
   ([] (select-folder @*path*)))
 )
+
+
+
+
+;;Work in progress on a buffered char reader..
+
+
+;;if we're reading into a buffer.
+;;we can get a view on the buffer as a sequence of buffers...
+;;init [0 0] [0..... 4096]
+;;read (<= 4096)
+;;[0 4096] [a b c d ..... blah]
+;;now that we have this, we can load our chararray.
+;;note: we can also tune the buffer to available system
+;;memory.
+
+;;so, if we're interested in breaking lines, all we need to
+
+;; (definterface ILineReader
+;;   (^String readLine [])
+;;   (byteLine         []))
+
+;; (deftype FastReader [^:unsynchronized-mutable ^chars array ^java.io.BufferedInputStream fbi ^:unsynchronized-mutable ^int length]
+;;   ILineReader
+;;   (byteLine [this]
+;;     (loop [start 0]
+;;       (let [len (.readLine fbi  ^bytes array start (- (alength ^bytes array) start)) ;number of bytes read.
+;;             ]
+;;         (if (neg? len) nil ;(String. ^bytes array start) ;no bytes read.
+;;             (if (== len  (- (alength ^bytes array) start) ) ;read bytes = number in the buffer.
+;;               (do ;(println [:read len :start start :length (alength ^bytes array)])
+;;                   (set! array (ByteArrays/grow ^bytes array (unchecked-inc (alength ^bytes array)))) ;grow the buffer, start at the next.
+;;                   (recur (unchecked-add start len)))
+;;                                         ;(String. ^bytes array 0 (unchecked-add start len))
+;;               (do (set! length len)
+;;                   this)
+;;               ))))))
+
+;; ;;we can have the buffer be as long as we want. 
+;; (defn next-line [^chars buff ^long offset ^long len]
+;;   (let [bound (unchecked-add idx len)]
+;;     (loop [idx offset]
+;;       (if (== idx bound) ;;ran out
+;;         -1
+;;         (if (== (int (aget ^chars buff idx)) 10)
+;;           idx
+;;           (recur (unchecked-inc idx)))))))
+
+;; (defn buffered-lines [n rdr]
+;;   (let [^chars buff (char-array n)]
+;;     (loop [l 0
+;;            r 0]
+;;       (let [len (.read rdr buff 0 n)]
+;;         ;;scan from the left to see if we have a line.
+;;         (if (pos? len) ;we got chars.
+;;           (let [nl (next-line buff l len)]
