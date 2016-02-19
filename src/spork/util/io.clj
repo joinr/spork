@@ -11,9 +11,42 @@
 ;zipfiles.
 (ns spork.util.io
     (:require [clojure [string :as strlib] 
-                       [set :as setlib]]
+               [set :as setlib]]
+              [clojure.core.reducers :as r]
               [clojure.java [io :as io]]
+              [spork.util.general :as general]
               [clojure [pprint :as pp]]))
+
+
+;;replacement for line-seq, allows a more useful idiom
+;;for reading files, and is slightly more efficient (no intermediate
+;;calls to seq, less garbage).
+(defn line-reducer
+  "Given a string literal that encodes a path, or a newline-delimited 
+   sequence of lines, returns a reducible obj that iterates over each line (string) 
+   delimited by \newline."
+  [path-or-string]
+  (let [reader-fn (if (general/path? path-or-string)
+                    clojure.java.io/reader
+                    general/string-reader)]
+    (reify clojure.core.protocols/CollReduce
+      (coll-reduce [o f init]
+        (with-open [^java.io.BufferedReader rdr (reader-fn path-or-string)]
+          (loop [acc init]
+            (if (reduced? acc) @acc 
+                (if-let [ln (.readLine rdr)]
+                  (recur (f acc ln))
+                  acc)))))
+      (coll-reduce [o f]
+        (with-open [^java.io.BufferedReader rdr (reader-fn path-or-string)]
+          (if-let [l1 (.readLine rdr)]
+            (loop [acc l1]
+              (if (reduced? acc) @acc 
+                  (if-let [ln (.readLine rdr)]
+                    (recur (f acc ln))
+                    acc)))
+            nil)))
+      )))
 
 ;;a map of the environment vars, really handy.
 (def  env-map 
