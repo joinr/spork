@@ -65,7 +65,7 @@
   (if (map? obj)   (let [shp (as-shape obj)
                          ps  (merge props (dissoc obj :children))]
                      (vary-meta obj assoc :shape
-                                (with-properties props shp)))
+                                (canvas/with-properties props shp)))
       (vary-meta obj assoc :properties props)
       ))
 
