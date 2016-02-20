@@ -56,8 +56,18 @@
   smooth])
 
 ;;this allows us to tag nodes easily.
-(defmacro tag [props obj]
-  `(vary-meta ~obj assoc :properties ~props))
+(defn tag
+  "Tagging lets us associate metadata with the parent, and its children, which 
+   when rendering (particularly when debugging) will be available upon decompiliation
+   of the shape."
+  [props obj]
+
+  (if (map? obj)   (let [shp (as-shape obj)
+                         ps  (merge props (dissoc obj :children))]
+                     (vary-meta obj assoc :shape
+                                (with-properties props shp)))
+      (vary-meta obj assoc :properties props)
+      ))
 
 (definline atom? [x]
   `(instance? ~'clojure.lang.Atom ~x))

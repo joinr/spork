@@ -627,9 +627,49 @@
       (fn [c s] (if (not (shape-seq? s)) (draw-shape s c) (draw-shapes c s))) 
       c xs)))
 
-(defop group "Delimits drawing a group of shapes" [xs ctx]
-    (draw-shapes ctx xs))
+;; (defop group "Delimits drawing a group of shapes" [xs ctx]
+;;   (draw-shapes ctx xs))
 
+;;groups are delimited by maps or vectors by default.  We store
+;;properties for vectors in their meta, while properties for
+;;maps are just merged with the map keys.
+(defn group
+  "Delimits drawing a group of shapes.  
+   If shape has meta with properties, will log the properties."
+  [xs ctx]
+  (if (get-debug ctx)
+    (if-let [props (get (meta xs) :properties)]
+      (do  (with-log [:begin props]
+              [:end   props]
+              ctx
+              (draw-shapes ctx xs )))      
+      (draw-shapes ctx xs ))
+    (draw-shapes  ctx xs )))
+
+(defn with-properties [props shp]
+  (reify IShape
+    (draw-shape [s ctx]   (if (get-debug ctx)
+                            (do (with-log [:begin props]
+                                    [:end   props]
+                                    ctx
+                                    (draw-shape shp ctx)))
+                            (draw-shape shp ctx)))                            
+    (shape-bounds [s] (shape-bounds shp))))
+
+
+;; (defn annotated-draw! [shp cnv]
+;;   (if-let [m (get (meta shp) :properties)]
+;;     (canvas/with-log m
+;;       cnv
+
+;;we want to inject a different draw-shape function
+;;downstream...
+;;right now, vectors delegate to draw-shapes.
+;;So, when we draw groups, we get begin group end group
+;;functionality.
+
+;;this, and the map, are our primary grouping facility.
+;;We can inject metadata into the drawing process here.
 (extend-protocol IShape 
   clojure.lang.PersistentVector
   (shape-bounds [xs]    

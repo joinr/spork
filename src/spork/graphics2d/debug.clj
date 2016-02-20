@@ -22,7 +22,7 @@
         height (+ y height)
         dg (provider/->debug-graphics width height)
         init-stroke (get-stroke dg)]
-    (vary-meta (get-path (draw-shape shp dg))
+    (vary-meta (get-path (draw-shape shp dg)) ;;if the shape has meta, we want to capture in instructions.
                assoc :init-stroke init-stroke)))
 
 ;;simple compiler for graphics instructions...
@@ -150,13 +150,18 @@
 (defn segments->tree [vov]
   (cond (keyword? (first vov)) vov
         (vector?  (first vov))                     
-        (let [n        (case  (keyword (second (first vov)))
-                         :group 1
+        (let [props     (second (first vov))
+              op        (if (map? props) :shape
+                            :group)
+              n         (case  op
+                          (:group :shape) 1
                          2)
               [t & xs :as nd]   (nth vov (dec n))
               tl (fn [xs] (if (== n 2) (butlast xs) xs))]
-          {:node nd  :children (vec (map segments->tree  (tl  (butlast  (drop n  vov)))))}
-          )))
+          (with-meta 
+            {:node nd  :children (vec (map segments->tree  (tl  (butlast  (drop n  vov)))))}
+            {:properties props}
+          ))))
 
 (defn shape->nodes [shp]
   (->> (analyze shp)

@@ -437,6 +437,8 @@
   )
 
 
+;;we can store some meta globally, and as we render, assoc it
+;;to the instructions.
 ;;Wow...this opens up all sorts of ways to optimize, we can do
 ;;a render queue...
 (deftype DebugGraphics [^Graphics2D g  width  height instructions]
@@ -483,7 +485,7 @@
                              cg))
   ICanvas2DExtended
   (draw-polygon   [cg color points]
-    (swap! instructions conj  [:poloygon color points (get-transform cg)])
+    (swap! instructions conj  [:polygon color points (get-transform cg)])
     cg)
   (fill-polygon   [cg color points]
     (swap! instructions conj  [:fill-polygon color points (get-transform cg)])

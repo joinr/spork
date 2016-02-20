@@ -36,17 +36,17 @@
   clojure.lang.PersistentArrayMap
   (as-shape [obj] (get-else (.meta ^clojure.lang.PersistentArrayMap obj) :shape (:children obj)))
   clojure.lang.PersistentHashMap
-  (as-shape [obj] (get-else (.meta ^clojure.lang.PersistentArrayMap obj) :shape (:children obj))))
+  (as-shape [obj] (get-else (.meta ^clojure.lang.PersistentHashMap obj) :shape (:children obj))))
                        
 (extend-protocol IShape
   clojure.lang.PersistentArrayMap
   (draw-shape [s c] (draw-shape  (get-else (.meta ^clojure.lang.PersistentArrayMap s) :shape (:children s))
                                 c))
-  (shape-bounds [s] (shape-bounds   (get-else (.meta ^clojure.lang.PersistentArrayMap s) :shape (:children s))))                                  
+  (shape-bounds [s] (shape-bounds (get-else (.meta ^clojure.lang.PersistentArrayMap s) :shape (:children s))))                                  
   clojure.lang.PersistentHashMap
-  (draw-shape [s c] (draw-shape  (get-else (.meta ^clojure.lang.PersistentArrayMap s) :shape (:children s))
+  (draw-shape [s c] (draw-shape  (get-else (.meta ^clojure.lang.PersistentHashMap s) :shape (:children s))
                                 c))
-  (shape-bounds [s] (shape-bounds (get-else (.meta ^clojure.lang.PersistentArrayMap s) :shape (:children s)))))
+  (shape-bounds [s] (shape-bounds (get-else (.meta ^clojure.lang.PersistentHashMap s) :shape (:children s)))))
   
 ;;every node has:
 ;;local transform
@@ -102,7 +102,8 @@
      (vary-meta  (~(if (<= (count args) 16) 'array-map 'hash-map)
                   :type ~(keyword nm)
                   ~@(flatten (for [a args]
-                               [(keyword a) a])))
+                               [(keyword a) a]))
+                  )
                  assoc :shape ~as-shape)))
 
 ;;we might want to keep the shape cached once we
@@ -114,7 +115,7 @@
 (defnode translate [x y children]
   :as-shape 
   (if (not (and (atom? x) (atom? y)))
-    (if (and (zero? x) (zero? y) ) children
+    (if (and (zero? x) (zero? y)) children
         (reify IShape 
           (shape-bounds [s] (space/translate-bounds x y (shape-bounds children)))
           (draw-shape   [s c] (with-translation x y 
