@@ -147,15 +147,20 @@
                 res)
           (conj '[:end group])))))             
 
+;;[prim]
+;;[[op ...]]
+;;
 (defn segments->tree [vov]
   (cond (keyword? (first vov)) vov
         (vector?  (first vov))                     
         (let [props     (second (first vov))
-              op        (if (map? props) :shape
-                            :group)
+              op        (cond (map? props) :shape
+                              (= props 'group) :group
+                              :else
+                              (second (first vov)))
               n         (case  op
                           (:group :shape) 1
-                         2)
+                          2)
               [t & xs :as nd]   (nth vov (dec n))
               tl (fn [xs] (if (== n 2) (butlast xs) xs))]
           (with-meta 
