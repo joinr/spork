@@ -527,7 +527,7 @@
   "Conjoins multiple rowvectors.  Should be fast, using transients.
    Returns a persistent collection."
   [columns rowvectors]
-  (assert (= (count (first-any rowvectors)) (count columns)))
+  (assert (= (count (general/first-any rowvectors)) (count columns)))
   (persistent-columns! 
     (reduce conj-row! (transient-columns columns) rowvectors)))  
 
@@ -745,7 +745,7 @@
   (let [tbl   (->column-table 
                  (vec (map (if keywordize-fields?  
                              (comp keyword clojure.string/trim)
-                             identity) (split-by-tab (first-any lines)))) 
+                             identity) (split-by-tab (general/first-any lines)))) 
                  [])
         parsef (parse/parsing-scheme schema :default-parser  
                    (or default-parser
@@ -765,7 +765,7 @@
   [ls schema & {:keys [parsemode keywordize-fields?] 
                 :or   {parsemode :scientific
                        keywordize-fields? true}}]
-  (let [raw-headers   (clojure.string/split  (first-any ls) #"\t" )        
+  (let [raw-headers   (clojure.string/split  (general/first-any ls) #"\t" )        
         fields        (mapv (fn [h]
                               (let [root  (if (= (first h) \:) (subs h  1) h)]
                                 (if keywordize-fields?

@@ -49,7 +49,7 @@
   (extends? clojure.core.protocols/CollReduce (class x)))
 
 (defn first-any [x]
-  (transduce (take 1) (completing (fn [acc x] (conj acc x))) '() x))
+  (first (transduce (take 1) (completing (fn [acc x] (conj acc x))) '() x)))
 
 (defmacro clone-meta [obj expr]
   `(with-meta ~expr (meta ~obj)))
