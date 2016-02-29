@@ -765,7 +765,7 @@
   [ls schema & {:keys [parsemode keywordize-fields?] 
                 :or   {parsemode :scientific
                        keywordize-fields? true}}]
-  (let [raw-headers   (clojure.string/split  (general/first-any ls) #"\t" )        
+  (let [raw-headers   (mapv clojure.string/trim (clojure.string/split  (general/first-any ls) #"\t" ))
         fields        (mapv (fn [h]
                               (let [root  (if (= (first h) \:) (subs h  1) h)]
                                 (if keywordize-fields?
