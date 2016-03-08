@@ -732,6 +732,11 @@
    (.split s "\t")
    ))
 
+(defn check-header
+  "Checks to see if a stringified header begins with a :.  If it does, removes the:"
+  [h]
+  (if (= (str (first h)) ":") (subs h 1) h))
+
 ;older table abstraction, based on maps and records...
 (defn lines->table 
   "Return a map-based table abstraction from reading lines of tabe delimited text.  
@@ -745,7 +750,7 @@
                     schema {}}}] 
   (let [tbl   (->column-table 
                  (vec (map (if keywordize-fields?  
-                             (comp keyword clojure.string/trim)
+                             (comp keyword check-header clojure.string/trim)
                              identity) (split-by-tab (general/first-any lines)))) 
                  [])
         parsef (parse/parsing-scheme schema :default-parser  
@@ -886,15 +891,18 @@
    may supply a different function for writing each row via row-writer, as 
    well as a different row-separator.  row-writer::vector->string, 
    row-separator::char||string" 
-  [tbl & {:keys [stringify-fields? row-writer row-separator col-separator] 
+  [tbl & {:keys [stringify-fields? row-writer row-separator col-separator include-fields?] 
           :or   {stringify-fields? true 
                  row-writer  row->string
                  row-separator \newline
-                 col-separator \tab}}]
-  (strlib/join (table->lines tbl :stringify-fields? stringify-fields?
+                 col-separator \tab
+                 include-fields? true}}]
+  (let [ls (table->lines tbl :stringify-fields? stringify-fields?
                              :row-writer row-writer
                              :row-separator row-separator
-                             :col-separator col-separator)))
+                             :col-separator col-separator)]
+   (->> (if include-fields? ls (r/drop 1 ls))
+        (strlib/join))))
 
 (defn table->tabdelimited
   "Render a table into a tab delimited representation."  
