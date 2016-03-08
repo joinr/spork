@@ -13,6 +13,7 @@
             [spork.util [clipboard :as board] [parsing :as parse] [io :as io]]
             [spork.cljgui.components [swing :as gui]]
             [spork.util.general  :as general :refer [align-by]]
+            [spork.data.sparse :as sparse]
             [clojure.core.rrb-vector :as rrb])
   (:use [spork.util.vector]
         [spork.util.record  :only [serial-field-comparer key-function]]
@@ -1071,6 +1072,63 @@
            (mapv vector @new-fields)
            )
       indexed)))
+
+;;Added support for flyweight records.
+(defn ->flyrecord
+  ([n t] (sparse/->flyrecord n (table-fields t) (table-columns t)))
+  ([n fields columns] (sparse/->flyrecord n fields columns)))
+  
+
+(defn table->flyrecords [t]
+  (let [flds (table-fields t)
+        cols (table-columns t)]
+    (reify
+      clojure.lang.ISeq
+      (seq [x]
+        (map (fn [n] (->flyrecord n flds cols)) (range (count-rows t))))
+      clojure.core.protocols/CollReduce
+      (coll-reduce [obj f init]
+        (let [bound (count-rows t)
+              c (->flyrecord 0 t)]
+          (loop [idx 0
+                 acc init]
+            (cond (reduced? acc) @acc
+                  (== idx bound) acc
+                  :else
+                  (do (sparse/set-cursor c idx)
+                      (recur (unchecked-inc idx)
+                             (f acc c)))))))
+      (coll-reduce [obj f]
+        (let [bound (count-rows t)
+              c (->flyrecord 1 t)]
+          (loop [idx 1
+                 acc (->flyrecord 0 t)]
+            (cond (reduced? acc) @acc
+                  (== idx bound) acc
+                  :else
+                  (let [_ (sparse/set-cursor c idx)]
+                    (recur (unchecked-inc idx)
+                           (f acc c))))))))))
+
+(comment ;testing
+  (def the-table
+    (->> empty-table
+         (conj-fields {:a [1 2 3 4 5 6]
+                           :b [1 2 3 4 5 6]
+                           :c [1 2 3 4 5 6]})))
+  (def recs (table->flyrecords the-table))
+  (def newrecs (->> (seq recs)
+                    (map (fn [r]
+                           (assoc r :c 01 :d "New")))))
+  (assert (= newrecs '({:a 1, :b 1, :c 1, :d "New"}
+                       {:a 2, :b 2, :c 1, :d "New"}
+                       {:a 3, :b 3, :c 1, :d "New"}
+                       {:a 4, :b 4, :c 1, :d "New"}
+                       {:a 5, :b 5, :c 1, :d "New"}
+                       {:a 6, :b 6, :c 1, :d "New"}))
+          "Expected map equivalence, each record should be hash-equivalent to the 
+           test data.")
+)
 
 
 (comment   ;testing.... 
