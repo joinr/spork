@@ -745,6 +745,22 @@
                  (assoc acc (xform k) v))
                s s)))
 
+;;if we're not provided a schema, we can ascertain what kind of
+;;data it is based on the first column.
+(defn derive-schema [row & {:keys [parsemode]}]
+  (let [xs     (split-by-tab row)
+        parser (if (= parsemode :scientific)  parse/parse-string
+                    parse/parse-string-nonscientific);clojure.edn/read-string
+        types  (mapv (comp type parser) xs)]    
+    (mapv (fn [t]
+            (cond
+               (identical? t java.lang.String) :text
+               (identical? t java.lang.Integer) :long
+              (identical? t java.lang.Long)    :long
+              (identical? t java.lang.Double) :double
+              :else (throw (Exception. "unsupported parsing type " t)))) types)
+    ))
+
 ;older table abstraction, based on maps and records...
 (defn lines->table 
   "Return a map-based table abstraction from reading lines of tabe delimited text.  
@@ -770,6 +786,7 @@
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 
                       (r/map parse-rec (r/drop 1 lines)))
            (assoc tbl :columns))))
+
 
 (defn typed-lines->table
   "A variant of lines->table that a) uses primitives to build
@@ -811,6 +828,49 @@
                                       acc))) acc idx->fld)) cols)
          (unvolatile-hashmap!)
          (make-table))))
+  
+(defn lines->records
+  "Produces a reducible stream of 
+   records that conforms to the specifications of the 
+   schema.  Unlike typed-lines->table, it does not store
+   data as primitives.  Records are potentially ephemeral 
+   and will be garbage collected unless retained.  If no 
+   schema is provided, one will be derived."
+  [ls schema & {:keys [parsemode keywordize-fields?] 
+                :or   {parsemode :scientific
+                       keywordize-fields? true}}]
+  (let [
+        raw-headers   (mapv clojure.string/trim (clojure.string/split  (general/first-any ls) #"\t" ))
+        fields        (mapv (fn [h]
+                              (let [root  (if (= (first h) \:) (subs h  1) h)]
+                                (if keywordize-fields?
+                                  (keyword root)
+                                  root)))
+                            raw-headers)
+        schema    (if (empty? schema)
+                    (let [types (derive-schema (general/first-any (r/drop 1 ls)) :parsemode parsemode)]
+                      (into {} (map vector fields types)))
+                    schema)
+        s         (unify-schema schema fields)
+        parser    (spork.util.parsing/parsing-scheme s)
+        idx       (atom 0)
+        idx->fld  (reduce (fn [acc h]
+                            (if (get s h)
+                              (let [nxt (assoc acc @idx h)
+                                    _   (swap! idx unchecked-inc)]
+                                nxt)
+                              (do (swap! idx unchecked-inc) acc))) {} fields)
+        ;;throw an error if the fld is not in the schema.
+        _ (let [known   (set (map name (vals idx->fld)))
+                missing (filter (complement known) (map name (keys s)))]
+            (assert (empty? missing) (str [:missing-fields missing])))]                                          
+    (->> ls
+         (r/drop 1)
+         (r/map  (fn [^String ln] (.split ln "\t")))
+         (r/map  (fn [^objects xs]
+                   (reduce-kv (fn [acc idx fld]
+                                  (assoc acc fld (parser fld (aget xs idx))))
+                              {} idx->fld))))))
 
 (defn tabdelimited->table 
   "Primary table-creation API. Returns a map-based table abstraction from 
@@ -834,6 +894,24 @@
                          :parsemode parsemode
                          :keywordize-fields? keywordize-fields?
                          :schema schema)))
+
+(defn tabdelimited->records 
+  "Secondary table-creation API. Returns a map-based record abstraction from 
+   reading a string (or file) of tabdelimited text.  The default string parser 
+   tries to parse an item as a number.  In  cases where there is an E in the 
+   string, parsing may return a number or infinity.  Set the :parsemode key to
+   any value to anything other than :scientific to avoid parsing scientific numbers.
+   the return value is reducible."
+   [s & {:keys [parsemode keywordize-fields? schema relaxed? default-parser] 
+         :or   {parsemode :scientific
+                keywordize-fields? true
+                schema {}
+                relaxed? false}}]
+   (lines->records (general/line-reducer s)
+                   schema
+                   :parsemode parsemode
+                   :keywordize-fields? keywordize-fields?                    
+                   :default-parser default-parser))
 
 ;;deprecated
 (defn record-seq  
