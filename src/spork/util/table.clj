@@ -737,6 +737,14 @@
   [h]
   (if (= (str (first h)) ":") (subs h 1) h))
 
+(defn unify-schema [s fields]
+  (let [fk (keyword? (first fields))
+        xform (if fk (fn [x] (if (keyword? x) x (keyword x)))
+                  name)]
+    (reduce-kv (fn [acc k v]
+                 (assoc acc (xform k) v))
+               s s)))
+
 ;older table abstraction, based on maps and records...
 (defn lines->table 
   "Return a map-based table abstraction from reading lines of tabe delimited text.  
@@ -778,14 +786,11 @@
                                   (keyword root)
                                   root)))
                             raw-headers)
-        invert    (if (keyword? (first fields))
-                    name
-                    keyword)
-        s         schema
+        s         (unify-schema schema fields)
         parser    (spork.util.parsing/parsing-scheme s)
         idx       (atom 0)
         idx->fld  (reduce (fn [acc h]
-                            (if (get s h (get s (invert h)))
+                            (if (get s h)
                               (let [nxt (assoc acc @idx h)
                                     _   (swap! idx unchecked-inc)]
                                 nxt)
