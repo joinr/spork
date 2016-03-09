@@ -16,11 +16,31 @@
   (let [^clojure.lang.IPersistentVector c (.nth cols col)]
     (.assocN cols col (.assocN c row v))))
 
+;;since we're only allowing fields to be keywords, numbers, or
+;;strings, we can utilize some optimizations, namely
+;;identity equality vs. generic clojure.util/equiv
+;;checks.  
+;;We might even be able to 
+
+
 (defn index-of [itm xs]
   (reduce-kv (fn [acc idx x]
                (if (= x itm)
                  (reduced idx)
                  acc)) nil xs))
+
+;;This is way faster....
+(definline index-of! [itm xs]
+  (let [arr (with-meta (gensym "arr") {:tag 'objects})
+        vec (with-meta xs {:tag 'clojure.lang.PersistentVector})
+        ]
+    `(let [~arr (.arrayFor ~vec 0)
+           bound# (.count ~vec)]
+       (loop [idx# 0]              
+         (if (== idx# bound#) nil
+           (if (identical? (aget ~arr idx#) ~itm) idx#
+               (recur (unchecked-inc idx#))))))))
+
 (defn drop-indices [idxs v]
   (reduce-kv (fn [acc idx x]
                (if (contains? idxs idx)
@@ -245,9 +265,9 @@
   (toString [this] (str (.seq this)))
   clojure.lang.ILookup
   ; valAt gives (get pm key) and (get pm key not-found) behavior
-  (valAt [this k] (row-col n (index-of k fields)  columns))
+  (valAt [this k] (row-col n (index-of! k fields)  columns))
   (valAt [this k not-found]
-    (if-let [col (index-of k fields)]
+    (if-let [col (index-of! k fields)]
       (row-col n col columns)
       not-found))
   clojure.lang.IHashEq
@@ -260,10 +280,10 @@
   clojure.lang.IPersistentMap
   (count [this] (.count fields))
   (assoc [this k v]
-    (if-let [idx (index-of k fields)]
+    (if-let [idx (index-of! k fields)]
       (flyrecord. n fields (assoc-row-col columns n idx v) -1 -1)
-      (let [new-column (->sparsecolumn n v (count (first columns)))]
-        (flyrecord. n (conj fields k) (conj columns new-column) -1 -1))))
+      (let [new-column (->sparsecolumn n v (.count ^clojure.lang.PersistentVector (.nth columns 0)))]
+        (flyrecord. n (.cons fields k) (.cons columns new-column) -1 -1))))
   (empty [this] (flyrecord. 0 [] [] -1 -1))
   ;cons defines conj behavior
   (cons [this e]   (.assoc this (first e) (second e)))
@@ -299,7 +319,7 @@
                  fields))
   ;without implements (dissoc pm k) behavior
   (without [this k]
-    (if-let [idx (index-of k fields)]
+    (if-let [idx (index-of! k fields)]
       (flyrecord. n (drop-indices #{idx} fields )
                   (drop-indices   #{idx} columns) -1 -1)))
   clojure.lang.Indexed

@@ -1224,6 +1224,20 @@
            test data.")
 )
 
+(comment ;testing big records.
+
+  (def big-table (let [xs (vec (range 500000))]
+                   (->> empty-table
+                        (conj-fields {:a xs
+                                      :b xs
+                                      :c xs}))))
+  (def bigrecs (table->flyrecords big-table))
+  (def newrecs (->> (seq bigrecs)
+                    (map (fn [r]
+                           (assoc r :c 01 :d "New")))))
+                     
+
+)
 
 (comment   ;testing.... 
   (def mytable  (conj-fields [[:first ["tom" "bill"]] 
