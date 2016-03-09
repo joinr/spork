@@ -777,19 +777,22 @@
                                 (if keywordize-fields?
                                   (keyword root)
                                   root)))
-                             raw-headers)                                           
+                            raw-headers)
+        invert    (if (keyword? (first fields))
+                    name
+                    keyword)
         s         schema
         parser    (spork.util.parsing/parsing-scheme s)
         idx       (atom 0)
         idx->fld  (reduce (fn [acc h]
-                            (if (get s h (get s (keyword h)))
+                            (if (get s h (get s (invert h)))
                               (let [nxt (assoc acc @idx h)
                                     _   (swap! idx unchecked-inc)]
                                 nxt)
                               (do (swap! idx unchecked-inc) acc))) {} fields)
         ;;throw an error if the fld is not in the schema.
-        _ (let [known (set (vals idx->fld))
-                missing (filter (complement known) (keys s))]
+        _ (let [known   (set (map name (vals idx->fld)))
+                missing (filter (complement known) (map name (keys s)))]
             (assert (empty? missing) (str [:missing-fields missing])))
         cols    (volatile-hashmap! (into {} (for [[k v] s]
                                               [k (typed-col v)])))]                                          
