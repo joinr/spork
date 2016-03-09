@@ -12,9 +12,27 @@
 
 (defn row-col [row col ^clojure.lang.IPersistentVector cols]
   (.nth ^clojure.lang.Indexed (.nth cols col) row))
+
+(definline row-col! [row col cols]
+  (let [column (with-meta (gensym "column") {:tag 'clojure.lang.IPersistentVector})
+        columns (with-meta (gensym "columns") {:tag 'clojure.lang.PersistentVector})]
+    `(let [~columns ~cols
+           ~column (.nth ~columns (int ~col))]
+       (.nth ~column (int ~row)))))
+
 (defn assoc-row-col [^clojure.lang.IPersistentVector cols row col v]
   (let [^clojure.lang.IPersistentVector c (.nth cols col)]
     (.assocN cols col (.assocN c row v))))
+
+(definline assoc-row-col! [cols row col  v]
+  (let [column (with-meta (gensym "column") {:tag 'clojure.lang.IPersistentVector})
+        columns (with-meta (gensym "columns") {:tag 'clojure.lang.PersistentVector})]
+    `(let [~col (int ~col)
+           ~row (int ~row)
+           ~columns ~cols
+           ~column (.nth ~columns  ~col)]
+       (.assocN ~columns (int ~col)
+                         (.assocN ~column ~row ~v)))))
 
 ;;since we're only allowing fields to be keywords, numbers, or
 ;;strings, we can utilize some optimizations, namely
@@ -248,27 +266,27 @@
   clojure.core.protocols.IKVReduce
   (kv-reduce [amap f init]
     (reduce-kv   (fn [acc col fld]
-                    (f acc fld (row-col n col columns)))
+                    (f acc fld (row-col! n col columns)))
                init fields))
   clojure.core.protocols.CollReduce
   (coll-reduce [coll f]
     (reduce-kv (fn [acc idx fld]
-                 (f acc [fld (row-col n idx columns)]))
+                 (f acc [fld (row-col! n idx columns)]))
                [0 (.nth fields 0)]
                (subvec fields 1)))
   (coll-reduce [coll f val]
     (reduce-kv (fn [acc idx fld]
-                 (f acc [fld (row-col n idx columns)]))
+                 (f acc [fld (row-col! n idx columns)]))
                val
                fields))
   Object
   (toString [this] (str (.seq this)))
   clojure.lang.ILookup
   ; valAt gives (get pm key) and (get pm key not-found) behavior
-  (valAt [this k] (row-col n (index-of! k fields)  columns))
+  (valAt [this k] (row-col! n (index-of! k fields)  columns))
   (valAt [this k not-found]
     (if-let [col (index-of! k fields)]
-      (row-col n col columns)
+      (row-col! n col columns)
       not-found))
   clojure.lang.IHashEq
   (hasheq [this]
@@ -281,7 +299,12 @@
   (count [this] (.count fields))
   (assoc [this k v]
     (if-let [idx (index-of! k fields)]
-      (flyrecord. n fields (assoc-row-col columns n idx v) -1 -1)
+;;      (flyrecord. n fields (assoc-row-col! columns n idx v) -1 -1)
+;;    it's faster to just conj the new column/cell rather than updating the backing vector.      
+      (flyrecord. n fields (.assocN ^clojure.lang.PersistentVector
+                                    columns (int idx)
+                                    (->sparsecolumn n v (.count ^clojure.lang.PersistentVector (.nth columns 0))))
+                  -1 -1)
       (let [new-column (->sparsecolumn n v (.count ^clojure.lang.PersistentVector (.nth columns 0)))]
         (flyrecord. n (.cons fields k) (.cons columns new-column) -1 -1))))
   (empty [this] (flyrecord. 0 [] [] -1 -1))
@@ -315,7 +338,7 @@
            acc))) nil fields))
   (seq [this]
     (map-indexed (fn [idx fld]
-                   (clojure.lang.MapEntry. fld (row-col n idx columns)))
+                   (clojure.lang.MapEntry. fld (row-col! n idx columns)))
                  fields))
   ;without implements (dissoc pm k) behavior
   (without [this k]
@@ -323,9 +346,9 @@
       (flyrecord. n (drop-indices #{idx} fields )
                   (drop-indices   #{idx} columns) -1 -1)))
   clojure.lang.Indexed
-  (nth [this i] (row-col n i columns))
+  (nth [this i] (row-col! n i columns))
   (nth [this i not-found]  (if (<= i (.count fields))
-                             (row-col n i columns)
+                             (row-col! n i columns)
                              not-found))
   Iterable
   (iterator [this] (clojure.lang.SeqIterator. (.seq this)))
