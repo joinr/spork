@@ -743,7 +743,7 @@
                   name)]
     (reduce-kv (fn [acc k v]
                  (assoc acc (xform k) v))
-               s s)))
+               {} s)))
 
 ;;if we're not provided a schema, we can ascertain what kind of
 ;;data it is based on the first column.
