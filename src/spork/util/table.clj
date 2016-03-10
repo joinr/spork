@@ -530,17 +530,36 @@
                 ~'_  (aset ~cols j# (.conj ~col (.nth ~row j#)))]                
             (recur (unchecked-inc j#))))))))
 
+(definline conj-row-obj!! [transientcolumns
+                           rowvector]
+  (let [cols (with-meta (gensym "cols") {:tag 'objects})
+        row  (with-meta (gensym "row")  {:tag 'objects})
+        col  (with-meta (gensym "col")  {:tag 'clojure.lang.ITransientCollection})]
+    `(let [~cols  ~transientcolumns
+           ~row   ~rowvector
+           bound# (alength ~row)]
+    (loop [j# 0]
+      (if (== j# bound#) ~cols
+          (let [~col (aget ~cols j#)
+                ~'_  (aset ~cols j# (.conj ~col (aget ~row j#)))]                
+            (recur (unchecked-inc j#))))))))
 ;;this is now optimized to contain the columns in an object array,
 ;;which eliminates extra calls to .assoc that we had.
 (defn conj-rows
   "Conjoins multiple rowvectors.  Should be fast, using transients.
    Returns a persistent collection."
   [columns rowvectors]
-  (assert (= (count (general/first-any rowvectors)) (count columns)))
-  (mapv persistent! 
-        (reduce conj-row!!
-                (object-array (map transient columns))
-                rowvectors)))
+  (let [fv (general/first-any rowvectors)]
+    (assert (= (count fv) (count columns)))
+    (if (vector? fv)
+      (mapv persistent! 
+            (reduce conj-row!!
+                    (object-array (map transient columns))
+                    rowvectors))
+      (mapv persistent! 
+            (reduce conj-row-obj!!
+                    (object-array (map transient columns))
+                    rowvectors)))))
 
 ;;Should be a more efficient way to add maps/records when growing a
 ;;table.
@@ -933,7 +952,7 @@
      (lines->table (general/line-reducer s)
                    :parsemode parsemode
                    :keywordize-fields? keywordize-fields?
-                   :schema schema
+                   :schema schema                               
                    :default-parser default-parser)
      (typed-lines->table  (general/line-reducer s)
                          schema
