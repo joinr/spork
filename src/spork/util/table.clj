@@ -472,18 +472,8 @@
   "Returns a vector of the rows of the table." 
   [tbl]  (vec (map #(nth-row tbl %) (range (count-rows tbl))))) 
 
-;;#Optimize!
-;;Dogshit slow....should clean this up...both zipmap and 
-;;the varargs are bad for performance.  This will get called a lot.
-(defn nth-record
-  "Coerces a column-oriented vector representation of tables into 
-   a map where keys are field names, and vals are column values at 
-   the nth record."
-  [tbl n & [flds]]
-  (assert (valid-row? tbl n) (str "Index " n " Out of Bounds"))  
-  (zipmap (if flds flds (reverse (table-fields tbl))) 
-          (reverse (nth-row tbl n))))
 
+;;we can access any table record in constant time.
 ;;#Optimize!
 ;;Dogshit slow.  Optimize....
 (defn table-records
@@ -494,6 +484,44 @@
     (map (fn [n] (nth-record tbl n flds))
          (range (count-rows tbl)))))
 
+(definline zip-record!! [n xs cs]
+  (let [ks    (with-meta (gensym "ks") {:tag 'objects})
+        cols  (with-meta (gensym "cols") {:tag 'objects})
+        col   (with-meta (gensym "col") {:tag 'clojure.lang.Indexed})
+        arr   (with-meta (gensym "arr") {:tag 'objects})]
+    `(let [~ks ~xs
+           ~cols ~cs
+           ~arr (object-array (unchecked-multiply 2 (alength ~ks)))
+           bound#  (alength ~ks)
+           n# (long ~n)]
+       (loop [idx# 0
+              inner# 0]
+         (if (== idx# bound#) (clojure.lang.PersistentArrayMap/createAsIfByAssoc ~arr)
+             (let [~'_ (aset ~arr inner# (aget ~ks idx#))
+                   ~col (aget ~cols idx#)
+                   ~'_  (aset ~arr (unchecked-inc inner#) (.nth ~col n#))]
+               (recur (unchecked-inc idx#)
+                      (unchecked-add inner# 2))))))))
+           
+;;optimizedish..
+(defn table-records
+  [tbl]  
+  (let [flds   (object-array (table-fields tbl))
+        cols   (object-array (table-columns tbl))]
+    (map (fn [n] (zip-record!! n flds cols)) (range (count-rows tbl)))))
+
+;;#Optimize!
+;;Dogshit slow....should clean this up...both zipmap and 
+;;the varargs are bad for performance.  This will get called a lot.
+(defn nth-record
+  "Coerces a column-oriented vector representation of tables into 
+   a map where keys are field names, and vals are column values at 
+   the nth record."
+  [tbl n & [flds]]
+  (assert (valid-row? tbl n) (str "Index " n " Out of Bounds"))  
+  (zip-record!! n (object-array (table-fields tbl))
+                  (object-array (table-columns tbl))))
+                  
 (defn last-record 
   "Fetches the last record from table.  Returns nil for empty tables."
   [tbl]
@@ -1465,4 +1493,23 @@
   (assert (= (count (general/first-any rowvectors)) (count columns)))
   (persistent-columns! 
    (reduce conj-row! (transient-columns columns) rowvectors)))
+
+(definline hm! [xs]
+  `(clojure.lang.PersistentArrayMap/createAsIfByAssoc (to-array ~xs)))
+
+(definline zip-record! [xs ys]
+  (let [ks  (with-meta (gensym "ks") {:tag 'objects})
+        vs  (with-meta (gensym "vs") {:tag 'objects})
+        arr (with-meta (gensym "arr") {:tag 'objects})]
+    `(let [~ks ~xs
+           ~vs ~ys
+           ~arr (object-array (unchecked-multiply 2 (alength ~ks)))
+           bound#  (alength ~ks)]
+       (loop [idx# 0
+              inner# 0]
+         (if (== idx# bound#) (clojure.lang.PersistentArrayMap/createAsIfByAssoc ~arr)
+             (do (aset ~arr inner# (aget ~ks idx#))
+                 (aset ~arr (unchecked-inc inner#) (aget ~vs idx#))
+                 (recur (unchecked-inc idx#)
+                        (unchecked-add inner# 2))))))))
 )
