@@ -484,12 +484,15 @@
   (zipmap (if flds flds (reverse (table-fields tbl))) 
           (reverse (nth-row tbl n))))
 
+;;#Optimize!
+;;Dogshit slow.  Optimize....
 (defn table-records
   "Fetches a sequence of n records, where records are maps where keys correspond
    to fields in the table, and values correspond to the values at row (n - 1)."
   [tbl]
   (let [flds (reverse (table-fields tbl))]
-    (map (fn [n] (nth-record tbl n flds)) (range (count-rows tbl)))))
+    (map (fn [n] (nth-record tbl n flds))
+         (range (count-rows tbl)))))
 
 (defn last-record 
   "Fetches the last record from table.  Returns nil for empty tables."
@@ -510,35 +513,77 @@
   (reduce (fn [acc [j x]] (assoc acc j (conj (get acc j) x)))
           columns (map-indexed vector rowvector)))
 
-;;we're using lazy seq here..
-;;map-indexed vector...
-;;another optimization is to use a reducer..
-;;since it's a reduction, we could just go low-level here.
-;;could also use transducer...
-(defn- conj-row! [transientcolumns rowvector]
-  (let [bound (count rowvector)]
-    (loop [j 0
-           acc transientcolumns]
-      (if (== j bound) acc
-          (recur (unchecked-inc j)
-                 (assoc! acc j (conj! (get acc j)
-                                      (nth rowvector j))))))))
-      
+
+;;This is an optimized side-effecting aux function.
+;;Can we use arrayfor...
+(definline conj-row!! [transientcolumns
+                       rowvector]
+  (let [cols (with-meta (gensym "cols") {:tag 'objects})
+        row  (with-meta (gensym "row")  {:tag 'clojure.lang.PersistentVector})
+        col  (with-meta (gensym "col")  {:tag 'clojure.lang.ITransientCollection})]
+    `(let [~cols  ~transientcolumns
+           ~row   ~rowvector
+           bound# (.count ~row)]
+    (loop [j# 0]
+      (if (== j# bound#) ~cols
+          (let [~col (aget ~cols j#)
+                ~'_  (aset ~cols j# (.conj ~col (.nth ~row j#)))]                
+            (recur (unchecked-inc j#))))))))
+
+;;this is now optimized to contain the columns in an object array,
+;;which eliminates extra calls to .assoc that we had.
 (defn conj-rows
   "Conjoins multiple rowvectors.  Should be fast, using transients.
    Returns a persistent collection."
   [columns rowvectors]
   (assert (= (count (general/first-any rowvectors)) (count columns)))
-  (persistent-columns! 
-    (reduce conj-row! (transient-columns columns) rowvectors)))  
+  (mapv persistent! 
+        (reduce conj-row!!
+                (object-array (map transient columns))
+                rowvectors)))
 
+;;Should be a more efficient way to add maps/records when growing a
+;;table.
+(definline assoc-row!! [fields
+                        transientcolumns
+                        rowmap]
+  (let [flds (with-meta (gensym "flds") {:tag 'objects})
+        row  (with-meta (gensym "row")  {:tag 'clojure.lang.ILookup})
+        cols (with-meta (gensym "cols") {:tag 'objects})
+        col  (with-meta (gensym "col")  {:tag 'clojure.lang.ITransientCollection})]
+    `(let [~cols  ~transientcolumns
+           ~row   ~rowmap
+           ~flds  ~fields
+           bound# (alength ~flds)]
+    (loop [j# 0]
+      (if (== j# bound#) ~cols
+          (let [fld# (aget ~flds  j#)
+                ~col (aget ~cols j#)                
+                ~'_  (aset ~cols j# (.conj ~col (.valAt ~row fld#)))]                
+            (recur (unchecked-inc j#))))))))
+
+(defn conj-records!!
+  "Conjoins multiple rowmaps.  Should be fast, using transients.
+   Returns a persistent collection."
+  [fields columns rowmaps]
+  (assert (= (count (general/first-any rowmaps)) (count columns)))
+  (let [fields (object-array fields)]
+    (mapv persistent! 
+          (reduce (fn [acc m]
+                    (assoc-row!! fields acc m))
+                  (object-array (map transient columns))
+                  rowmaps))))
+;;Optimized#
 (defn records->table
   "Interprets a sequence of records as a table, where fields are the keys of 
    the records, and rows are the values."
   [recs]
-  (let [flds (vec (reverse (keys (first recs))))]
-    (make-table flds (conj-rows (vec (map (fn [_] []) flds))
-                                (map (comp vals reverse) recs)))))
+  (let [flds (sort (keys (first recs)))
+        cols (mapv (fn [_] []) flds)]
+    (make-table flds (conj-records!! flds
+                                     cols
+                                     recs
+                                     ))))
 
 (defn filter-rows
   "Returns a subset of rows where f is true.  f is a function of 
@@ -782,7 +827,8 @@
                        (if (= parsemode :scientific) parse/parse-string
                            parse/parse-string-nonscientific)))
         fields (table-fields tbl)      
-        parse-rec (comp (parse/vec-parser! fields parsef) split-by-tab)]
+        parse-rec (comp (parse/vec-parser! fields parsef) split-by-tab) ;this makes garbage.
+        ]
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 
                       (r/map parse-rec (r/drop 1 lines)))
            (assoc tbl :columns))))
@@ -1377,5 +1423,27 @@
   )
   
 
-
-                     
+;;Older, slower version.                    
+(comment 
+;;Optimize#
+;;we're using lazy seq here..
+;;map-indexed vector...
+;;another optimization is to use a reducer..
+;;since it's a reduction, we could just go low-level here.
+;;could also use transducer...
+(defn- conj-row! [transientcolumns rowvector]
+  (let [bound (count rowvector)]
+    (loop [j 0
+           acc transientcolumns]
+      (if (== j bound) acc
+          (recur (unchecked-inc j)
+                 (assoc! acc j (conj! (get acc j)
+                                      (nth rowvector j))))))))
+(defn conj-rows
+  "Conjoins multiple rowvectors.  Should be fast, using transients.
+   Returns a persistent collection."
+  [columns rowvectors]
+  (assert (= (count (general/first-any rowvectors)) (count columns)))
+  (persistent-columns! 
+   (reduce conj-row! (transient-columns columns) rowvectors)))
+)
