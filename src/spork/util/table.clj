@@ -472,18 +472,6 @@
   "Returns a vector of the rows of the table." 
   [tbl]  (vec (map #(nth-row tbl %) (range (count-rows tbl))))) 
 
-
-;;we can access any table record in constant time.
-;;#Optimize!
-;;Dogshit slow.  Optimize....
-(defn table-records
-  "Fetches a sequence of n records, where records are maps where keys correspond
-   to fields in the table, and values correspond to the values at row (n - 1)."
-  [tbl]
-  (let [flds (reverse (table-fields tbl))]
-    (map (fn [n] (nth-record tbl n flds))
-         (range (count-rows tbl)))))
-
 (definline zip-record!! [n xs cs]
   (let [ks    (with-meta (gensym "ks") {:tag 'objects})
         cols  (with-meta (gensym "cols") {:tag 'objects})
@@ -534,14 +522,6 @@
   (when (>  (count-rows tbl) 0) 
     (nth-record tbl 0)))
 
-(defn conj-row
-  "Conjoins a rowvector on a vector of columns."
-  [columns rowvector]
-  (assert (= (count rowvector) (count columns)))
-  (reduce (fn [acc [j x]] (assoc acc j (conj (get acc j) x)))
-          columns (map-indexed vector rowvector)))
-
-
 ;;This is an optimized side-effecting aux function.
 ;;Can we use arrayfor...
 (definline conj-row!! [transientcolumns
@@ -588,6 +568,14 @@
             (reduce conj-row-obj!!
                     (object-array (map transient columns))
                     rowvectors)))))
+
+(defn conj-row
+  "Conjoins a rowvector on a vector of columns."
+  [columns rowvector]
+  (assert (= (count rowvector) (count columns)))
+  (reduce (fn [acc [j x]] (assoc acc j (conj (get acc j) x)))
+          columns (map-indexed vector rowvector)))
+
 
 ;;Should be a more efficient way to add maps/records when growing a
 ;;table.
@@ -776,8 +764,6 @@
 (defmethod computed-field clojure.lang.Keyword [k]  (fn [i rec] (get rec k)))
 
 ;implementation for 'as statements pending....
-
-
 (defn- select- 
   "A small adaptation of Peter Seibel's excellent mini SQL language from 
    Practical Common Lisp.  This should make life a little easier when dealing 
@@ -879,7 +865,6 @@
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 
                       (r/map parse-rec (r/drop 1 lines)))
            (assoc tbl :columns))))
-
 
 (defn typed-lines->table
   "A variant of lines->table that a) uses primitives to build
@@ -1512,4 +1497,15 @@
                  (aset ~arr (unchecked-inc inner#) (aget ~vs idx#))
                  (recur (unchecked-inc idx#)
                         (unchecked-add inner# 2))))))))
+
+;;we can access any table record in constant time.
+;;#Optimize!
+;;Dogshit slow.  Optimize....
+(defn table-records
+  "Fetches a sequence of n records, where records are maps where keys correspond
+   to fields in the table, and values correspond to the values at row (n - 1)."
+  [tbl]
+  (let [flds (reverse (table-fields tbl))]
+    (map (fn [n] (nth-record tbl n flds))
+         (range (count-rows tbl)))))
 )
