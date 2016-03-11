@@ -33,5 +33,5 @@
                  [org.clojure/core.rrb-vector "0.0.11"]
 ;                 [clojure-watch "LATEST"] ;ephemeral dependency.
                  ]
-  :profiles {:jar {:aot [spork.cljgui.components.PaintPanel]}}
+  :aot [spork.cljgui.components.PaintPanel]
   :jvm-opts ^:replace ["-Xmx1g" "-XX:NewSize=200m"])
