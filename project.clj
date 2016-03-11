@@ -18,6 +18,7 @@
                  ;[org.clojure.contrib/standalone "1.3.0-alpha4"]
                  [clj-tuple "0.1.5"]
                  [immutable-int-map "0.1.0"]
+                 [net.jpountz.lz4/lz4 "1.3"] ;lz4 compression test.
                  [net.sf.jung/jung-api "2.0.1"]
                  [net.sf.jung/jung-graph-impl "2.0.1"]
                  [net.sf.jung/jung-algorithms "2.0.1"]

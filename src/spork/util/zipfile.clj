@@ -3,7 +3,13 @@
 			[fname fext fpath relative-path make-folders! make-file! 
              uri-path file->uri list-files folder? with-temp-dir 
              map->folders! folders->map]])
-  (:require [clojure.java [io :as io]]))
+  (:require [clojure.java [io :as io]]
+            [clojure.core.reducers :as r])
+  (:import [java.util.zip GZIPInputStream GZIPOutputStream]
+           [java.io BufferedReader FileInputStream InputStreamReader]
+           [net.jpountz.lz4 LZ4BlockOutputStream
+            LZ4BlockInputStream]
+           ))
 
 ;define a simple function to extract files from an archive, a wrapper around
 ;java.util's zip stuff.
@@ -139,3 +145,106 @@
   [zippath]
   (with-temp-dir (folders->map (zipfile->folders! zippath *tmpdir*)))) 
 
+
+;;__Functions for working with GZIP streams and files.__
+;;We'd like to be able to save arbitrary text files
+;;in a compressed gzip format.  Thankfully, java already
+;;provides facilities for this, we just need to wrap them.
+
+(defn  zip-writer [^String path]
+  (io/writer (GZIPOutputStream. (io/output-stream path))))
+
+(defn  lz4-writer [^String path]
+  (io/writer (LZ4BlockOutputStream. (io/output-stream path))))
+  
+
+(defn  zip-reader [^String path]
+  (io/reader (GZIPInputStream. (io/input-stream path))))
+
+(defn  lz4-reader [^String path]
+  (io/reader (LZ4BlockInputStream. (io/input-stream path))))
+
+(defn lz4-reader! [^String path]
+  (let [fin (FileInputStream. path)
+        lz  (LZ4BlockInputStream. fin)
+        is  (InputStreamReader. lz "UTF-8")
+        rdr (BufferedReader. is)]
+    rdr))
+
+
+(defn zip-reader! [^String path]
+  (let [fin (FileInputStream. path)
+        lz  (GZIPInputStream. fin)
+        is  (InputStreamReader. lz "UTF-8")
+        rdr (BufferedReader. is)]
+    rdr))
+  
+;;we can try lz4...
+;;GZIP is pretty slow :(
+(comment ;testing
+  (defn data [k]    (cons [:A :B :C :D]
+                          (map (fn [n]
+                                 [n n n n])
+                               (range k))))
+  (defn tabify [coll]
+    (clojure.string/join \newline (map (fn [x] (clojure.string/join \tab x)) coll)))
+  (defn spit-zip [coll]
+    (with-open [^java.io.BufferedWriter w (zip-writer "c:/users/tspoon/blah.gz")]
+      (doseq [x coll]
+        (.write w (str (clojure.string/join \tab x) \newline)))))
+  (defn zip-lines [xs]
+    (with-open [^java.io.BufferedWriter w (zip-writer "c:/users/tspoon/blah.gz")]
+      (doseq [^String x xs]
+        (.write w x ))))
+
+  (defn compress-lines
+    ([from to]
+     (with-open [^java.io.BufferedWriter w (zip-writer to)
+                 ^java.io.BufferedReader r (io/reader from)]
+       (doseq [^String l (line-seq r)]
+         (.write w (str l \newline)))
+        ))
+    ([from] (compress-lines from (str from ".gz"))))
+      
+  (defn unzip-lines [path]
+    (with-open [^java.io.BufferedReader r (zip-reader path)]
+      (into [] (line-seq r))))
+
+    (defn spit-lz4 [coll]
+    (with-open [^java.io.BufferedWriter w (lz4-writer "c:/users/tspoon/blah.lz4")]
+      (doseq [x coll]
+        (.write w (str (clojure.string/join \tab x) \newline)))))
+    
+  (defn lz4-lines [xs]
+    (with-open [^java.io.BufferedWriter w (lz4-writer "c:/users/tspoon/blah.lz4")]
+      (doseq [^String x xs]
+        (.write w x ))))
+
+  ;;probably a faster way to do this...
+  (defn compress-lines-lz4
+    ([from to]
+     (with-open [^java.io.BufferedWriter w (lz4-writer to)
+                 ^java.io.BufferedReader r (io/reader from)]
+       (doseq [^String l (line-seq r)]
+         (.write w (str l \newline)))
+        ))
+    ([from] (compress-lines-lz4 from (str from ".lz4"))))
+      
+  (defn unzip-lines-lz4 [path]
+    (with-open [^java.io.BufferedReader r (lz4-reader path)]
+      (into [] (line-seq r))))
+      
+  (defn count-zipped-lines [path]
+    (with-open [^java.io.BufferedReader r (zip-reader path)]
+      (reduce (fn [acc _] (unchecked-inc acc)) 0  (line-seq r))))
+
+  (defn count-zipped-lines-lz4 [path]
+    (with-open [^java.io.BufferedReader r (lz4-reader path)]
+      (reduce (fn [acc _] (unchecked-inc acc)) 0  (line-seq r))))
+  (defn count-lines [path]
+    (with-open [^java.io.BufferedReader r (io/reader path)]
+      (reduce (fn [acc _] (unchecked-inc acc)) 0  (line-seq r))))
+    
+
+  
+)
