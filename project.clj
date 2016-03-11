@@ -14,7 +14,6 @@
   :url "None Currently"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :aot [spork.cljgui.components.PaintPanel]
   :dependencies [[org.clojure/clojure "1.7.0"]
                  ;[org.clojure.contrib/standalone "1.3.0-alpha4"]
                  [clj-tuple "0.1.5"]
@@ -33,4 +32,5 @@
                  [org.clojure/core.rrb-vector "0.0.11"]
 ;                 [clojure-watch "LATEST"] ;ephemeral dependency.
                  ]
+  :profiles {:jar {:aot [spork.cljgui.components.PaintPanel]}}
   :jvm-opts ^:replace ["-Xmx1g" "-XX:NewSize=200m"])

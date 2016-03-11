@@ -11,9 +11,7 @@
 ;These are generic routing functions for a service built on message-passing.
 ;I could abstract this into a simple library.
 
-
 (defrecord packet [msg-type msg-data])
-
 
 ;These are generic routing functions for a service built on message-passing.
 ;I could abstract this into a simple library.
