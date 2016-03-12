@@ -613,7 +613,7 @@
   "Interprets a sequence of records as a table, where fields are the keys of 
    the records, and rows are the values."
   [recs]
-  (let [flds (vec (sort (keys (first recs))))
+  (let [flds (vec (sort (keys (general/first-any recs))))
         cols (mapv (fn [_] []) flds)]
     (make-table flds (conj-records!! flds
                                      cols
