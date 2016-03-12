@@ -22,10 +22,11 @@
   "Given a string literal that encodes a path, or a newline-delimited 
    sequence of lines, returns a reducible obj that iterates over each line (string) 
    delimited by \newline."
-  [path-or-string]
-  (let [reader-fn (if (path? path-or-string)
-                    clojure.java.io/reader
-                    string-reader)]
+  [path-or-string & {:keys [reader-fn]}]
+  (let [reader-fn (or reader-fn
+                      (if (path? path-or-string)
+                        clojure.java.io/reader
+                        string-reader))]
     (reify clojure.core.protocols/CollReduce
       (coll-reduce [o f init]
         (with-open [^java.io.BufferedReader rdr (reader-fn path-or-string)]
