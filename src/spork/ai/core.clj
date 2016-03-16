@@ -7,6 +7,24 @@
 ;;cooperate.   
 (ns spork.ai.core)
 
+;;General functions for applying behaviors to a context.
+;;Using transactional semantics, we liken the processing of
+;;entity behaviors via a behaviorsystem akin to a database
+;;transaction.  We prepare a behavior environment by loading
+;;the entity, typically creating local state for the evaluation
+;;of the behavior.  From there, we define how to apply a behavior
+;;to a behavior environment (typically loaded from the entity).
+;;Behaviors return new or possibly final environments.
+;;After the last environment is computed, we in turn commit the
+;;entity via the environment, assuming the environment contains
+;;all necessary changes to either compute or extract the resulting
+;;context.    We may not need this...in fact, we could
+;;just define a map to hold the requisite functions.
+(defprotocol IBehaviorSystem
+  (load-entity!   [sys ent ctx] ":: ctx -> entity -> behaviorenv")
+  (behave-entity! [sys b benv]  ":: behavior -> benv -> benv")
+  (commit-entity! [sys benv]    ":: benv -> ctx"))
+
 ;;Not sure we actually need this.  We might be better off letting contexts define their
 ;;own blackboard and just let the trees/fsms work on the context.
 (comment

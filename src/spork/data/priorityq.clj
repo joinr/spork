@@ -95,7 +95,7 @@
 (defn- get-map [dir] (if (= dir :min) (sorted-map) (sorted-map-by >)))
 
 ;;A priority queue type to wrap all the previous operations.
-(deftype pqueue [dir basemap entry-count _meta]
+(deftype pqueue [dir ^clojure.lang.IPersistentMap basemap entry-count _meta]
   Object
   (toString [this] (str (.seq this)))
 

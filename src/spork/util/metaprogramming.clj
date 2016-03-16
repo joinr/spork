@@ -292,3 +292,37 @@
 
 
 ;;end Potemkin
+
+
+;;this doesn't really buy us much at the moment,
+;;probably due to function call overhead?  It might be nice to inline
+;;all these calls.  The lesson though, is that we can get a lot of
+;;mileage, usually 3-5x performance recovery, by translating to
+;;direct methd calls where possible, or utilizing interfaces.
+
+(defmacro definline!
+  "Experimental - like defmacro, except defines a named function whose
+  body is the expansion, calls to which may be expanded inline as if
+  it were a macro. Cannot be used with variadic (&) args.  Respects 
+  the type tags of arguments."
+  {:added "1.0"}
+  [name & decl]
+  (let [[_ fname & fdecl] &form
+        [pre-args [args expr]] (split-with (comp not vector?) fdecl)
+        
+        letmap (reduce  (fn [acc a]                          
+                          (if-let [tag (get (meta a) :tag)]
+                            (assoc acc a 
+                                   (with-meta (gensym)
+                                     `{:tag ~tag}))
+                            acc)) {} args)
+        [pre-args [args expr]] (split-with (comp not vector?) fdecl)
+        outerargs (replace letmap args)
+        lets      (flatten (seq letmap))
+        ]
+    `(do
+       (defn ~name ~@pre-args [~@outerargs]
+         (let [~@lets]
+           ~(apply (eval (list `fn args expr)) args)))
+       (alter-meta! (var ~name) assoc :inline (fn ~name ~args ~expr))
+       (var ~name))))

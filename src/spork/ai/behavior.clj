@@ -322,10 +322,16 @@
 (def ^:dynamic *ctx*)
 ;;Auxilliary function.
 ;;This just does the plumbing for us and lifts keys out of the environment.
+;;either define the context as a vector of args, which is bound to the
+;;environment, or as a map...
+;;we'd like to allow destructuring...
 (defmacro key-fn
   [vars & body]
-   `(fn [{:keys [~@vars] :as ~'ctx}]
-      ~@body))
+  (if (map? vars)
+    `(fn [~vars]
+       ~@body)      
+    `(fn [{:keys [~@vars] :as ~'ctx}]
+       ~@body)))
 
 ;;we're going to transform a (fn ... [args] body) into something
 ;;like (defn ~name ~doc? [args] body)
@@ -351,18 +357,20 @@
 ;;or into the specific nodes or functions for custom control flow.
 (defmacro befn
   ([vars body]
-   `(key-fn ~vars
-            (binding [~'spork.ai.behavior/*ctx* ~'ctx]
-              (if-let [res# ~body]
-                (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
-                (fail ~'spork.ai.behavior/*ctx*)))))
+   (let [ctx-name (if (map? vars) (get vars :as 'ctx) 'ctx)]
+     `(key-fn ~vars
+              (binding [~'spork.ai.behavior/*ctx* ~ctx-name]
+                (if-let [res# ~body]
+                  (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
+                  (fail ~'spork.ai.behavior/*ctx*))))))
   ([name vars body]
-   `(fn->defn ~name
-       (key-fn ~vars
-               (binding [~'spork.ai.behavior/*ctx* ~'ctx]
-                 (if-let [res# ~body]
-                   (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
-                   (fail ~'spork.ai.behavior/*ctx*))))))
+   (let [ctx-name (if (map? vars) (get vars :as 'ctx) 'ctx)]
+     `(fn->defn ~name
+                (key-fn ~vars
+                        (binding [~'spork.ai.behavior/*ctx* ~ctx-name]
+                          (if-let [res# ~body]
+                            (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
+                            (fail ~'spork.ai.behavior/*ctx*)))))))
   ([name docstring vars body]
    `(befn [~name ~docstring] ~vars ~body)))
 
@@ -383,6 +391,20 @@
     (reduce-kv (fn [acc k v]
                  (assoc acc k v)) ctx kvps)))
   ([kvps] (bind! kvps spork.ai.behavior/*ctx*)))
+
+;;assumes we have atomic places defined for our kvps.
+(defn merge!
+  ([kvps ctx]
+   (success 
+    (reduce-kv (fn [acc k v]
+                 (swap! k assoc v)) ctx kvps)))
+  ([kvps] (merge! kvps spork.ai.behavior/*ctx*)))
+
+(defn push!
+  ([atm k v ctx]
+   (success (do (swap! atm assoc k v)
+                ctx)))
+  ([atm k v] (push! atm k v spork.ai.behavior/*ctx*)))
 
 ;;removes bindings..
 (defn drop!
