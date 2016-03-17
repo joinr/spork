@@ -9,7 +9,7 @@
    of values.  This rises from the fact that many values may share the same 
    priority or weight.  Weight is assumed to be, although not enforced, a 
    numeric value, typically a floating point value."
-  (:require [core.data.avl :as avl]))
+  (:require [clojure.data.avl :as avl]))
 
 
 ;;note, this persistent PQ is no longer in favor, because most of our 
@@ -258,6 +258,9 @@
               :else nil))  
   Object
   (toString [this] (str (.seq this)))
+  clojure.lang.Indexed
+  (nth [obj idx] (.nth basemap idx))
+  (nth [obj idx not-found] (.nth basemap idx not-found))
   clojure.lang.IObj
   (meta [this] _meta)
   (withMeta [this m] (pri. dir basemap n m _hash _hasheq))
@@ -357,7 +360,7 @@
               (set! n (long @idx))
               this))
         (do (set! basemap (.conj basemap (->pentry k n v)))
-            this))))  
+            this))))
   (persistent [this] (pri. dir (persistent! basemap) n _meta -1 -1)))
 
 (def minpri (pri. :min minset 0 {} -1 -1))
