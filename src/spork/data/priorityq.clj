@@ -8,7 +8,8 @@
    implementation maps a set of weights (keys in the sorted-map), to sequences
    of values.  This rises from the fact that many values may share the same 
    priority or weight.  Weight is assumed to be, although not enforced, a 
-   numeric value, typically a floating point value.")
+   numeric value, typically a floating point value."
+  (:require [core.data.avl :as avl]))
 
 
 ;;note, this persistent PQ is no longer in favor, because most of our 
@@ -51,21 +52,27 @@
 
 (defn conj-node
   "Conjoin node n onto priorityq  q with priority/weight w."
-  ([q n w]  (assoc q w
-                   (if-let [coll (get q w)] 
-                     (conj coll n) (conj empty-entries n))))
-  ([q [n w]] (conj-node q n w)))
+  ([^clojure.lang.IPersistentMap q n w]
+   (.assoc ^clojure.lang.Associative q w
+           (if-let [^clojure.lang.PersistentQueue coll (.valAt q w)] 
+             (.cons coll n)
+             (.cons ^clojure.lang.PersistentQueue empty-entries n)))))
+ ; ([q [n w]] (conj-node q n w)
+   ;)
 
 (defn conj-many
   "Conjoin many [node weight] pairs onto priorityq q."
   [q entries]
   (reduce conj-node q entries))
 
-(defn next-val
+(definline next-val
   "Return the highest-priority value." 
   [pq]
-  (first (first (vals pq))))
-
+  (let [entries (with-meta (gensym "entries") {:tag 'clojure.lang.ISeq})]
+    `(let [~entries (vals ~pq); (.first (.first (vals pq))))
+           ~entries (.first ~entries)]
+       (.first ~entries))))
+           
 (defn next-entry 
   "Return [priority x] for the highest-priority node." 
   [pq]
@@ -75,13 +82,14 @@
 (defn drop-first
   "Return the priorityq resulting from disjoining the 
    highest priority node."
-  [pq]
-  (if (empty? pq) pq
+  [^clojure.lang.IPersistentMap pq]
+  (if (zero? (.count  pq)) pq
     (let [[w q] (first pq)]
       (cond
         (= 1  (count q))  (dissoc pq w)
         :else             (assoc pq w (pop q))))))
 
+;;we can probably do better than this.. :(
 (defn priority-entries [pq]
   (for [[k q] (seq pq)
         v     q]
@@ -92,8 +100,267 @@
   [pq]
   (map second (priority-entries pq)))
   
-(defn- get-map [dir] (if (= dir :min) (sorted-map) (sorted-map-by >)))
+(defn- get-map [dir]
+  (if (= dir :min)
+    (sorted-map)
+    (sorted-map-by >)))
 
+;;an alternative implementation...
+;;use triples. [t o entry]
+;;where o is a monotonically increasing number.
+;;so, we sort based on t, then o, and store the entry.
+;;should be pretty fast with a primitive.
+(deftype pkey [^double k ^long o
+               ^:unsynchronized-mutable ^int _hasheq
+               ^:unsynchronized-mutable ^int _hash]
+  clojure.lang.IPersistentVector
+  (count [obj] 2)
+  (seq [obj] (list k o))
+  (assocN [this k x]
+    (case k
+      0   (pkey. (double x) o -1 -1)
+      1   (pkey. k (long x)  -1 -1)
+      (throw (Exception. (str [:index-out-of-bounds k])))))
+  (empty [this] (pkey. 0.0 0  -1 -1))
+  ;;cons defines conj behavior
+   clojure.lang.ILookup
+  ; valAt gives (get pm key) and (get pm key not-found) behavior
+  (valAt [this k] (.nth this k))
+  (valAt [this k not-found] (.nth this k not-found))
+  clojure.lang.IHashEq
+  (hasheq [this]
+    (if (== _hasheq (int -1))
+      (let [h (hash-ordered-coll [k o])]
+        (do (set! _hasheq (int h))
+            h))
+      _hasheq))
+  (hashCode [this]
+    (if (== _hash (int -1))
+      (let [h (hash-ordered-coll [k o])]
+        (do (set! _hash (int h))
+            h))
+      _hash))
+  (equals [this o] (identical? this o))
+  (equiv [this o]
+    (cond (identical? this o) true
+          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+          (or (instance? clojure.lang.Sequential o)
+              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+              :else nil))  
+  clojure.lang.Indexed
+  (nth [obj idx]
+    (case (int idx)
+      0  k
+      1  o
+      (throw (Exception. (str [:idx idx :out-of-bounds])))))
+  (nth [obj idx not-found]
+    (if (and (not (neg? idx)) (> idx 2)) not-found
+      (case (int idx)
+        0  k
+        1  o
+        (throw (Exception. (str [:idx idx :out-of-bounds]))))))
+  )
+
+;;basis for priority entries, using a simply sorted-map.
+(defn ->pentry [^double k ^long idx v] (clojure.lang.MapEntry.  (pkey. k idx -1 -1) v))
+(definline min-key-compare [lentry rentry]
+  (let [l (with-meta (gensym "l") {:tag 'spork.data.priorityq.pkey})
+        r (with-meta (gensym "r") {:tag 'spork.data.priorityq.pkey})]
+    `(let [~l ~lentry
+           ~r ~rentry
+           kl# (.k ~l)
+           kr# (.k ~r)]
+       (cond (== kl# kr#)
+             (let [il# (.o ~l)
+                   ir# (.o ~r)]
+               (cond (== il# ir#) 0
+                     (< il# ir#)  -1
+                     :else 1))
+             ;;compare.
+             (< (.k ~l) (.k ~r)) -1
+             :else 1))))
+(definline max-key-compare [rentry lentry]
+  (let [l (with-meta (gensym "l") {:tag 'spork.data.priorityq.pkey})
+        r (with-meta (gensym "r") {:tag 'spork.data.priorityq.pkey})]
+    `(let [~l ~lentry
+           ~r ~rentry
+           kl# (.k ~l)
+           kr# (.k ~r)]
+       (cond (== kl# kr#)
+             (let [il# (.o ~l)
+                   ir# (.o ~r)]
+               (cond (== il# ir#) 0
+                     (< il# ir#)  -1
+                     :else 1))
+             ;;compare.
+             (< (.k ~l) (.k ~r)) -1
+             :else 1))))
+
+(definline min-entry-compare [lentry rentry]
+  (let [l (with-meta (gensym "l") {:tag 'clojure.lang.MapEntry})
+        r (with-meta (gensym "r") {:tag 'clojure.lang.MapEntry})]
+    `(let [~l ~lentry
+           ~r ~rentry]
+       (min-key-compare (.key ~l) (.key ~r)))))
+
+(definline max-entry-compare [rentry lentry]
+  (let [l (with-meta (gensym "l") {:tag 'clojure.lang.MapEntry})
+        r (with-meta (gensym "r") {:tag 'clojure.lang.MapEntry})]
+    `(let [~l ~lentry
+           ~r ~rentry]
+       (min-key-compare (.key ~l) (.key ~r)))))
+
+
+;;there are two ways to view entries here.
+;;We have a seq of [pri val]
+;;we also want to have map-like access to the entry itself.
+;;specifically, if we want to alter an entry, we need to be able
+;;to get it.  That means we need to know its order.  For instance,
+;;how would we update the val? If we had indexed access to the entries,
+;;and we could easily compute the index, we'd just assocN into it.
+;;Instead of indexing, we can do range queries using subseq and rsubseq
+;;on the tree map.
+
+(def minset (avl/sorted-set-by min-entry-compare))
+(def maxset (avl/sorted-set-by max-entry-compare))
+(defn get-set [dir]
+  (case dir
+    :min minset
+    maxset))
+
+(declare ->tpri)
+;;pequeue implementation using - hopefully - optimized entries and a
+;;simpler method for adding to the queue.
+(deftype pri [dir ^clojure.lang.IPersistentSet basemap
+              ^:unsynchronized-mutable ^long n
+              _meta
+              ^:unsynchronized-mutable ^int _hash
+              ^:unsynchronized-mutable ^int _hasheq]
+  clojure.lang.IHashEq
+  (hasheq [this]
+    (if (== _hasheq (int -1))
+      (let [h (hash-unordered-coll [dir basemap])]
+        (do (set! _hasheq (int h))
+            h))
+      _hasheq))
+  (hashCode [this]
+    (if (== _hash (int -1))
+      (let [h (hash-ordered-coll [dir basemap])]
+        (do (set! _hash (int h))
+            h))
+      _hash))
+  (equals [this o] (identical? this o))
+  (equiv [this o]
+    (cond (identical? this o) true
+          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+          (or (instance? clojure.lang.Sequential o)
+              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+              :else nil))  
+  Object
+  (toString [this] (str (.seq this)))
+  clojure.lang.IObj
+  (meta [this] _meta)
+  (withMeta [this m] (pri. dir basemap n m _hash _hasheq))
+  clojure.lang.ISeq
+  (first [this] (.first ^clojure.lang.ISeq (vals basemap)))
+  (next  [this]
+    (if (zero? (.count basemap)) nil
+        (.pop this)))
+  (more [this] (if (zero? (.count basemap)) nil
+                   (.pop this)))
+  clojure.lang.IPersistentCollection
+  (empty [this]  (pri. dir (get-set dir) 0 {} -1 -1 ))
+  ;;Note -> if we don't implement this, vector equality doesn't work both ways!
+  java.util.Collection  
+  (iterator [self]    (clojure.lang.SeqIterator. (seq  self)))  
+  (size     [self]    (.count self))  
+  (toArray  [self]    (.toArray (seq self)))
+  clojure.lang.Seqable
+  (seq [this]  ; returns a LazySeq
+    (seq basemap))
+  clojure.lang.Counted
+  (count [this] (.count basemap))
+ ; clojure.lang.IPersistentVector
+  (cons [this a]
+    ;;check for rollover.  In that event, repack existing entries.  It's inconceivable that this would happen though.
+    ; called by conj
+    (let [k  (first a)
+          v  (second a)
+          n (unchecked-inc n)]
+      (if (== n Long/MIN_VALUE) ;;rollover
+        (let [idx     (volatile! 0)
+              basemap (persistent!
+                       (reduce (fn [acc e]
+                                 (let [^pkey k (key e)
+                                       e (->pentry (.k k) @idx (val e))
+                                       _ (vswap! idx unchecked-inc)]
+                                   (conj! acc e)))
+                               (transient (get-set dir)) basemap))]
+          (pri. dir basemap @idx _meta -1 -1))        
+        (pri. dir (.cons basemap (->pentry k n v)) n  _meta -1 -1))))
+;  (length [this]  (.count this))
+  ;; (assocN [this index value]
+  ;;   (if (and (not (zero? entry-count))
+  ;;            (>= index entry-count)) (throw (Exception. "Index Out of Range"))
+  ;;     (let [k (nth (keys basemap) index)]
+  ;;       (pqueue. dir (assoc basemap k value) entry-count _meta))))
+  clojure.lang.IPersistentStack
+  (pop  [this] (if (zero? (.count basemap)) this
+                   (pri. dir (.disjoin basemap (.first basemap))
+                             n _meta -1 -1)))
+  (peek [this] (.first basemap))
+  ;; clojure.lang.Indexed
+  ;; (nth [this i] (if (and (>= i 0) 
+  ;;                        (< i entry-count)) 
+  ;;                   (nth  basemap i)
+  ;;                   (throw (Exception. (str "Index out of range " i )))))
+  ;; (nth [this i not-found] 
+  ;;   (if (and (< i entry-count) (>= i 0))
+  ;;       (nth (priority-vals basemap) i)       
+  ;;        not-found))     
+  clojure.lang.Reversible
+  (rseq [this]  (.rseq basemap))
+  java.io.Serializable ;Serialization comes for free with the other stuff.
+  clojure.lang.IEditableCollection
+  (asTransient [this] (->tpri dir (transient basemap) n _meta))
+  )
+
+(deftype tpri [dir 
+              ^:unsynchronized-mutable ^clojure.lang.ITransientSet basemap
+              ^:unsynchronized-mutable ^long n
+              ^:unsynchronized-mutable _meta]
+  clojure.lang.IObj
+  (meta [this] _meta)
+  (withMeta [this m] (do (set! _meta m) this))
+  clojure.lang.Counted
+  (count [this] (.count basemap))
+  clojure.lang.ITransientSet  
+  (get [this k] (.get basemap k))
+  (contains [this k] (.contains basemap k))
+  (disjoin [this k] (do (set! basemap (.disjoin basemap k)) this))
+  (conj [this a] 
+    ;;check for rollover.  In that event, repack existing entries.  It's inconceivable that this would happen though.
+    ; called by conj
+    (let [k  (first a)
+          v  (second a)
+          _  (set! n (unchecked-inc n))]
+      (if (== n Long/MIN_VALUE) ;;rollover
+        (let [idx (volatile! 0)
+              bm (reduce (fn [acc e]
+                                (let [^pkey k (key e)
+                                      e (->pentry (.k k) @idx (val e))
+                                      _ (vreset! idx (unchecked-inc @idx)) 
+                                      ]                                  
+                                  (conj! acc e)))
+                              (transient (get-set dir)) (persistent! basemap))]
+          (do (set! basemap bm)
+              (set! n (long @idx))
+              this))
+        (do (set! basemap (.conj basemap (->pentry k n v)))
+            this))))  
+  (persistent [this] (pri. dir (persistent! basemap) n _meta -1 -1)))
+
+(def minpri (pri. :min minset 0 {} -1 -1))
 ;;A priority queue type to wrap all the previous operations.
 (deftype pqueue [dir ^clojure.lang.IPersistentMap basemap entry-count _meta]
   Object
@@ -102,21 +369,23 @@
   clojure.lang.ISeq
   (first [this] (next-val basemap))
   (next  [this]
-    (if (empty? basemap) nil
-        (pop this)))
-  (more [this] (if (empty? basemap) nil
-                   (pop this)))
+    (if (zero? (.count basemap)) nil
+        (.pop this)))
+  (more [this] (if (zero? (.count basemap)) nil
+                   (.pop this)))
   clojure.lang.IPersistentCollection
   (empty [this]  (pqueue. dir (get-map dir) 0 {}))
   (equiv [this that]
-     (cond (= (type this) (type that)) (identical? basemap (.basemap that)))
-           (sequential? that) 
-           (loop [xs  (.seq this)
-                  ys  (seq that)]
-             (cond (and (empty? xs) (empty? ys)) true 
-                   (=   (first xs) (first ys)) (recur (rest xs)
-                                                      (rest ys))
-                   :else nil)))   
+    (cond (= (type this) (type that))
+            (and  (identical? dir (.dir ^pqueue that))
+                  (identical? basemap (.basemap ^pqueue that)))
+          (sequential? that) 
+            (loop [xs  (.seq this)
+                   ys  (seq that)]
+              (cond (and (empty? xs) (empty? ys)) true 
+                    (=   (first xs) (first ys)) (recur (rest xs)
+                                                       (rest ys))
+                    :else nil))))   
   ;;Note -> if we don't implement this, vector equality doesn't work both ways!
   java.util.Collection  
   (iterator [self]    (clojure.lang.SeqIterator. (seq  self)))  
@@ -132,18 +401,18 @@
   clojure.lang.IPersistentVector
   (cons [this a]
     ; called by conj
-    (let [k (first a)
-           v (second a)]
-      (pqueue. dir (conj-node basemap k v) (inc entry-count) _meta)))
+    (let [k  (first a)
+          v  (second a)]
+      (pqueue. dir (conj-node basemap k v) (unchecked-inc entry-count) _meta)))
   (length [this]  (.count this))
   (assocN [this index value]
     (if (and (not (zero? entry-count))
              (>= index entry-count)) (throw (Exception. "Index Out of Range"))
-      (let [k (nth (keys basemap))]
+      (let [k (nth (keys basemap) index)]
         (pqueue. dir (assoc basemap k value) entry-count _meta))))
   clojure.lang.IPersistentStack
-  (pop  [this] (if (empty? basemap) this
-                   (pqueue. dir (drop-first basemap) (dec entry-count) _meta)))
+  (pop  [this] (if (zero? (.count basemap)) this
+                   (pqueue. dir (drop-first basemap) (unchecked-dec entry-count) _meta)))
   (peek [this] (next-val basemap))
   clojure.lang.Indexed
   (nth [this i] (if (and (>= i 0) 

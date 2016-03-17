@@ -231,7 +231,7 @@
                     (load-entity!   e)
                     (beval    default) ;should parameterize this.
                     (commit-entity!)))
-             ctx (get-updates init-ctx)))
+             init-ctx (get-updates init-ctx)))
 
 ;;There are a couple of possible outcomes in an update step.
 ;;Entities might send eachother messages concurrently, and

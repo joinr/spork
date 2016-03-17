@@ -177,21 +177,23 @@
   (mutable   [c])
   (immutable [c]))
 
-;;Debatable as to how much faster this is...
-(in-ns 'clojure.core)
+;;this won't work any more.
 
-(defn into
-  "Returns a new coll consisting of to-coll with all of the items of
-  from-coll conjoined. *Modified to account for mutable structures." 
-  {:added "1.0"
-   :static true}
-  [to from]
-  (if (instance? clojure.lang.IEditableCollection to)
-    (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
-    (if (instance? spork.data.mutable.IMutable to)
-      (reduce conj!(spork.data.mutable/mutable to) from)
-      (reduce conj  to from))))
-(in-ns 'spork.data.mutable)
+;;Debatable as to how much faster this is...
+;; (in-ns 'clojure.core)
+
+;; (defn into
+;;   "Returns a new coll consisting of to-coll with all of the items of
+;;   from-coll conjoined. *Modified to account for mutable structures." 
+;;   {:added "1.0"
+;;    :static true}
+;;   [to from]
+;;   (if (instance? clojure.lang.IEditableCollection to)
+;;     (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
+;;     (if (instance? spork.data.mutable.IMutable to)
+;;       (reduce conj!(spork.data.mutable/mutable to) from)
+;;       (reduce conj  to from))))
+;; (in-ns 'spork.data.mutable)
 
 (extend-type ArrayList 
   IFastAccess 

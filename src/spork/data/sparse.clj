@@ -315,7 +315,7 @@
           (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
           (instance? clojure.lang.IPersistentMap o) (and (== (count this) (count o))
                                                          (mapeq this o))
-          (or (instance? clojure.lang.Sequential 0)
+          (or (instance? clojure.lang.Sequential o)
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
               :else nil))  
   (hashCode [this]
