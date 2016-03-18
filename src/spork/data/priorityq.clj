@@ -9,7 +9,8 @@
    of values.  This rises from the fact that many values may share the same 
    priority or weight.  Weight is assumed to be, although not enforced, a 
    numeric value, typically a floating point value."
-  (:require [clojure.data.avl :as avl]))
+  (:require [clojure.data.avl :as avl]
+            [clojure.core.reducers :as r]))
 
 
 ;;note, this persistent PQ is no longer in favor, because most of our 
@@ -231,11 +232,15 @@
 (declare ->tpri)
 ;;pequeue implementation using - hopefully - optimized entries and a
 ;;simpler method for adding to the queue.
-(deftype pri [dir ^clojure.lang.IPersistentSet basemap
+(deftype pri [dir ^clojure.data.avl.AVLSet basemap
               ^:unsynchronized-mutable ^long n
               _meta
               ^:unsynchronized-mutable ^int _hash
               ^:unsynchronized-mutable ^int _hasheq]
+  clojure.data.avl.IAVLTree
+  (getTree [this] (.getTree basemap))
+  clojure.data.avl.INavigableTree
+  (nearest [this test k]  (.nearest basemap test k))
   clojure.lang.IHashEq
   (hasheq [this]
     (if (== _hasheq (int -1))
@@ -259,18 +264,15 @@
   Object
   (toString [this] (str (.seq this)))
   clojure.lang.Indexed
-  (nth [obj idx] (.nth basemap idx))
-  (nth [obj idx not-found] (.nth basemap idx not-found))
+  (nth [obj idx] (.nth  basemap idx)) 
+  (nth [obj idx not-found] (.nth ^clojure.data.avl.AVLSet basemap idx not-found))
   clojure.lang.IObj
   (meta [this] _meta)
   (withMeta [this m] (pri. dir basemap n m _hash _hasheq))
   clojure.lang.ISeq
-  (first [this] (.first ^clojure.lang.ISeq (vals basemap)))
-  (next  [this]
-    (if (zero? (.count basemap)) nil
-        (.pop this)))
-  (more [this] (if (zero? (.count basemap)) nil
-                   (.pop this)))
+  (first [this] (.nth ^clojure.data.avl.AVLSet  basemap 0)) ;way faster than first..
+  (next  [this] (.pop this))
+  (more [this]  (.pop this))
   clojure.lang.IPersistentCollection
   (empty [this]  (pri. dir (get-set dir) 0 {} -1 -1 ))
   ;;Note -> if we don't implement this, vector equality doesn't work both ways!
@@ -287,10 +289,10 @@
   (cons [this a]
     ;;check for rollover.  In that event, repack existing entries.  It's inconceivable that this would happen though.
     ; called by conj
-    (let [k  (first a)
+    (let [k  (first  a)
           v  (second a)
-          n (unchecked-inc n)]
-      (if (== n Long/MIN_VALUE) ;;rollover
+          nnxt (unchecked-inc n)]
+      (if (== nnxt Long/MIN_VALUE) ;;rollover
         (let [idx     (volatile! 0)
               basemap (persistent!
                        (reduce (fn [acc e]
@@ -300,36 +302,40 @@
                                    (conj! acc e)))
                                (transient (get-set dir)) basemap))]
           (pri. dir basemap @idx _meta -1 -1))        
-        (pri. dir (.cons basemap (->pentry k n v)) n  _meta -1 -1))))
-;  (length [this]  (.count this))
-  ;; (assocN [this index value]
-  ;;   (if (and (not (zero? entry-count))
-  ;;            (>= index entry-count)) (throw (Exception. "Index Out of Range"))
-  ;;     (let [k (nth (keys basemap) index)]
-  ;;       (pqueue. dir (assoc basemap k value) entry-count _meta))))
+        (pri. dir (.cons basemap (->pentry k n v)) nnxt  _meta -1 -1))))
+  clojure.lang.Sorted
+  (seq [this ascending?]
+    (.seq ^clojure.lang.Sorted basemap ascending?))
+  (seqFrom [this k ascending?] (.seqFrom basemap k ascending?))
+  (entryKey [this entry]        entry)
+  (comparator [this] (.comparator basemap))
   clojure.lang.IPersistentStack
-  (pop  [this] (if (zero? (.count basemap)) this
-                   (pri. dir (.disjoin basemap (.first basemap))
+  (pop  [this] (if (zero?    (.count basemap)) this
+                   (pri. dir (.disjoin basemap (.nth basemap 0))
                              n _meta -1 -1)))
-  (peek [this] (.first basemap))
-  ;; clojure.lang.Indexed
-  ;; (nth [this i] (if (and (>= i 0) 
-  ;;                        (< i entry-count)) 
-  ;;                   (nth  basemap i)
-  ;;                   (throw (Exception. (str "Index out of range " i )))))
-  ;; (nth [this i not-found] 
-  ;;   (if (and (< i entry-count) (>= i 0))
-  ;;       (nth (priority-vals basemap) i)       
-  ;;        not-found))     
+  (peek [this] (.nth basemap 0))
   clojure.lang.Reversible
   (rseq [this]  (.rseq basemap))
   java.io.Serializable ;Serialization comes for free with the other stuff.
   clojure.lang.IEditableCollection
   (asTransient [this] (->tpri dir (transient basemap) n _meta))
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [this f init]
+    (.kv-reduce ^clojure.data.avl.AVLMap (.avl-map basemap)
+                (fn [acc ^clojure.lang.MapEntry k _]
+                  (f acc (.key k) (.val k)))
+                init))
+  clojure.core.protocols/CollReduce
+  (coll-reduce [coll f]
+      (reduce-kv (fn [acc k _] (f acc k))  (.nth coll 0) (r/drop 1 (.avl-map basemap))))  
+  (coll-reduce [coll f init]
+      (reduce-kv (fn [acc k _] (f acc k))  init  (.avl-map basemap)))
+    
+  
   )
 
 (deftype tpri [dir 
-              ^:unsynchronized-mutable ^clojure.lang.ITransientSet basemap
+              ^:unsynchronized-mutable ^clojure.data.avl.AVLTransientSet basemap
               ^:unsynchronized-mutable ^long n
               ^:unsynchronized-mutable _meta]
   clojure.lang.IObj
@@ -346,8 +352,8 @@
     ; called by conj
     (let [k  (first a)
           v  (second a)
-          _  (set! n (unchecked-inc n))]
-      (if (== n Long/MIN_VALUE) ;;rollover
+          nnxt (unchecked-inc n)]
+      (if (== nnxt Long/MIN_VALUE) ;;rollover
         (let [idx (volatile! 0)
               bm (reduce (fn [acc e]
                                 (let [^pkey k (key e)
@@ -360,10 +366,99 @@
               (set! n (long @idx))
               this))
         (do (set! basemap (.conj basemap (->pentry k n v)))
+            (set! n nnxt)
             this))))
   (persistent [this] (pri. dir (persistent! basemap) n _meta -1 -1)))
 
 (def minpri (pri. :min minset 0 {} -1 -1))
+(def maxpri (pri. :max maxset 0 {} -1 -1))
+
+;;operations on pris
+(defn at [^pri m t]
+  (subseq m >= (->pentry t 0 nil) <=  (->pentry t Long/MAX_VALUE nil)))
+(defn earliest [^pri m t]
+  (avl/nearest m = (->pentry t 0 nil)))
+(defn latest [^pri m t]
+  (avl/nearest m = (->pentry t Long/MAX_VALUE nil)))
+(defn closest [^pri m t]
+  (avl/nearest m <= (->pentry t Long/MAX_VALUE nil)))
+(defn tnext [^pri m] (when-let [e (.peek m)]
+                       (nth (key e) 0)))
+(definline marker [t] `(->pentry ~t Long/MAX_VALUE nil))
+;; (defn chunk-width [^pri m]
+;;   (let [t (tnext m)
+;;         hd (first m)
+;;         tl (latest m t)]
+    
+        
+;;remove
+(defn chunk-peek [^pri m]   (subseq m <= (marker (tnext m))))
+;;This is waaaay faster than going the seq/doall route in subseq.
+(defn chunk-peek! [^pri m]
+  (let [t (tnext m)]
+    (r/take-while (fn  [^clojure.lang.MapEntry e]
+                    (== (.k ^pkey (.key e))  t)) m)))
+
+;;this isn't as lazy as I'd like.
+;; (defn chunks! [^pri m]
+;;   (let [t (tnext m)]
+;;     (sequence (partition-by (fn  [^clojure.lang.MapEntry e]
+;;                               (== (.k ^pkey (.key e))  t)))
+;;             m)))
+
+;;may be faster if we can use split-at.
+(defn chunk-pop!
+  ([^pri m xs]
+   (persistent!
+    (reduce (fn [^tpri acc x]
+              (.disjoin acc x))
+            (transient m) xs)))
+  ([^pri m] (chunk-pop! m (chunk-peek! m))))
+
+(defn chunk-pop
+  ([^pri m xs]
+    (reduce (fn [^tpri acc x]
+              (pop acc)) m
+            xs))
+  ([^pri m] (chunk-pop m (chunk-peek! m))))
+
+(defn head [coll] (reduce (fn [acc x] (reduced x)) nil coll))
+(comment ;testing
+  ;;this isn't terrible.
+  ;;we can 
+  (def xs (range 1000000))
+  (def m  (into minpri (map (fn [n] [(quot n 100) n])) xs))
+
+  (time
+   (let [bound (.count ^pri m)]
+     (loop [idx 0
+            acc m
+            ]
+       (if (== idx bound) nil
+           (recur
+            (unchecked-inc idx)
+            (.pop ^pri acc))))))
+  ;;much faster,although we're still slow.  We should be able to
+  ;;drain the queue quickly.  Could look into setting up a mutable
+  ;;set.  Chunk-pop won't work because we don't know which items are
+  ;;in the transient set.  We have to coerce back and forth.
+  (time (loop [acc m]
+          (when (pos? (.count ^pri acc))
+            (recur (chunk-pop ^pri acc)))))
+  ;;faster still.
+
+  )
+
+
+;; (defn foldq [q n combinef reducef]
+;;   (cond
+;;     (empty? q) (combinef)
+;;     (<= (count a) n) (reduce reducef (combinef) q)
+;;     :else
+;;     (let [split (quot (count q) 2)
+;;           v1    (avl/split-at q 
+
+                              
 ;;A priority queue type to wrap all the previous operations.
 (deftype pqueue [dir ^clojure.lang.IPersistentMap basemap entry-count _meta]
   Object
