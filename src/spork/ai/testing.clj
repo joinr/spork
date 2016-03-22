@@ -281,10 +281,7 @@
 ;;can collect messages - to other entities - for dispersal at the
 ;;end of the individual entity step to allow us to send messages
 ;;efficiently.
-
-(defn get-updates [{:keys [pending] :as ctx}]
-  (next-recepients ctx))
-
+(defn get-updates [{:keys [pending] :as ctx}] (next-recepients ctx))
 ;;just a placeholder.
 (defn advance-time [ t ctx]
   (let [res (update ctx :pending dissoc t)]    
