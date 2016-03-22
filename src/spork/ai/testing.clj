@@ -20,6 +20,7 @@
                      ->or
                      ->bnode
                      ->while
+                     ->reduce
                      always-succeed
                      always-fail
                      bind!
@@ -161,14 +162,14 @@
 ;;This is consistent with the agenda from sicp.
 
 ;;operations on the context.
-(def simple-ctx (->simple-ctx))
+(def simple-ctx (->simple-ctx))     
 
 ;;creates a benv (a map)
 ;;:: ent -> msg -> ctx -> benv
 (defn load-entity! [ent msg ctx]
   (println [:loading ent msg])
   {:entity (atom (get-in ctx [:entities ent]))
-   :msg    msg
+   :current-messages   [msg]
    :ctx    (atom ctx)})
 
 
@@ -204,7 +205,9 @@
 (befn choose-state  [entity]
       (let [nxt   (case (:state @entity)        
                     :dwelling  :deploying
-                    :deploying :dwelling)]       
+                    :deploying :dwelling
+                    :dwelling
+                    )]       
         (push! entity :state nxt)))
 
 (befn choose-time [entity]
@@ -228,22 +231,37 @@
 ;;the entity will see if a message has been sent
 ;;externally, and then compare this with its current internal
 ;;knowledge of messages that are happening concurrently.
-(befn check-messages [entity msg ctx]
+(befn check-messages [entity current-messages ctx]
   (do (println @entity)
-      (when-let [msgs (pq/chunk-peek (:messages @entity))]
-        (let [_ (println msgs)
-              _  (swap! entity update :messages pq/chunk-pop msgs)
-              _  (println :swap)]
-          (bind! {:current-messages msgs})))))
+      (when-let [msgs (pq/chunk-peek! (:messages @entity))]
+        (let [new-msgs (into   current-messages (map val)  msgs)
+              _        (swap! entity update :messages pq/chunk-pop msgs)]
+          (bind! {:current-messages new-msgs})))))
+
+;;this is a dumb static message handler.
+;;It's a simple little interpreter that
+;;dispatches based on the message information.
+;;Should result in something that's beval compatible.
+;;we can probably override this easily enough.
+(defn message-handler [msg {:keys [entity current-messages ctx] :as benv}]
+  (do (println (str [(:name @entity) :handling msg]))
+      (beval 
+       (case (:msg msg)
+         :update (->do (fn [_] (println :update-stub)))
+         :spawn  spawn
+         :do     (->do (:data msg))
+         (throw  (Exception. (str [:unknown-message-type (:msg msg) :in  msg]))))
+       benv)))
 
 ;;handle the current batch of messages that are pending for the
 ;;entity.  We currently define a default behavior.
-(befn handle-messages [entity current-messages ctx]
-      (->do (fn [x]
-              (println [:handling-messages])
-              (doseq [m current-messages]
-                (println m)))))
-      
+(befn handle-messages {:keys [entity current-messages ctx] :as benv}
+      (when current-messages
+        (reduce (fn [env msg]
+                  (message-handler msg (second env)))
+                (success benv)
+                current-messages)))
+
 ;;the basic idea is this.
 (befn default [entity]
       (->or [(->and [check-messages
@@ -297,14 +315,14 @@
 ;;entity has no explicit knowledge of its messages.  During a
 ;;transaction, it recieves a message and utilizes the subsystem
 ;;to request the sending of messages to other entities.
-;;This is cool;  Entitie are interpreters governed by their behavior.
+;;This is cool;  Entities are interpreters governed by their behavior.
 ;;They may be seen as continuations as well, or "reactive" functions of
 ;;time, or state machines, etc.
 (defn step!
   ([t es ctx]
    (reduce (fn [ctx e]
              (->> ctx
-                  (load-entity!  e {:time t :msg :update})
+                  (load-entity!  e  {:t t :msg :update})
                   (beval    default) ;should parameterize this.
                   (return!)
                   (commit-entity!)))

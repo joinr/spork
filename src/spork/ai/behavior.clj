@@ -181,6 +181,16 @@
                     :fail      (reduced [:fail ctx])))) (success ctx) xs))
      xs))
 
+(defn ->reduce [f xs]
+  (fn [ctx] 
+    (reduce (fn [acc child]
+              (let [[res acc] (beval child (second acc))]
+                (case res
+                  :run       (reduced (run acc))
+                  :success   (success acc)
+                  :fail      (fail acc)))) (success ctx) xs)))
+
+
 ;;Verify this, I think the semantics are wrong.
 (defn ->seq
   "Defines a sequential node, more or less the bread-and-butter of behavior tree architecture.
