@@ -30,8 +30,6 @@
             [spork.data.priorityq :as pq]
             [clojure.core.reducers :as r]))
 
-
-
 ;;this only works with path literals...
 ;;allows us to define paths at compile time.
 (defmacro path! [lits]
@@ -59,28 +57,70 @@
 
 ;;A message is just a packet of information.
 ;;We can disperse these packets.
-(defn ->msg [t msg] {:t t :msg msg})
-
+(defn ->msg      [t msg] {:t t :msg msg})
 (defn insert-msg [{:keys [t] :as msg} mq]  (conj mq [msg t]))
+;;This is forming a loose protocol for a messaging system....
 ;;messaging
 ;;one way to do this is to round-robin the messages.
 ;;since we're pushing messages to entities, we should know who has pending messages.
 ;;specifically, which entities need to be updated at the current interval.  That's the
 ;;old update logic creeping in.
+(defn get-messages [e ctx] (get-in ctx [:entities e :messages]))
+;;we may want to get concurrent messages for all entities and process
+;;them in bulk.  Remember, this is faster than going round-robin, for
+;;the persistent structure.
 (defn pop-message [e ctx]
-  (let [msgs (get-in ctx [:messages e])
+  (let [msgs (get-messages e  ctx)
         msg  (first msgs)]
-    [msg (assoc-in ctx [:messages e (pop msgs)])]))
+    [msg (assoc-in ctx [:entities e :messages]  (pop msgs))]))
+(defn msg-time [e] (first (key e)))
 
+;;get all the messages for the entities the we currently (relative
+;;to tnow) know about.  If we use a pending cache, we already have
+;;the information precomputed; else we can fallback to checking each
+;;entity for messages.
+(defn next-recepients [ctx]
+  (if-let [pending (get ctx :pending)]
+    (first pending)
+    (let [res (->>  (:entities ctx)
+                    (reduce-kv (fn [[t ids :as acc] id {:keys [messages]}]
+                                 (if-let [m (first (get-messages id ctx))]
+                                   (let [tm (msg-time m)]
+                                     (cond (== tm t)
+                                           [t (conj ids id)]
+                                           (< tm t)
+                                           [tm [id]]
+                                           :else acc))))                              
+                               [Double/MAX_VALUE []]))]
+      (when (second res) res))))
+
+;;We may also have a very small priority queue...so the set of
+;;messages may be easily handled via insertion sort rather than using
+;;our large-growth queue...That would be far more efficient than
+;;going the route where we're paying the cost to balance a red-black tree.
+
+
+;;we send a message to the mailbox associated with 'to.  We also keep
+;;track of the set of units with pending messages.  We could not
+;;cache the pending information (and save the cost of maintaining a
+;;sorted set on every message push), instead just traverse the entities
+;;with mailboxes and check to see if they have messages at each step.
+;;That's an option...or, we could be lazy about computing the pending
+;;messages (and the pending next-times for the mailboxes)
+;;We will refactor this to allow efficient dispatch of immediate
+;;messages so that we don't have to keep queuing messages that
+;;are happening at the current time.
 (defn push-message [from to msg ctx]
   (let [t (:t msg)]
     (-> ctx
         (update-in 
          [:entities to :messages]
          conj
-         [(assoc msg :from from) t])
-        (update :pending conj (clojure.lang.MapEntry. t to)))))
-                             
+         [t (assoc msg :from from)])
+        (update :pending ;cache the pending info; other option is to poll.
+                (fn [m]  (assoc m t (conj (get m t #{})
+                                          to)))))))
+
 ;;this is a really simple context for prosecuting a discrete event
 ;;simulation.  We have a global time, a map of entities, and a map of
 ;;messages for said entities.  From this, we can define a step function,
@@ -103,12 +143,15 @@
 ;;if we want to.
 (defn ->simple-ctx [& {:keys [n] :or {n 2}}]
   (let [ids (range n)
-        ctx  {:entities (into {} (map (fn [n] [n
+        ctx  {;;records of entity data, with an associated messagequeue.
+              :entities (into {} (map (fn [n] [n
                                                {:name n
-                                                :messages pq/minq}]))
+                                                :messages pq/minpri}]))
                               ids)
+              ;;the system time.  We can compute this by pending, actually.
               :t 0
-              :pending  (sorted-set)}]
+              ;sets of entity ids with pending messages, mapped to time.
+              :pending  (sorted-map)}]
     (reduce (fn [ctx id]              
               (push-message :system id (->msg 0 :spawn) ctx))
             ctx ids)))
@@ -123,7 +166,7 @@
 ;;:: ent -> msg -> ctx -> benv
 (defn load-entity! [ent msg ctx]
   {:entity (atom (get-in ctx [:entities ent]))
-   :msg     msg
+   :msg    msg
    :ctx    (atom ctx)})
 ;;behaviors
 
@@ -178,9 +221,25 @@
         (->and [(fn [_] (println "Entity " (:name @entity) " spawned"))
                 move])))
 
+;;the entity will see if a message has been sent
+;;externally, and then compare this with its current internal
+;;knowledge of messages that are happening concurrently.
+(befn check-messages [entity msg ctx]
+      (when-let [msgs (pq/chunk-peek (:messages @entity))]
+        (let [_  (swap! entity update :messages pq/chunk-pop msgs)]
+          (bind! :current-messages msgs))))
+;;handle the current batch of messages that are pending for the
+;;entity.  We currently define a default behavior.
+(befn handle-messages [entity current-messages ctx]
+      (->do (fn [_]
+              (doseq [m current-messages]
+                (println m)))))
+      
 ;;the basic idea is this.
 (befn default [entity]
-      (->or [spawn
+      (->or [(->and [check-messages
+                     handle-messages])
+             spawn
              wait-in-state
              move]))
 
@@ -211,12 +270,14 @@
 ;;end of the individual entity step to allow us to send messages
 ;;efficiently.
 
-(defn get-updates [{:keys [pending] :as ctx}]
-  (let [t0  (key     (first pending))]
-    (->>  pending
-          (r/take-while (fn [[t _]] (== t t0)))
-          (r/map val))))
+(defn get-updates [{:keys [pending] :as ctx}]  (next-recepients ctx))
 
+;;just a placeholder.
+(defn advance-time [ctx t]
+  (if (== (:t ctx) t) ctx
+      (do  (println [:advancing-time t])
+           ctx))
+  )
 ;;The step is conceptually simple; we just pull off the next batch
 ;;of entities that share the same time coordinate.  The system time
 ;;becomes that.  We then update the entities (currently sequentially)
@@ -225,13 +286,21 @@
 ;;entity has no explicit knowledge of its messages.  During a
 ;;transaction, it recieves a message and utilizes the subsystem
 ;;to request the sending of messages to other entities.
-(defn step! [e init-ctx]
-  (reduce-kv (fn [ctx e _]
+;;This is cool;  Entitie are interpreters governed by their behavior.
+;;They may be seen as continuations as well, or "reactive" functions of
+;;time, or state machines, etc.
+(defn step!
+  ([t es ctx]
+   (reduce-kv (fn [ctx e _]
                (->> ctx
-                    (load-entity!   e)
+                    (load-entity! {:time t :msg :update} e)
                     (beval    default) ;should parameterize this.
                     (commit-entity!)))
-             init-ctx (get-updates init-ctx)))
+              (advance-time t ctx) es))
+  ([ctx]
+   (when-let [res (next-recepients ctx)]
+     (let [[t xs] res]
+       (step! t xs ctx)))))          
 
 ;;There are a couple of possible outcomes in an update step.
 ;;Entities might send eachother messages concurrently, and
@@ -241,8 +310,18 @@
 ;;to help with debugging.  Or, we could just examine the queue
 ;;of messages the entity reacted to.  Both provide an entity-view
 ;;of the history of the system.
+;;The goal is to enable multiple views of time from the
+;;entity's perspective; specifically the shared-nothing 
 
-;(defn simulate! [& {:keys [n] :or {n 100}}]
+(defn simulate! [& {:keys [n] :or {n 2}}]
+  (let [init-ctx (->simple-ctx :n n)]
+    (loop [ctx init-ctx]
+      (if-let [res (next-recepients init-ctx)]
+        (let [[t es] res]
+          (recur  (step! t es ctx)))
+        ctx))))
+          
+  
   
 
       

@@ -230,6 +230,10 @@
     maxset))
 
 (declare ->tpri)
+(definline head [idx]
+  (let [h (with-meta (gensym "head") {:tag 'clojure.lang.Indexed})]
+    `(.nth ~idx 0 nil)))
+       
 ;;pequeue implementation using - hopefully - optimized entries and a
 ;;simpler method for adding to the queue.
 (deftype pri [dir ^clojure.data.avl.AVLSet basemap
@@ -270,7 +274,7 @@
   (meta [this] _meta)
   (withMeta [this m] (pri. dir basemap n m _hash _hasheq))
   clojure.lang.ISeq
-  (first [this] (.nth ^clojure.data.avl.AVLSet  basemap 0)) ;way faster than first..
+  (first [this] (head  basemap)) ;way faster than first..
   (next  [this] (.pop this))
   (more [this]  (.pop this))
   clojure.lang.IPersistentCollection
@@ -313,7 +317,7 @@
   (pop  [this] (if (zero?    (.count basemap)) this
                    (pri. dir (.disjoin basemap (.nth basemap 0))
                              n _meta -1 -1)))
-  (peek [this] (.nth basemap 0))
+  (peek [this] (head basemap))
   clojure.lang.Reversible
   (rseq [this]  (.rseq basemap))
   java.io.Serializable ;Serialization comes for free with the other stuff.
@@ -327,7 +331,7 @@
                 init))
   clojure.core.protocols/CollReduce
   (coll-reduce [coll f]
-      (reduce-kv (fn [acc k _] (f acc k))  (.nth coll 0) (r/drop 1 (.avl-map basemap))))  
+      (reduce-kv (fn [acc k _] (f acc k))  (head coll) (r/drop 1 (.avl-map basemap))))  
   (coll-reduce [coll f init]
       (reduce-kv (fn [acc k _] (f acc k))  init  (.avl-map basemap)))
     
