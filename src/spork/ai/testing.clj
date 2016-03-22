@@ -25,6 +25,7 @@
                      bind!
                      merge!
                      push!
+                     return!
                      befn]]
             [spork.entitysystem.store :as store]
             [spork.data.priorityq :as pq]
@@ -238,7 +239,7 @@
 ;;handle the current batch of messages that are pending for the
 ;;entity.  We currently define a default behavior.
 (befn handle-messages [entity current-messages ctx]
-      (->do (fn [_]
+      (->do (fn [x]
               (println [:handling-messages])
               (doseq [m current-messages]
                 (println m)))))
@@ -263,11 +264,12 @@
          
 ;;committing
 (defn commit-entity! [{:keys [entity msg ctx] :as benv}]
-  (let [_ (println ctx)
+  (let [_   (println :committing)
+        _   (println ctx)
         ctx @ctx
         ent @entity
         nm  (:name ent)
-        _ (println [:committing ent ctx])]
+        _   (println [:committing ent ctx])]
     (assoc-in ctx [:entities nm] ent)))
 
 ;;step function.
@@ -280,14 +282,16 @@
 ;;end of the individual entity step to allow us to send messages
 ;;efficiently.
 
-(defn get-updates [{:keys [pending] :as ctx}]  (next-recepients ctx))
+(defn get-updates [{:keys [pending] :as ctx}]
+  (next-recepients ctx))
 
 ;;just a placeholder.
 (defn advance-time [ t ctx]
-  (if (== (:t ctx) t) ctx
-      (do  (println [:advancing-time t])
-           ctx))
-  )
+  (let [res (update ctx :pending dissoc t)]    
+    (do  (when (==  (:t ctx) t) ctx
+               (println [:advancing-time t]))
+         res)))          
+
 ;;The step is conceptually simple; we just pull off the next batch
 ;;of entities that share the same time coordinate.  The system time
 ;;becomes that.  We then update the entities (currently sequentially)
@@ -305,6 +309,7 @@
              (->> ctx
                   (load-entity!  e {:time t :msg :update})
                   (beval    default) ;should parameterize this.
+                  (return!)
                   (commit-entity!)))
            (advance-time t ctx) es))
   ([ctx]
@@ -326,7 +331,7 @@
 (defn simulate! [& {:keys [n] :or {n 2}}]
   (let [init-ctx (->simple-ctx :n n)]
     (loop [ctx init-ctx]
-      (if-let [res (next-recepients init-ctx)]
+      (if-let [res (next-recepients ctx)]
         (let [[t es] res]
           (recur  (step! t es ctx)))
         ctx))))

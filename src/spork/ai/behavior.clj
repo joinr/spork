@@ -429,3 +429,9 @@
           inner# ~ctx)
          inner#)
        [:fail ~ctx])))
+
+
+(defn return! [res]
+  (if (success? res)
+    (second res)
+    (throw (Exception. [:failed-behavior res]))))
