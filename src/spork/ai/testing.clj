@@ -59,7 +59,9 @@
 
 ;;A message is just a packet of information.
 ;;We can disperse these packets.
-(defn ->msg      [t msg] {:t t :msg msg})
+(defn ->msg
+  ([t msg] {:t t :msg msg})
+  ([from to t msg] {:from from :to to :t t :msg msg}))
 (defn insert-msg [{:keys [t] :as msg} mq]  (conj mq [msg t]))
 ;;This is forming a loose protocol for a messaging system....
 ;;messaging
@@ -216,11 +218,21 @@
                  :deploying (+ 230 (rand-int 40)))]
         (push! entity :t t)))
 
+(befn schedule-update  [entity ctx new-messages]
+      (let [nm       (:name @entity)
+            tnext    (:t @entity)
+            tnow     (:t @ctx)
+            tfut     (+ tnow tnext)
+            _ (println [:entity nm :scheduled :update tfut])]        
+        (bind! {:new-messages (swap! (or new-messages (atom []))
+                                 conj (->msg nm nm tfut :update))})))
+                      
 ;;pick a move and a wait time, log the move.
 (befn move [entity]
       (->and [choose-state
               choose-time
-              notify-change]))
+              notify-change
+              schedule-update]))
 
 ;;pick an initial move, log the spawn.
 (befn spawn [entity]
@@ -238,6 +250,7 @@
               _        (swap! entity update :messages pq/chunk-pop msgs)]
           (bind! {:current-messages new-msgs})))))
 
+(declare default)
 ;;this is a dumb static message handler.
 ;;It's a simple little interpreter that
 ;;dispatches based on the message information.
@@ -247,7 +260,7 @@
   (do (println (str [(:name @entity) :handling msg]))
       (beval 
        (case (:msg msg)
-         :update (->do (fn [_] (println :update-stub)))
+         :update (->do (fn [_] (println :update-stub))) ;default
          :spawn  spawn
          :do     (->do (:data msg))
          (throw  (Exception. (str [:unknown-message-type (:msg msg) :in  msg]))))
@@ -281,14 +294,16 @@
 ;;outside, using the leftover message from the context.
          
 ;;committing
-(defn commit-entity! [{:keys [entity msg ctx] :as benv}]
-  (let [_   (println :committing)
-        _   (println ctx)
+(defn commit-entity! [{:keys [entity msg ctx new-messages] :as benv}]
+  (let [_   (println :committing @entity)       
         ctx @ctx
         ent @entity
         nm  (:name ent)
-        _   (println [:committing ent ctx])]
-    (assoc-in ctx [:entities nm] ent)))
+        _ (println :new-messages new-messages)]
+    (as-> (assoc-in ctx [:entities nm] ent) ctx
+      (reduce (fn [acc m]
+                (push-message (:from m) (:to m) m acc)) ctx
+                new-messages))))
 
 ;;step function.
 ;;given an entity id, pop its next message.
