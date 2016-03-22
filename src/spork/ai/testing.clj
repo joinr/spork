@@ -165,9 +165,12 @@
 ;;creates a benv (a map)
 ;;:: ent -> msg -> ctx -> benv
 (defn load-entity! [ent msg ctx]
+  (println [:loading ent msg])
   {:entity (atom (get-in ctx [:entities ent]))
    :msg    msg
    :ctx    (atom ctx)})
+
+
 ;;behaviors
 
 ;;logs the state of the entity.
@@ -225,13 +228,18 @@
 ;;externally, and then compare this with its current internal
 ;;knowledge of messages that are happening concurrently.
 (befn check-messages [entity msg ctx]
+  (do (println @entity)
       (when-let [msgs (pq/chunk-peek (:messages @entity))]
-        (let [_  (swap! entity update :messages pq/chunk-pop msgs)]
-          (bind! :current-messages msgs))))
+        (let [_ (println msgs)
+              _  (swap! entity update :messages pq/chunk-pop msgs)
+              _  (println :swap)]
+          (bind! {:current-messages msgs})))))
+
 ;;handle the current batch of messages that are pending for the
 ;;entity.  We currently define a default behavior.
 (befn handle-messages [entity current-messages ctx]
       (->do (fn [_]
+              (println [:handling-messages])
               (doseq [m current-messages]
                 (println m)))))
       
@@ -255,9 +263,11 @@
          
 ;;committing
 (defn commit-entity! [{:keys [entity msg ctx] :as benv}]
-  (let [ctx @ctx
+  (let [_ (println ctx)
+        ctx @ctx
         ent @entity
-        nm  (:name ent)]
+        nm  (:name ent)
+        _ (println [:committing ent ctx])]
     (assoc-in ctx [:entities nm] ent)))
 
 ;;step function.
@@ -273,7 +283,7 @@
 (defn get-updates [{:keys [pending] :as ctx}]  (next-recepients ctx))
 
 ;;just a placeholder.
-(defn advance-time [ctx t]
+(defn advance-time [ t ctx]
   (if (== (:t ctx) t) ctx
       (do  (println [:advancing-time t])
            ctx))
@@ -291,12 +301,12 @@
 ;;time, or state machines, etc.
 (defn step!
   ([t es ctx]
-   (reduce-kv (fn [ctx e _]
-               (->> ctx
-                    (load-entity! {:time t :msg :update} e)
-                    (beval    default) ;should parameterize this.
-                    (commit-entity!)))
-              (advance-time t ctx) es))
+   (reduce (fn [ctx e]
+             (->> ctx
+                  (load-entity!  e {:time t :msg :update})
+                  (beval    default) ;should parameterize this.
+                  (commit-entity!)))
+           (advance-time t ctx) es))
   ([ctx]
    (when-let [res (next-recepients ctx)]
      (let [[t xs] res]

@@ -319,7 +319,7 @@
 ;;A binding for the default context.  If no context is provided,
 ;;we use this for implicit context, and require that it is bound
 ;;during evaluation.
-(def ^:dynamic *ctx*)
+(def ^:dynamic *behavior-context*)
 ;;Auxilliary function.
 ;;This just does the plumbing for us and lifts keys out of the environment.
 ;;either define the context as a vector of args, which is bound to the
@@ -330,7 +330,7 @@
   (if (map? vars)
     `(fn [~vars]
        ~@body)      
-    `(fn [{:keys [~@vars] :as ~'ctx}]
+    `(fn [{:keys [~@vars] :as ~'context}]
        ~@body)))
 
 ;;we're going to transform a (fn ... [args] body) into something
@@ -357,20 +357,20 @@
 ;;or into the specific nodes or functions for custom control flow.
 (defmacro befn
   ([vars body]
-   (let [ctx-name (if (map? vars) (get vars :as 'ctx) 'ctx)]
+   (let [ctx-name  (if (map? vars) (get vars :as 'context) 'context)]
      `(key-fn ~vars
-              (binding [~'spork.ai.behavior/*ctx* ~ctx-name]
+              (binding [~'spork.ai.behavior/*behavior-context* ~ctx-name]
                 (if-let [res# ~body]
-                  (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
-                  (fail ~'spork.ai.behavior/*ctx*))))))
+                  (spork.ai.behavior/beval res# spork.ai.behavior/*behavior-context*)
+                  (fail ~'spork.ai.behavior/*behavior-context*))))))
   ([name vars body]
-   (let [ctx-name (if (map? vars) (get vars :as 'ctx) 'ctx)]
+   (let [ctx-name (if (map? vars) (get vars :as 'context) 'context)]
      `(fn->defn ~name
                 (key-fn ~vars
-                        (binding [~'spork.ai.behavior/*ctx* ~ctx-name]
+                        (binding [~'spork.ai.behavior/*behavior-context* ~ctx-name]
                           (if-let [res# ~body]
-                            (spork.ai.behavior/beval res# spork.ai.behavior/*ctx*)
-                            (fail ~'spork.ai.behavior/*ctx*)))))))
+                            (spork.ai.behavior/beval res# spork.ai.behavior/*behavior-context*)
+                            (fail ~'spork.ai.behavior/*behavior-context*)))))))
   ([name docstring vars body]
    `(befn [~name ~docstring] ~vars ~body)))
 
@@ -387,30 +387,36 @@
 ;;map or doing a reduction).
 (defn bind!
   ([kvps ctx]
-   (success 
-    (reduce-kv (fn [acc k v]
-                 (assoc acc k v)) ctx kvps)))
-  ([kvps] (bind! kvps spork.ai.behavior/*ctx*)))
+;   (if (instance? clojure.lang.Atom ctx)
+     ;; (success (do (swap! ctx
+     ;;                     (fn [ctx]
+     ;;                       (reduce-kv (fn [acc k v]
+     ;;                                    (assoc acc k v)) ctx kvps)))
+     ;;              ctx))
+     (success 
+      (reduce-kv (fn [acc k v]
+                   (assoc acc k v)) ctx kvps)))
+  ([kvps] (bind! kvps spork.ai.behavior/*behavior-context*)))
 
-;;assumes we have atomic places defined for our kvps.
+;;assumes we have atomic places defined for our kvps.r
 (defn merge!
   ([kvps ctx]
    (success 
     (reduce-kv (fn [acc k v]
                  (swap! k assoc v)) ctx kvps)))
-  ([kvps] (merge! kvps spork.ai.behavior/*ctx*)))
+  ([kvps] (merge! kvps spork.ai.behavior/*behavior-context*)))
 
 (defn push!
   ([atm k v ctx]
    (success (do (swap! atm assoc k v)
                 ctx)))
-  ([atm k v] (push! atm k v spork.ai.behavior/*ctx*)))
+  ([atm k v] (push! atm k v spork.ai.behavior/*behavior-context*)))
 
 ;;removes bindings..
 (defn drop!
   ([ks ctx]
    (success (reduce (fn [acc k] (dissoc acc k)) ctx ks)))
-  ([ks] (drop! ks spork.ai.behavior/*ctx*)))
+  ([ks] (drop! ks spork.ai.behavior/*behavior-context*)))
 
 
 (defmacro ->? [vars & body] `(->pred (key-fn ~vars ~@body)))  
