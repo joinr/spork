@@ -316,11 +316,12 @@
 ;;efficiently.
 (defn get-updates [{:keys [pending] :as ctx}] (next-recepients ctx))
 ;;just a placeholder.
-(defn advance-time [ t ctx]
-  (let [res (update ctx :pending dissoc t)]    
-    (do  (when (==  (:t ctx) t) ctx
-               (println [:advancing-time t]))
-         res)))          
+(defn advance-time [t ctx]      
+  (let [res (update ctx :pending dissoc t)]
+    (do (println [:advancing-time t])
+          (if  (==  (:t ctx) t) res
+               (assoc res :t t)
+        ))))
 
 ;;The step is conceptually simple; we just pull off the next batch
 ;;of entities that share the same time coordinate.  The system time
@@ -335,8 +336,8 @@
 ;;time, or state machines, etc.
 (defn step!
   ([t es ctx]
-   (reduce (fn [ctx e]
-             (->> ctx
+   (reduce (fn [acc e]
+             (->> acc
                   (load-entity!  e  {:t t :msg :update})
                   (beval    default) ;should parameterize this.
                   (return!)
@@ -358,6 +359,11 @@
 ;;The goal is to enable multiple views of time from the
 ;;entity's perspective; specifically the shared-nothing 
 
+;;This is a basic simulation loop...
+;;Note: we can actually reify this as a reducer, or a sequential, or
+;;whatever we want.  So we have options as to how we see things;
+;;we can push the simulation history onto a channel, and diff it in
+;;another thread.
 (defn simulate! [& {:keys [n] :or {n 2}}]
   (let [init-ctx (->simple-ctx :n n)]
     (loop [ctx init-ctx]
