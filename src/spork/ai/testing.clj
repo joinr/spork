@@ -150,7 +150,8 @@
         ctx  {;;records of entity data, with an associated messagequeue.
               :entities (into {} (map (fn [n] [n
                                                {:name n
-                                                :messages pq/minpri}]))
+                                                :messages pq/minpri
+                                                :t 0}]))
                               ids)
               ;;the system time.  We can compute this by pending, actually.
               :t 0
@@ -168,39 +169,45 @@
 
 ;;creates a benv (a map)
 ;;:: ent -> msg -> ctx -> benv
-(defn load-entity! [ent msg ctx]
+(defn load-entity!
+  [ent msg ctx]
   (println [:loading ent msg])
   {:entity (atom (get-in ctx [:entities ent]))
    :current-messages   [msg]
    :ctx    (atom ctx)})
 
-
 ;;behaviors
 
 ;;logs the state of the entity.
 (befn notify-change [entity]
-      (let [{:keys [state t name]} @entity
+      (let [{:keys [state wait-time name]} @entity
             ]
         (->do (fn [_] (println (str "Entity " name
                             " is now in state " state
-                            " for " t " steps"))))
+                            " for " wait-time " steps"))))
         ))
 
 ;;if we have a message, and the message indicates
 ;;a time delta, we should wait the amount of time
-;;the delta indicates
+;;the delta indicates.  Waiting induces a change in the
+;;remaining wait time, as well as a chang
 (befn wait-in-state [entity msg ctx]
-   (when-let [delta (:delta msg)]
-     (when-let [t (:wait-time @entity)]
-       (if (<= t delta) ;time remains or is zero.
-         (push! entity :t (- t delta)) ;update the time.
-         (->and
-          (push! entity :t 0)
-          ;;have we handled the message?
-          ;;what if time remains? this is akin to roll-over behavior.
-          ;;we'll register that time is left over. We can determine what
-          ;;to do in the next evaluation.  For now, we defer it.
-          (bind! {:msg (assoc msg :delta (- delta t))}
+  (let [;_ (println [:wait-in-state entity msg])
+        t     (:t msg)
+        delta (- t (:t @entity))]
+    (when-let [duration (:wait-time @entity)]
+      (if (<= delta duration) ;time remains or is zero.
+        (do (println [:entity-waited duration :remaining (- duration delta)])
+            (->and  [(push! entity :wait-time (- duration delta))
+                     (push! entity :t t)])) ;;update the time.
+        (do ;can't wait out entire time in this state.
+          (push! entity :wait-time 0)
+          (push! entity :t (- t duration)) ;;still not up-to-date
+           ;;have we handled the message?
+           ;;what if time remains? this is akin to roll-over behavior.
+           ;;we'll register that time is left over. We can determine what
+           ;;to do in the next evaluation.  For now, we defer it.
+          (bind! {:msg (assoc msg :delta (- delta duration))}
                  ))))))
                 
 ;;choose-state only cares about the entity.
@@ -213,17 +220,21 @@
         (push! entity :state nxt)))
 
 (befn choose-time [entity]
-      (let [t  (case (:state @entity)
+      (let [twait  (case (:state @entity)
                  :dwelling  (+ 365 (rand-int 730))
                  :deploying (+ 230 (rand-int 40)))]
-        (push! entity :t t)))
+        (push! entity :wait-time twait)))
+
+(defn up-to-date? [e ctx] (== (:t e) (:t ctx)))
 
 (befn schedule-update  [entity ctx new-messages]
       (let [nm       (:name @entity)
-            tnext    (:t @entity)
+            duration (:wait-time @entity)
             tnow     (:t @ctx)
-            tfut     (+ tnow tnext)
-            _ (println [:entity nm :scheduled :update tfut])]        
+            tfut     (+ tnow duration)
+            ;_ (println [:entity nm :scheduled :update tfut])
+            ;_ (when new-messages (println [:existing :new-messages new-messages]))
+            ]        
         (bind! {:new-messages (swap! (or new-messages (atom []))
                                  conj (->msg nm nm tfut :update))})))
                       
@@ -237,31 +248,36 @@
 ;;pick an initial move, log the spawn.
 (befn spawn [entity]
       (when (identical? (:state @entity) :spawning)
-        (->and [(fn [_] (println "Entity " (:name @entity) " spawned"))
+        (->and [(->do (fn [_] (println "Entity " (:name @entity) " spawned")))
                 move])))
 
 ;;the entity will see if a message has been sent
 ;;externally, and then compare this with its current internal
 ;;knowledge of messages that are happening concurrently.
 (befn check-messages [entity current-messages ctx]
-  (do (println @entity)
+  (do ;(println @entity)
       (when-let [msgs (pq/chunk-peek! (:messages @entity))]
-        (let [new-msgs (into   current-messages (map val)  msgs)
+        (let [new-msgs (into  (mapv val  msgs) current-messages)
               _        (swap! entity update :messages pq/chunk-pop msgs)]
           (bind! {:current-messages new-msgs})))))
 
-(declare default)
+(declare default advance)
 ;;this is a dumb static message handler.
 ;;It's a simple little interpreter that
 ;;dispatches based on the message information.
 ;;Should result in something that's beval compatible.
 ;;we can probably override this easily enough.
 (defn message-handler [msg {:keys [entity current-messages ctx] :as benv}]
-  (do (println (str [(:name @entity) :handling msg]))
+  (do ;(println (str [(:name @entity) :handling msg]))
       (beval 
        (case (:msg msg)
-         :update (->do (fn [_] (println :update-stub))) ;default
-         :spawn  spawn
+         :update (if (== (:t @entity) (:t @ctx))
+                   (do ;(println [:entity-already-updated])
+                       (success benv)) ;entity is current
+                   (->and [(->alter #(assoc % :msg msg))
+                           advance]))  ;(->do (fn [_] (println :update-stub))) ;default
+         :spawn  (do (push! entity :state :spawning)
+                     spawn)
          :do     (->do (:data msg))
          (throw  (Exception. (str [:unknown-message-type (:msg msg) :in  msg]))))
        benv)))
@@ -275,13 +291,24 @@
                 (success benv)
                 current-messages)))
 
+;;we need the ability to loop here, to repeatedly
+;;evaluate a behavior until a condition changes.
+;;->while is nice, or ->until
+;;We'd like to continue evaluating the behavior (looping)
+;;until some predicate is tripped.  Another way to do
+;;this is to send a message....If there's time remaining,
+;;we tell ourselves to keep moving, and move again prior to
+;;committing.
+(befn advance [entity ctx]
+      (if (not (identical? (:state @entity) :spawn))
+        (->and [wait-in-state move])
+        spawn))
+      
 ;;the basic idea is this.
 (befn default [entity]
       (->or [(->and [check-messages
-                     handle-messages])
-             spawn
-             wait-in-state
-             move]))
+                     handle-messages])             
+             advance]))
 
 ;;as it stands, we may have overstep our current state.
 ;;so, we'd like to wire this into the commit behavior somehow.
@@ -295,11 +322,12 @@
          
 ;;committing
 (defn commit-entity! [{:keys [entity msg ctx new-messages] :as benv}]
-  (let [_   (println :committing @entity)       
+  (let [;_   (println :committing @entity)       
         ctx @ctx
         ent @entity
         nm  (:name ent)
-        _ (println :new-messages new-messages)]
+        ;_   (println :new-messages new-messages)
+        ]
     (as-> (assoc-in ctx [:entities nm] ent) ctx
       (reduce (fn [acc m]
                 (push-message (:from m) (:to m) m acc)) ctx
@@ -346,7 +374,7 @@
   ([ctx]
    (when-let [res (next-recepients ctx)]
      (let [[t xs] res]
-       (step! t xs ctx)))))          
+       (step! t xs ctx)))))
 
 ;;There are a couple of possible outcomes in an update step.
 ;;Entities might send eachother messages concurrently, and
@@ -364,13 +392,16 @@
 ;;whatever we want.  So we have options as to how we see things;
 ;;we can push the simulation history onto a channel, and diff it in
 ;;another thread.
-(defn simulate! [& {:keys [n] :or {n 2}}]
+(defn simulate! [& {:keys [n continue?] :or {n 2
+                                             continue? (fn [ctx] (< (:t ctx) 10000))}}]
   (let [init-ctx (->simple-ctx :n n)]
     (loop [ctx init-ctx]
-      (if-let [res (next-recepients ctx)]
-        (let [[t es] res]
-          (recur  (step! t es ctx)))
-        ctx))))
+      (if (not (continue? ctx)) ctx
+          (if-let [res (next-recepients ctx)]
+            (let [[t es] res]
+              (do (Thread/sleep 200)
+                  (recur  (step! t es ctx))))
+            ctx)))))
           
   
   
