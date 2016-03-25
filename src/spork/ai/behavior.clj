@@ -104,6 +104,11 @@
   ;; (invoke [obj arg] (f arg))
   )
 
+(definline second! [coll]
+  (let [c (with-meta (gensym "coll") {:tag 'clojure.lang.Indexed})]
+    `(let [~c ~coll]
+       (.nth ~c 1 nil))))
+
 ;;note, originally used satisfies? but extends? is much faster..
 (defn behavior? [obj] (extends? IBehaviorTree (class obj)))
 
@@ -174,7 +179,7 @@
   (->bnode  :and nil
      (fn [ctx]
       (reduce (fn [acc child]
-                (let [[res ctx] (beval child (second acc))]
+                (let [[res ctx] (beval child (second! acc))]
                   (case res
                     :run       (reduced (run ctx))
                     :success   (success ctx)
@@ -184,7 +189,7 @@
 (defn ->reduce [f xs]
   (fn [ctx] 
     (reduce (fn [acc child]
-              (let [[res acc] (beval child (second acc))]
+              (let [[res acc] (beval child (second! acc))]
                 (case res
                   :run       (reduced (run acc))
                   :success   (success acc)
@@ -200,7 +205,7 @@
   (->bnode  :seq nil
      (fn [ctx]
       (reduce (fn [acc child]
-                (let [[res ctx] (beval child (second acc))]
+                (let [[res ctx] (beval child (second! acc))]
                   (case res
                     :run       (reduced (run ctx))
                     :success   (success ctx)
@@ -214,7 +219,7 @@
   (->bnode  :or nil 
      (fn [ctx]
        (reduce (fn [acc child]
-                 (let [[res ctx] (beval child (second acc))]
+                 (let [[res ctx] (beval child (second! acc))]
                    (case res
                      :run       (reduced (run ctx))
                      :success   (reduced (success ctx))
@@ -250,11 +255,11 @@
 (defn always-succeed
   "Always force success by returning a successful context."
   [b]
-  (fn [ctx] (success (second (beval b ctx)))))
+  (fn [ctx] (success (second! (beval b ctx)))))
 (defn always-fail
   "Always force failure by returning a failed context."
   [b]
-  (fn [ctx] (fail (second (beval b ctx)))))
+  (fn [ctx] (fail (second! (beval b ctx)))))
 ;;a behavior that waits until the time is less than 10.
 (defn ->wait-until
   "Observes the context, using pred (typically some eventful condition), to 
@@ -443,5 +448,5 @@
 
 (defn return! [res]
   (if (success? res)
-    (second res)
+    (second! res)
     (throw (Exception. [:failed-behavior res]))))

@@ -30,7 +30,8 @@
                      befn]]
             [spork.entitysystem.store :as store]
             [spork.data.priorityq :as pq]
-            [clojure.core.reducers :as r]))
+            [clojure.core.reducers :as r]
+            [clojure.data.avl :as avl]))
 
 ;;this only works with path literals...
 ;;allows us to define paths at compile time.
@@ -85,7 +86,7 @@
 ;;entity for messages.
 (defn next-recepients [ctx]
   (if-let [pending (get ctx :pending)]
-    (first pending)
+    (.nth ^clojure.lang.Indexed pending 0 nil)
     (let [res (->>  (:entities ctx)
                     (reduce-kv (fn [[t ids :as acc] id {:keys [messages]}]
                                  (if-let [m (first (get-messages id ctx))]
@@ -117,13 +118,34 @@
 (defn push-message [from to msg ctx]
   (let [t (:t msg)]
     (-> ctx
-        (update-in 
+        (update-in  ;;bottleneckin'
          [:entities to :messages]
          conj
          [t (assoc msg :from from)])
         (update :pending ;cache the pending info; other option is to poll.
                 (fn [m]  (assoc m t (conj (get m t #{})
-                                          to)))))))
+                                           to)))))))
+
+;; (defn push-message! [msgs pending from to msg]
+;;   (let [t (:t msg)]
+;;     (conj! msgs
+;;            [t (assoc msg :from from)])
+;;     (assoc! pending ;cache the pending info; other option is to poll.
+;;             t (conj (get m t #{})
+;;                                       to)))))))
+
+;;bulk push multiple messages....hmm...
+;; (defn push-messages [xs ctx]
+;;   (let [t       (:t msg)
+;;         pending (volatile! (transient! (:pending ctx)))]
+;;     (-> ctx
+;;         (update-in 
+;;          [:entities to :messages]
+;;          conj
+;;          [t (assoc msg :from from)])
+;;         (update :pending ;cache the pending info; other option is to poll.
+;;                 (fn [m]  (assoc m t (conj (get m t #{})
+;;                                           to)))))))
 
 ;;this is a really simple context for prosecuting a discrete event
 ;;simulation.  We have a global time, a map of entities, and a map of
@@ -156,7 +178,7 @@
               ;;the system time.  We can compute this by pending, actually.
               :t 0
               ;sets of entity ids with pending messages, mapped to time.
-              :pending  (sorted-map)}]
+              :pending  (avl/sorted-map)}]
     (reduce (fn [ctx id]              
               (push-message :system id (->msg 0 :spawn) ctx))
             ctx ids)))
@@ -167,11 +189,13 @@
 ;;operations on the context.
 (def simple-ctx (->simple-ctx))     
 
+(def ^:dynamic *debug* false)
+
 ;;creates a benv (a map)
 ;;:: ent -> msg -> ctx -> benv
 (defn load-entity!
   [ent msg ctx]
-  (println [:loading ent msg])
+;  (println [:loading ent msg])
   {:entity (atom (get-in ctx [:entities ent]))
    :current-messages   [msg]
    :ctx    (atom ctx)})
@@ -182,9 +206,9 @@
 (befn notify-change [entity]
       (let [{:keys [state wait-time name]} @entity
             ]
-        (->do (fn [_] (println (str "Entity " name
-                            " is now in state " state
-                            " for " wait-time " steps"))))
+        (->do (fn [_] (when *debug* (println (str "Entity " name
+                                                  " is now in state " state
+                                                  " for " wait-time " steps")))))
         ))
 
 ;;if we have a message, and the message indicates
@@ -197,7 +221,7 @@
         delta (- t (:t @entity))]
     (when-let [duration (:wait-time @entity)]
       (if (<= delta duration) ;time remains or is zero.
-        (do (println [:entity-waited duration :remaining (- duration delta)])
+        (do ;(println [:entity-waited duration :remaining (- duration delta)])
             (->and  [(push! entity :wait-time (- duration delta))
                      (push! entity :t t)])) ;;update the time.
         (do ;can't wait out entire time in this state.
@@ -248,7 +272,7 @@
 ;;pick an initial move, log the spawn.
 (befn spawn [entity]
       (when (identical? (:state @entity) :spawning)
-        (->and [(->do (fn [_] (println "Entity " (:name @entity) " spawned")))
+        (->and [(->do (fn [_] (when *debug* (println "Entity " (:name @entity) " spawned"))))
                 move])))
 
 ;;the entity will see if a message has been sent
@@ -258,7 +282,7 @@
   (do ;(println @entity)
       (when-let [msgs (pq/chunk-peek! (:messages @entity))]
         (let [new-msgs (into  (mapv val  msgs) current-messages)
-              _        (swap! entity update :messages pq/chunk-pop msgs)]
+              _        (swap! entity (fn [m] (update m :messages pq/chunk-pop msgs)))]
           (bind! {:current-messages new-msgs})))))
 
 (declare default advance)
@@ -304,7 +328,8 @@
         (->and [wait-in-state move])
         spawn))
       
-;;the basic idea is this.
+;;Basic entity behavior is to respond to new external
+;;stimuli, and then try to move out.
 (befn default [entity]
       (->or [(->and [check-messages
                      handle-messages])             
@@ -346,10 +371,10 @@
 ;;just a placeholder.
 (defn advance-time [t ctx]      
   (let [res (update ctx :pending dissoc t)]
-    (do (println [:advancing-time t])
+    (do (when *debug* println [:advancing-time t])
           (if  (==  (:t ctx) t) res
                (assoc res :t t)
-        ))))
+               ))))
 
 ;;The step is conceptually simple; we just pull off the next batch
 ;;of entities that share the same time coordinate.  The system time
@@ -392,19 +417,35 @@
 ;;whatever we want.  So we have options as to how we see things;
 ;;we can push the simulation history onto a channel, and diff it in
 ;;another thread.
-(defn simulate! [& {:keys [n continue?] :or {n 2
-                                             continue? (fn [ctx] (< (:t ctx) 10000))}}]
-  (let [init-ctx (->simple-ctx :n n)]
+(defn simulate! [& {:keys [n continue? tmax]
+                    :or {n 2
+                         tmax 4500
+                         }}]
+  (let [continue? (or continue? (fn [ctx] (< (:t ctx) tmax)))
+        init-ctx  (->simple-ctx :n n)]
     (loop [ctx init-ctx]
       (if (not (continue? ctx)) ctx
-          (if-let [res (next-recepients ctx)]
+          (if-let [res (next-recepients ctx)] ;;identify the next set of entities to run.
             (let [[t es] res]
-              (do (Thread/sleep 200)
+              (do ;(Thread/sleep 200)
                   (recur  (step! t es ctx))))
-            ctx)))))
-          
-  
-  
+            ctx)))))         
+;;so...
+;;can we define this in a nice, pretty, packaged result?
+;;Is it a simulator?
+;;A simulator needs to be able to
+;;load entities from a context
+;;schedule entities in a context
+;;message/update entities in a context
+;;commit entities in a context.
+;;Know what the next time on the schedule is.
+
+;;can we compose simulators?
+;;As it stands, a simulator is composed of multiple entities.
+;;Its current time is tied to the earliest time of the pending
+;;entities we wish to wake.
+
+
 
       
 
