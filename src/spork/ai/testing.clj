@@ -16,6 +16,7 @@
                      ->wait-until
                      ->if
                      ->and
+                     ->and!
                      ->pred
                      ->or
                      ->bnode
@@ -24,10 +25,13 @@
                      always-succeed
                      always-fail
                      bind!
+                     bind!!
                      merge!
+                     merge!!
                      push!
                      return!
                      befn]]
+            [spork.util.general :as gen]
             [spork.entitysystem.store :as store]
             [spork.data.priorityq :as pq]
             [clojure.core.reducers :as r]
@@ -60,9 +64,27 @@
 
 ;;A message is just a packet of information.
 ;;We can disperse these packets.
-(defn ->msg
+(defmacro ->msg
+  ([t msg] `{:t ~t :msg ~msg})
+  ([from to t msg] `{:from ~from :to ~to :t ~t :msg ~msg}))
+(defn ->msg0
   ([t msg] {:t t :msg msg})
   ([from to t msg] {:from from :to to :t t :msg msg}))
+
+(defmacro debug
+  ([lvl msg]
+   `(when (and ~'spork.ai.testing/*debug*
+               (>= ~'spork.ai.testing/*debug* ~lvl))
+      (when-let [res#  ~msg] (println res#))))
+  ([msg] `(when ~'spork.ai.testing/*debug*
+            (when-let [res# ~msg]
+              (println res#)))))
+
+(definline fget [m k]
+  (let [coll (with-meta (gensym "coll") {:tag 'clojure.lang.Associative})]
+    `(let [~coll ~m]
+       (.valAt ~coll ~k))))
+
 (defn insert-msg [{:keys [t] :as msg} mq]  (conj mq [msg t]))
 ;;This is forming a loose protocol for a messaging system....
 ;;messaging
@@ -97,7 +119,7 @@
                                            [tm [id]]
                                            :else acc))))                              
                                [Double/MAX_VALUE []]))]
-      (when (second res) res))))
+      (when (.nth ^clojure.lang.Indexed res 1 nil) res))))
 
 ;;We may also have a very small priority queue...so the set of
 ;;messages may be easily handled via insertion sort rather than using
@@ -115,7 +137,7 @@
 ;;We will refactor this to allow efficient dispatch of immediate
 ;;messages so that we don't have to keep queuing messages that
 ;;are happening at the current time.
-(defn push-message [from to msg ctx]
+(defn push-message0 [from to msg ctx]
   (let [t (:t msg)]
     (-> ctx
         (update-in  ;;bottleneckin'
@@ -124,7 +146,33 @@
          [t (assoc msg :from from)])
         (update :pending ;cache the pending info; other option is to poll.
                 (fn [m]  (assoc m t (conj (get m t #{})
-                                           to)))))))
+                                          to)))))))
+(defmacro fassoc [obj k v]
+  (let [o (with-meta (gensym "obj")  {:tag 'clojure.lang.Associative})]
+    `(let [~o ~obj]
+       (.assoc ~o ~k ~v))))
+
+;;Optimized, still persistent without wasting time on as much function overhead.
+;;Still somewhat better than going mutable.
+;type-hinting for direct method calls.
+(defn push-message [from to ^clojure.lang.IPersistentMap msg ^clojure.lang.Associative ctx]
+  (let [t        (.valAt msg :t)
+        ents     (.valAt ^clojure.lang.ILookup ctx :entities)
+        e        (.valAt ^clojure.lang.ILookup ents to)
+        msgs     (.valAt ^clojure.lang.ILookup e :messages)
+        new-msgs (.cons ^clojure.lang.IPersistentCollection msgs
+                        [t (.assoc ^clojure.lang.Associative msg :from from)])
+        pending  (.valAt  ^clojure.lang.ILookup ctx :pending)        
+        new-ctx  (.assoc ^clojure.lang.Associative ctx :entities 
+                         (.assoc ^clojure.lang.Associative ents to
+                                 (.assoc ^clojure.lang.Associative e :messages new-msgs)))]                    
+    (.assoc  ^clojure.lang.Associative new-ctx
+             :pending ;cache the pending info; other option is to poll.
+             (.assoc ^clojure.lang.Associative pending t
+                 (.cons
+                  ^clojure.lang.IPersistentCollection
+                   (.valAt ^clojure.lang.ILookup pending t #{})
+                  to)))))
 
 ;; (defn push-message! [msgs pending from to msg]
 ;;   (let [t (:t msg)]
@@ -196,20 +244,21 @@
 (defn load-entity!
   [ent msg ctx]
 ;  (println [:loading ent msg])
-  {:entity (atom (get-in ctx [:entities ent]))
+  {:entity (atom (fget (fget ctx :entities) ent))
    :current-messages   [msg]
    :ctx    (atom ctx)})
 
 ;;behaviors
 
 ;;logs the state of the entity.
-(befn notify-change [entity]
-      (let [{:keys [state wait-time name]} @entity
-            ]
-        (->do (fn [_] (when *debug* (println (str "Entity " name
-                                                  " is now in state " state
-                                                  " for " wait-time " steps")))))
-        ))
+(befn notify-change {:keys [entity ] :as ctx}
+ (do (debug 
+       (let [{:keys [state wait-time name t]} @entity
+             ]
+         (str "<"  t "> " "Entity " name
+              " is now in state " state
+              " for " wait-time " steps")))
+     (success ctx)))
 
 ;;if we have a message, and the message indicates
 ;;a time delta, we should wait the amount of time
@@ -217,16 +266,16 @@
 ;;remaining wait time, as well as a chang
 (befn wait-in-state [entity msg ctx]
   (let [;_ (println [:wait-in-state entity msg])
-        t     (:t msg)
-        delta (- t (:t @entity))]
-    (when-let [duration (:wait-time @entity)]
+        t     (fget msg :t)
+        delta (- t (fget @entity :t))]
+    (when-let [duration (fget  @entity :wait-time)]
       (if (<= delta duration) ;time remains or is zero.
-        (do ;(println [:entity-waited duration :remaining (- duration delta)])
-            (->and  [(push! entity :wait-time (- duration delta))
-                     (push! entity :t t)])) ;;update the time.
+         ;(println [:entity-waited duration :remaining (- duration delta)])
+        (merge!  entity {:wait-time (- duration delta)
+                         :t t}) ;;update the time.
         (do ;can't wait out entire time in this state.
-          (push! entity :wait-time 0)
-          (push! entity :t (- t duration)) ;;still not up-to-date
+          (merge! entity {:wait-time 0
+                           :t (- t duration)}) ;;still not up-to-date
            ;;have we handled the message?
            ;;what if time remains? this is akin to roll-over behavior.
            ;;we'll register that time is left over. We can determine what
@@ -236,7 +285,7 @@
                 
 ;;choose-state only cares about the entity.
 (befn choose-state  [entity]
-      (let [nxt   (case (:state @entity)        
+      (let [nxt (gen/case-identical? (:state @entity)        
                     :dwelling  :deploying
                     :deploying :dwelling
                     :dwelling
@@ -244,76 +293,54 @@
         (push! entity :state nxt)))
 
 (befn choose-time [entity]
-      (let [twait  (case (:state @entity)
-                 :dwelling  (+ 365 (rand-int 730))
-                 :deploying (+ 230 (rand-int 40)))]
+      (let [twait
+            (gen/case-identical? (:state @entity)
+              :dwelling  (+ 365 (rand-int 730))
+              :deploying (+ 230 (rand-int 40)))]
         (push! entity :wait-time twait)))
 
 (defn up-to-date? [e ctx] (== (:t e) (:t ctx)))
 
 (befn schedule-update  [entity ctx new-messages]
-      (let [nm       (:name @entity)
-            duration (:wait-time @entity)
+      (let [st  @entity
+            nm       (:name st)
+            duration (:wait-time st)
             tnow     (:t @ctx)
             tfut     (+ tnow duration)
-            ;_ (println [:entity nm :scheduled :update tfut])
+            _   (debug 4
+                       [:entity nm :scheduled :update tfut])
             ;_ (when new-messages (println [:existing :new-messages new-messages]))
             ]        
         (bind! {:new-messages (swap! (or new-messages (atom []))
                                  conj (->msg nm nm tfut :update))})))
                       
 ;;pick a move and a wait time, log the move.
-(befn move [entity]
-      (->and [choose-state
-              choose-time
-              notify-change
-              schedule-update]))
+(befn move {:keys [entity] :as ctx}
+      (->and! [choose-state
+               choose-time
+               notify-change
+               schedule-update] ctx))
 
 ;;pick an initial move, log the spawn.
-(befn spawn [entity]
+(befn spawn {:keys [entity] :as ctx}
       (when (identical? (:state @entity) :spawning)
-        (->and [(->do (fn [_] (when *debug* (println "Entity " (:name @entity) " spawned"))))
-                move])))
+        (->and! [(->do (fn [_] (debug (str  "Entity " (:name @entity) " spawned"))))
+                 move]
+                ctx)))
+
 
 ;;the entity will see if a message has been sent
 ;;externally, and then compare this with its current internal
 ;;knowledge of messages that are happening concurrently.
 (befn check-messages [entity current-messages ctx]
-  (do ;(println @entity)
-      (when-let [msgs (pq/chunk-peek! (:messages @entity))]
-        (let [new-msgs (into  (mapv val  msgs) current-messages)
-              _        (swap! entity (fn [m] (update m :messages pq/chunk-pop msgs)))]
-          (bind! {:current-messages new-msgs})))))
-
-(declare default advance)
-;;this is a dumb static message handler.
-;;It's a simple little interpreter that
-;;dispatches based on the message information.
-;;Should result in something that's beval compatible.
-;;we can probably override this easily enough.
-(defn message-handler [msg {:keys [entity current-messages ctx] :as benv}]
-  (do ;(println (str [(:name @entity) :handling msg]))
-      (beval 
-       (case (:msg msg)
-         :update (if (== (:t @entity) (:t @ctx))
-                   (do ;(println [:entity-already-updated])
-                       (success benv)) ;entity is current
-                   (->and [(->alter #(assoc % :msg msg))
-                           advance]))  ;(->do (fn [_] (println :update-stub))) ;default
-         :spawn  (do (push! entity :state :spawning)
-                     spawn)
-         :do     (->do (:data msg))
-         (throw  (Exception. (str [:unknown-message-type (:msg msg) :in  msg]))))
-       benv)))
-
-;;handle the current batch of messages that are pending for the
-;;entity.  We currently define a default behavior.
-(befn handle-messages {:keys [entity current-messages ctx] :as benv}
-      (when current-messages
-        (reduce (fn [env msg]
-                  (message-handler msg (second env)))
-                (success benv)
-                current-messages)))
+  (let [old-msgs (fget @entity :messages )]
+    (when-let [msgs (pq/chunk-peek! old-msgs)]
+      (let [new-msgs (into (mapv val  msgs) current-messages)
+            _        (swap! entity (fn [^clojure.lang.Associative m]
+                                     (.assoc m :messages
+                                             (pq/chunk-pop old-msgs msgs)
+                                            )))]
+            (bind! {:current-messages new-msgs})))))
 
 ;;we need the ability to loop here, to repeatedly
 ;;evaluate a behavior until a condition changes.
@@ -327,6 +354,39 @@
       (if (not (identical? (:state @entity) :spawn))
         (->and [wait-in-state move])
         spawn))
+
+;;this is a dumb static message handler.
+;;It's a simple little interpreter that
+;;dispatches based on the message information.
+;;Should result in something that's beval compatible.
+;;we can probably override this easily enough.
+;;#Optimize:  We're bottlnecking here, creating lots of
+;;maps....
+(defn message-handler [msg {:keys [entity current-messages ctx] :as benv}]
+  (do ;(println (str [(:name @entity) :handling msg]))
+      (beval 
+       (gen/case-identical? (:msg msg)
+         :update (if (== (:t @entity) (:t @ctx))
+                   (do ;(println [:entity-already-updated])
+                       (success benv)) ;entity is current
+                   (->and [(->alter #(assoc % :msg msg))
+                           advance]))  ;(->do (fn [_] (println :update-stub))) ;default
+         :spawn  (->and [(push! entity :state :spawning)                        
+                         spawn]
+                       )
+         :do     (->do (:data msg))
+         (throw  (Exception. (str [:unknown-message-type (:msg msg) :in  msg]))))
+       benv)))
+
+;;handle the current batch of messages that are pending for the
+;;entity.  We currently define a default behavior.
+(befn handle-messages {:keys [entity current-messages ctx] :as benv}
+      (when current-messages
+        (reduce (fn [^clojure.lang.Indexed env msg]
+                  (do ;(debug [:handling msg])
+                      (message-handler msg (.nth env 1))))
+                (success benv)
+                current-messages)))
       
 ;;Basic entity behavior is to respond to new external
 ;;stimuli, and then try to move out.
@@ -344,16 +404,26 @@
 ;;time remaining as a part of the context.  If the step
 ;;was incomplete, we can evaluate another step from the
 ;;outside, using the leftover message from the context.
-         
+
+;;this is on the hot path, so we'll optimize it.
+(defmacro set-entity! [ctx nm v]
+  (let [c       (with-meta ctx {:tag 'clojure.lang.Associative})
+        entities (with-meta (gensym "entities") {:tag 'clojure.lang.Associative})]        
+    `(let [~c ~ctx
+           ~entities (.valAt ~c :entities)]
+       (.assoc ~ctx :entities
+               (.assoc ~entities ~nm
+                       ~v)))))
 ;;committing
 (defn commit-entity! [{:keys [entity msg ctx new-messages] :as benv}]
-  (let [;_   (println :committing @entity)       
+  (let [
         ctx @ctx
         ent @entity
         nm  (:name ent)
-        ;_   (println :new-messages new-messages)
+        _   (debug  [:committing ent])
+        _   (debug  [:new-messages new-messages])
         ]
-    (as-> (assoc-in ctx [:entities nm] ent) ctx
+    (as-> (set-entity! ctx  nm ent) ctx
       (reduce (fn [acc m]
                 (push-message (:from m) (:to m) m acc)) ctx
                 new-messages))))
@@ -371,7 +441,7 @@
 ;;just a placeholder.
 (defn advance-time [t ctx]      
   (let [res (update ctx :pending dissoc t)]
-    (do (when *debug* println [:advancing-time t])
+    (do (debug [:advancing-time t])
           (if  (==  (:t ctx) t) res
                (assoc res :t t)
                ))))
@@ -387,15 +457,17 @@
 ;;This is cool;  Entities are interpreters governed by their behavior.
 ;;They may be seen as continuations as well, or "reactive" functions of
 ;;time, or state machines, etc.
+(defn step-entity! [ctx e t]
+  (->> ctx
+       (load-entity!  e  (->msg t :update))
+       (beval    default) ;should parameterize this.
+       (return!)
+       (commit-entity!)))
+  
 (defn step!
   ([t es ctx]
-   (reduce (fn [acc e]
-             (->> acc
-                  (load-entity!  e  {:t t :msg :update})
-                  (beval    default) ;should parameterize this.
-                  (return!)
-                  (commit-entity!)))
-           (advance-time t ctx) es))
+   (do (debug [:stepping t])
+       (reduce (fn [acc e] (step-entity! acc e t)) (advance-time t ctx) es)))
   ([ctx]
    (when-let [res (next-recepients ctx)]
      (let [[t xs] res]
@@ -429,7 +501,33 @@
             (let [[t es] res]
               (do ;(Thread/sleep 200)
                   (recur  (step! t es ctx))))
-            ctx)))))         
+            ctx)))))
+  
+(defn stress-test []
+  (time (dotimes [i 1]
+          (simulate! :n 8000))))
+
+
+(defn stress-test2 []
+  (time (dotimes [i 1000]
+          (simulate! :n 60))))
+
+(defn stress-test3 [ & {:keys [n] :or {n 1}}]
+  (time (dotimes [i 1]
+          (r/fold n
+                  (fn ([] nil)
+                      ([l r] nil))
+                  (fn ([] nil)
+                      ([l r] nil))                  
+                  (r/map (fn [n] (simulate! :n 60))
+                         (vec (range 1000)))))))
+
+(defn stress-test4 [ & {:keys [n] :or {n 1}}]
+  (time (dotimes [i 1]
+          (doall
+           (pmap (fn [n]
+                   (simulate! :n 60))
+                 (range 1000))))))
 ;;so...
 ;;can we define this in a nice, pretty, packaged result?
 ;;Is it a simulator?
@@ -445,12 +543,34 @@
 ;;Its current time is tied to the earliest time of the pending
 ;;entities we wish to wake.
 
+(defn case-test [kw]
+  (case kw
+    :update 0
+    :spawn  1
+    :do     2
+    (throw  (Exception. (str [:unknown-message-type])))))
 
+;;this is about 3x faster than case....we're not hashing.
+(defn cond-test [kw]
+  (cond (identical? kw :update) 0
+        (identical? kw :spawn)  1
+        (identical? kw :do)     2
+        :else
+        (throw  (Exception. (str [:unknown-message-type])))))
 
-      
+(defn condp-test [kw]
+  (condp identical? kw
+    :update 0
+    :spawn  1
+    :do     2
+    (throw  (Exception. (str [:unknown-message-type])))))
 
-
-  
-                           
+(defn case-of-test [kw]
+  (case-of kw
+    :update 0
+    :spawn  1
+    :do     2
+    (throw  (Exception. (str [:unknown-message-type])))))
+           
 
 

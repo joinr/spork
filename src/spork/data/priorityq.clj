@@ -232,7 +232,8 @@
 (declare ->tpri)
 (definline head [idx]
   (let [h (with-meta (gensym "head") {:tag 'clojure.lang.Indexed})]
-    `(.nth ~idx 0 nil)))
+    `(let [~h ~idx]
+       (.nth ~h 0 nil))))
        
 ;;pequeue implementation using - hopefully - optimized entries and a
 ;;simpler method for adding to the queue.
@@ -290,11 +291,11 @@
   clojure.lang.Counted
   (count [this] (.count basemap))
  ; clojure.lang.IPersistentVector
-  (cons [this a]
+  (cons [this  a]
     ;;check for rollover.  In that event, repack existing entries.  It's inconceivable that this would happen though.
     ; called by conj
-    (let [k  (first  a)
-          v  (second a)
+    (let [k  (.nth  ^clojure.lang.Indexed a 0)
+          v  (.nth  ^clojure.lang.Indexed a 1)
           nnxt (unchecked-inc n)]
       (if (== nnxt Long/MIN_VALUE) ;;rollover
         (let [idx     (volatile! 0)
@@ -351,11 +352,11 @@
   (get [this k] (.get basemap k))
   (contains [this k] (.contains basemap k))
   (disjoin [this k] (do (set! basemap (.disjoin basemap k)) this))
-  (conj [this a] 
+  (conj [this  a] 
     ;;check for rollover.  In that event, repack existing entries.  It's inconceivable that this would happen though.
     ; called by conj
-    (let [k  (first a)
-          v  (second a)
+    (let [k  (.nth ^clojure.lang.Indexed a 0)
+          v  (.nth ^clojure.lang.Indexed a 1)
           nnxt (unchecked-inc n)]
       (if (== nnxt Long/MIN_VALUE) ;;rollover
         (let [idx (volatile! 0)
