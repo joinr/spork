@@ -589,14 +589,25 @@
       (bind!! ~kvps ctx#))))
 
 ;;assumes we have atomic places defined for our kvps.r
-(defn push!
+(defmacro push!!
   ([atm k v ctx]
-   (success (do (swap!! atm (fn [^clojure.lang.Associative m]
-                             (.assoc m k v)))
-                ctx)))
+   (let [m (with-meta (gensym "m") {:tag 'clojure.lang.Associative})]
+     `(success (do (swap!! ~atm (fn [~m]
+                                  (.assoc ~m ~k ~v)))
+                ~ctx))))
+  ([atm k v]
+   `(fn [ctx#]
+      (push! ~atm ~k ~v ctx#))))
+
+(defn push!
+   {:inline (fn [atm k v ctx] `(push!! ~atm ~k ~v ~ctx))
+   :inline-arities #{4}
+   :added "1.0"}
+  ([atm k v ctx]
+   (push!! atm k v ctx))
   ([atm k v]
    (fn [ctx]
-     (push! atm k v ctx))))
+     (push!! atm k v ctx))))
 
 ;this is about 6 times faster...
 (definline merge1 [l r]

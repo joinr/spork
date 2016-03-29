@@ -142,16 +142,18 @@
 ;;We will refactor this to allow efficient dispatch of immediate
 ;;messages so that we don't have to keep queuing messages that
 ;;are happening at the current time.
-(defn push-message0 [from to msg ctx]
-  (let [t (:t msg)]
-    (-> ctx
-        (update-in  ;;bottleneckin'
-         [:entities to :messages]
-         conj
-         [t (assoc msg :from from)])
-        (update :pending ;cache the pending info; other option is to poll.
-                (fn [m]  (assoc m t (conj (get m t #{})
-                                          to)))))))
+
+
+;; (defn push-message0 [from to msg ctx]
+;;   (let [t (:t msg)]
+;;     (-> ctx
+;;         (update-in  ;;bottleneckin'
+;;          [:entities to :messages]
+;;          conj
+;;          [t (assoc msg :from from)])
+;;         (update :pending ;cache the pending info; other option is to poll.
+;;                 (fn [m]  (assoc m t (conj (get m t #{})
+;;                                           to)))))))
 (defmacro fassoc [obj k v]
   (let [o (with-meta (gensym "obj")  {:tag 'clojure.lang.Associative})]
     `(let [~o ~obj]
@@ -162,12 +164,13 @@
 ;type-hinting for direct method calls.
 (defn push-message [from to ^clojure.lang.IPersistentMap msg ^clojure.lang.Associative ctx]
   (let [t        (.valAt msg :t)
-        ents     (.valAt ^clojure.lang.ILookup ctx :entities)
+        ents     (.valAt ^clojure.lang.ILookup ctx  :entities)
         e        (.valAt ^clojure.lang.ILookup ents to)
-        msgs     (.valAt ^clojure.lang.ILookup e :messages)
+        msgs     (.valAt ^clojure.lang.ILookup e    :messages)
         new-msgs (.cons ^clojure.lang.IPersistentCollection msgs
                         [t (.assoc ^clojure.lang.Associative msg :from from)])
-        pending  (.valAt  ^clojure.lang.ILookup ctx :pending)        
+        pending  (.valAt ^clojure.lang.ILookup  ctx  :pending)
+        eset     (.valAt ^clojure.lang.ILookup  pending t #{})
         new-ctx  (.assoc ^clojure.lang.Associative ctx :entities 
                          (.assoc ^clojure.lang.Associative ents to
                                  (.assoc ^clojure.lang.Associative e :messages new-msgs)))]                    
@@ -176,29 +179,8 @@
              (.assoc ^clojure.lang.Associative pending t
                  (.cons
                   ^clojure.lang.IPersistentCollection
-                   (.valAt ^clojure.lang.ILookup pending t #{})
-                  to)))))
-
-;; (defn push-message! [msgs pending from to msg]
-;;   (let [t (:t msg)]
-;;     (conj! msgs
-;;            [t (assoc msg :from from)])
-;;     (assoc! pending ;cache the pending info; other option is to poll.
-;;             t (conj (get m t #{})
-;;                                       to)))))))
-
-;;bulk push multiple messages....hmm...
-;; (defn push-messages [xs ctx]
-;;   (let [t       (:t msg)
-;;         pending (volatile! (transient! (:pending ctx)))]
-;;     (-> ctx
-;;         (update-in 
-;;          [:entities to :messages]
-;;          conj
-;;          [t (assoc msg :from from)])
-;;         (update :pending ;cache the pending info; other option is to poll.
-;;                 (fn [m]  (assoc m t (conj (get m t #{})
-;;                                           to)))))))
+                   eset
+                   to)))))
 
 ;;this is a really simple context for prosecuting a discrete event
 ;;simulation.  We have a global time, a map of entities, and a map of
@@ -294,7 +276,9 @@
            ;;we'll register that time is left over. We can determine what
            ;;to do in the next evaluation.  For now, we defer it.
           (bind! {:msg (assoc msg :delta (- delta duration))}
-                 ))))))
+                 )
+
+          )))))
                 
 ;;choose-state only cares about the entity.
 (befn choose-state  [entity]
@@ -328,11 +312,17 @@
                                  conj (->msg nm nm tfut :update))})))
                       
 ;;pick a move and a wait time, log the move.
-(befn move {:keys [entity] :as ctx}
-      (->and! [choose-state
-               choose-time
-               notify-change
-               schedule-update] ctx))
+;; (befn move {:keys [entity] :as ctx}
+;;       (->and! [choose-state
+;;                choose-time
+;;                notify-change
+;;                schedule-update] ctx))
+
+(definline move [ctx]
+  `(->and! [choose-state
+            choose-time
+            notify-change
+            schedule-update] ~ctx))
 
 ;;pick an initial move, log the spawn.
 (befn spawn {:keys [entity] :as ctx}
