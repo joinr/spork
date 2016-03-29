@@ -122,6 +122,24 @@
                              :else (throw (IllegalArgumentException. (str "No matching clause: " ~v)))))
         )))
 
+(defmacro swap!!
+  ([atom f]
+   (let [atm (with-meta (gensym "atm") {:tag 'clojure.lang.IAtom})]
+     `(let [~atm ~atom]
+        (.swap ~atm  ~f))))
+  ([atom f x]
+   (let [atm (with-meta (gensym "atm") {:tag 'clojure.lang.IAtom})]
+     `(let [~atm ~atom]
+        (.swap ~atm ~f ~x))))
+  ([atom f x y]
+   (let [atm (with-meta (gensym "atm") {:tag 'clojure.lang.IAtom})]
+     `(let [~atm ~atom]
+        (.swap ~atm ~f ~x ~y))))
+  ([atom f x y & args]
+   (let [atm (with-meta (gensym "atm") {:tag 'clojure.lang.IAtom})]
+     `(let [~atm ~atom]
+        (.swap ~atm ~f ~x ~y ~args)))))
+
 ;;Behavior Tree Core
 (defprotocol IBehaviorTree
   (behave [b ctx]))
@@ -167,27 +185,37 @@
 ;;As stated, behave always maps context to [[fail success run] context]
 ;;Ah...but functions can return behaviors or modified contexts.
 ;;If it returns a vector, we should terminate evaluation.
-(defn beval
-  "Maps a behavior tree onto a context, returning the familiar 
-  [[:fail | :success | :run] resulting-context] pair."
-  [b ctx]    
-  (cond (vector?   b)   b ;;result with context stored in meta.        
-        (fn?       b)  (beval (b ctx) ctx) ;;apply the function to the current context
-        :else (behave b ctx) ;;evaluate the behavior node.
-                                        ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
-        ))
+;; (defn beval
+;;   "Maps a behavior tree onto a context, returning the familiar 
+;;   [[:fail | :success | :run] resulting-context] pair."
+;;   [b ctx]    
+;;   (cond (vector?   b)   b ;;result with context stored in meta.        
+;;         (fn?       b)  (beval (b ctx) ctx) ;;apply the function to the current context
+;;         :else (behave b ctx) ;;evaluate the behavior node.
+;;                                         ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
+;;         ))
 
 ;; (definline beval
 ;;   "Maps a behavior tree onto a context, returning the familiar 
 ;;   [[:fail | :success | :run] resulting-context] pair."
-;;   [b ctx]
-;;   `(loop [b#   ~b
-;;           ctx# ~ctx] 
-;;     (cond (vector?   b#)   b# ;;result with context stored in meta.        
-;;           (fn?       b#)  (recur (b# ctx#) ctx#) ;;apply the function to the current context
-;;           :else    (recur (behave b# ctx#) nil) ;;evaluate the behavior node.
+;;   [b ctx]    
+;;  `(cond (vector?   ~b)   ~b ;;result with context stored in meta.        
+;;         (fn?       ~b)  (beval (b ctx) ctx) ;;apply the function to the current context
+;;         :else (behave b ctx) ;;evaluate the behavior node.
 ;;                                         ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
-;;         )))
+;;         ))
+
+(definline beval
+  "Maps a behavior tree onto a context, returning the familiar 
+  [[:fail | :success | :run] resulting-context] pair."
+  [b ctx]
+  `(loop [b#   ~b
+          ctx# ~ctx] 
+    (cond (vector?   b#)   b# ;;result with context stored in meta.        
+          (fn?       b#)  (recur (b# ctx#) ctx#) ;;apply the function to the current context
+          :else      (recur (behave b# ctx#) nil) ;;evaluate the behavior node.
+                                        ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
+        )))
 
 ;;if we have a nested set of behaviors, we can compile the behavior to
 ;;get more performance. 
@@ -242,17 +270,37 @@
                     :fail      (reduced [:fail ctx])))) (success ctx) xs))
      xs))
 
+;; (defmacro ->and!
+;;   "Semantically similar to (and ....), reduces over the children nodes xs, 
+;;    short-circuiting the reduction if failure is encountered or a behavior is still
+;;    running."
+;;   [xs ctx]
+;;   `(reduce (fn [acc# child#]
+;;                (let [[res# ctx#] (beval child# (second! acc#))]
+;;                   (case-identical? res#
+;;                     :run       (reduced (run ctx#))
+;;                     :success   (success ctx#)
+;;                     :fail      (reduced [:fail ctx#])))) (success ~ctx) ~xs))
+
 (defmacro ->and!
   "Semantically similar to (and ....), reduces over the children nodes xs, 
    short-circuiting the reduction if failure is encountered or a behavior is still
    running."
   [xs ctx]
-  `(reduce (fn [acc# child#]
-               (let [[res# ctx#] (beval child# (second! acc#))]
-                  (case-identical? res#
-                    :run       (reduced (run ctx#))
-                    :success   (success ctx#)
-                    :fail      (reduced [:fail ctx#])))) (success ~ctx) ~xs))
+  (let [v (with-meta (gensym "v") {:tag 'clojure.lang.IPersistentVector})]
+    `(let [~v ~xs
+           bound# (.count ~v)]
+       (loop [idx# 0
+              acc# (success ~ctx)]
+         (cond (== idx# bound#)  acc#
+               (reduced? acc#) @acc#
+               :else
+               (let [[res# ctx#] (beval (.nth ~v idx#) (second! acc#))]
+                 (recur  (unchecked-inc idx#)         
+                         (case-identical? res#                                   
+                                          :success   (success ctx#)
+                                          :fail      (reduced [:fail ctx#])
+                                          :run       (reduced (run ctx#))))))))))
 ;;this is broken...
 (defn ->reduce [f xs]
   (throw (Exception. "->reduce is not implemented..."))
@@ -314,7 +362,9 @@
 (defn ->alter
   "Defines a behavior node that always succeeds, and applies f to the context.
   Typically used for updating the context."
-  [f] (->bnode :alter nil (fn [ctx] (success (f ctx))) nil))
+  [f] (->bnode :alter nil (fn [ctx]
+                            (success (f ctx))
+                            ) nil))
 
 (defn ->elapse
   "Convenience node that allows us to update a time value in the blackboard."
@@ -541,7 +591,7 @@
 ;;assumes we have atomic places defined for our kvps.r
 (defn push!
   ([atm k v ctx]
-   (success (do (swap! atm (fn [^clojure.lang.Associative m]
+   (success (do (swap!! atm (fn [^clojure.lang.Associative m]
                              (.assoc m k v)))
                 ctx)))
   ([atm k v]
@@ -555,14 +605,14 @@
                   (.assoc ~acc k# v#)) ~l ~r)))
 (defn merge!
   ([atm kvps ctx]
-   (success (do (swap! atm (fn [m] (merge1 m kvps)))
+   (success (do (swap!! atm (fn [m] (merge1 m kvps)))
                 ctx)))
   ([atm kvps]
    (fn [ctx] (merge! atm kvps ctx))))
 
 (defmacro merge!!
   ([atm kvps ctx]
-   `(success (do (swap! ~atm (fn [m#] (inline-merge! m# ~kvps)))
+   `(success (do (swap!! ~atm (fn [m#] (inline-merge! m# ~kvps)))
                 ~ctx)))
   ([atm kvps] `(fn [ctx#] (merge!! ~atm ~kvps ctx#))))
 

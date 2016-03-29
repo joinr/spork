@@ -387,8 +387,10 @@
   (avl/nearest m = (->pentry t Long/MAX_VALUE nil)))
 (defn closest [^pri m t]
   (avl/nearest m <= (->pentry t Long/MAX_VALUE nil)))
-(defn tnext [^pri m] (when-let [e (.peek m)]
-                       (nth (key e) 0)))
+(defn tnext [^pri m]
+  (when-let [^clojure.lang.MapEntry e (.peek m)]
+    (.nth ^clojure.lang.Indexed (.key e) 0)))
+
 (definline marker [t] `(->pentry ~t Long/MAX_VALUE nil))
 ;; (defn chunk-width [^pri m]
 ;;   (let [t (tnext m)
