@@ -4,6 +4,14 @@
   (:require [spork.util [general :as gen]]))
 
 
+(defmacro as
+  "Simple macro for type hinting, almost like type coercion. Primarily 
+  used for inlining method dispatch in function calls."
+  [type obj]
+  (let [typed (with-meta (gensym "obj") {:tag type})]
+    `(let [~typed ~obj]
+       ~typed)))
+
 (definline id 
   "Like identity, but acts at compile time.  Acts as a stand-in for 
    identity to avoid un-necessary function calls."

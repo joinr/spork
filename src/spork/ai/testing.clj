@@ -41,6 +41,15 @@
 (defmacro deref! [atm]
   `(.deref ~(with-meta atm {:tag 'clojure.lang.Atom})))
 
+;;looking for a loose protocol that makes this underlying functionality simpler.
+;;Is load-entity redundant?
+(defprotocol IEntitySim
+  (-load-entity [e ])
+  (-entity-messages [e id])
+  (-commit-entity [e])
+  (-set-entity [e id ent])
+  (-get-updates [e id])
+  (-push-message [e from to msg]))
 
 ;;this only works with path literals...
 ;;allows us to define paths at compile time.
@@ -72,9 +81,9 @@
 (defmacro ->msg
   ([t msg] `{:t ~t :msg ~msg})
   ([from to t msg] `{:from ~from :to ~to :t ~t :msg ~msg}))
-(defn ->msg0
-  ([t msg] {:t t :msg msg})
-  ([from to t msg] {:from from :to to :t t :msg msg}))
+;(defn ->msg0
+;  ([t msg] {:t t :msg msg})
+;  ([from to t msg] {:from from :to to :t t :msg msg}))
 
 (defmacro debug
   ([lvl msg]
@@ -182,6 +191,18 @@
                    eset
                    to)))))
 
+;; (defn push-message [from to ^clojure.lang.IPersistentMap msg ^clojure.lang.Associative ctx]
+;;   (let [t        (.valAt msg :t)
+;;         ents     (.valAt ^clojure.lang.ILookup ctx  :entities)
+;;         e        (.valAt ^clojure.lang.ILookup ents to)
+;;         msgs     (.valAt ^clojure.lang.ILookup e    :messages)
+;;         new-msgs (.cons ^clojure.lang.IPersistentCollection msgs
+;;                         [t (.assoc ^clojure.lang.Associative msg :from from)])]
+;;     (.assoc ^clojure.lang.Associative ctx :entities 
+;;             (.assoc ^clojure.lang.Associative ents to
+;;                     (.assoc ^clojure.lang.Associative e :messages new-msgs)))))
+  
+
 ;;this is a really simple context for prosecuting a discrete event
 ;;simulation.  We have a global time, a map of entities, and a map of
 ;;messages for said entities.  From this, we can define a step function,
@@ -213,14 +234,7 @@
               ;;the system time.  We can compute this by pending, actually.
               :t 0
               ;sets of entity ids with pending messages, mapped to time.
-              :pending  (avl/sorted-map
-                         ;; (fn [l r]
-                         ;;   (let [l (long l)
-                         ;;         r (long r)]
-                         ;;     (cond (== l r) 0
-                         ;;           (< l r) -1
-                         ;;           :else 1)))
-                                           )
+              :pending  (avl/sorted-map)
               }]
     (reduce (fn [ctx id]              
               (push-message :system id (->msg 0 :spawn) ctx))
@@ -236,6 +250,9 @@
 
 ;;creates a benv (a map)
 ;;:: ent -> msg -> ctx -> benv
+
+;;The next step for an optimization here...
+;;is to avoid having to assoc stuff all over the place.
 (defn load-entity!
   [ent msg ctx]
 ;  (println [:loading ent msg])
@@ -243,10 +260,19 @@
    :current-messages   [msg]
    :ctx    (atom ctx)})
 
+(comment  ;currently not the fastest...
+(defn load-entity!
+  [ent msg ctx]
+  (assoc (->assocmap)
+         :entity (atom (fget (fget ctx :entities) ent))
+         :current-messages   [msg]
+         :ctx    (atom ctx)))
+)
+
 ;;behaviors
 
 ;;logs the state of the entity.
-(befn notify-change {:keys [entity ] :as ctx}
+(befn notify-change {:keys [entity] :as ctx}
  (do (debug 
        (let [{:keys [state wait-time name t]} (deref! entity)
              ]
@@ -266,16 +292,16 @@
     (when-let [duration (fget  (deref! entity) :wait-time)]
       (if (<= delta duration) ;time remains or is zero.
          ;(println [:entity-waited duration :remaining (- duration delta)])
-        (merge!  entity {:wait-time (- duration delta)
+        (merge!!  entity {:wait-time (- duration delta)
                          :t t}) ;;update the time.
         (do ;can't wait out entire time in this state.
-          (merge! entity {:wait-time 0
+          (merge!! entity {:wait-time 0
                            :t (- t duration)}) ;;still not up-to-date
            ;;have we handled the message?
            ;;what if time remains? this is akin to roll-over behavior.
            ;;we'll register that time is left over. We can determine what
            ;;to do in the next evaluation.  For now, we defer it.
-          (bind! {:msg (assoc msg :delta (- delta duration))}
+          (bind!! {:msg (assoc msg :delta (- delta duration))}
                  )
 
           )))))
@@ -288,6 +314,9 @@
                     :dwelling
                     )]       
         (push! entity :state nxt)))
+
+(defn wait [root]
+  (rand-int root))
 
 (befn choose-time [entity]
       (let [twait
@@ -308,7 +337,7 @@
                        [:entity nm :scheduled :update tfut])
             ;_ (when new-messages (println [:existing :new-messages new-messages]))
             ]        
-        (bind! {:new-messages (b/swap!! (or new-messages (atom []))
+        (bind!! {:new-messages (b/swap!! (or new-messages (atom []))
                                  conj (->msg nm nm tfut :update))})))
                       
 ;;pick a move and a wait time, log the move.
@@ -349,31 +378,6 @@
      (seq [this] (seq (into [] (r/mapcat identity colls) )))
      )))
        
-;; (defn rconcat [colls]
-;;   (reify clojure.core.protocols/CollReduce
-;;     (coll-reduce [this f1]
-;;       (let [c1   (first colls)
-;;             init (reduce (fn [acc x] (reduced x)) (r/take 1 c1))
-;;             a0   (reduce f1 init (r/drop 1 c1))]                            
-;;         (reduce [acc   a0
-;;                  colls (rest colls)]
-;;           (if (reduced? acc) @acc
-;;               (if-let [x (first colls)]
-;;                 (recur (reduce f1 acc x)
-;;                        (next colls))
-;;                 acc)))))        
-;;     (coll-reduce [this f init]
-;;       (loop [acc init
-;;              colls colls]
-;;         (if (reduced? acc) @acc
-;;             (if-let [x (first colls)]
-;;               (recur (reduce f acc x)
-;;                      (next colls))
-;;               acc))))          
-;;     clojure.lang.ISeq
-;;     (seq [this] (seq (into [] (r/mapcat identity colls) )))
-;;     ))
-
 ;;the entity will see if a message has been sent
 ;;externally, and then compare this with its current internal
 ;;knowledge of messages that are happening concurrently.
@@ -385,7 +389,7 @@
                                      (.assoc m :messages
                                              (pq/chunk-pop old-msgs msgs)
                                             )))]
-            (bind! {:current-messages new-msgs})))))
+            (bind!! {:current-messages new-msgs})))))
 
 ;;we need the ability to loop here, to repeatedly
 ;;evaluate a behavior until a condition changes.
@@ -407,6 +411,10 @@
 ;;we can probably override this easily enough.
 ;;#Optimize:  We're bottlnecking here, creating lots of
 ;;maps....
+
+
+;;type sig:: msg -> benv/Associative -> benv/Associative
+;;this gets called a lot.
 (defn message-handler [msg {:keys [entity current-messages ctx] :as benv}]
   (do ;(println (str [(:name (deref! entity)) :handling msg]))
       (beval 
@@ -414,10 +422,10 @@
          :update (if (== (:t (deref! entity)) (:t (deref! ctx)))
                    (do ;(println [:entity-already-updated])
                        (success benv)) ;entity is current
-                   (->and [;(->alter
-                            #(success (assoc % :msg msg))
-                            ;)
-                           advance]))  ;(->do (fn [_] (println :update-stub))) ;default
+                   (->and [#(success (assoc % :msg msg))                           
+                           advance
+                           ]))
+                                        ;(->do (fn [_] (println :update-stub))) ;default
          :spawn  (->and [(push! entity :state :spawning)                        
                          spawn]
                        )
@@ -434,9 +442,11 @@
                       (message-handler msg (.nth env 1))))
                 (success benv)
                 current-messages)))
-      
+
 ;;Basic entity behavior is to respond to new external
 ;;stimuli, and then try to move out.
+
+;;This is a pretty typical prototype for entities to follow.
 (befn default [entity]
       (->or [(->and [check-messages
                      handle-messages])             
@@ -453,6 +463,15 @@
 ;;outside, using the leftover message from the context.
 
 ;;this is on the hot path, so we'll optimize it.
+
+;;really, this is assoc-in using dispatched types.
+;;If we make some guarantees about the underlying data
+;;structure, namely that it's composed of places, we
+;;can get something useful out of it.
+;;Namely, places don't change (i.e. they always exist
+;;as long as the container exists).
+
+;;Places can be nested paths into objects.
 (defmacro set-entity! [ctx nm v]
   (let [c       (with-meta ctx {:tag 'clojure.lang.Associative})
         entities (with-meta (gensym "entities") {:tag 'clojure.lang.Associative})]        
@@ -461,8 +480,19 @@
        (.assoc ~ctx :entities
                (.assoc ~entities ~nm
                        ~v)))))
+
+;;it'd be nice to define some protocol-level functions that
+;;work on existing datastructures, with default implementations...
+
+(defprotocol INestedAssociative
+  (getin ([obj path])
+         ([obj path not-found]))
+  (associn [obj path v])
+  (dissocin [obj path])
+  (updatein [obj path f]))
+
 ;;committing
-(defn commit-entity! [{:keys [entity msg ctx new-messages] :as benv}]
+(defn commit-entity! [{:keys [entity ctx new-messages] :as benv}]
   (let [
         ctx (deref! ctx)
         ent (deref! entity)
@@ -504,12 +534,15 @@
 ;;This is cool;  Entities are interpreters governed by their behavior.
 ;;They may be seen as continuations as well, or "reactive" functions of
 ;;time, or state machines, etc.
-(defn step-entity! [ctx e t]
-  (->> ctx
-       (load-entity!  e  (->msg t :update))
-       (beval    default) ;should parameterize this.
-       (return!)
-       (commit-entity!)))
+(defn step-entity!
+  ([ctx e t msg]
+   (->> ctx
+        (load-entity!  e  msg)
+        (beval    default) ;should parameterize this.
+        (return!)
+        (commit-entity!)))
+  ([ctx e t]
+   (step-entity! ctx e t (->msg t :update))))
   
 (defn step!
   ([t es ctx]
@@ -529,19 +562,21 @@
 ;;of messages the entity reacted to.  Both provide an entity-view
 ;;of the history of the system.
 ;;The goal is to enable multiple views of time from the
-;;entity's perspective; specifically the shared-nothing 
+;;entity's perspective; specifically the shared-nothing simulated
+;;nature...
 
 ;;This is a basic simulation loop...
 ;;Note: we can actually reify this as a reducer, or a sequential, or
 ;;whatever we want.  So we have options as to how we see things;
 ;;we can push the simulation history onto a channel, and diff it in
 ;;another thread.
-(defn simulate! [& {:keys [n continue? tmax]
+(defn simulate! [& {:keys [n continue? tmax post]
                     :or {n 2
                          tmax 4500
                          }}]
   (let [continue? (or continue? (fn [ctx] (< (:t ctx) tmax)))
-        init-ctx  (->simple-ctx :n n)]
+        init-ctx  (->simple-ctx :n n)
+        init-ctx  (if post (post init-ctx) init-ctx)]
     (loop [ctx init-ctx]
       (if (not (continue? ctx)) ctx
           (if-let [res (next-recepients ctx)] ;;identify the next set of entities to run.
@@ -549,10 +584,47 @@
               (do ;(Thread/sleep 200)
                   (recur  (step! t es ctx))))
             ctx)))))
+
+
+(defn history [& {:keys [n continue? tmax post]
+                  :or {n 2
+                       tmax 4500
+                       }}]
+  (let [continue? (or continue? (fn [ctx] (< (:t ctx) tmax)))
+        init-ctx  (->simple-ctx :n n)
+        init-ctx  (if post (post init-ctx) init-ctx)
+        fwd      (fn fwd [ctx]
+                    (if-let [res (next-recepients ctx)] ;;identify the next set of entities to run.
+                      (let [[t es] res]
+                        (step! t es ctx))))]
+        (reify
+          clojure.core.protocols/CollReduce
+          (coll-reduce [this f]
+            (loop [acc init-ctx
+                   current-ctx (fwd init-ctx)]
+              (cond (reduced? acc) @acc
+                    (not (continue? current-ctx)) acc
+                    :else (recur (f acc current-ctx)
+                                 (fwd current-ctx)))))
+          (coll-reduce [this f init]
+            (loop [acc init
+                   current-ctx init-ctx]
+              (cond  (reduced? acc) @acc
+                     (not (continue? current-ctx)) acc
+                     :else (recur (f acc current-ctx)
+                                  (fwd current-ctx)))))
+          clojure.lang.ISeq
+          (seq [this]  (take-while (fn [x] (and (identity x) (continue? x)))
+                                   (iterate fwd init-ctx))))))
+    
   
 (defn stress-test []
   (time (dotimes [i 1]
           (simulate! :n 8000))))
+
+(defn stress-test-np []
+  (time (dotimes [i 1]
+          (simulate! :n 8000 :post #(dissoc % :pending)))))
 
 (defn stress-test2 []
   (time (dotimes [i 1000]
@@ -574,6 +646,8 @@
            (pmap (fn [n]
                    (simulate! :n 60))
                  (range 1000))))))
+
+
 ;;so...
 ;;can we define this in a nice, pretty, packaged result?
 ;;Is it a simulator?

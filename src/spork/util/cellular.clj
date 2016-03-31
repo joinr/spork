@@ -31,6 +31,7 @@
 ;;associated cells with their current values in a finalization step.
 (ns spork.util.cellular
   (:require [spork.util [metaprogramming :as util]
+                        [collections :refer :all]
              [general :as gen]
              [tags    :as tag]
              [table   :as tbl]]))
@@ -51,48 +52,6 @@
 ;;                     args)]                                
 ;;   `(defn ~name ([~@rawargs] ~@expr)
 ;;                ([~@(conj rawargs 'ctx)] ~@expr))))
-
-
-;;#Operations for working with mutable references
-;;particularly working with pieces of state in a nested associative
-;;structure.
-
-(definline assoc-any [m k v] 
-  `(if (instance? clojure.lang.ITransientAssociative ~m) 
-     (assoc! ~m ~k ~v)
-     (assoc ~m ~k ~v)))
-
-(definline conj-any [m v] 
-  `(if (instance? clojure.lang.ITransientCollection ~m) 
-     (conj! ~m ~v)
-     (conj ~m ~v)))
-
-(definline dissoc-any [m k ] 
-  `(if (instance? clojure.lang.ITransientAssociative ~m) 
-     (dissoc! ~m ~k )
-     (dissoc ~m ~k )))
-
-(definline disj-any [m v] 
-  `(if (instance? clojure.lang.ITransientSet ~m) 
-     (disj! ~m ~v)
-     (disj ~m ~v)))
-
-(defn assoc-in-any
-  "Replacement for assoc-in, works on both transients and persistents."
-  [m [k & ks] v]
-  (if ks
-    (assoc-any m k (assoc-in-any (get m k) ks v))
-    (assoc-any m k v)))
-
-(defn update-in-any
-  "Replacement for update-in, works on both transients and persistents."
-  ([m [k & ks] f & args]
-   (if ks
-     (assoc-any m k (apply update-in-any (get m k) ks f args))
-     (assoc-any m k (apply f (get m k) args)))))
-
-(definline contains-any? [m k]
-    `(not (identical? (get ~m ~k :not-found) :not-found)))
 
 
 ;;#still working on api for mutating transactions...

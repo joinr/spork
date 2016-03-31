@@ -849,3 +849,43 @@
   java.io.Serializable ;Serialization comes for free with the other things implemented
   ;clojure.lang.MapEquivalence
   )
+
+;;this may be useful in other contexts....for our usecase it's
+;;not.
+(deftype assocmap [^java.util.HashMap m]
+  clojure.lang.IPersistentMap
+  (assoc       [obj k v] (do (.put m k v) obj))
+  (assocEx     [obj k v] (do (.put m k v) obj))
+  (without [obj k] (do (.remove m k) obj))
+  java.lang.Iterable
+  (iterator [this] (.iterator m))
+  clojure.lang.Associative
+  (entryAt     [obj k]   (when-let [v (.get m k)]
+                           (clojure.lang.MapEntry. k v)))
+  (containsKey [obj k]  (.containsKey m k))
+  clojure.lang.IPersistentCollection
+  (count [obj] (.size m))
+  (cons [obj kv]
+    (do  (.put m (.nth ^clojure.lang.Indexed kv 0)
+               (.nth ^clojure.lang.Indexed  kv 1))
+         obj))
+  (empty [this] (assocmap. (java.util.HashMap.)))
+  (equiv [this that] (clojure.lang.Util/equiv m  that))
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.ILookup
+  (valAt [obj k] (.get m k))
+  (valAt [obj k notfound] (if-let [res (.get m k)] res notfound))
+  java.util.Map ;Makes this compatible with java's map
+  (size [this] (.size m))
+  (isEmpty [this] (.isEmpty m))
+  (containsValue [this v] (.containsValue m v))
+  (get [this k] (.get m k))
+  (put [this k v] (do (.put m k v) this))
+  (remove [this k] (do (.remove m k ) this))
+  (putAll [this other] (do (.putAll m other) this))
+  (clear [this] (do (.clear m) this))
+  (keySet [this] (.keySet m)) ;;modify
+  (values [this] (.values m))
+  (entrySet [this] (.entrySet m)))
+(defn ->assocmap [] (assocmap. (java.util.HashMap.)))

@@ -222,7 +222,9 @@
 ;; (defn compile! [nd]
 ;;    (if (fn? nd) nd
 ;;        (:f nd)))
-        
+
+;;perhaps a better option here is to use type wrappers.
+
 ;;we could probably just make these functions...
 ;;convenience? macros...at least it standardizes success and failure,
 ;;provides an API for communicating results.
