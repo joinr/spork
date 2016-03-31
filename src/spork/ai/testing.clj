@@ -484,12 +484,12 @@
 ;;it'd be nice to define some protocol-level functions that
 ;;work on existing datastructures, with default implementations...
 
-(defprotocol INestedAssociative
-  (getin ([obj path])
-         ([obj path not-found]))
-  (associn [obj path v])
-  (dissocin [obj path])
-  (updatein [obj path f]))
+;; (defprotocol INestedAssociative
+;;   (getin ([obj path])
+;;          ([obj path not-found]))
+;;   (associn [obj path v])
+;;   (dissocin [obj path])
+;;   (updatein [obj path f]))
 
 ;;committing
 (defn commit-entity! [{:keys [entity ctx new-messages] :as benv}]
