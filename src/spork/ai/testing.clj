@@ -39,12 +39,15 @@
             [clojure.core.reducers :as r]
             [clojure.data.avl :as avl]))
 
+;works on mutables too...
 (defmacro deref! [atm]
-  `(.deref ~(with-meta atm {:tag 'clojure.lang.Atom})))
+  `(if (instance? 'clojure.lang.IDeref ~atm)
+     (.deref ~(with-meta atm {:tag 'clojure.lang.Atom}))
+     ~atm))
 
 ;;looking for a loose protocol that makes this underlying functionality simpler.
 ;;Is load-entity redundant?
-(defprotocol IEntitySim
+(defprotocol IEntityProcessor
   (-load-entity [e ])
   (-entity-messages [e id])
   (-commit-entity [e])
@@ -319,8 +322,7 @@
                     )]       
         (push! entity :state nxt)))
 
-(defn wait [root]
-  (rand-int root))
+(defn wait [root] (rand-int root))
 
 (befn choose-time [entity]
       (let [twait
@@ -331,18 +333,33 @@
 
 (defn up-to-date? [e ctx] (== (:t e) (:t ctx)))
 
+;;This will become an API call...
+(definline send [msg-q msg ctx]
+  `(bind!! {:new-messages (b/swap!! (or ~msg-q (atom []))
+                                    conj ~msg)}))
+
 (befn schedule-update  [entity ctx new-messages]
       (let [st  (deref! entity)
             nm       (:name st)
             duration (:wait-time st)
             tnow     (:t (deref! ctx))
             tfut     (+ tnow duration)
-            _   (debug 4
-                       [:entity nm :scheduled :update tfut])
+            _   (debug 4 [:entity nm :scheduled :update tfut])
             ;_ (when new-messages (println [:existing :new-messages new-messages]))
             ]        
-        (bind!! {:new-messages (b/swap!! (or new-messages (atom []))
-                                 conj (->msg nm nm tfut :update))})))
+        (send new-messages (->msg nm nm tfut :update))))
+
+;; (befn schedule-update  [entity ctx new-messages]
+;;       (let [st  (deref! entity)
+;;             nm       (:name st)
+;;             duration (:wait-time st)
+;;             tnow     (:t (deref! ctx))
+;;             tfut     (+ tnow duration)
+;;             _   (debug 4 [:entity nm :scheduled :update tfut])
+;;             ;_ (when new-messages (println [:existing :new-messages new-messages]))
+;;             ]        
+;;         (bind!! {:new-messages (b/swap!! (or new-messages (atom []))
+;;                                  conj (->msg nm nm tfut :update))})))
                       
 ;;pick a move and a wait time, log the move.
 ;; (befn move {:keys [entity] :as ctx}
