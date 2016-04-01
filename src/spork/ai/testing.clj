@@ -32,7 +32,8 @@
                      return!
                      befn
                      ] :as b]
-            [spork.util.general :as gen]
+            [spork.util.general     :as gen]
+            [spork.util.collections :as fast]
             [spork.entitysystem.store :as store]
             [spork.data.priorityq :as pq]
             [clojure.core.reducers :as r]
@@ -239,6 +240,9 @@
     (reduce (fn [ctx id]              
               (push-message :system id (->msg 0 :spawn) ctx))
             ctx ids)))
+
+(defn ->mut-ctx [& {:keys [n] :or {n 2}}]
+    (fast/as-mutable (->simple-ctx :n n)))
 
 ;;so, system time is zero, or we can define it as the minimum of the known messages.
 ;;This is consistent with the agenda from sicp.

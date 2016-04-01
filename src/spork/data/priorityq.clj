@@ -308,6 +308,10 @@
                                (transient (get-set dir)) basemap))]
           (pri. dir basemap @idx _meta -1 -1))        
         (pri. dir (.cons basemap (->pentry k n v)) nnxt  _meta -1 -1))))
+  clojure.lang.IPersistentSet
+  (disjoin  [this k] (pri. dir (.disjoin basemap k) n _meta -1 -1))
+  (contains [this k] (.contains basemap k))
+  (get      [this k] (.get basemap k))
   clojure.lang.Sorted
   (seq [this ascending?]
     (.seq ^clojure.lang.Sorted basemap ascending?))

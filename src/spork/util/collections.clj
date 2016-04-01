@@ -195,7 +195,60 @@
 (definline contains? [m k]
     `(not (identical? (get ~m ~k :not-found) :not-found)))
 
+
+(defn mutable-type [obj]
+  (cond (instance? clojure.lang.Sorted obj)
+        (cond (instance?  clojure.lang.IPersistentMap obj) :sorted-map
+              (instance?  clojure.lang.IPersistentSet obj) :sorted-set
+              :else
+              (throw (Exception. (str "class not mutable " (class obj)))))
+        (instance?  clojure.lang.IPersistentMap obj) :map
+        (instance?  clojure.lang.IPersistentSet obj) :set
+        (instance?  java.util.Map$Entry obj) :entry
+        (seq? obj) :collection
+        :else nil))
+
 ;;one of the cool things we can do
+(defmulti as-mutable (fn [obj] (mutable-type obj)))
+(defmethod as-mutable :default [obj] obj)
+(defmethod as-mutable :sorted-set [obj]
+  (into (java.util.TreeSet. (.comparator (as clojure.lang.Sorted obj))) (map as-mutable) obj))
+(defmethod as-mutable :sorted-map [obj]
+ (into (java.util.TreeMap. (.comparator (as clojure.lang.Sorted obj))) (map as-mutable) obj))
+(defmethod as-mutable :set [obj]  (into (java.util.HashSet.) (map as-mutable) obj))
+(defmethod as-mutable :map [obj]  (into (java.util.HashMap.) (map as-mutable) obj))
+(defmethod as-mutable :collection [obj] (into (java.util.ArrayList.) (map as-mutable) obj))
+(defmethod as-mutable :entry [obj]
+  (let [^java.util.Map$Entry e obj] 
+    (clojure.lang.MapEntry. (.getKey e) (as-mutable (.getValue e)))))
+
+(defn immutable-type [obj]
+  (cond (instance? java.util.SortedSet obj) :sorted-set
+        (instance? java.util.SortedMap obj) :sorted-map
+        (instance? java.util.Map obj) :map
+        (instance? java.util.Set obj) :set
+        (instance?  java.util.Map$Entry obj) :entry
+        (instance? java.util.Collection obj) :collection
+        :else nil))
+
+(defmulti as-immutable (fn [obj] (immutable-type obj)))
+(defmethod as-immutable :default [obj] obj)
+
+(defmethod as-immutable :sorted-set [obj]
+  (into (sorted-set-by (.comparator (as java.util.SortedSet obj)))
+        (map as-immutable) obj))
+(defmethod as-immutable :sorted-map [obj]
+  (into (sorted-map-by (.comparator (as java.util.SortedMap obj)))
+        (map as-immutable) obj))
+(defmethod as-immutable :map [obj]
+  (into {} (map as-immutable) obj))
+(defmethod as-immutable :set [obj]
+  (into #{} (map as-immutable) obj))
+(defmethod as-immutable :collection [obj]
+  (into [] (map as-immutable) obj))
+(defmethod as-immutable :entry [obj]
+  (let [^java.util.Map$Entry e obj] 
+    (clojure.lang.MapEntry. (.getKey e) (as-immutable (.getValue e)))))
 
 ;;recursively convert an immutable collection into a mutable collection.  This is not a
 ;;transient collection...
@@ -211,6 +264,30 @@
                 (if (map? v)
                   (assoc! acc k (unhmap v))
                   (assoc! acc k v))) (transient {})  hm)))
+
+;;poor man's protocol
+(defprotocol IEphemeral
+  (mutable   [obj])
+  (immutable [obj]))
+
+;; (defn mutable! [obj]
+;;   (if (instance? IEphemeral obj)
+;;     (.mutable (as IEphemeral obj))
+;;     (cond (or (instance? java.util.Collection obj)
+;;               (instance? java.util.Map obj)) obj
+          
+
+;; (extend-protocol IEphemeral
+;;   java.util.ArrayList
+;;   (mutable [obj] obj)
+;;   (immutable [obj] (into [] (map (fn [x] (immutable x))) obj))
+;;   java.util.HashMap
+;;   (mutable [obj] obj)
+;;   (immutable [obj] (into [] (map (fn [x] (immutable x))) obj))
+  
+
+
+;;how about a mutable record type?
 (comment    
 (defn immutable! [coll])
 (defn mutable!   [coll])

@@ -34,7 +34,10 @@
                         [collections :refer :all]
              [general :as gen]
              [tags    :as tag]
-             [table   :as tbl]]))
+             [table   :as tbl]])
+   (:refer-clojure :exclude
+     [into update update-in assoc-in assoc 
+      dissoc dissoc-in conj disj contains?]))
 
 ;;Possible use of dynamic context for later....
 ;;Dunno if I want to do this yet..
