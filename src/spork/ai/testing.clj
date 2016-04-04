@@ -41,19 +41,27 @@
 
 ;works on mutables too...
 (defmacro deref! [atm]
-  `(if (instance? 'clojure.lang.IDeref ~atm)
+  `(if (instance? clojure.lang.IDeref ~atm)
      (.deref ~(with-meta atm {:tag 'clojure.lang.Atom}))
      ~atm))
 
+;;Ideally...we simulate this stuff persistently, and allow a mutable
+;;version to be swapped out as needed (for efficiency sake...)
+
 ;;looking for a loose protocol that makes this underlying functionality simpler.
 ;;Is load-entity redundant?
-(defprotocol IEntityProcessor
-  (-load-entity [e ])
-  (-entity-messages [e id])
-  (-commit-entity [e])
-  (-set-entity [e id ent])
-  (-get-updates [e id])
-  (-push-message [e from to msg]))
+;; (defprotocol IEntityStorage
+;;   (-load-entity [s e ])  
+;;   (-commit-entity [s e])
+;;   (-set-entity [s e id ent])
+;;   )
+;; (defprotcol IEntityScheduler
+;;   (-next-recepients [e id])
+;;   )
+;; (defprotocol IEntityMessaging
+;;   (-entity-messages [e id])
+;;   (-push-message [e from to msg])
+;;   )
 
 ;;this only works with path literals...
 ;;allows us to define paths at compile time.
@@ -322,8 +330,6 @@
                     )]       
         (push! entity :state nxt)))
 
-(defn wait [root] (rand-int root))
-
 (befn choose-time [entity]
       (let [twait
             (gen/case-identical? (:state (deref! entity))
@@ -334,7 +340,7 @@
 (defn up-to-date? [e ctx] (== (:t e) (:t ctx)))
 
 ;;This will become an API call...
-(definline send [msg-q msg ctx]
+(definline send [msg-q msg]
   `(bind!! {:new-messages (b/swap!! (or ~msg-q (atom []))
                                     conj ~msg)}))
 

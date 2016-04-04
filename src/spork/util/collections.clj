@@ -9,10 +9,16 @@
 ;;a lot of folks; however, for cases where we desire
 ;;ephemeral collections backing pure functions, the
 ;;functionality here makes it nicer to work with.
+;;Some observations....performance from inlining
+;;is suffering due to the instance checks we're performing.
+;;This is currently more of a compatibility library to
+;;allow us to go from/to mutable collections.
 (ns spork.util.collections
   (:refer-clojure :exclude
      [into update update-in assoc-in assoc 
       dissoc dissoc-in conj disj contains?]))
+
+;;another option is to use type-wrappers...
 
 ;;Generic operations defined over persistent, transient,
 ;;and mutable data types.
@@ -21,6 +27,16 @@
   (let [typed (with-meta (gensym "obj") {:tag type})]
     `(let [~typed ~obj]
        ~typed)))
+;;this is actually slower, since the compiler is smart enough to
+;;inline calls to (instance? ...) forms..and emit specialized
+;;bytecode.
+;(defmacro instance-of [c x]
+;  `(.isInstance (as java.lang.Class ~c) ~x))
+
+;;if we're smart....we should be able to implement types that delegate everything to an underlying wrapper...
+;;although this automatically happens with inheritance in java...alternately, we can just create a couple of
+;;additional abstract types that implement the requisite interfaces...
+
 
 (definline assoc-t [m k v]
   `(.assoc    (as  clojure.lang.ITransientAssociative ~m) ~k ~v))
@@ -30,8 +46,8 @@
   `(doto (as java.util.Map ~m)                 (.put  ~k ~v)))
 
 (definline assoc [m k v] 
-  ` (cond (instance? clojure.lang.ITransientAssociative ~m) (.assoc    (as  clojure.lang.ITransientAssociative ~m) ~k ~v)
-          (instance? clojure.lang.Associative ~m)           (.assoc    (as clojure.lang.Associative ~m) ~k ~v)
+  ` (cond  (instance? clojure.lang.Associative ~m)           (.assoc    (as clojure.lang.Associative ~m) ~k ~v)
+           (instance? clojure.lang.ITransientAssociative ~m) (.assoc    (as  clojure.lang.ITransientAssociative ~m) ~k ~v)
           :else (doto (as java.util.Map ~m)                 (.put  ~k ~v))))
 
 (definline conj-t [coll v]
@@ -107,6 +123,12 @@
             (reduce conj-p to from)
           (instance? java.util.Collection to)
             (reduce conj-m to from)
+          (instance? clojure.lang.IAtom to)
+            (swap! to (fn [coll] (into coll from)))
+          (instance? clojure.lang.Volatile to)
+            (vswap! to (fn [coll] (into coll from)))
+          (instance? clojure.lang.Agent to)
+            (send to (fn [coll] (into coll from)))
           :else
             (reduce conj-hm to from)))  
   ([to xform from]
@@ -117,6 +139,12 @@
              (transduce xform (completing conj-p) to from)
          (instance? java.util.Collection to)
              (transduce xform (completing conj-m) to from)
+         (instance? clojure.lang.IAtom to)
+             (swap! to (fn [coll] (into coll xform from)))
+         (instance? clojure.lang.Volatile to)
+             (vswap! to (fn [coll] (into coll xform from)))
+         (instance? clojure.lang.Agent to)
+             (send to (fn [coll] (into coll xform from)))
          :else
              (transduce xform (completing conj-hm) to from))))
 

@@ -7,6 +7,13 @@
   (:require [spork.protocols [core :as generic]])
   (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
 
+
+(defmacro as [type obj]
+  (let [typed (with-meta (gensym "obj") {:tag type})]
+    `(let [~typed ~obj]
+       ~typed)))
+
+(comment 
 ;;#Additional Reducers 
 ;;These haven't made it into clojure.core yet, they probably will in
 ;;1.7  .  I hacked together a couple of useful ones, like range.
@@ -70,6 +77,7 @@
 
 (in-ns 'spork.data.mutable)
 
+)
 
 (extend-type  java.util.HashMap 
   clojure.core.protocols/IKVReduce 
@@ -128,92 +136,23 @@
 
 (declare mutable? slot->field slot->accessor)
 
-;;(defn slot->field [slot]   (symbol (str \. slot)))
-;;given a form the-slot-at-blah, we need to turn it into camelcase
-;;theSlotAtBlah
-;; (defn slot->accessor [slot] 
-;;   (let [xs (clojure.string/split (str slot) #"-")]
-;;     (->> (map clojure.string/capitalize (rest xs))
-;;          (into [(first xs)])
-;;          (clojure.string/join)
-;;          (symbol))))
-
-;; (defn slot-binder [f] 
-;;   (fn [slot] [slot (f slot)]))
-
-;;This is a throwback to CommonLisp :)
-;; (defmacro with-fields [obj slots & expr]
-;;   (let [the-hint (:tag (meta obj))]
-;;     `(let [~@(flatten (map (slot-binder (if (mutable? the-hint) 
-;;                                           slot->slot-accessor slot->field))
-;;                            slots))]
-;;        ~@expr)))      
-
-;; (let [hyphen #"-"]
-;;   (defn invalid-field? [field]
-;;     (re-find hyphen (str field))))
-
 (defn ^ArrayList make-array-list [] (ArrayList.))
 (defn ^ArrayList array-list [xs] 
   (reduce (fn [^ArrayList acc x] (doto acc (.add x))) (make-array-list) xs))
 
-(defmacro hget [hint coll k]
-  `(.get ~(with-meta coll {:tag hint})  ~k))
-(defmacro hput [hint coll k v]
-  `(doto ~(with-meta coll {:tag hint})  (.put ~k ~v)))
-(defmacro hadd [hint coll v]
-  `(doto ~(with-meta coll {:tag hint}) (.add ~v)))
 
-;;Unifies mutable abstractions...
-;;Protocol dispatch cost is not terrible.
-(defprotocol IFastAccess
-  (fast-get  [coll k])
-  (fast-add  [coll v])
-  (fast-drop [coll k]))
-(defprotocol IFastHashAccess
-  (fast-put  [coll k v]))
+(defmacro as [type obj]
+  (let [typed (with-meta (gensym "obj") {:tag type})]
+    `(let [~typed ~obj]
+       ~typed)))
 
-(defprotocol IMutable
-  (mutable   [c])
-  (immutable [c]))
-
-;;this won't work any more.
-
-;;Debatable as to how much faster this is...
-;; (in-ns 'clojure.core)
-
-;; (defn into
-;;   "Returns a new coll consisting of to-coll with all of the items of
-;;   from-coll conjoined. *Modified to account for mutable structures." 
-;;   {:added "1.0"
-;;    :static true}
-;;   [to from]
-;;   (if (instance? clojure.lang.IEditableCollection to)
-;;     (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
-;;     (if (instance? spork.data.mutable.IMutable to)
-;;       (reduce conj!(spork.data.mutable/mutable to) from)
-;;       (reduce conj  to from))))
-;; (in-ns 'spork.data.mutable)
-
-(extend-type ArrayList 
-  IFastAccess 
-  (fast-get [coll k]   (hget ArrayList coll k))
-  (fast-add [coll v]   (hadd ArrayList coll v))
-  (fast-drop [coll k]  (doto ^java.util.ArrayList coll (.remove k)))
-  IMutable
+(extend-protocol IMutable  
+  ArrayList
   (mutable [m] m)
-  (immutable [m] (into [] m)))
-
-(extend-type   HashMap 
-  IFastAccess
-  (fast-get [coll k]   (hget HashMap coll k))
-  (fast-add [coll v]   (hput HashMap coll (first v) (second v)))
-  (fast-drop [coll k]  (doto ^java.util.HashMap coll (.remove k)))
-  IFastHashAccess
-  (fast-put [coll k v] (hput HashMap coll k v))
-  IMutable
+  (immutable [m] (into [] m))
+  HashMap 
   (mutable   [m] m)
-  (immutable [m] (into {} m)))  
+  (immutable [m] (into {} m)))
 
 (definline get-arraylist [l n]
   `(.get ~(with-meta l {:tag 'java.util.ArrayList}) ~n))
@@ -237,7 +176,7 @@
           (> pl pr) 1
           :else 0)))   
 
-(defn ^ArrayList  add-list   [^ArrayList l obj]  (doto l  (.add obj)))
+(defn ^ArrayList  add-list   [^ArrayList l obj]   (doto l  (.add obj)))
 (defn ^ArrayDeque add-q      [^ArrayDeque q obj]  (doto q (.add obj)))
 
 (defn ^PriorityQueue make-pq [] (PriorityQueue. 11 entry-comparer))
@@ -266,7 +205,9 @@
 
 ;;Tag protocol
 (defprotocol IMutableContainer)
-
+(defprotocol IMutable
+  (mutable [ob])
+  (immutable [obj]))
 
 ;;Defines a mutable container.  Ueser may supply their own
 ;;implementations of persistent, deref, conj, and without in the
@@ -321,75 +262,234 @@
                  (~'deref [this#] ~fieldmap))))))
 
 (deftype mutlist [^java.util.ArrayList m] 
-  clojure.lang.ITransientVector  
-  (assocN [this i val] (do (.add m i val) this))
+  clojure.lang.IPersistentVector  
+  (assocN [this i val] (do (.add m (int i) val) this))
   (pop    [this]       (do (.remove m (unchecked-dec (.size m))) this))
   (nth    [this k]     (.get m k))
   (nth    [this k not-found] (or (.get m k) not-found))
-  (assoc  [this k v]   (do  (.add m k v) this))
-  (conj    [this v]    (do (.add m v) this))
-  (persistent [this]   (into [] m))
+  (assoc  [this k v]   (do  (.add m (int k) v) this))
+  (cons [this k] (do (.add m k) this))
+  (empty [this] (mutlist. (java.util.ArrayList.)))
+; (conj    [this v]    (do (.add m v) this))
+; (persistent [this]   (into [] m))
   clojure.lang.Seqable
   (seq [this] (seq m))
   clojure.lang.Counted 
   (count [coll] (.size m))
-  IFastAccess 
-  (fast-get [coll k]   (.get m k))
-  (fast-add [coll v]   (do (.add  m v) coll))
-  (fast-drop [coll k]  (do  (.remove m k) coll))
   IMutable
   (mutable   [this] this)
   (immutable [this] (into [] m))
-  clojure.lang.IDeref
-  (deref [this] m))
+  java.util.Collection
+  (add [this e] (do (.add m e) this))
+  (addAll [this c] (do (.addAll m c) this))
+  (clear [this] (do (.clear m) this))
+  (contains [this o] (.contains m o))
+  (containsAll [this c] (.containsAll m c))
+  (equals [this o] (.equals m o))
+  (hashCode [this] (.hashCode m))
+  (isEmpty [this] (.isEmpty m))
+  (iterator [this] (.iterator m))
+  (remove [this o] (do (.remove m o) this))
+  (removeAll [this c] (do (.removeAll m c) this))
+  (retainAll [this c] (do (.retainAll m c) this))
+  (size [this] (.size m))
+  (toArray [this] (.toArray m))
+  (toArray [this arr] (.toArray m arr))    
+  )
 
-(deftype mutmap [^java.util.HashMap m] 
-  clojure.lang.ITransientMap  
+(defprotocol IUpdateable
+  (update- [o k f]))
+
+(definline update! [m k f]
+  (let [m (with-meta m {:tag 'spork.data.mutable.IUpdateable})]
+    `(.update- ~m ~k ~f)))
+
+(definline tupdate [m k f]
+  (let [m (with-meta m {:tag 'clojure.lang.ITransientAssociative})
+        ml (with-meta m {:tag 'clojure.lang.ILookup})]
+    `(.assoc ~m ~k (~f (.valAt ~ml ~k)))))
+
+(defmacro entry? [e]  `(instance? java.util.Map$Entry ~e))
+(deftype mutmap [^java.util.HashMap m]
+  IUpdateable
+  (update- [o k f]
+    (do (.put m k (f (.get m k)))
+        o))
+  clojure.lang.IPersistentMap
   (valAt [this k]           (.get m k))
   (valAt [this k not-found] (or (.get m k) not-found))
   (assoc [this k v] (do  (.put m k v) this))
-  (conj  [this e]    
-    (let [[k v] e]      
-      (do (.put m k v) this)))
+  (cons  [this e]
+    (if (entry? e)
+      (let [^java.util.Map$Entry e e]
+        (do (.put m (.getKey e) (.getValue e)) this))
+      (let [[k v] e]      
+        (do (.put m k v) this))))
   (without [this k]   (do (.remove m k) this))
-  (persistent [this] (into {}  m))
   clojure.lang.Seqable
   (seq [this] (seq m))
   clojure.lang.Counted 
   (count [coll] (.size m))
-  IFastAccess 
-  (fast-get  [coll k]  (.get m k))
-  (fast-add  [coll v]  (do  (.put  m (first v) (second v)) coll))
-  (fast-drop [coll k]  (do  (.remove m k) coll))
-  IFastHashAccess
-  (fast-put [coll k v] (do (.put m k v) coll))
   IMutable
   (mutable [this] this)
   (immutable [this] (into {} m))
-  clojure.lang.IDeref
-  (deref [this] m))
+  java.util.Map
+  (put    [this k v] (do (.put m k v) this))
+  (putAll [this c] (do (.putAll m c) this))
+  (clear  [this] (do (.clear m) this))
+  (containsKey   [this o] (.containsValue m o))
+  (containsValue [this o] (.containsValue m o))
+  (entrySet [this] (.entrySet m))
+  (keySet   [this] (.keySet m))
+  (get [this k] (.get m k))
+  (equals [this o] (.equals m o))
+  (hashCode [this] (.hashCode m))
+  (isEmpty [this] (.isEmpty m))
+  (remove [this o] (do (.remove m o) this))
+  (values [this] (.values m))
+  (size [this] (.size m)))
 
+(defmacro  indexOf
+  ([arr k off]
+   (let [xs  (with-meta (gensym "Arr")   {:tag 'objects})]
+     `(let [~xs     ~arr
+            bound#  (alength ~xs)]
+        (loop [idx# ~off]
+          (if (>= idx# bound#) -1
+              (if (identical? (aget ~xs idx#) ~k) idx#
+                  (recur (unchecked-inc (unchecked-inc idx#)))              
+                  ))))))  
+  ([arr k] `(indexOf ~arr ~k 0)))
+
+
+(deftype mutarrmap [^:long ^:unsynchronized-mutable cnt ^objects xs]  
+  IUpdateable
+  (update- [o k f]
+    (let [bound  (unchecked-multiply cnt 2)]
+        (loop [idx 0]
+          (if (== idx bound) nil
+              (if (identical? (aget xs idx) k)
+                (let [vidx (unchecked-inc idx)]
+                  (do (aset xs vidx
+                            (f (aget xs vidx)))
+                      o))
+                  (recur (unchecked-add idx 2))              
+                  )))))
+  clojure.lang.IPersistentMap
+  (valAt [this k]
+    (let [bound  (unchecked-multiply cnt 2)]
+        (loop [idx 0]
+          (if (== idx bound) nil
+              (if (identical? (aget xs idx) k) (aget xs (unchecked-inc idx))
+                  (recur (unchecked-add idx 2))              
+                  )))))
+  (valAt [this k not-found]
+    (let [bound  (unchecked-multiply cnt 2)]
+      (loop [idx 0]
+        (if (== idx bound) not-found
+            (if (identical? (aget xs idx) k) (aget xs (unchecked-inc idx))
+                (recur (unchecked-add idx 2))              
+                  )))))
+  (assoc [this k v]
+    (let [idx (indexOf xs k)]
+      (if (not (neg? idx))
+        (do (aset xs (unchecked-inc idx) v)
+            this)
+        (if (< cnt 16)
+          (let [idx (* cnt 2)
+                _ (aset xs idx k)
+                _ (aset xs (unchecked-inc idx) v)
+                _ (set! cnt (unchecked-inc cnt))]
+              this)
+          (reduce (fn [m idx]
+                    (let [idx (* idx 2)
+                          ]
+                      (assoc m 
+                             (aget xs idx)
+                             (aget xs (unchecked-inc idx)))))
+                  (->mutmap) (range 16))))))            
+  (cons  [this e]
+    (if (entry? e)
+      (let [^java.util.Map$Entry e e]
+        (.assoc this  (.getKey e) (.getValue e)))
+      (let [[k v] e]      
+        (.assoc this k v))))
+  (without [this k]
+    (if (pos? cnt)
+      (let [idx (indexOf xs k)]
+        (if (not (neg? idx))
+          (do (aset xs idx nil)
+              (aset xs (unchecked-inc idx) nil)
+              (set! cnt (unchecked-dec cnt))
+              this)
+          this))
+      this))
+  clojure.lang.Seqable
+  (seq [this]
+    (map (fn [idx] (let [idx (* idx 2)]
+                     (clojure.lang.MapEntry.
+                      (aget xs idx)
+                      (aget xs (unchecked-inc idx)))))
+         (range cnt)))
+  clojure.lang.Counted 
+  (count [coll] cnt)
+  IMutable
+  (mutable [this]    this)
+  (immutable [this] (into {} (seq this)))
+  java.util.Map
+  (put    [this k v] (.assoc this k v))
+  (putAll [this c] (throw (Exception. "op not supported yet")))
+  (clear  [this] (dotimes [i cnt]
+                   (do (aset xs i nil)
+                       (aset xs (unchecked-inc i) nil))
+                   this))
+  (containsKey   [this o] (pos? (indexOf xs o)))
+  (containsValue [this o] (pos? (indexOf xs o 1)))
+  (entrySet [this]  (seq this))
+  (keySet   [this] (map key (seq this)))
+  (get [this k] (.valAt this  k))
+  (equals [this o] (.equals xs o))
+  (hashCode [this] (.hashCode xs))
+  (isEmpty [this]  (zero? cnt))
+  (remove [this o] (.without this o))
+  (values [this] (map val (seq this)))
+  (size [this] cnt))
+
+(defn ^mutarrmap ->mutarrmap [& xs]
+  (into (mutarrmap. 0 (object-array 32))
+                    (reduce (fn [^java.util.Map m e]
+                              (if (entry? e)
+                                (let [^java.util.Map$Entry e e]
+                                  (doto m (.put (.getKey e) (.getValue e))))
+                                (let [[k v] e]
+                                  (doto m (.put  k v))))) (java.util.HashMap.)  xs)))
 (defn ^mutmap ->mutmap [& xs]  
-  (mutmap.  (reduce (fn [m [k v]] (fast-put m k v)) (java.util.HashMap.)  xs)))
+  (into (mutarrmap. 0 (object-array 32))
+                    (reduce (fn [^java.util.Map m e]
+                              (if (entry? e)
+                                (let [^java.util.Map$Entry e e]
+                                  (doto m (.put (.getKey e) (.getValue e))))
+                                (let [[k v] e]
+                                  (doto m (.put  k v))))) (java.util.HashMap.)  xs)))
 
 (defn ^mutlist ->mutlist [& xs]  
-  (mutlist. (reduce (fn [^java.util.ArrayList m k] (doto m (.add k)))  (java.util.ArrayList.)  xs)))
+   (mutlist. (reduce (fn [^java.util.ArrayList m k] (doto m (.add k)))  (java.util.ArrayList.)  xs)))
 
-(extend-protocol IMutable
+ (extend-protocol IMutable
   clojure.lang.PersistentVector
-  (mutable [v]   (mutlist. (reduce fast-add (java.util.ArrayList.) v)))
+  (mutable [v]   (into (->mutlist) v))
   (immutable [v] v)
   clojure.lang.PersistentList$EmptyList
-  (mutable [v]   (mutlist. (java.util.ArrayList.)))
+  (mutable [v]   (->mutlist))
   (immutable [v] v)
   clojure.lang.PersistentList
-  (mutable [v]    (mutlist. (reduce fast-add (java.util.ArrayList.) v)))
+  (mutable [v]    (into (->mutlist) v))
   (immutable [v]   v)
   clojure.lang.PersistentArrayMap
-  (mutable [v]   (mutmap. (reduce-kv fast-put (java.util.HashMap.) v)))
+  (mutable [v]   (into (->mutmap) v))
   (immutable [v] v)
   clojure.lang.PersistentHashMap
-  (mutable   [v] (mutmap. (reduce-kv fast-put (java.util.HashMap.) v)))
+  (mutable   [v] (into (->mutmap) v))
   (immutable [v] v))
 
 
@@ -433,7 +533,6 @@
 ;;         (~'deref [this#] ~arrsymb))
 ;;       (defn ~(with-meta ctr {:tag name}) 
 ;;         [~@(map (fn [s] (with-meta  
-      
 
 
   ;; ArrayDeque
@@ -443,3 +542,97 @@
   ;; (conj [o v] (add-pq o v))
   ;; (persistent [o] (into [] (map first (iterator-seq o))))
 
+(comment ;testing
+  ;;So, the surface analysis is that we do get a decent improvement.
+  ;;Can we create lightweight structs, so we're not 
+  ;;~71
+  (let [inner  (atom {:a 2 :b 3}) outer {:inner inner} ]
+    (time (dotimes [i 1000000] (swap! inner (fn [^clojure.lang.Associative m] (.assoc  m :a 3))))))
+  ;;assoc-in kills us due to resolving the nested path
+  ;;~1114
+  (let [inner  {:a 2 :b 3} outer {:inner inner} ]
+    (time (dotimes [i 1000000] (assoc-in outer [:inner :a] 3))))
+  ;;94~
+  (let [inner  {:a 2 :b 3} outer {:inner inner} ]
+    (time (dotimes [i 1000000] (.assoc ^clojure.lang.Associative
+                                       outer
+                                       :inner
+                                       (.assoc ^clojure.lang.Associative inner :a 3))))) 
+  ;;~42/~28 for a mutarr map
+  (let [inner  (mutable {:a 2 :b 3}) outer {:inner inner} ]
+    (time (dotimes [i 1000000] (.assoc ^clojure.lang.Associative inner :a 3))))
+
+  ;;lookup tests
+  ;;~30 ms
+  (let [inner (mutable {:a 2 :b 3})]
+    (time (dotimes [i 1000000] (.valAt ^clojure.lang.ILookup inner :b))))
+  ;;~17ms 
+  (let [inner  {:a 2 :b 3}]
+    (time (dotimes [i 1000000] (.valAt ^clojure.lang.ILookup inner :b))))
+
+  ;;however, our use case puts the assoc map behind an atom, for mutation.
+  ;;~34
+  (let [inner  (atom {:a 2 :b 3})]
+    (time (dotimes [i 1000000] (.valAt ^clojure.lang.ILookup @inner :b))))
+
+  ;;~25ms
+  (let [inner  (atom {:a 2 :b 3})]
+    (time (dotimes [i 1000000] (.valAt ^clojure.lang.ILookup
+                                       (.deref ^clojure.lang.Atom inner) :b))))
+  ;;So with a type hinted atom, we're about 5 ms slower using our mutable arrays for
+  ;;reading....however....
+  ;;we're 2x as slow at writing.  Since we perform multiple writes when updating,
+  ;;I suppose it makes sense to allow this use case.
+  
+  ;;reads are 2xfaster with the arraymap....
+  ;;probably the best of both worlds is just a wrapped object array.
+  ;;we've got a small, possibly mutable array of fields to work with.
+  ;;easiest just to blast over the entries.
+  ;;if we grow beyond 16, we can graduate to a mutmap...
+  )
+
+
+
+;; (defmacro defarralias [name hint fields]
+;;   (let [flds        (mapv (fn [sym] (vary-meta (symbol sym) merge {:tag hint})) fields)
+;;         fld-hints   (zipmap flds (map (comp :tag meta) flds))
+;;         hints       '{long longs int ints double doubles float floats char object}
+;;         keyfields   (mapv keyword fields)
+;;         field-symbs (map (fn [sym] (vary-meta sym dissoc :tag)) fields)
+;;         the-value   (gensym "the-value")
+;;         setters     (flatten-bindings (map-indexed (fn [i s] [(list (keyword s) i) (field-setter s fld-hints the-value)]) flds))
+;;         getters     (flatten-bindings (map-indexed (fn [i s] [(list (keyword s) i) s]) field-symbs))
+;;         arrsymb     (with-meta 'backing-array {:tag hint})
+;;         ctor        (symbol (str "->" name))
+;;         fieldmap    (zipmap keyfields field-symbs)]
+;;    `(do
+;;       (declare ~ctor)
+;;       (deftype ~name [~arrsymb]
+;;         ~@specs
+;;         clojure.lang.ITransientMap  
+;;         (~'valAt [this# k#] 
+;;           (case k# 
+;;             ~@getters
+;;             (throw (Error. (str "Invalid field: " k#)))))
+;;         (~'valAt [this# k# not-found#] 
+;;           (case k# 
+;;             ~@getters
+;;             (throw (Error. (str "Invalid field: " k#)))))
+;;         (~'assoc [this# k# ~the-value]
+;;           (do (case k#
+;;                 ~@setters
+;;                 (throw (Error. (str "Invalid field: " k#))))                                      
+;;               this#))  
+;;         (~'conj [this# e#]    
+;;           (let [[k# v#] e#]      
+;;             (.assoc this# k# v#)))  
+;;         (~'without [this# k#]    
+;;           (throw (Error. (str "Cannot dissoc from a mutable container: " k#))))
+;;         (~'persistent [this#] ~fieldmap)
+;;         clojure.lang.IDeref
+;;         (~'deref [this#] ~arrsymb))
+;;       (defn ~(with-meta ctr {:tag name}) 
+;;         [~@(map (fn [s] (with-meta  
+
+
+ 
