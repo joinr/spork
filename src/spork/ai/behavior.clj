@@ -158,10 +158,23 @@
 ;;specifically the cost of creating lots of hash-maps.  It may be better to
 ;;allow the ability to inline the nodes directly...
 
-(definline second! [coll]
-  (let [c (with-meta (gensym "coll") {:tag 'clojure.lang.Indexed})]
+;; (definline second! [coll]
+;;   (let [c (with-meta (gensym "coll") {:tag 'clojure.lang.Indexed})]
+;;     `(let [~c ~coll]
+;;        (.nth ~c 1 nil))))
+
+(definline val! [coll]
+  (let [c (with-meta (gensym "coll") {:tag 'clojure.lang.MapEntry})]
     `(let [~c ~coll]
-       (.nth ~c 1 nil))))
+       (.val ~c ))))
+
+(defmacro with-result [[[l r] res] & expr]
+  (let [result (with-meta (gensym "result") {:tag 'clojure.lang.MapEntry})
+        ]
+    `(let [~result  ~res
+          ~l (.key ~result)
+           ~r (.val ~result)]
+       ~@expr)))
 
 ;;note, originally used satisfies? but extends? is much faster..
 (defn behavior? [obj] (extends? IBehaviorTree (class obj)))
@@ -228,13 +241,15 @@
 ;;we could probably just make these functions...
 ;;convenience? macros...at least it standardizes success and failure,
 ;;provides an API for communicating results.
-(defmacro success [expr]  `(vector :success ~expr))
-(defmacro fail [expr]     `(vector :fail ~expr))
-(defmacro run [expr]      `(vector :run ~expr))
+
+
+(defmacro success [expr]  `(clojure.lang.MapEntry. :success ~expr));`(vector :success ~expr))
+(defmacro fail [expr]     `(clojure.lang.MapEntry. :fail ~expr))    ;`(vector :fail ~expr))
+(defmacro run [expr]      `(clojure.lang.MapEntry. :run ~expr))     ;`(vector :run ~expr))
 
 (defn success? "Indicates if the behavior succeded."
-  [^clojure.lang.Indexed res]
-  (identical? :success (.nth res 0)))
+  [^clojure.lang.MapEntry res]
+  (identical? :success (.key res)))
 
 ;;Behavior Nodes
 ;;==============
@@ -265,7 +280,7 @@
   (->bnode  :and nil
      (fn [ctx]
       (reduce (fn [acc child]
-                (let [[res ctx] (beval child (second! acc))]
+                (let [[res ctx] (beval child (val! acc))]
                   (case-identical? res
                     :run       (reduced (run ctx))
                     :success   (success ctx)
@@ -278,7 +293,7 @@
 ;;    running."
 ;;   [xs ctx]
 ;;   `(reduce (fn [acc# child#]
-;;                (let [[res# ctx#] (beval child# (second! acc#))]
+;;                (let [[res# ctx#] (beval child# (val! acc#))]
 ;;                   (case-identical? res#
 ;;                     :run       (reduced (run ctx#))
 ;;                     :success   (success ctx#)
@@ -297,7 +312,7 @@
          (cond (== idx# bound#)  acc#
                (reduced? acc#) @acc#
                :else
-               (let [[res# ctx#] (beval (.nth ~v idx#) (second! acc#))]
+               (let [[res# ctx#] (beval (.nth ~v idx#) (val! acc#))]
                  (recur  (unchecked-inc idx#)         
                          (case-identical? res#                                   
                                           :success   (success ctx#)
@@ -308,7 +323,7 @@
   (throw (Exception. "->reduce is not implemented..."))
   (fn [ctx] 
     (reduce (fn [acc child]
-              (let [[res acc] (beval child (second! acc))]
+              (let [[res acc] (beval child (val! acc))]
                 (case-identical? res
                   :run       (reduced (run acc))
                   :success   (success acc)
@@ -324,7 +339,7 @@
   (->bnode  :seq nil
      (fn [ctx]
       (reduce (fn [acc child]
-                (let [[res chctx] (beval child (second! acc))]
+                (with-result [[res ctx] (beval child (val! acc))]
                   (case-identical? res
                     :run       (reduced (run ctx))
                     :success   (success ctx)
@@ -338,7 +353,7 @@
   (->bnode  :or nil 
      (fn [ctx]
        (reduce (fn [acc child]
-                 (let [[res ctx] (beval child (second! acc))]
+                 (with-result [[res ctx] (beval child (val! acc))]
                    (case-identical? res
                      :run       (reduced (run ctx))
                      :success   (reduced (success ctx))
@@ -351,7 +366,7 @@
   (not :run) => :run, since running is not determined."
   [b]
   (->bnode  :not nil
-      (fn [ctx] (let [[res ctx] (beval b ctx)]
+      (fn [ctx] (with-result [[res ctx] (beval b ctx)]
                    (case-identical? res
                      :run     (run     ctx)
                      :success (fail    ctx)
@@ -376,11 +391,11 @@
 (defn always-succeed
   "Always force success by returning a successful context."
   [b]
-  (fn [ctx] (success (second! (beval b ctx)))))
+  (fn [ctx] (success (val! (beval b ctx)))))
 (defn always-fail
   "Always force failure by returning a failed context."
   [b]
-  (fn [ctx] (fail (second! (beval b ctx)))))
+  (fn [ctx] (fail (val! (beval b ctx)))))
 ;;a behavior that waits until the time is less than 10.
 (defn ->wait-until
   "Observes the context, using pred (typically some eventful condition), to 
@@ -647,8 +662,7 @@
          inner#)
        [:fail ~ctx])))
 
-
 (defn return! [res]
   (if (success? res)
-    (second! res)
+    (val! res)
     (throw (Exception. (str [:failed-behavior res])))))

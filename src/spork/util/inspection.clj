@@ -72,3 +72,11 @@
                   (map get-spec (reverse (flatten-bases cls)))]
               [class methods]))))
 
+(defn spec-map [cls]
+  (-> (reduce (fn [[k xs m] x]
+                          (if (coll? x) [k (conj xs x) m]
+                              [x [] (assoc m k xs)])) [nil [] {}] (derive-spec cls))
+      (last) 
+      (dissoc nil)))
+
+  

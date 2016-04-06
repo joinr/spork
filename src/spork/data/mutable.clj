@@ -8,11 +8,6 @@
   (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
 
 
-(defmacro as [type obj]
-  (let [typed (with-meta (gensym "obj") {:tag type})]
-    `(let [~typed ~obj]
-       ~typed)))
-
 (comment 
 ;;#Additional Reducers 
 ;;These haven't made it into clojure.core yet, they probably will in
@@ -133,6 +128,11 @@
 ;;If a tag is provided, we can see if the type is a mutable.
 ;;If it is, we can replace the slot names with appropriate 
 ;;mutable alternatives at compile time.
+;;Tag protocol
+(defprotocol IMutableContainer)
+(defprotocol IMutable
+  (mutable [ob])
+  (immutable [obj]))
 
 (declare mutable? slot->field slot->accessor)
 
@@ -203,11 +203,6 @@
              :else
              `(set! ~f ~v))))
 
-;;Tag protocol
-(defprotocol IMutableContainer)
-(defprotocol IMutable
-  (mutable [ob])
-  (immutable [obj]))
 
 ;;Defines a mutable container.  Ueser may supply their own
 ;;implementations of persistent, deref, conj, and without in the
@@ -232,7 +227,7 @@
                                    acc))  #{} specs)]
     `(deftype ~name ~flds 
          ~@specs
-         spork.data.mutable.IMutableContainer
+         spork.data.mutable.IMutableContainer         
          clojure.lang.ITransientMap  
          (~'valAt [this# k#] 
            (case k# 
@@ -349,6 +344,48 @@
   (values [this] (.values m))
   (size [this] (.size m)))
 
+
+;; (deftype mutsortedmap [^java.util.TreeMap m]
+;;   IUpdateable
+;;   (update- [o k f]
+;;     (do (.put m k (f (.get m k)))
+;;         o))
+;;   clojure.lang.IPersistentMap
+;;   (valAt [this k]           (.get m k))
+;;   (valAt [this k not-found] (or (.get m k) not-found))
+;;   (assoc [this k v] (do  (.put m k v) this))
+;;   (cons  [this e]
+;;     (if (entry? e)
+;;       (let [^java.util.Map$Entry e e]
+;;         (do (.put m (.getKey e) (.getValue e)) this))
+;;       (let [[k v] e]      
+;;         (do (.put m k v) this))))
+;;   (without [this k]   (do (.remove m k) this))
+;;   clojure.lang.Sorted
+  
+;;   clojure.lang.Seqable
+;;   (seq [this] (seq m))
+;;   clojure.lang.Counted 
+;;   (count [coll] (.size m))
+;;   IMutable
+;;   (mutable [this] this)
+;;   (immutable [this] (into {} m))
+;;   java.util.SortedMap
+;;   (put    [this k v] (do (.put m k v) this))
+;;   (putAll [this c] (do (.putAll m c) this))
+;;   (clear  [this] (do (.clear m) this))
+;;   (containsKey   [this o] (.containsValue m o))
+;;   (containsValue [this o] (.containsValue m o))
+;;   (entrySet [this] (.entrySet m))
+;;   (keySet   [this] (.keySet m))
+;;   (get [this k] (.get m k))
+;;   (equals [this o] (.equals m o))
+;;   (hashCode [this] (.hashCode m))
+;;   (isEmpty [this] (.isEmpty m))
+;;   (remove [this o] (do (.remove m o) this))
+;;   (values [this] (.values m))
+;;   (size [this] (.size m)))
+
 (defmacro  indexOf
   ([arr k off]
    (let [xs  (with-meta (gensym "Arr")   {:tag 'objects})]
@@ -407,7 +444,7 @@
                       (assoc m 
                              (aget xs idx)
                              (aget xs (unchecked-inc idx)))))
-                  (->mutmap) (range 16))))))            
+                  (mutmap. (java.util.HashMap.)) (range 16))))))            
   (cons  [this e]
     (if (entry? e)
       (let [^java.util.Map$Entry e e]
@@ -464,18 +501,12 @@
                                 (let [[k v] e]
                                   (doto m (.put  k v))))) (java.util.HashMap.)  xs)))
 (defn ^mutmap ->mutmap [& xs]  
-  (into (mutarrmap. 0 (object-array 32))
-                    (reduce (fn [^java.util.Map m e]
-                              (if (entry? e)
-                                (let [^java.util.Map$Entry e e]
-                                  (doto m (.put (.getKey e) (.getValue e))))
-                                (let [[k v] e]
-                                  (doto m (.put  k v))))) (java.util.HashMap.)  xs)))
-
+  (into (mutmap. (java.util.HashMap.)) xs))
+                    
 (defn ^mutlist ->mutlist [& xs]  
    (mutlist. (reduce (fn [^java.util.ArrayList m k] (doto m (.add k)))  (java.util.ArrayList.)  xs)))
 
- (extend-protocol IMutable
+(extend-protocol IMutable
   clojure.lang.PersistentVector
   (mutable [v]   (into (->mutlist) v))
   (immutable [v] v)
@@ -559,7 +590,7 @@
                                        :inner
                                        (.assoc ^clojure.lang.Associative inner :a 3))))) 
   ;;~42/~28 for a mutarr map
-  (let [inner  (mutable {:a 2 :b 3}) outer {:inner inner} ]
+  (let [inner  (->mutarrmap (seq {:a 2 :b 3})) outer {:inner inner} ]
     (time (dotimes [i 1000000] (.assoc ^clojure.lang.Associative inner :a 3))))
 
   ;;lookup tests
