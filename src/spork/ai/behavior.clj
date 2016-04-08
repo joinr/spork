@@ -218,17 +218,21 @@
 ;;                                         ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
 ;;         ))
 
+(defmacro behave! [b ctx]
+  `(.behave ~(with-meta b {:tag 'spork.ai.behavior.IBehaviorTree}) ~ctx))
+
 (definline beval
   "Maps a behavior tree onto a context, returning the familiar 
   [[:fail | :success | :run] resulting-context] pair."
   [b ctx]
-  `(loop [b#   ~b
-          ctx# ~ctx] 
-    (cond (vector?   b#)   b# ;;result with context stored in meta.        
-          (fn?       b#)  (recur (b# ctx#) ctx#) ;;apply the function to the current context
-          :else      (recur (behave b# ctx#) nil) ;;evaluate the behavior node.
+  (let [beh (with-meta  (gensym "behavior") {:tag 'spork.ai.behavior.IBehaviorTree})]
+    `(loop [b#   ~b
+            ctx# ~ctx] 
+       (cond (vector?   b#)   b# ;;result with context stored in meta.        
+             (fn?       b#)  (recur (b# ctx#) ctx#) ;;apply the function to the current context
+             :else      (recur (behave! b# ctx#) nil) ;;evaluate the behavior node.
                                         ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
-        )))
+        ))))
 
 ;;if we have a nested set of behaviors, we can compile the behavior to
 ;;get more performance. 
@@ -476,6 +480,102 @@
 ;;either define the context as a vector of args, which is bound to the
 ;;environment, or as a map...
 ;;we'd like to allow destructuring...
+
+;;we can make key-fn smarter....and allow type-hinted
+;;optimizations to take hold.  Specifically, we can allow a
+;;{:fields [x y z] :as ^BehaviorContext benv} to generate
+;;optimized code.
+
+(defn static? [field]
+  (java.lang.reflect.Modifier/isStatic
+   (.getModifiers field)))
+(defn get-record-field-names [record]
+  (->> record
+       .getDeclaredFields
+       (remove static?)
+       (map #(.getName %))
+       (remove #{"__meta" "__extmap"})
+       (map symbol)))
+
+;;typed destructuring...
+;;Should make performance faster using direct method access rather
+;;than function call overhead associated with generic "get"
+(defmacro kwinfo [vars]
+  (let [args (first (rest &form))
+        m    (if-let [res (get args :as)]
+               res
+               (gensym "map"))
+        type (get (meta m) :tag
+                  (get (meta args) :tag  'clojure.lang.ILookup))
+        m   (with-meta m {:tag type})]
+    `{:fields '[~@(:keys args)]
+      :symb   '~m
+      :type   ~type}))
+
+(defn kwinfo->mapspec [{:keys [fields symb type] :as m}]  
+  (cond (isa? type clojure.lang.IRecord) ;we have fields
+        (let [known-fields (set (get-record-field-names type))
+              map-fields (group-by (fn [s] (if (known-fields s)
+                                             :fields
+                                             :keys)) fields)]
+          (assoc m :fields (:fields map-fields)
+                   :keys   (:keys map-fields)))              
+        (isa? type clojure.lang.ILookup) ;we can use .valAt
+        (-> m (dissoc :fields)
+              (assoc :keys fields))
+        :else
+        (-> m (dissoc :fields :type)              
+              (assoc :keys fields  ))))
+        ;;use get... 
+
+(defmacro mapspec->arg-body [ms & body]
+  (let [{:keys [fields keys symb type]}  (if (map? ms) ms (eval ms))
+                                        ;symb
+        tsymb (with-meta symb {:tag (if (identical? clojure.lang.ILookup
+                                                        type)
+                                          'clojure.lang.ILookup
+                                          type)})
+        get-field (fn [f]
+                    (let [getter (symbol (str "." (name f)))]
+                      `[~f (~getter ~symb)]))
+        get-key   (fn [k]
+                    `[~k (.valAt  ~tsymb  ~(keyword (name k)))])]
+    `(fn [~symb]
+       (let [;~tsymb ~symb
+             ~@(reduce (fn [acc [l r]] (conj acc l r))
+                      []
+                      (concat (for [f fields]
+                                (get-field f))
+                               (for [k keys]
+                                 (get-key k))))]
+        ~@body))))
+
+(defmacro hinted-key-fn 
+  [vars & body]
+  (if (map? vars)
+    `(mapspec->arg-body ~(kwinfo->mapspec (eval `(kwinfo ~vars)))
+                        ~@body )
+    (let [args (rest &form)
+          type (get (meta args) :tag)
+          argmap (with-meta `{:keys [~@vars] :as ~'context} {:tag type})]
+      `(fn  ; [{:keys [~@vars] :as ~'context}]
+            [~argmap]
+            ~@body)
+      `(mapspec->arg-body ~(kwinfo->mapspec (eval `(kwinfo ~argmap)))
+                        ~@body ))))
+      
+  
+;;now we can extract hinted fields based on the types...
+
+
+;;we need to xref the fields with the record's fields to find out
+;;which fields are accessible via direct field access at compile
+;;time.
+
+;;We can enforce a type-hint in conjunction with the fields
+;;definition...either by metadata or using the keyword
+;;arg in the map.  Clojure convention prefers metadata for
+;;typehinting...
 (defmacro key-fn
   [vars & body]
   (if (map? vars)
@@ -484,15 +584,20 @@
     `(fn [{:keys [~@vars] :as ~'context}]
        ~@body)))
 
+
+
 ;;we're going to transform a (fn ... [args] body) into something
 ;;like (defn ~name ~doc? [args] body)
 ;;so really, just replacing (fn []) with (defn ~name ~doc) in the outer
 ;;form...
 (defmacro fn->defn
   ([name-opts expr]
-   (let [name-opts (if (coll? name-opts) name-opts
-                       [name-opts])
-         [fst args body] (macroexpand-1 expr)]
+   (let [name-opts      (if (coll? name-opts) name-opts
+                            [name-opts])
+         [fst args body] (loop [xpr expr]
+                           (if (= (name (first xpr)) "fn")
+                             xpr
+                             (recur (macroexpand-1 xpr))))]
      `(defn ~@name-opts ~args ~body)))
   ([name docstring expr]
    `(fn->defn [~name ~docstring] ~expr)))
@@ -551,14 +656,14 @@
 (defmacro befn
   ([vars body]
    (let [ctx-name  (if (map? vars) (get vars :as 'context) 'context)]
-     `(key-fn ~vars
+     `(hinted-key-fn ~vars
                 (if-let [res# ~body]
                   (spork.ai.behavior/beval res# ~ctx-name)
                   (fail ~ctx-name)))))
   ([name vars body]
    (let [ctx-name (if (map? vars) (get vars :as 'context) 'context)]
      `(fn->defn ~name
-                (key-fn ~vars                        
+                (hinted-key-fn ~vars                        
                         (if-let [res# ~body]
                           (spork.ai.behavior/beval res# ~ctx-name)
                           (fail ~ctx-name))))))
