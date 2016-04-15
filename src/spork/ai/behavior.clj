@@ -556,7 +556,7 @@
     `(mapspec->arg-body ~(kwinfo->mapspec (eval `(kwinfo ~vars)))
                         ~@body )
     (let [args (rest &form)
-          type (get (meta args) :tag)
+          type (get (meta args) :tag 'clojure.lang.ILookup)
           argmap (with-meta `{:keys [~@vars] :as ~'context} {:tag type})]
       `(fn  ; [{:keys [~@vars] :as ~'context}]
             [~argmap]

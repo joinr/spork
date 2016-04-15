@@ -158,6 +158,29 @@
        (set-entities- ctx  (.assoc ^clojure.lang.Associative entities id ent))
        new-messages))))
 
+;;batch message delivery.
+;;We can be much more efficient in our messaging service if, as we
+;;process messages in a step, we avoid paying the cost of sending
+;;individual messages all the time.  Currently, the costs are:
+;;a) looking up the (destination) entity's messages.  
+;;Rather than performing a lookup on every message (of which there may be
+;;millions, we can chunk the messages out by time.  So, if we collect
+;;a batch of messages from a step, after the step is completed (i.e.
+;;all entities have pushed out messages), we can commit the messages
+;;collectively.
+;;Even better, when we send messages from the entity's current time,
+;;if the message is "to itself" at the same time, we can treat this
+;;message being handled instantaneously instead of queuing it (going
+;;through the rigamarole of conjing, dissocing, and all the machinery
+;;therein.  So, having the concept of instantaneous messages, and further
+;;self-messages, should help performance significantly (no need to
+;;dispatch).
+
+(comment 
+  (defrecord message-batch [^java.util.ArrayList  messages ^long t ])
+  (defn push-messages      [xs {:keys [entities pending t]}])
+)
+
 ;;note:
 ;;Interestingly, small structures are quick to update using the object constructor...
 ;;implementing a record type because maps aren't efficiently specialized.
@@ -194,8 +217,7 @@
             e        (.valAt ^clojure.lang.ILookup entities to)
             msgs     (.valAt ^clojure.lang.ILookup e    :messages)
             new-msgs (.cons ^clojure.lang.IPersistentCollection msgs
-                            [tfut (.assoc ^clojure.lang.Associative msg :from from)])
-            pending  (.valAt ^clojure.lang.ILookup  ctx  :pending)
+                            [tfut (.assoc ^clojure.lang.Associative msg :from from)])           
             eset     (.valAt ^clojure.lang.ILookup  pending tfut #{})]                    
         (entityctx.                  
          (.assoc ^clojure.lang.Associative entities to
@@ -318,7 +340,7 @@
 ;;a time delta, we should wait the amount of time
 ;;the delta indicates.  Waiting induces a change in the
 ;;remaining wait time, as well as a chang
-(befn wait-in-state [entity current-message ctx]
+(befn wait-in-state ^behaviorenv [entity current-message ctx]
   (let [;_ (println [:wait-in-state entity msg])
         msg    current-message
         t     (fget msg :t)
@@ -341,7 +363,7 @@
           )))))
                 
 ;;choose-state only cares about the entity.
-(befn choose-state  [entity]
+(befn choose-state  ^behaviorenv [entity]
       (let [nxt (gen/case-identical? (:state (deref! entity))        
                     :dwelling  :deploying
                     :deploying :dwelling
@@ -349,7 +371,7 @@
                     )]       
         (push! entity :state nxt)))
 
-(befn choose-time [entity]
+(befn choose-time ^behaviorenv [entity]
       (let [twait
             (gen/case-identical? (:state (deref! entity))
               :dwelling  (+ 365  (rand-int 730))
@@ -360,7 +382,7 @@
 
 ;;This will become an API call...
 ;;instead of associng, we can invoke the protocol.
-(befn schedule-update  {:keys [entity ctx new-messages] :as benv}
+(befn schedule-update  ^behaviorenv {:keys [entity ctx new-messages] :as benv}
       (let [st       (deref! entity)
             nm       (:name st)
             duration (:wait-time st)
@@ -378,7 +400,7 @@
             schedule-update] ~ctx))
 
 ;;pick an initial move, log the spawn.
-(befn spawn {:keys [entity] :as ctx}
+(befn spawn ^behaviorenv {:keys [entity] :as ctx}
       (when (identical? (:state (deref! entity)) :spawning)
         (->and! [(->do (fn [_] (debug (str  "Entity " (:name (deref! entity)) " spawned"))))
                  move]
@@ -405,13 +427,13 @@
 ;;the entity will see if a message has been sent
 ;;externally, and then compare this with its current internal
 ;;knowledge of messages that are happening concurrently.
-(befn check-messages [entity current-messages ctx]
+(befn check-messages ^behaviorenv [entity current-messages ctx]
   (let [old-msgs (fget (deref! entity) :messages)]
     (when-let [msgs (pq/chunk-peek! old-msgs)]
       (let [new-msgs (rconcat (r/map val  msgs) current-messages)
             _        (b/swap!! entity (fn [^clojure.lang.Associative m]
                                         (.assoc m :messages
-                                                (pq/chunk-pop old-msgs msgs)
+                                                (pq/chunk-pop! old-msgs msgs)
                                                 )))]
             (bind!! {:current-messages new-msgs})))))
 
@@ -423,7 +445,7 @@
 ;;this is to send a message....If there's time remaining,
 ;;we tell ourselves to keep moving, and move again prior to
 ;;committing.
-(befn advance [entity ctx]
+(befn advance ^behaviorenv [entity ctx]
       (if (not (identical? (:state (deref! entity)) :spawn))
         (->and [wait-in-state move])
         spawn))
@@ -438,28 +460,31 @@
 
 ;;type sig:: msg -> benv/Associative -> benv/Associative
 ;;this gets called a lot.
-(defn message-handler [msg {:keys [entity current-messages ctx] :as benv}]
-  (do ;(println (str [(:name (deref! entity)) :handling msg]))
+(defn message-handler [msg ^behaviorenv benv]
+  (let [entity (.entity benv)
+        current-messages (.current-messages benv)
+        ctx  (.ctx benv)]
+    (do ;(println (str [(:name (deref! entity)) :handling msg]))
       (beval 
        (gen/case-identical? (:msg msg)
-         ;;generic update function.  Temporally dependent.
-         :update (if (== (:t (deref! entity)) (:t (deref! ctx)))
-                   (do (success benv)) ;entity is current
-                   (->and [(fn [^clojure.lang.Associative ctx] (success (.assoc ctx :current-message msg)))                           
-                           advance
-                           ]))
-         :spawn  (->and [(push! entity :state :spawning)                        
-                         spawn]
-                        )
-         ;;allow the entity to change its behavior.
-         :become (push! entity :behavior (:data msg))
-         :do     (->do (:data msg))
-         (throw  (Exception. (str [:unknown-message-type (:msg msg) :in  msg]))))
-       benv)))
+           ;;generic update function.  Temporally dependent.
+           :update (if (== (:t (deref! entity)) (:t (deref! ctx)))
+                     (do (success benv)) ;entity is current
+                     (->and [(fn [^clojure.lang.Associative ctx] (success (.assoc ctx :current-message msg)))                           
+                             advance
+                             ]))
+           :spawn  (->and [(push! entity :state :spawning)                        
+                           spawn]
+                          )
+           ;;allow the entity to change its behavior.
+           :become (push! entity :behavior (:data msg))
+           :do     (->do (:data msg))
+           (throw  (Exception. (str [:unknown-message-type (:msg msg) :in  msg]))))
+       benv))))
 
 ;;handle the current batch of messages that are pending for the
 ;;entity.  We currently define a default behavior.
-(befn handle-messages {:keys [entity current-messages ctx] :as benv}
+(befn handle-messages ^behaviorenv {:keys [entity current-messages ctx] :as benv}
       (when current-messages
         (reduce (fn [acc msg]                  
                   (do ;(debug [:handling msg])
@@ -471,7 +496,7 @@
 ;;stimuli, and then try to move out.
 
 ;;This is a pretty typical prototype for entities to follow.
-(befn default [entity]
+(befn default ^behaviorenv [entity]
       (->or [(->and [check-messages
                      handle-messages])             
              advance]))

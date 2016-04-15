@@ -32,6 +32,7 @@
                  [org.clojure/data.avl "0.0.13"]
                 ; [iota "1.1.2"]
                  [org.clojure/core.rrb-vector "0.0.11"]
+                 [org.clojure/data.finger-tree "0.0.2"]
                  [ctries.clj "0.0.3"]
 ;                 [clojure-watch "LATEST"] ;ephemeral dependency.
                  ]
