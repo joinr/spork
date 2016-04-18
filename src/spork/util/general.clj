@@ -31,7 +31,37 @@
       `(let [~v ~e]    (cond ~@tests :else ~default))
       `(let [~v ~e]    (cond ~@tests
                              :else (throw (IllegalArgumentException. (str "No matching clause: " ~v)))))
-        )))
+      )))
+
+;; (defmacro case-eq?
+;;   "Like case, except uses == directly to create the cases, rather than 
+;;    the hash-based case function that's default.  Seems 3x faster than built in 
+;;    clojure.core/case if you're using keyword literals....Beware the downfall of 
+;;    using/expecting identity-based comparison on anything else though.  This is a 
+;;    specific use case.  Caller beware."
+;;   [e & clauses]
+;;   (let [v       (gensym "v")
+;;         default (when (odd? (count clauses)) (last  clauses))                   
+;;         pairs      (partition 2 clauses)
+;;         assoc-test (fn assoc-test [m test expr]
+;;                      (if (contains? m test)
+;;                        (throw (IllegalArgumentException. (str "Duplicate case test constant: " test)))
+;;                        (assoc m test expr)))
+;;         pairs (reduce
+;;                (fn [m [test expr]]
+;;                  (if (seq? test)
+;;                    (reduce #(assoc-test %1 %2 expr) m test)
+;;                    (assoc-test m test expr)))
+;;                {} pairs)
+;;         tests (reduce (fn [acc [case res]]
+;;                         (-> acc 
+;;                             (conj `(== ~v ~case))
+;;                             (conj res))) [] pairs) ]
+;;     (if (odd? (count clauses))
+;;       `(let [~v ~e]    (cond ~@tests :else ~default))
+;;       `(let [~v ~e]    (cond ~@tests
+;;                              :else (throw (IllegalArgumentException. (str "No matching clause: " ~v)))))
+;;         )))
 
 (defn ^java.io.BufferedReader string-reader [^String s]
   (-> (java.io.StringReader. s) (java.io.BufferedReader.)))

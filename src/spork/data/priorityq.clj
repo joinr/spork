@@ -10,7 +10,8 @@
    priority or weight.  Weight is assumed to be, although not enforced, a 
    numeric value, typically a floating point value."
   (:require [clojure.data.avl :as avl]
-            [clojure.core.reducers :as r]))
+            [clojure.core.reducers :as r]
+            [spork.data.protocols]))
 
 
 ;;note, this persistent PQ is no longer in favor, because most of our 
@@ -242,6 +243,11 @@
               _meta
               ^:unsynchronized-mutable ^int _hash
               ^:unsynchronized-mutable ^int _hasheq]
+  spork.data.protocols.IFrontBack
+  (front [this] (.nth this 0 nil))
+  (back  [this] (.nth this (unchecked-dec n) nil))
+  spork.data.protocols.IInsertable
+  (insert [this a] (.cons this a))
   clojure.data.avl.IAVLTree
   (getTree [this] (.getTree basemap))
   clojure.data.avl.INavigableTree
@@ -346,7 +352,12 @@
 (deftype tpri [dir 
               ^:unsynchronized-mutable ^clojure.data.avl.AVLTransientSet basemap
               ^:unsynchronized-mutable ^long n
-              ^:unsynchronized-mutable _meta]
+               ^:unsynchronized-mutable _meta]
+  spork.data.protocols.IFrontBack
+  (front [this] (.nth this 0 nil))
+  (back  [this] (.nth this (unchecked-dec n) nil))
+  spork.data.protocols.IInsertable
+  (insert [this a] (.conj this a))
   clojure.lang.IObj
   (meta [this] _meta)
   (withMeta [this m] (do (set! _meta m) this))
@@ -401,7 +412,11 @@
 ;;         hd (first m)
 ;;         tl (latest m t)]
     
-        
+
+(defprotocol IChunkQueue
+  (chunk-peek- [obj])
+  (chunk-pop- [obj]))
+
 ;;remove
 (defn chunk-peek [^pri m]   (subseq m <= (marker (tnext m))))
 ;;This is waaaay faster than going the seq/doall route in subseq.
