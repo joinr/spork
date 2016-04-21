@@ -1,3 +1,4 @@
+;;This namespace should be effectively OBE.
 (ns spork.sim.updates
   (:require [spork.sim [data :as sim]]
             [spork.sim.pure [network :as simnet]]

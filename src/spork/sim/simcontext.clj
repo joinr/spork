@@ -47,6 +47,7 @@
 (ns spork.sim.simcontext
   (:require [spork.sim [data :as sim] [agenda :as agenda] [updates :as updates]]
             [spork.sim.pure     [network :as simnet]]
+;            [spork.ai.core :as ai]
             [spork.entitysystem [store :as store]]
             [spork.data [mutable :as mut]]
             [spork.util [metaprogramming :as util]
@@ -68,6 +69,42 @@
     "Allows user to request multiple updates, represented as 
      [update-time request-by request-type] vectors."))
 
+;;New
+;;Environment for evaluating entity behaviors, adapted for use with the simcontext.
+;; (defrecord behaviorenv [entity behavior current-messages new-messages ctx current-message]
+;;   ai/IEntityMessaging
+;;   (entity-messages- [e id] current-messages)
+;;   (push-message-    [e from to msg] ;should probably guard against posing as another entity
+;;     (let [t        (.valAt ^clojure.lang.ILookup  msg :t)
+;;           _        (debug [:add-new-messages-to new-messages])
+;;           additional-messages (swap!! (or new-messages  (atom []))
+;;                                         (fn [^clojure.lang.IPersistentCollection xs]
+;;                                           (.cons  xs
+;;                                              (.assoc ^clojure.lang.Associative msg :from from))))]                            
+;;       (behaviorenv. entity
+;;                     behavior
+;;                     current-messages
+;;                     additional-messages
+;;                     ctx
+;;                     current-message)))
+;;   ai/IEntityStorage
+;;   (commit-entity- [env]
+;;     (let [ctx      (deref! ctx)
+;;           ent      (deref! entity)
+;;          ; existing-messages (atom (:messages ent))          
+;;           id  (:name ent)
+;;           _   (debug  [:committing ent])
+;;           _   (debug  [:new-messages new-messages])
+;;           ]
+;;       (reduce
+;;        (fn [acc m]
+;;          (do 
+;;           ;(println [:pushing m :in acc])
+;;           (sim/notify acc (:from m) (:to m) m )))
+;;        (set-entities- ctx  (.assoc ^clojure.lang.Associative entities id ent))
+;;        new-messages))))
+
+
 ;;Simulation Context
 ;;==================
 ;;The simcontext is a container for all the information we need to 
@@ -80,6 +117,12 @@
 ;;different kinds of simulation definitions, if say, we wanted 
 ;;more fields than the defaults.  We'll see...
 (declare ->msimcontext)
+
+;;updater is no longer necessary, legacy design bloat.
+;;we handle updates via messaging.
+;;propogator is useful since it can wrap sync or async event
+;;handling for us; keep it.
+;;state is...meh.
 
 (defrecord simcontext 
   [^spork.sim.agenda.agenda
@@ -165,11 +208,31 @@
                             (transient updater)  xs)
                     propogator
                     state)))
-  clojure.lang.IEditableCollection ;WIP
-  (asTransient [coll] (->msimcontext scheduler ;supported by agenda.  
-                                     (transient updater) ;a weak agenda with some special state, tracks previous updates. 
-                                     propogator  ;event propogation, represented by a propogation network. 
-                                     state)))
+   ;; ai/IBehaviorProvider
+   ;; (load-entity-   [ctx ent msg]
+   ;;     (behaviorenv. (atom ent)
+   ;;                   (.valAt ^clojure.lang.ILookup ent :behavior) 
+   ;;                   [msg]
+   ;;                   nil
+   ;;                   (atom ctx)
+   ;;                   msg))
+   ;; ai/IEnvironmentProvider  
+   ;; (get-entities-  [obj]    (ai/get-entities- state))
+   ;; (set-entities-  [obj xs] (simcontext. scheduler
+   ;;                                       updater
+   ;;                                       propogator
+   ;;                                       (ai/set-entities- state xs)))
+   ;; (set-entity-    [obj id ent]  (simcontext. scheduler
+   ;;                                            updater
+   ;;                                            propogator
+   ;;                                            (ai/set-entity- state id ent)))
+   ;; (get-pending    [obj]  updater)
+   ;; (get-t          [obj]  (sim/current-time scheduler))
+   clojure.lang.IEditableCollection ;WIP
+   (asTransient [coll] (->msimcontext scheduler ;supported by agenda.  
+                                      (transient updater) ;a weak agenda with some special state, tracks previous updates. 
+                                      propogator  ;event propogation, represented by a propogation network. 
+                                      state)))
 
 ;;A mutable simulation context.  Currently almost identical to the
 ;;persistent version.
@@ -275,28 +338,31 @@
   `(let [sched# (f (.scheduler ctx) ~@args)]
      (.assoc ctx sched#)))                                      
 
+;;Import-vars here...
+
+
 ;I should probably just use the protocol functions here....rather than 
 ;re-implementing them....that's a refactoring/clean-up step.  I'm just 
 ;trying to get the port working.
 (defn current-time
   "Fetches the current time of the context."
-  [^simcontext ctx]  (sim/current-time (.scheduler ctx)))
+  [^simcontext ctx]  (sim/current-time ctx))
 
 (defn current-quarter
   "Don't really need this in agenda..Fetches the current quarter."
-  [^simcontext ctx] (agenda/quarter (.scheduler ctx)))
+  [^simcontext ctx] (agenda/quarter ctx))
 
 (defn elapsed
   "Computes the time elapsed since the last event in the context."
-  [^simcontext ctx] (agenda/elapsed (.scheduler ctx)))
+  [^simcontext ctx] (agenda/elapsed ctx))
 
 (defn add-time
   "Ensures that time t exists on the agenda."
-  [t ^simcontext ctx] (update-field ctx :scheduler agenda/add-time t))
+  [t ^simcontext ctx] (agenda/add-time ctx t))
 
 (defn set-final-time
   "Sets the upper bound on the time horizon."
-  [tf ^simcontext ctx] (update-field ctx :scheduler agenda/set-final-time tf)) 
+  [tf ^simcontext ctx] (agenda/set-final-time ctx tf)) 
 
 ;;Maybe rewrite this guy...Older functions expect add-listener, 
 ;;should replace them with library calls.
@@ -387,21 +453,24 @@
    events, it will return the result of popping the next event, which may or may
    not result in a change in the current time.  Probably needs re-looking..."
   [^simcontext ctx] 
-  (update-field ctx :scheduler agenda/advance-time))
+  (agenda/advance-time ctx))
 
 (defn get-final-time
   "Returns the upper bound on the simulation time, if bounded."
-  [^simcontext ctx] (agenda/final-time (.scheduler ctx)))
+  [^simcontext ctx] (agenda/final-time ctx))
 
 (defn get-next-time
   "Returns the time of the next event in the context."
   [^simcontext ctx] 
-  (sim/next-time (.scheduler ctx)))
+  (sim/next-time  ctx))
 
+;;I don't think we'll need this too much any more.
+;;We get this automatically by requesting updates, since
+;;the pending updates correspond to times.
 (defn add-times
   "Add multiple times to the schedule of the simulation context."
   [xs ^simcontext ctx]
-  (update-field ctx :scheduler agenda/add-times xs))
+  (agenda/add-times ctx xs))
 
 (defn get-time
   "Duplicate functionality of current-time.  Deprecate?"
@@ -410,7 +479,7 @@
 (defn has-time-remaining?
   "Consult the context to determine if there are, in terms of scheduled
    time events and a possible final time, any time events remaining."
-  [^simcontext ctx] (agenda/still-time? (.scheduler ctx)))
+  [^simcontext ctx] (agenda/still-time?  ctx))
 
 (defn make-context
   "Creates a default simulation context record from component pieces.  If no 
@@ -425,11 +494,14 @@
 
 (def empty-context (make-context))
 
+;;this should be deferred to the entity...in our current scheme it's not.
 (defn last-update
   "Returns the last time the entity was updated in the simulation context."
   [entity-name ^simcontext ctx]
   (updates/last-update (.updater ctx) entity-name))
 
+;;this is based off of messages, akin to next-recepients.
+;;should have a correspondence.
 (defn get-updates
   "Returns a list of updates, by type, scheduled for time t in the simulation
    context."

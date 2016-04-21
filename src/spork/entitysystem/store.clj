@@ -55,8 +55,11 @@
 ;we'll follow that practice, but nothing is technically stopping us from having
 ;heterogenous data across a component.
 (defprotocol IComponent 
-  (component-domain [x] "Returns the logical domain of the component")
-  (component-data   [x] "Returns the values associated with the component."))
+  (component-domain- [x] "Returns the logical domain of the component")
+  (component-data-   [x] "Returns the values associated with the component."))
+
+(defn component-domain [^clojure.lang.Indexed obj] (.nth obj 0))
+(defn component-data [^clojure.lang.Indexed obj]   (.nth obj 1))
 
 (extend-protocol IComponent
   clojure.lang.PersistentArrayMap
@@ -68,7 +71,7 @@
   (component-domain [x] (.key x))
   (component-data [x]   (.val x)))
 
-(defn ->component   [domain data]  (clojure.lang.MapEntry. domain data))
+(definline ->component   [domain data]  `(clojure.lang.MapEntry. ~domain ~data))
 (defn as-component  [domain data]  (->component  domain  data))
 
 ;;Entity Definition
@@ -80,7 +83,13 @@
   (conj-component    [e c] "Conjoin a component onto the entity")
   (disj-component    [e c] "Disjoin a component from the entity")
   (get-component     [e domain] "Return a component from the entity that matches the domain")
-  (entity-components [e] "Get the unique components that define entity e"))
+  (entity-components [e] "Get the unique components that define entity e")
+  (entity-domains  [e] "Return the domains the entity is defined over."))
+
+;;I think we want to move away from this..
+;;Just use associative structures.  Specifically, use small maps from clj-tuple.
+;;We can also define views that match a particular "type" of entity and
+;;have field-based access to the entities.
 
 ;We define a useful container for entities.  We use this as an initial and 
 ;intermediate form for querying and computation, but the entity is "really" 
@@ -88,15 +97,80 @@
 ;it's useful to have a logical association of an entity to its components, 
 ;particularly when creating entities, or when inspecting them.  We use this 
 ;to get a reified form of the entity as needed.
-(defrecord entity [name components]
+
+;; (defrecord entity [name components]
+;;   IEntity 
+;;   (entity-name [e] name)
+;;   (conj-component [e c] 
+;;     (entity. name (assoc components  (component-domain c) c)))
+;;   (disj-component [e c] 
+;;     (entity. name (dissoc components (component-domain c) c)))
+;;   (get-component [e domain]          (get components domain))
+;;   (entity-components [e]             components)
+;;   (entity-domains [e] (map component-domain components)))
+
+;;So...we're just incurring the extra hit of using maps.  blech.
+;;Well, we can always implement lightweight entities on top of a db too..
+(deftype entity [^:unsynchronized-mutable name
+                 ^:unsynchronized-mutable domains
+                 ^:unsynchronized-mutable components
+                 ^clojure.lang.IPersistentMap m
+                 ]
+  clojure.lang.IHashEq
+  (hasheq [this] (.hasheq ^clojure.lang.IHashEq m ))
+  (hashCode [this] (.hashCode ^clojure.lang.IHashEq m))
+  (equals [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
+  (equiv [this o]
+    (cond (identical? this o) true
+          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+          (or (instance? clojure.lang.Sequential o)
+              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+              :else nil))  
+  clojure.lang.IObj
+  (meta     [this] (.meta ^clojure.lang.IObj m))
+  (withMeta [this xs] (entity. name domains components
+                               (with-meta ^clojure.lang.IObj m xs)))
   IEntity 
-  (entity-name [e] name)
+  (entity-name [e] (if name name
+                       (do (set! name (.valAt m :name))
+                           name)))
   (conj-component [e c] 
-    (entity. name (assoc components (component-domain c) c)))
+    (entity. name nil nil (.assoc m (component-domain c) (component-data c))))
   (disj-component [e c] 
-    (entity. name (dissoc components (component-domain c) c)))
-  (get-component [e domain]          (get components domain))
-  (entity-components [e]             components))
+    (entity. name domains components (.without m (component-domain c))))
+  (get-component [e domain]          (.valAt m domain))
+  (entity-components [e]  (if components components
+                              (do (set! components (into [] (seq  m)))
+                                  components)))
+  (entity-domains [e] (if domains domains
+                          (do (set! domains (keys m))
+                              domains)))
+  clojure.lang.IPersistentMap
+  (valAt [this k] (.valAt m k))
+  (valAt [this k not-found] (.valAt m k not-found))
+  (assoc [this k v] (entity. nil nil nil (.assoc m k v)))
+  (cons  [this e]     (entity. nil nil nil (.cons m e)))
+  (without [this k]   (entity. nil nil nil (.without m k)))
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.Counted
+  (count [coll] (.count m))
+  java.util.Map
+  (put    [this k v]  (.assoc this k v))
+  (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c)))
+  (clear  [this] (entity. nil nil nil {}))
+  (containsKey   [this o] (.containsKey ^java.util.Map m o))
+  (containsValue [this o] (.containsValue ^java.util.Map m o))
+  (entrySet [this] (.entrySet ^java.util.Map m))
+  (keySet   [this] (.keySet ^java.util.Map m))
+  (get [this k] (.valAt m k))
+  ;(equals [this o] (.equals ^java.util.Map m o))
+  (isEmpty [this] (.isEmpty ^java.util.Map m))
+  (remove [this o] (.without this o))
+  (values [this] (.values ^java.util.Map m))
+  (size [this] (.count m))
+  )
+
 
 ;;What we really want here is a flyweight entity container...
 
@@ -104,38 +178,45 @@
 ;;(entity-merge ent {component val*}) => update the entries in the db via assoc
 ;;and friends.  Could further optimize via diffing and other stuff.
 
+
+;;I think there's a better basic form than this for components.
+;;Components are entries, which is great; However, we want entities
+;;to be collections of entries (i.e. maps).
 (extend-protocol IEntity 
   nil 
   (entity-name [n] nil)
   (entity-components [n] nil)
+  (entity-domains [e] nil)
   clojure.lang.PersistentArrayMap
   (entity-name [e] (.valAt e :name))
   (conj-component [e c] 
-    (.assoc e :components 
-       (assoc (.valAt e :components) (component-domain c) (component-data c))))
+    (.assoc e (component-domain c) 
+              (component-data c)))
   (disj-component [e c]     (.without e (component-domain c)))
-  (get-component [e domain] (get (.valAt e :components) domain))
-  (entity-components [e] (.valAt e :components))
+  (get-component [e domain] (.valAt e  domain))
+  (entity-components [e] (seq e))
+  (entity-domains [e] (keys e))
   clojure.lang.PersistentHashMap
   (entity-name [e] (.valAt e :name))
   (conj-component [e c] 
-    (.assoc e :components 
-       (assoc (.valAt e :components) (component-domain c) (component-data c))))
+    (.assoc e (component-domain c) 
+              (component-data c)))
   (disj-component [e c]     (.without e (component-domain c)))
-  (get-component [e domain] (get (.valAt e :components) domain))
-  (entity-components [e] (.valAt e :components)))
+  (get-component [e domain] (.valAt e  domain))
+  (entity-components [e] (seq e))
+  (entity-domains [e] (keys e)))
 
-(def empty-entity (->entity nil {}))
+(def empty-entity (entity. nil nil nil {}))
 
 (defn conj-components
   "Conjoins each component in cs to the components in ent ."
   [ent cs]
-  (reduce (fn [e c] (conj-component e c)) ent cs))
+  (reduce (fn [e c] (conj-component  e  c)) ent cs))
 
 (defn build-entity
   "Assembles an entity record from one or more component records."
   [name components]
-  (conj-components (->entity name {})  components))
+  (conj-components (entity. name nil nil {})  components))
 
 (defn keyval->component
   "Converts key/value pairs into components.  Allows a simple shorthand
@@ -153,10 +234,7 @@
 (defn entity-from-map [m]
   "Allows shorthand definition of entities from simple map structures.
    Keys in the map correspond to component domains of the entity."
-  (let [entname (get m :name)]
-    (->entity entname 
-              (reduce #(assoc %1 (:domain %2) %2) {}
-                      (map keyval->component (dissoc m :name))))))
+  (entity. nil nil nil m))
                   
 (defn entity->components
   "Retrieve the component data associated with an entity."
@@ -259,7 +337,7 @@
   (components-of  [db id]  (reduce (fn [acc dom] (assoc acc dom (get-in domain-map [dom id]))) 
                                    {} (get entity-map id)))
   (get-entity [db id] (when-let [comps (.components-of db id)]
-                        (entity. id comps)))
+                        (entity. id nil nil comps)))
   (conj-entity     [db id components] 
       (if (map? components) 
         (reduce-kv (fn [^EntityStore acc dom dat]
@@ -270,8 +348,8 @@
 
 (def emptystore (->EntityStore {} {}))
 
-(defn domain-keys [db] (keys (domains db)))
-(defn get-domain [db d] (get (domains db) d))
+(defn domain-keys [db]   (keys (domains db)))
+(defn get-domain  [db d] (get (domains db) d))
 (defn disj-entity [db id xs] 
   (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
 
@@ -307,6 +385,8 @@
 ;; (drop-entry db 2    :age 22) 
 ;; )
 
+;;These are the primary operations associated with entities...
+;;Basically, having a managed 2dimensional map for us.
 ;;__Convenience operations on the entity store__
 (defn gete     [store nm k]
   (when-let [e (get-entry store nm k)]
@@ -348,6 +428,17 @@
        (get-in (val entry#) ~(vec path) ~v))
     `(gete ~store ~nm ~dom)))
 
+
+;; (defn entity-at
+;;   "Fetch a map-version of the entity in ces associated with nm."
+;;   [ces nm]
+;;   (let [e (get-entity ces nm)]
+;;     (reduce-kv (fn [acc c [_ v]]
+;;                  (assoc acc c v))
+;;                {:name nm} (:components e))))
+
+(def entity-at get-entity)
+
 ;protocol-derived functionality 
 
 (defn reduce-entries
@@ -383,13 +474,19 @@
   [store name]
   (drop-entry store name :parameters))
 
+;;What about records?
+;;we can add support for maps here...
 (defn add-entity 
   "Associate component data with id.  Records are {:component data} or 
   [[component data]] form.  Alternately, add a pre-built entity record."
   ([db id records] (reduce (fn [acc domdat]
                              (add-entry acc id (first domdat) (second domdat)))
                            db records))
-  ([db ent] (conj-entity db (entity-name ent) (entity-components ent))))
+  ([db ent]
+   (if (map? ent)
+     (let [id (entity-name ent)]
+       (reduce-kv (fn [acc domain v] (add-entry acc id domain v)) db ent))                    
+     (conj-entity db (entity-name ent) (entity-components ent)))))
 
 (defn add-entities
   "Register multiple entity records at once..." 
@@ -666,11 +763,21 @@
      `(~'keyval->component ~(first expr) ~(second expr))
       expr))
 
+;; (defmacro emit-entity-builder [args cs]
+;;   `(fn [~'id ~@(distinct (remove #{'id} args))]    
+;;      (~'spork.entitysystem.store/build-entity ~'id 
+;;        [~@(map binding->component 
+;;                (partition 2 (filter
+;;                              (complement nil?)
+;;                              cs)))])))
+
 (defmacro emit-entity-builder [args cs]
   `(fn [~'id ~@(distinct (remove #{'id} args))]    
      (~'spork.entitysystem.store/build-entity ~'id 
        [~@(map binding->component 
-               (partition 2 (filter (complement nil?) cs)))])))
+               (partition 2 
+                             
+                             cs))])))
 
 (defn spec-merger [args specs]
   `(fn ~args

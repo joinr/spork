@@ -4,13 +4,14 @@
            [java.awt Graphics2D Graphics]
            [javax.swing JComponent ImageIcon]
          )
-  (:require [spork.graphics2d.canvas]
-            [spork.graphics2d.swing :as jgraphics]))
+  (:require
+   [spork.graphics2d.canvas]
+   [spork.graphics2d.swing :as jgraphics]))
 
 (defprotocol ICanvasPanel
   (^clojure.lang.IFn getPaintf   [obj])
   (setPainter                    [obj atm])
-  (^spork.graphics2d.canvas.swing.CanvasGraphics getBufferGraphics [obj])
+  (^spork.graphics2d.swing.CanvasGraphics getBufferGraphics [obj])
   (^BufferedImage getBuffer      [obj]))
 
 (defrecord ppdata [width height painter bg ^BufferedImage buffer  metadata]

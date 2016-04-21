@@ -1,6 +1,6 @@
 (ns spork.graphics2d.canvas
   (:require [spork.protocols  [spatial :as spatial]]
-            [spork.graphics2d [primitive :as prim]
+            [spork.graphics2d ;[primitive :as prim]
                               [font :as f]]))
 
 ;We can actually do some cool stuff here...
