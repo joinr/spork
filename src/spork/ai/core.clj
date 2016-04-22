@@ -12,8 +12,8 @@
 
 ;;probably turn this into a record type...
 (defmacro ->msg
-   ([t msg] `{:t ~t :msg ~msg})
-   ([from to t msg] `{:from ~from :to ~to :t ~t :msg ~msg}))
+  ([t msg]  `{:t ~t :from (:from ~msg) :to (:to ~msg) :msg ~msg})
+  ([from to t msg] `{:t ~t :from ~from :to ~to :msg ~msg}))
 
 ;;"faster" versions of get and assoc that avoid hitting clojure.lang.RT, doing direct
 ;;method dispatch instead.

@@ -171,6 +171,9 @@
   (size [this] (.count m))
   clojure.core.protocols/IKVReduce
   (kv-reduce [coll f init] (reduce-kv f init m))
+  clojure.core.protocols/CollReduce
+  (coll-reduce [coll f init] (reduce m f init))
+  (coll-reduce [coll f] (reduce m f))
   )
 
 
@@ -407,13 +410,17 @@
      (assoce ~store ~nm ~k (~f entry# ~@args))
      (throw (Exception. (str [:no-entry ~nm ~k])))))
 
+(defmacro update-entity [store nm f & args]
+  `(if-let [e# (get-entity ~store ~nm)]
+     (add-entity (~f e# ~@args))))
+
 (defmacro update-ine
   [store [nm dom & path] f & args]
   (if (seq path)
     `(if-let [entry# (get-entry ~store ~nm ~dom)]
        `(let [res# (update-in  entry# ~(vec path) ~f ~@args)]
           (assoce ~store ~nm ~dom res#)))
-    `(updatee ~nm ~dom ~f)))
+    `(updatee ~store ~nm ~dom ~f)))
  
 (defmacro assoc-ine
   [store [nm dom & path] v]
@@ -424,10 +431,10 @@
     `(assoce ~store ~nm ~dom ~v)))
 
 (defmacro get-ine
-  [store [nm dom & path] v]
+  [store [nm dom & path] & v]
   (if (seq path)  
     `(when-let [entry# (get-entry ~store ~nm ~dom)]
-       (get-in entry# ~(vec path) ~v))
+       (get-in entry# ~(vec path) ~@v))
     `(gete ~store ~nm ~dom)))
 
 

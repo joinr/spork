@@ -506,6 +506,17 @@
                   (assoc-state  k v c)))
             ctx m)))
 
+(defn merge-entity [m  ctx] 
+  (if (map? m)
+    (reduce-kv (fn [^simcontext c k v]
+                 (if (identical? k :trigger) (v c) 
+                     (store/mergee c k v)))
+               ctx m)
+    (reduce (fn [^simcontext c [k v]]
+              (if (identical? k :trigger) (v c) 
+                  (store/mergee c k v)))
+            ctx m)))
+
 ;it'd be really nice if we had a simple language for describing updates...
 ;not unlike Conrad's "patch" 
 ;there are a few idioms that keep popping up....
