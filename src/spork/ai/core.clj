@@ -185,7 +185,7 @@
           ;(println [:pushing m :in acc])
           (push-message- acc (:from m) (:to m) m )))
        (set-entity- ctx   id ent)
-       new-messages)))(
+       new-messages))))
 
 ;;batch message delivery.
 ;;We can be much more efficient in our messaging service if, as we

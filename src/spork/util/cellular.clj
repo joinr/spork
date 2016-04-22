@@ -130,7 +130,7 @@
   clojure.lang.Counted
   (count [this] (count @contents))
   clojure.lang.IPersistentVector
-  (cons [this a] (do (swap! contents conj-any a) this))
+  (cons [this a] (do (swap! contents spork.util.collections/conj a) this))
   (length [this]  (count @contents))
   (assocN [this index value] (do (swap! contents assoc  index value) this))
   clojure.core.protocols/IKVReduce
@@ -143,14 +143,14 @@
   (valAt [this k] (get @contents  k))
   (valAt [this k not-found] (get @contents k not-found))  
   clojure.lang.IPersistentMap
-  (assoc [this k v]    (do (swap! contents assoc-any k v) this))
+  (assoc [this k v]    (do (swap! contents spork.util.collections/assoc k v) this))
   (equals [this o]     (or (identical? @contents o) (= @contents o)))  
   ;containsKey implements (contains? pm k) behavior
-  (containsKey [this k] (contains-any?  @contents k))
+  (containsKey [this k] (spork.util.collections/contains?  @contents k))
   (entryAt [this k]     (throw (Exception. "Unsupported op .entryAt on cells")))
   ;without implements (dissoc pm k) behavior
   (without [this k] (let [m @contents]
-                      (do (reset! contents (dissoc-any m k))
+                      (do (reset! contents (spork.util.collections/dissoc m k))
                           this))) 
   clojure.lang.IFn
   ;makes lex map usable as a function
@@ -217,7 +217,7 @@
   clojure.lang.Counted
   (count [this] (count contents))
   clojure.lang.IPersistentVector
-  (cons [this a] (do (set! contents (conj-any contents a)) this))
+  (cons [this a] (do (set! contents (spork.util.collections/conj contents a)) this))
   (length [this]  (count contents))
   (assocN [this index value] (do (set! contents (assoc contents  index value)) this))
   clojure.core.protocols/IKVReduce
@@ -230,13 +230,13 @@
   (valAt [this k] (get contents  k))
   (valAt [this k not-found] (get contents k not-found))  
   clojure.lang.IPersistentMap
-  (assoc [this k v]    (do (set! contents (assoc-any contents k v)) this))
+  (assoc [this k v]    (do (set! contents (spork.util.collections/assoc contents k v)) this))
   (equals [this o] (or (identical? contents o) (= contents o)))  
   ;containsKey implements (contains? pm k) behavior
-  (containsKey [this k] (contains-any? contents k))
+  (containsKey [this k] (spork.util.collections/contains? contents k))
   (entryAt [this k]     (throw (Exception. "Unsupported op .entryAt on mcell" )))
   ;without implements (dissoc pm k) behavior
-  (without [this k]  (do (set! contents (dissoc-any contents k))
+  (without [this k]  (do (set! contents (spork.util.collections/dissoc contents k))
                          this)) 
   clojure.lang.IFn
   ;makes lex map usable as a function
@@ -427,7 +427,7 @@
 (defn update-cells [m cell-paths]
   (reduce (fn [acc [cell path]]            
             (if (altered? cell)
-                (assoc-in-any acc path @cell)
+                (spork.util.collections/assoc-in acc path @cell)
                 acc))
           m cell-paths)) 
 
@@ -435,7 +435,7 @@
   [m path-map]
   (reduce-kv 
    (fn [acc s p] 
-     (assoc-in-any acc p s))
+     (spork.util.collections/assoc-in acc p s))
    m
    path-map))          
             
@@ -450,7 +450,7 @@
                         [s `(let [res# (get-in ~symb ~path)]
                               (~cell-fn res#))]))
            ~state (reduce-kv (fn [acc# s# p#] 
-                               (assoc-in-any acc# p# s#))
+                               (spork.util.collections/assoc-in acc# p# s#))
                              ~symb
                              ~path-map) ;;packs the path...
            ~update-state! (fn  ([]   (update-cells ~state ~path-map))
@@ -544,9 +544,9 @@
   (defn add-demand!! [dmap activations deactivations  d]
     (let [n (get d :name)
           start (get d :startday)]
-      (do (core/swap-cell!  dmap          core/assoc-any n  d)
-          (core/swap-cell!  activations   core/assoc-any start n)
-          (core/swap-cell!  deactivations core/assoc-any (+ start (get d :duration)) n))))
+      (do (swap-cell!  dmap          spork.util.collections/assoc n  d)
+          (swap-cell!  activations   spork.util.collections/assoc start n)
+          (swap-cell!  deactivations spork.util.collections/assoc (+ start (get d :duration)) n))))
 
   (defn add-demand!!! [dmap activations deactivations  d]
     (let [n (get d :name)
@@ -557,11 +557,11 @@
 
   (defn test-demands [n] (r/map (fn [n] {:name n :startday n :duration  55}) (range-reducer n)))
   (defn add-demands! [dstore ds]
-    (core/with-cells [{dmap          [:demandmap]
+    (with-cells [{dmap          [:demandmap]
                        activations   [:activations]
                        deactivations [:deactivations]
                        :as state}                      dstore] 
-      (do (core/with-transient-cells [dmap activations deactivations]
+      (do (with-transient-cells [dmap activations deactivations]
             (reduce (fn [acc d] 
                       (add-demand!!! dmap activations deactivations d))
                     nil ds)
@@ -569,15 +569,15 @@
 
   ;;nested cell defs also work fine.
   (defn add-demands!! [dstore ds]
-    (core/with-cells [{dmap          [:demandmap]
+    (with-cells [{dmap          [:demandmap]
                        activations   [:activations]
                        deactivations [:deactivations] 
                        :as state1}              dstore]
-      (core/with-cells [{dmap          [:demandmap]
+      (with-cells [{dmap          [:demandmap]
                          activations   [:activations]
                          deactivations [:deactivations]
                          :as state2}            state1]                                 
-        (do (core/with-transient-cells [dmap activations deactivations]
+        (do (with-transient-cells [dmap activations deactivations]
               (reduce (fn [acc d] 
                         (add-demand!!! dmap activations deactivations d))
                       nil ds)

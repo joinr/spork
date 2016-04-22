@@ -69,40 +69,7 @@
     "Allows user to request multiple updates, represented as 
      [update-time request-by request-type] vectors."))
 
-;;New
-;;Environment for evaluating entity behaviors, adapted for use with the simcontext.
-;; (defrecord behaviorenv [entity behavior current-messages new-messages ctx current-message]
-;;   ai/IEntityMessaging
-;;   (entity-messages- [e id] current-messages)
-;;   (push-message-    [e from to msg] ;should probably guard against posing as another entity
-;;     (let [t        (.valAt ^clojure.lang.ILookup  msg :t)
-;;           _        (debug [:add-new-messages-to new-messages])
-;;           additional-messages (swap!! (or new-messages  (atom []))
-;;                                         (fn [^clojure.lang.IPersistentCollection xs]
-;;                                           (.cons  xs
-;;                                              (.assoc ^clojure.lang.Associative msg :from from))))]                            
-;;       (behaviorenv. entity
-;;                     behavior
-;;                     current-messages
-;;                     additional-messages
-;;                     ctx
-;;                     current-message)))
-;;   ai/IEntityStorage
-;;   (commit-entity- [env]
-;;     (let [ctx      (deref! ctx)
-;;           ent      (deref! entity)
-;;          ; existing-messages (atom (:messages ent))          
-;;           id  (:name ent)
-;;           _   (debug  [:committing ent])
-;;           _   (debug  [:new-messages new-messages])
-;;           ]
-;;       (reduce
-;;        (fn [acc m]
-;;          (do 
-;;           ;(println [:pushing m :in acc])
-;;           (sim/notify acc (:from m) (:to m) m )))
-;;        (set-entities- ctx  (.assoc ^clojure.lang.Associative entities id ent))
-;;        new-messages))))
+
 
 
 ;;Simulation Context

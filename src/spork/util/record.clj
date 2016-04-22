@@ -284,8 +284,37 @@
 ;     :OtherFilled (* STR (? :OtherFilled))}))
     
 
-                  
+;;quick example of how to do field lookup thunks in clojure.
+(comment 
+(deftype fieldlookup [^long x y z ^clojure.lang.IPersistentMap extmap]
+  clojure.lang.ILookup
+  (valAt [this k] (.valAt this k nil))
+  (valAt [this k else] 
+    (case k
+      :x x 
+      :y y 
+      :z z
+      (get extmap k else)))
+  clojure.lang.IKeywordLookup
+  (getLookupThunk [this k] 
+    (case k
+      :x (reify clojure.lang.ILookupThunk
+           (get [thunk gtarget]
+             (if (identical? (class gtarget) fieldlookup)
+               (. ^fieldlookup gtarget -x)
+               thunk)))
+      :y  (reify clojure.lang.ILookupThunk
+            (get [thunk gtarget]
+              (if (identical? (class gtarget) fieldlookup)
+                (. ^fieldlookup gtarget -y)
+                thunk)))
+      :z (reify clojure.lang.ILookupThunk
+           (get [thunk gtarget]
+             (if (identical? (class gtarget) fieldlookup)
+               (. ^fieldlookup gtarget -z)
+               thunk)))
+      nil)))
   
-  
+)
   
   
