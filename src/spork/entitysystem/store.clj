@@ -176,7 +176,6 @@
   (coll-reduce [coll f] (reduce m f))
   )
 
-
 ;;What we really want here is a flyweight entity container...
 
 ;;We can define entity-reductions which allow the dsl to extend for reduce...
@@ -270,11 +269,10 @@
    corresponds to the last component data found.  This means entity2's data will 
    be returned in cases where the domains overlap."
   ([e1 e2 id] 
-     (->entity id
-               (reduce-kv (fn [acc k v]
-                            (assoc acc k v))
-                          (entity-components e1)
-                          (entity-components e2))))
+     (entity. id nil nil 
+               (into {}
+                     (concat (entity-components e1)
+                             (entity-components e2)))))
   ([e1 e2] (merge-entity  e1 e2 (keyword (gensym "merged")))))
   
 (defn ent-seq? [entcoll] (satisfies? IEntity (first (seq entcoll))))
@@ -415,17 +413,18 @@
      (add-entity (~f e# ~@args))))
 
 (defmacro update-ine
-  [store [nm dom & path] f & args]
+  [store [nm dom & path :as xs] f & args]
   (if (seq path)
     `(if-let [entry# (get-entry ~store ~nm ~dom)]
-       `(let [res# (update-in  entry# ~(vec path) ~f ~@args)]
-          (assoce ~store ~nm ~dom res#)))
+       (let [res# (update-in  entry# ~(vec path) ~f ~@args)]
+         (assoce ~store ~nm ~dom res#))
+       (throw (Exception. (str [:invalid-entry ~xs]))))
     `(updatee ~store ~nm ~dom ~f)))
  
 (defmacro assoc-ine
   [store [nm dom & path] v]
   (if (seq path)  
-    `(if-let [entry# (get-entry ~store ~nm ~dom)]
+    `(if-let [entry# (or (get-entry ~store ~nm ~dom) {})]
        (let [res# (assoc-in  entry# ~(vec path) ~v)]
          (assoce ~store ~nm ~dom res#)))
     `(assoce ~store ~nm ~dom ~v)))
@@ -488,9 +487,13 @@
 (defn add-entity 
   "Associate component data with id.  Records are {:component data} or 
   [[component data]] form.  Alternately, add a pre-built entity record."
-  ([db id records] (reduce (fn [acc domdat]
-                             (add-entry acc id (first domdat) (second domdat)))
-                           db records))
+  ([db id records]
+   (if (map? records)
+     (reduce-kv (fn [acc dom dat]
+                 (add-entry acc id dom dat)) db records)
+     (reduce (fn [acc domdat]
+               (add-entry acc id (first domdat) (second domdat)))
+             db records)))
   ([db ent]
    (if (map? ent)
      (let [id (entity-name ent)]
@@ -817,7 +820,19 @@
        (fn ~newargs
          (conj-components (specbuilder# ~@flatargs)  
             (list ~@(map binding->component 
-                         (partition 2 (filter (complement nil?) cs)))))))))
+                         (partition 2      cs)
+                                    )))))))
+
+;; (defmacro emit-complex-entity-builder [args specs cs]
+;;   (let [newargs (into ['id] (distinct (remove #{'id} args)))
+;;         flatargs (flatten-args newargs)]
+;;     `(let [specbuilder#  (eval (spec-merger (quote ~flatargs) (quote ~specs)))]             
+;;        (fn ~newargs
+;;          (conj-components (specbuilder# ~@flatargs)  
+;;             (list ~@(map binding->component 
+;;                          (partition 2 (filter (complement nil?)
+;;                                               cs)
+;;                                     ))))))))
 
 ;macro to define functions for building stock templates for entities
 ;allows us to define namespaced functions to build default entities easily.
