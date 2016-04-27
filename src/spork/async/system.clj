@@ -5,6 +5,9 @@
 ;;way to have multiple systems, rather than
 ;;a single, localized system living in an atom.
 ;;The single system works nicely for the moment though.
+;;We should probably lift this into a localized system
+;;definition, so that we can apply local control to systems,
+;;possibly with the same names.
 (ns spork.async.system
   (:require [clojure.core.async :as async :refer [alts! alts!!]]))
 
@@ -35,7 +38,7 @@
           (.stop! proc))
         (reset! system nil))))
 (kill-all!)
-  
+
 (defprotocol IWorker
   (start! [obj])
   (stop!  [obj]))

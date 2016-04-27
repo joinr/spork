@@ -148,6 +148,7 @@
   clojure.lang.IPersistentMap
   (valAt [this k] (.valAt m k))
   (valAt [this k not-found] (.valAt m k not-found))
+  (entryAt [this k] (.entryAt m k))
   (assoc [this k v] (entity. nil nil nil (.assoc m k v)))
   (cons  [this e]     (entity. nil nil nil (.cons m e)))
   (without [this k]   (entity. nil nil nil (.without m k)))
@@ -410,7 +411,7 @@
 
 (defmacro update-entity [store nm f & args]
   `(if-let [e# (get-entity ~store ~nm)]
-     (add-entity (~f e# ~@args))))
+     (add-entity ~store (~f e# ~@args))))
 
 (defmacro update-ine
   [store [nm dom & path :as xs] f & args]
