@@ -403,7 +403,7 @@
 (defn closest [^pri m t]
   (avl/nearest m <= (->pentry t Long/MAX_VALUE nil)))
 (defn tnext [^pri m]
-  (when-let [^clojure.lang.MapEntry e (.peek m)]
+  (when-let [^clojure.lang.MapEntry e (and m (.peek m))]
     (.nth ^clojure.lang.Indexed (.key e) 0)))
 
 (definline marker [t] `(->pentry ~t Long/MAX_VALUE nil))

@@ -246,7 +246,6 @@
 ;;convenience? macros...at least it standardizes success and failure,
 ;;provides an API for communicating results.
 
-
 (defmacro success [expr]  `(clojure.lang.MapEntry. :success ~expr));`(vector :success ~expr))
 (defmacro fail [expr]     `(clojure.lang.MapEntry. :fail ~expr))    ;`(vector :fail ~expr))
 (defmacro run [expr]      `(clojure.lang.MapEntry. :run ~expr))     ;`(vector :run ~expr))
@@ -288,7 +287,7 @@
                   (case-identical? res
                     :run       (reduced (run ctx))
                     :success   (success ctx)
-                    :fail      (reduced [:fail ctx])))) (success ctx) xs))
+                    :fail      (reduced (fail ctx))))) (success ctx) xs))
      xs))
 
 ;; (defmacro ->and!
@@ -320,7 +319,7 @@
                  (recur  (unchecked-inc idx#)         
                          (case-identical? res#                                   
                                           :success   (success ctx#)
-                                          :fail      (reduced [:fail ctx#])
+                                          :fail      (reduced (fail ctx#))
                                           :run       (reduced (run ctx#))))))))))
 ;;this is broken...
 (defn ->reduce [f xs]
@@ -765,7 +764,7 @@
          (spork.ai.behavior/beval
           inner# ~ctx)
          inner#)
-       [:fail ~ctx])))
+       (fail ~ctx))))
 
 (defn return! [res]
   (if (success? res)
