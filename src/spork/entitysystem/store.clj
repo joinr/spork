@@ -183,6 +183,18 @@
   )
 )
 
+;;TODO- lazily load components so the entity
+;;type is more of a cursor.  For now, the
+;;performance hit isn't significant for the
+;;workload...
+
+;;For lazy loading of components...
+;;we know the entity has domains in the store..
+;;initially the store is our backing map...
+;;We can build the cache incrementally on read..
+;;when we do a valat, we lookup the component in the
+;;background...
+
 ;;a lazy reference to an entity; basically a lazy
 ;;map.  Derived from a backing entity store; fields
 ;;are only accessed on-demand, and cached.  Modified
@@ -202,13 +214,13 @@
 ;;entries linear in the size of assoc/dissoc on the
 ;;map reference.
 (deftype entity [^:unsynchronized-mutable name
-                    ^:unsynchronized-mutable domains
-                    ^:unsynchronized-mutable components
-                    ^clojure.lang.IPersistentMap m
-                    ^clojure.lang.IPersistentSet altered
-                    ]
+                 ^:unsynchronized-mutable domains
+                 ^:unsynchronized-mutable components
+                 ^clojure.lang.IPersistentMap m
+                 ^clojure.lang.IPersistentSet altered
+                 ]
   clojure.lang.IHashEq
-  (hasheq [this]   (.hasheq ^clojure.lang.IHashEq m ))
+  (hasheq [this]   (.hasheq ^clojure.lang.IHashEq m))
   (hashCode [this] (.hashCode ^clojure.lang.IHashEq m))
   (equals [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
   (equiv [this o]
@@ -242,8 +254,11 @@
   (valAt [this k] (.valAt m k))
   (valAt [this k not-found] (.valAt m k not-found))
   (entryAt [this k] (.entryAt m k))
-  (assoc [this k v] (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
-  (cons  [this e]     (entity. nil nil nil (.cons m e)    (.cons altered (key e))))
+  (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
+  (cons  [this e]   
+    (entity. nil nil nil (.cons m e)
+             (if (map? e) (.cons altered (keys e))
+                 (.cons altered (key e)))))
   (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
   clojure.lang.Seqable
   (seq [this] (seq m))
@@ -615,9 +630,9 @@
   ([db ent]
    (let [id (entity-name ent)]
      (reduce (fn alteration [acc k]
-               (if-let [v (.valAt ent k)] ;entry exists.
-                 (assoce acc id k v)
-                 (dissoce acc id k) ;component has been dissoced
+               (if-let [^clojure.lang.MapEntry e (.entryAt ent k)] ;entry exists.
+                     (assoce acc id k (.val e))
+                     (dissoce acc id k) ;component has been dissoced
                  ))
              db (altered-keys ent)))))
   

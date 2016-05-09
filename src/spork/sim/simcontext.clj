@@ -69,9 +69,6 @@
     "Allows user to request multiple updates, represented as 
      [update-time request-by request-type] vectors."))
 
-
-
-
 ;;Simulation Context
 ;;==================
 ;;The simcontext is a container for all the information we need to 
