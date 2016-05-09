@@ -86,6 +86,10 @@
   (entity-components [e] "Get the unique components that define entity e")
   (entity-domains  [e] "Return the domains the entity is defined over."))
 
+(defprotocol IAlteredKeys
+  "A protocol for finding changes in an entity reference, for efficient committing."
+  (altered-keys [e]))
+
 ;;I think we want to move away from this..
 ;;Just use associative structures.  Specifically, use small maps from clj-tuple.
 ;;We can also define views that match a particular "type" of entity and
@@ -109,6 +113,7 @@
 ;;   (entity-components [e]             components)
 ;;   (entity-domains [e] (map component-domain components)))
 
+(comment 
 ;;So...we're just incurring the extra hit of using maps.  blech.
 ;;Well, we can always implement lightweight entities on top of a db too..
 (deftype entity [^:unsynchronized-mutable name
@@ -176,6 +181,103 @@
   (coll-reduce [coll f init] (reduce m f init))
   (coll-reduce [coll f] (reduce m f))
   )
+)
+
+;;a lazy reference to an entity; basically a lazy
+;;map.  Derived from a backing entity store; fields
+;;are only accessed on-demand, and cached.  Modified
+;;fields are stored for differential purposes.  This
+;;lets us use the entityref as a flyweight accessor
+;;for limited sets of components, but having access
+;;to all the components registered to the entity.
+;;Maintains a set of altered keys....note that
+;;altered keys are shared amongst descendants.
+;;So, we can tell, upon commitment, which keys to update.
+;;If a key is altered and absent in the entity map,
+;;then we dissoc it from the store.  If it's present
+;;in the map, then we assoc it.  This should save
+;;us a significant portion of time when we go
+;;through the map-based update/commit cycle.  Reads
+;;don't cost us anything on commit; we only commit
+;;entries linear in the size of assoc/dissoc on the
+;;map reference.
+(deftype entity [^:unsynchronized-mutable name
+                    ^:unsynchronized-mutable domains
+                    ^:unsynchronized-mutable components
+                    ^clojure.lang.IPersistentMap m
+                    ^clojure.lang.IPersistentSet altered
+                    ]
+  clojure.lang.IHashEq
+  (hasheq [this]   (.hasheq ^clojure.lang.IHashEq m ))
+  (hashCode [this] (.hashCode ^clojure.lang.IHashEq m))
+  (equals [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
+  (equiv [this o]
+    (cond (identical? this o) true
+          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+          (or (instance? clojure.lang.Sequential o)
+              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+              :else nil))  
+  clojure.lang.IObj
+  (meta     [this] (.meta ^clojure.lang.IObj m))
+  (withMeta [this xs] (entity. name domains components
+                               (with-meta ^clojure.lang.IObj m xs) altered))
+  IEntity 
+  (entity-name [e] (if name name
+                       (do (set! name (.valAt m :name))
+                           name)))
+  (conj-component [e c] 
+    (entity. name nil nil (.assoc m (component-domain c) (component-data c))
+                          (.cons altered (component-domain c))))
+  (disj-component [e c] 
+    (entity. name domains components (.without m (component-domain c))
+                                     (.cons altered (component-domain c))))
+  (get-component [e domain]          (.valAt m domain))
+  (entity-components [e]  (if components components
+                              (do (set! components (into [] (seq  m)))
+                                  components)))
+  (entity-domains [e] (if domains domains
+                          (do (set! domains (keys m))
+                              domains)))
+  clojure.lang.IPersistentMap
+  (valAt [this k] (.valAt m k))
+  (valAt [this k not-found] (.valAt m k not-found))
+  (entryAt [this k] (.entryAt m k))
+  (assoc [this k v] (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
+  (cons  [this e]     (entity. nil nil nil (.cons m e)    (.cons altered (key e))))
+  (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.Counted
+  (count [coll] (.count m))
+  java.util.Map
+  (put    [this k v]  (.assoc this k v))
+  (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c) (set (keys m))))
+  (clear  [this] (entity. nil nil nil {} #{}))
+  (containsKey   [this o] (.containsKey ^java.util.Map m o))
+  (containsValue [this o] (.containsValue ^java.util.Map m o))
+  (entrySet [this] (.entrySet ^java.util.Map m))
+  (keySet   [this] (.keySet ^java.util.Map m))
+  (get [this k] (.valAt m k))
+  ;(equals [this o] (.equals ^java.util.Map m o))
+  (isEmpty [this] (.isEmpty ^java.util.Map m))
+  (remove [this o] (.without this o))
+  (values [this] (.values ^java.util.Map m))
+  (size [this] (.count m))
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [coll f init] (reduce-kv f init m))
+  clojure.core.protocols/CollReduce
+  (coll-reduce [coll f init] (reduce m f init))
+  (coll-reduce [coll f] (reduce m f))
+  IAlteredKeys
+  (altered-keys [m] altered)
+  )
+
+(extend-protocol IAlteredKeys
+  clojure.lang.PersistentArrayMap
+  (altered-keys [m] (keys m))
+  clojure.lang.PersistentHashMap
+  (altered-keys [m] (keys m)))
+  
 
 ;;What we really want here is a flyweight entity container...
 
@@ -211,7 +313,9 @@
   (entity-components [e] (seq e))
   (entity-domains [e] (keys e)))
 
-(def empty-entity (entity. nil nil nil {}))
+;(def empty-entity-ref (entityref. nil nil nil {} #{}))
+(def empty-entity (entity. nil nil nil {} #{}))
+
 
 (defn conj-components
   "Conjoins each component in cs to the components in ent ."
@@ -221,7 +325,7 @@
 (defn build-entity
   "Assembles an entity record from one or more component records."
   [name components]
-  (conj-components (entity. name nil nil {})  components))
+  (conj-components (entity. name nil nil {} #{})  components))
 
 (defn keyval->component
   "Converts key/value pairs into components.  Allows a simple shorthand
@@ -239,7 +343,7 @@
 (defn entity-from-map [m]
   "Allows shorthand definition of entities from simple map structures.
    Keys in the map correspond to component domains of the entity."
-  (entity. nil nil nil m))
+  (entity. nil nil nil m #{}))
                   
 (defn entity->components
   "Retrieve the component data associated with an entity."
@@ -269,11 +373,11 @@
    the union of domains from both entities.  The component data in each domain 
    corresponds to the last component data found.  This means entity2's data will 
    be returned in cases where the domains overlap."
-  ([e1 e2 id] 
-     (entity. id nil nil 
-               (into {}
+  ([e1 e2 id]
+   (let [m (into {}
                      (concat (entity-components e1)
-                             (entity-components e2)))))
+                             (entity-components e2)))]
+     (entity. id nil nil m (set (keys m)))))
   ([e1 e2] (merge-entity  e1 e2 (keyword (gensym "merged")))))
   
 (defn ent-seq? [entcoll] (satisfies? IEntity (first (seq entcoll))))
@@ -341,7 +445,7 @@
   (components-of  [db id]  (reduce (fn [acc dom] (assoc acc dom (get-in domain-map [dom id]))) 
                                    {} (get entity-map id)))
   (get-entity [db id] (when-let [comps (.components-of db id)]
-                        (entity. id nil nil comps)))
+                        (entity. id nil nil comps #{})))
   (conj-entity     [db id components] 
       (if (map? components) 
         (reduce-kv (fn [^EntityStore acc dom dat]
@@ -483,6 +587,19 @@
   [store name]
   (drop-entry store name :parameters))
 
+
+(defn add-altered-entity 
+  "Associate component data with id.  Records are {:component data} or 
+  [[component data]] form.  ."
+  [db ^clojure.lang.IPersistentMap ent]
+  (let [id (entity-name ent)]
+    (reduce (fn alteration [acc k]
+              (if-let [v (.valAt ent k)] ;entry exists.
+                (assoce acc id k v)
+                (dissoce acc id k) ;component has been dissoced
+                ))
+            db (altered-keys ent))))
+
 ;;What about records?
 ;;we can add support for maps here...
 (defn add-entity 
@@ -496,10 +613,24 @@
                (add-entry acc id (first domdat) (second domdat)))
              db records)))
   ([db ent]
-   (if (map? ent)
-     (let [id (entity-name ent)]
-       (reduce-kv (fn [acc domain v] (add-entry acc id domain v)) db ent))                    
-     (conj-entity db (entity-name ent) (entity-components ent)))))
+   (let [id (entity-name ent)]
+     (reduce (fn alteration [acc k]
+               (if-let [v (.valAt ent k)] ;entry exists.
+                 (assoce acc id k v)
+                 (dissoce acc id k) ;component has been dissoced
+                 ))
+             db (altered-keys ent)))))
+  
+   ;; (cond (instance?   IAlteredKeys (class ent))
+   ;;         (do (println :adding-altered) (add-altered-entity db ent))
+   ;;       (map? ent)
+   ;;         (let [id (entity-name ent)]
+   ;;           (reduce-kv (fn [acc domain v]
+   ;;                        (add-entry acc id domain v)) db ent))
+   ;;       :else
+   ;;       (conj-entity db (entity-name ent) (entity-components ent)))))
+
+
 
 (defn add-entities
   "Register multiple entity records at once..." 
