@@ -90,6 +90,16 @@
   "A protocol for finding changes in an entity reference, for efficient committing."
   (altered-keys [e]))
 
+;;a protocol for lazy maps.
+;;Given a map with a set of known keys, we can create a cached map that lazily accesses
+;;values from a datastore as needed.  For instance, if we have a set of fields for
+;;an entity that gets like 250 keys, but we only really need to operate on one or
+;;two, then if we make the entity query lazy, we can pull in the keys without
+;;having to load the fields for the entire entity.  We're still - possibly - building
+;;a map though...
+(defprotocol IRealize
+  (realize [m k v]))
+
 ;;I think we want to move away from this..
 ;;Just use associative structures.  Specifically, use small maps from clj-tuple.
 ;;We can also define views that match a particular "type" of entity and
@@ -213,6 +223,132 @@
 ;;don't cost us anything on commit; we only commit
 ;;entries linear in the size of assoc/dissoc on the
 ;;map reference.
+
+;;As we read values, we populate m implictly.  If we assoc values, we populate m.  if we dissoc, we
+;;dissoc from m and (or we assoc a sentinel onto m?)
+;;Worst case, we load values from db lazily.  This way, we don't build the entire map at once if
+;;we don't need it.  Can we leverage any properties to encode the map so we already have information
+;;localized?
+
+(defprotocol IGetmap (getmap [obj]))
+
+;;note sure is we want to do this...
+;;a lot of times, we only want to 
+
+
+;;We care about adds and drops....right?
+;;If we just always assoc a sentinel value when we merge the map,
+;;like ::dropped, we can check for it on entity merge...
+;;Original design had the entity map diffing based on the fields.
+;;We could alternately use a different type of mapentry...
+;;Or maintain a hashmap of altered fields, and how they're altered.
+;;Having a single mutable hashmap that's shared by all ancestors
+;;of the fields could be useful....
+;;Basically, since the entity was created, we have a journal of
+;;all the modifications that occurred relative to the initial
+;;pull....Can we handle dissocing better?  Maybe, explicitly
+;;handle dissocing....if we assoc ::drop to the map then
+;;on merge it'll get dropped....maybe wrap an acessor around it?
+;;Most of the time, we just assoc nil anyway, but sometimes we
+;;dissoc...we could always dissoc the db....to indicate inconsistency
+;;with the original db, so that on merge, we can compute a diff.
+;;alternately, we can define adds and drops...
+;;right now, m is === adds, we don't keep track of drops.
+;;If we drop a field and add it later, then what...
+;;Is there a better way to do a diff?
+;;We know from the fields in m which fields were actually
+;;read.  We also know, which fields have changed if we
+;;keep track of altered.  Currently, we infer that if
+;;there's an altered field and not a field in m, that the
+;;alteration implies a drop....
+
+;;a passthrough map...a map that references a db of fields in the background to implement its map operations.
+;;if we make the assumption that the db contains all possible fields for m, then db is just
+;;the means for computing fields in m.  When we drop items from the passmap,
+;;we assoc a sentinel value to it, rather than dropping outright (note...we're still
+;;paying the cost of associating....)
+(deftype passmap [id ^:unsynchronized-mutable ^clojure.lang.IPersistentMap m
+                  ^clojure.lang.IPersistentMap db
+                  ]
+  ;; clojure.lang.IHashEq
+  ;; (hasheq [this]   (if realized
+  ;;                    (.hasheq ^clojure.lang.IHashEq m)
+  ;;                    (set! m 
+  ;; (hashCode [this] (.hashCode ^clojure.lang.IHashEq m))
+  ;; (equals [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
+  ;; (equiv [this o]
+  ;;   (cond (identical? this o) true
+  ;;         (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+  ;;         (or (instance? clojure.lang.Sequential o)
+  ;;             (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+  ;;             :else nil))  
+  clojure.lang.IObj
+  (meta     [this]    (.meta ^clojure.lang.IObj m))
+  (withMeta [this xs] (passmap. id (with-meta ^clojure.lang.IObj m xs) db))
+  clojure.lang.IPersistentMap
+  (valAt [this k]
+    (let [^clojure.lang.MapEntry res (.entryAt m k)]
+      (if res (.val res)
+        (if-let [res  (.valAt  ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
+          (do ;(println :caching k)
+              (set! m (.assoc m k res))
+              res)
+          (do ;(println :nilcache)
+              (set! m (.assoc m k nil))
+              nil)))))                            
+  (valAt [this k not-found]
+    (if-let [res (.valAt this k)]
+      res
+      not-found))
+  (entryAt [this k] (if-let [res (.entryAt m k)]
+                      res
+                      (when-let [^clojure.lang.MapEntry res (.entryAt ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
+                        (do (set! m (.assoc m k (.val res)))
+                            (clojure.lang.MapEntry. k (.val res))))))
+  (assoc [this k v]   (passmap. id (.assoc m k v)  db))
+  (cons  [this e]     (passmap. id (.cons m e) db))
+  (without [this k]   (passmap. id (.without m k) (.without db k)))
+  clojure.lang.Seqable
+  (seq [this] (concat (seq m)
+                      (filter identity
+                              (map (fn [^clojure.lang.MapEntry e]
+                                     (if (contains? m (.key e))
+                                       nil
+                                       (.entryAt this (.key e)))) db))))                             
+  clojure.lang.Counted
+  (count [coll]       (.count m))
+  java.util.Map
+  (put    [this k v]  (.assoc this k v))
+  (putAll [this c] (passmap. id (.putAll ^java.util.Map m c) db))
+  (clear  [this] (passmap.  id {} {}))
+  (containsKey   [this o] (throw (Exception. "containsKey not supported")))
+  (containsValue [this o] (throw (Exception. "containsValue not supported")))
+  (entrySet [this] (.entrySet ^java.util.Map m))
+  (keySet   [this] (.keySet ^java.util.Map m))
+  IGetmap
+  (getmap [this] m)
+  )
+
+(defn lazy-join [source k] (passmap. k {} source))
+(definline has-entry? [m k]
+  (let [m (with-meta m {:tag 'clojure.lang.IPersistentMap})]
+    `(.entryAt ~m ~k)))
+
+;;if you've only got a few fields, a lil is probably
+;;okay....chances are we're not
+;;So, some things I've learned...hashsets are pretty fast
+;;for lookup/membership, but not necessarily traversal.
+;;using set-reduce makes them faster though (they're much
+;;faster than maps for lookups...so using naive persmaps
+;;isn't a great idea, stick with sets...)
+
+;;Note: since we lookup entities a lot...So far, I'm
+;;idiomatically pulling entities together here.
+;;Note: we only really care about dropped fields...
+;;Associng costs us...since we end up path-copying and
+;;stuff.  So, ideally we trade reads for writes...Read
+;;more, write (copy) less...For the persistent data structures
+;;this is fairly necessary.
 (deftype entity [^:unsynchronized-mutable name
                  ^:unsynchronized-mutable domains
                  ^:unsynchronized-mutable components
@@ -220,12 +356,12 @@
                  ^clojure.lang.IPersistentSet altered
                  ]
   clojure.lang.IHashEq
-  (hasheq [this]   (.hasheq ^clojure.lang.IHashEq m))
-  (hashCode [this] (.hashCode ^clojure.lang.IHashEq m))
-  (equals [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
-  (equiv [this o]
-    (cond (identical? this o) true
-          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+  (hasheq   [this]   (.hasheq   ^clojure.lang.IHashEq m))
+  (hashCode [this]   (.hashCode ^clojure.lang.IHashEq m))
+  (equals   [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
+  (equiv    [this o]
+    (cond   (identical? this o) true
+            (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
           (or (instance? clojure.lang.Sequential o)
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
               :else nil))  
@@ -239,10 +375,10 @@
                            name)))
   (conj-component [e c] 
     (entity. name nil nil (.assoc m (component-domain c) (component-data c))
-                          (.cons altered (component-domain c))))
+                          (.assoc altered (component-domain c) :added)))
   (disj-component [e c] 
     (entity. name domains components (.without m (component-domain c))
-                                     (.cons altered (component-domain c))))
+                                     (.assoc altered (component-domain c) :dropped)))
   (get-component [e domain]          (.valAt m domain))
   (entity-components [e]  (if components components
                               (do (set! components (into [] (seq  m)))
@@ -254,20 +390,20 @@
   (valAt [this k] (.valAt m k))
   (valAt [this k not-found] (.valAt m k not-found))
   (entryAt [this k] (.entryAt m k))
-  (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
+  (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.assoc altered k :added)))
   (cons  [this e]   
     (entity. nil nil nil (.cons m e)
              (if (map? e) (.cons altered (keys e))
-                 (.cons altered (key e)))))
-  (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
+                 (.assoc altered (key e) :added))))
+  (without [this k]   (entity. nil nil nil (.without m k) (.assoc altered k :dropped)))
   clojure.lang.Seqable
   (seq [this] (seq m))
   clojure.lang.Counted
   (count [coll] (.count m))
   java.util.Map
   (put    [this k v]  (.assoc this k v))
-  (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c) (set (keys m))))
-  (clear  [this] (entity. nil nil nil {} #{}))
+  (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c)  m))
+  (clear  [this] (entity. nil nil nil {} {}))
   (containsKey   [this o] (.containsKey ^java.util.Map m o))
   (containsValue [this o] (.containsValue ^java.util.Map m o))
   (entrySet [this] (.entrySet ^java.util.Map m))
@@ -286,6 +422,86 @@
   IAlteredKeys
   (altered-keys [m] altered)
   )
+
+;;in a lazy entity, we don't create the entire map at once...
+;;rather, we build the map on demand.  The lazy entity provides
+;;a lens to query the underlying data store...
+
+(comment
+(deftype lazyentity [^:unsynchronized-mutable name
+                     ^:unsynchronized-mutable domains
+                     ^:unsynchronized-mutable components
+                     ^clojure.lang.IPersistentMap m
+                     ^clojure.lang.IPersistentSet altered
+                     ]
+  clojure.lang.IHashEq
+  (hasheq [this]   (.hasheq   ^clojure.lang.IHashEq m))
+  (hashCode [this] (.hashCode ^clojure.lang.IHashEq m))
+  (equals [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
+  (equiv [this o]
+    (cond (identical? this o) true
+          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+          (or (instance? clojure.lang.Sequential o)
+              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+              :else nil))  
+  clojure.lang.IObj
+  (meta     [this] (.meta ^clojure.lang.IObj m))
+  (withMeta [this xs] (lazyentity. name domains components
+                               (with-meta ^clojure.lang.IObj m xs) altered))
+  IEntity 
+  (entity-name [e] (if name name
+                       (do (set! name (.valAt m :name))
+                           name)))
+  (conj-component [e c] 
+    (lazyentity. name nil nil (.assoc m (component-domain c) (component-data c))
+                          (.cons altered (component-domain c))))
+  (disj-component [e c] 
+    (lazyentity. name domains components (.without m (component-domain c))
+                                     (.cons altered (component-domain c))))
+  (get-component [e domain]          (.valAt m domain))
+  (entity-components [e]  (if components components
+                              (do (set! components (into [] (seq  m)))
+                                  components)))
+  (entity-domains [e] (if domains domains
+                          (do (set! domains (keys m))
+                              domains)))
+  clojure.lang.IPersistentMap
+  (valAt [this k] (.valAt m k))
+  (valAt [this k not-found] (.valAt m k not-found))
+  (entryAt [this k] (.entryAt m k))
+  (assoc [this k v]   (lazyentity. nil nil nil (.assoc m k v)   (.cons altered k)))
+  (cons  [this e]   
+    (lazyentity. nil nil nil (.cons m e)
+             (if (map? e) (.cons altered (keys e))
+                 (.cons altered (key e)))))
+  (without [this k]   (lazyentity. nil nil nil (.without m k) (.cons altered k)))
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.Counted
+  (count [coll] (.count m))
+  java.util.Map
+  (put    [this k v]  (.assoc this k v))
+  (putAll [this c] (lazyentity. nil nil nil (.putAll ^java.util.Map m c) (set (keys m))))
+  (clear  [this] (lazyentity. nil nil nil {} #{}))
+  (containsKey   [this o] (.containsKey ^java.util.Map m o))
+  (containsValue [this o] (.containsValue ^java.util.Map m o))
+  (entrySet [this] (.entrySet ^java.util.Map m))
+  (keySet   [this] (.keySet ^java.util.Map m))
+  (get [this k] (.valAt m k))
+  ;(equals [this o] (.equals ^java.util.Map m o))
+  (isEmpty [this] (.isEmpty ^java.util.Map m))
+  (remove [this o] (.without this o))
+  (values [this] (.values ^java.util.Map m))
+  (size [this] (.count m))
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [coll f init] (reduce-kv f init m))
+  clojure.core.protocols/CollReduce
+  (coll-reduce [coll f init] (reduce m f init))
+  (coll-reduce [coll f] (reduce m f))
+  IAlteredKeys
+  (altered-keys [m] altered)
+  )
+)
 
 (extend-protocol IAlteredKeys
   clojure.lang.PersistentArrayMap
@@ -438,29 +654,85 @@
 ;  (alter-entity [db id f] "Alter an entity's components using f.  f
 ;  should take an entity and return a set of components that change.")
 
+;;Traversing our component set is much faster this way, about 2x.  weird...
+(definline set-reduce [f init coll]
+  (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
+    `(let [~xs ~coll
+           it#      (.iterator ~xs)
+           bound#   (.count ~xs)]
+       (loop [idx# 0
+              acc# ~init]
+         (cond  (reduced?  acc#) @acc#
+                (== idx# bound#) acc#
+                :else 
+                (let [nxt# (.next it#)]
+                  (recur (unchecked-inc idx#)
+                         (~f acc# nxt#))))))))
+
+;;Interesting note:
+;;Most entities will actually be very small sets of components.
+;;If we go row-based, we get all the data stored, for free, packed
+;;and ready to go at the record level.  We can even mutate it.
+;;Additionally, we lose the requirement to have a separate index
+;;for the entity.  The components are the keys....so...they're
+;;precomputed and hashed, and faster to iterate.
+;;We can still get select-queries by iterating over rowsets...
+;;Changing an entry costs 2x assoc operations, however merges are
+;;much much faster, since we can merge the whole entity at once...
+;;If we do all our work on the previous entity, then the
+;;merge is an O(1) swap out of the new entity for the old record.
+;;Otherwise, we go through our assoc overhead updating the entries that
+;;changed on merge.  This means we have to keep track of the components
+;;that changed.  Note: if we are lazily loading, we get this quality
+;;for free though...
+
+;;What are we using the component set for?  Joins...
+;;The alternative is to maintain independent sets of component membership
+;;and use the indices for joins.  Same difference (we already do this
+;;in the columnar version).  Also, if we want access to a single component,
+;;or a couple of named components, we can select the columns directly
+;;and operate on them.
+
 ;EntityStore is the default implementation of our protocol, and it uses maps 
 ;to maintain records of component data, keyed by entity ID, as well as a map of
 ;entities to the set of components they are associated with.  
-(defrecord EntityStore [entity-map domain-map]
+(defrecord EntityStore [^clojure.lang.IPersistentMap entity-map
+                        ^clojure.lang.IPersistentMap domain-map]
   IEntityStore
-  (add-entry [db id domain data]
-    (EntityStore. (assoc entity-map id (conj (get entity-map id #{}) domain)) 
-                  (assoc-in domain-map [domain id] data)))
+  (add-entry [db id domain data] ;;this gets called a lot....
+    (EntityStore.
+     (.assoc ^clojure.lang.Associative entity-map id
+             ^clojure.lang.PersistentHashSet (.cons ^clojure.lang.PersistentHashSet (.valAt entity-map id #{}) domain))
+     (.assoc ^clojure.lang.Associative domain-map domain ^clojure.lang.IPersistentMap (assoc (.valAt domain-map domain {}) id data))))
   (drop-entry [db id domain]
-    (let [cnext (update-in domain-map [domain] dissoc id)
-          enext (let [parts (disj (get entity-map id) domain)]
+    (let [^clojure.lang.IPersistentMap m     (.valAt domain-map domain)
+          cnext (.assoc ^clojure.lang.Associative domain-map domain
+                        (.without m id))
+          enext (let [parts (disj (.valAt entity-map id) domain)]
                       (if (zero? (count parts))
-                        (dissoc entity-map id)
-                        (assoc entity-map id parts)))]
+                        (.without entity-map id)
+                        (.assoc ^clojure.lang.Associative entity-map id parts)))]
       (EntityStore. enext cnext)))
-  (get-entry     [db id domain] (get (get domain-map domain) id))
-  (entities [db] entity-map)
+  (get-entry     [db id domain]
+    (.valAt ^clojure.lang.IPersistentMap
+            (.valAt ^clojure.lang.IPersistentMap  domain-map domain) id))
+  (entities [db]  entity-map)
   (domains [db]   domain-map)
-  (domains-of     [db id]  (get entity-map id))
-  (components-of  [db id]  (reduce (fn [acc dom] (assoc acc dom (get-in domain-map [dom id]))) 
-                                   {} (get entity-map id)))
-  (get-entity [db id] (when-let [comps (.components-of db id)]
-                        (entity. id nil nil comps #{})))
+  (domains-of     [db id]  (.valAt entity-map id))
+  (components-of  [db id]
+    ;; (set-reduce (fn [^clojure.lang.IPersistentMap acc dom]
+    ;;               (.assoc acc dom
+    ;;                       (.valAt ^clojure.lang.IPersistentMap (.valAt domain-map dom)
+    ;;                               id)))  ;;get-in is slowish; changed to direct method calls.
+    ;;             {} (get entity-map id))
+    (lazy-join domain-map id)
+
+    )  
+  ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
+  ;;caches values, so we only have to pay for what we load.
+  (get-entity [db id]
+    (when-let [comps (.components-of db id)]
+      (entity. id nil nil comps #{})))
   (conj-entity     [db id components] 
       (if (map? components) 
         (reduce-kv (fn [^EntityStore acc dom dat]
@@ -475,6 +747,33 @@
 (defn get-domain  [db d] (get (domains db) d))
 (defn disj-entity [db id xs] 
   (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
+
+
+;;can we create custom entities at runtime using reify?
+;;How slow is this?  Fast enough for individual queries?
+;;Another strategy is to create field-accessible entity
+;;views...maybe cache the types....dunno, these are additional
+;;optimizations that may or may not help us out....
+
+;;The easiest thing to do is fire-and-forget though....
+;;We have a read-cache of mutable values that we hit.
+;;If our value is there, we're done.  If not,
+;;we check the backing store.  If it exists, we
+;;store it in the read-cache.  If not, we store it
+;;in the read-cache as nil.
+;;From there on, the read-cache helps us quickly deref
+;;items - and store them, since associng goes onto the
+;;read cache.
+;;When we go to merge, any items that are in the read
+;;cache that are also altered (currently tracked in the
+;;altered cache) get merged as novel updates.  Additionally,
+;;items in the read cache that are nil get dropped if
+;;they were altered....
+;;as if we dropped them from the component itself.
+;;I think this satisfies the lazy loading requirement, and
+;;the lazy commit requirement...
+;;This also works with a mutable version, since we just
+;;replace the readcache with a mutable map.
 
 ;;Todo
 ;;Replace this with more efficient algorithm.  Right now,
@@ -615,6 +914,7 @@
                 ))
             db (altered-keys ent))))
 
+(def en (atom nil))
 ;;What about records?
 ;;we can add support for maps here...
 (defn add-entity 
@@ -627,13 +927,16 @@
      (reduce (fn [acc domdat]
                (add-entry acc id (first domdat) (second domdat)))
              db records)))
-  ([db ent]
-   (let [id (entity-name ent)]
+  ([db ^clojure.lang.IPersistentMap ent]
+   (let [id (entity-name ent)
+         _ (reset! en ent)]
      (reduce (fn alteration [acc k]
-               (if-let [^clojure.lang.MapEntry e (.entryAt ent k)] ;entry exists.
-                     (assoce acc id k (.val e))
-                     (dissoce acc id k) ;component has been dissoced
-                 ))
+               (try 
+                 (if-let [^clojure.lang.MapEntry e (.entryAt ent k)] ;entry exists.
+                   (assoce acc id k (.val e)) ;alteration added or updated.
+                   (dissoce acc id k) ;component has been dissoced
+                   )
+                 (catch Exception e (throw (Exception. (str [:domain k :ent ent :err e]))))))
              db (altered-keys ent)))))
   
    ;; (cond (instance?   IAlteredKeys (class ent))
@@ -644,8 +947,6 @@
    ;;                        (add-entry acc id domain v)) db ent))
    ;;       :else
    ;;       (conj-entity db (entity-name ent) (entity-components ent)))))
-
-
 
 (defn add-entities
   "Register multiple entity records at once..." 

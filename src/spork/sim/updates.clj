@@ -4,7 +4,6 @@
             [spork.sim.pure [network :as simnet]]
             [spork.util [general :as gen]]
             [spork.data.mutable :as mut]))
-
 (defrecord update-packet [update-time requested-by update-type request-time])
 
 (defprotocol IUpdates    
