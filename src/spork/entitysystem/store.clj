@@ -290,7 +290,7 @@
   (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
   (cons  [this e]   
     (entity. nil nil nil (.cons m e)
-             (if (map? e) (.cons altered (keys e))
+             (if (map? e) (into altered (keys e))
                  (.cons altered (key e)))))
   (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
   clojure.lang.Seqable
@@ -537,6 +537,12 @@
 ;;or a couple of named components, we can select the columns directly
 ;;and operate on them.
 
+
+;;Wonder if we can define keypaths...
+;;for instance, they use :path/to/blah
+;;as a keyword...
+;;dunno how they cache the path for it...
+
 ;EntityStore is the default implementation of our protocol, and it uses maps 
 ;to maintain records of component data, keyed by entity ID, as well as a map of
 ;entities to the set of components they are associated with.  
@@ -555,17 +561,19 @@
          (.assoc ^clojure.lang.Associative domain-map domain
                  ^clojure.lang.IPersistentMap (assoc (.valAt domain-map domain {}) id data))))))
   (drop-entry [db id domain]
-    (let [^clojure.lang.IPersistentMap m     (.valAt domain-map domain)
-          cnext (.assoc ^clojure.lang.Associative domain-map domain
-                        (.without m id))
-          enext (let [parts (disj (.valAt entity-map id) domain)]
-                      (if (zero? (count parts))
-                        (.without entity-map id)
-                        (.assoc ^clojure.lang.Associative entity-map id parts)))]
-      (EntityStore. enext cnext)))
+    (or  (when-let [^clojure.lang.PersistentHashSet ent  (.valAt entity-map id)]
+           (when (ent domain) ;entity exists, and has the domain...
+             (let  [^clojure.lang.IPersistentMap m     (.valAt domain-map domain)
+                    cnext (.assoc ^clojure.lang.Associative domain-map domain
+                                  (.without m id))
+                    enext (if (== (.count ent) 1)
+                            (.without entity-map id)
+                            (.assoc ^clojure.lang.Associative entity-map id (disj ent domain)))]
+               (EntityStore. enext cnext))))
+         db))
   (get-entry     [db id domain]
-    (.valAt ^clojure.lang.IPersistentMap
-            (.valAt ^clojure.lang.IPersistentMap  domain-map domain) id))
+    (when-let [m (.valAt ^clojure.lang.IPersistentMap  domain-map domain)]
+      (.valAt ^clojure.lang.IPersistentMap m id)))
   (entities [db]  entity-map)
   (domains [db]   domain-map)
   (domains-of     [db id]  (.valAt entity-map id))
@@ -576,7 +584,6 @@
     ;;                               id)))  ;;get-in is slowish; changed to direct method calls.
     ;;             {} (get entity-map id))
     (lazy-join domain-map id)
-
     )  
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
@@ -860,7 +867,6 @@
   [store name]
   (drop-entry store name :parameters))
 
-
 (defn add-altered-entity 
   "Associate component data with id.  Records are {:component data} or 
   [[component data]] form.  ."
@@ -874,6 +880,7 @@
             db (altered-keys ent))))
 
 (def en (atom nil))
+(def store (atom nil))
 ;;What about records?
 ;;we can add support for maps here...
 (defn add-entity 
@@ -889,14 +896,17 @@
   ([db ^clojure.lang.IPersistentMap ent]
    (if-let [altered (altered-keys ent)]
      (let [id (entity-name ent)
-           _  (reset! en ent)]
+           _  (reset! en ent)
+            ]
        (reduce (fn alteration [acc k]
-                 (try 
-                   (if-let [^clojure.lang.MapEntry e (.entryAt ent k)] ;entry exists.
-                     (assoce acc id k (.val e)) ;alteration added or updated.
-                     (dissoce acc id k) ;component has been dissoced
-                     )
-                   (catch Exception e (throw (Exception. (str [:domain k :ent ent :err e]))))))
+                 (do 
+                   (reset! store acc)
+                   (try 
+                     (if-let [^clojure.lang.MapEntry e (.entryAt ent k)] ;entry exists.
+                       (assoce acc id k (.val e)) ;alteration added or updated.
+                       (dissoce acc id k) ;component has been dissoced
+                       )
+                     (catch Exception e (throw (Exception. (str [:domain k :ent ent :err e])))))))
                db altered))
       db)))
 
