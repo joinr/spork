@@ -699,7 +699,8 @@
   (kv-reduce [obj f init]
     (reduce (fn [acc ^java.util.Map$Entry ent]
               (f acc (.getKey ent) (.getValue ent))) init obj)))
-    
+
+(declare mutate!)
 (defn memptystore
   ([] (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.)))
   ([store] (mutate! store)))
@@ -785,7 +786,7 @@
 (defn dissoce  [store nm k]   (drop-entry store nm  k))
 (defn mergee   [store nm m]
   (reduce-kv (fn [acc c v]
-               (assoce acc nm c v)) store m))
+               (add-entry acc nm c v)) store m))
 ;;==note== we can probably sidestep most of this if we just overload how the store acts like and
 ;;assoc map.  If we did that, the underlying clojure stuff would work out of the box.
 ;;stand-inds for nested updates and association.
