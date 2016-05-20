@@ -190,6 +190,15 @@
                     (java.util.ArrayList.)
                     nil))
 
+(definline mempty-bellman [startnode]
+  `(msearchstate2.  ~startnode 
+                    nil
+                    (doto (HashMap. ) (.put ~startnode ~startnode))
+                    (doto (HashMap. ) (.put ~startnode 0))
+                    fr/bellman-fringe
+                    (java.util.ArrayList.)
+                    nil))
+
 ;; (definline mempty-PFS2 [startnode] 
 ;;   `(msearchstate2.  ~startnode 
 ;;                     nil

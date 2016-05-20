@@ -216,28 +216,35 @@
   (is (= (mapcat sort (topsort sample-dag))
          ["Start" "A" "B" "C" "X" "D" "Y" "Z" "E" "G" "Shortcut!" "F" "Destination"])
       "Topological ordering of sample-dag.")
-  (is (= (get-weighted-paths 
-          (depth-first-search sample-dag "Start" "Destination" {:multipath true}))
-         '([6 ("Start" "A" "B" "D" "E" "F" "Destination")]))
-      "Depth distance should be 6 for sample-dag")
+  (is  (let [ps (get-weighted-paths 
+                 (depth-first-search sample-dag "Start" "Destination" {:multipath true}))
+             p  (first ps)
+             w  (first p)
+             xs (second p)
+             [start stop]  [(first xs) (last xs)]]
+         (and   (= (count ps) 1)
+                (=  w  6)
+                (= start "Start")
+                (= stop "Destination"))
+      "Depth distance should be 6 for sample-dag"))
   (is (= (get-weighted-paths 
           (breadth-first-search sample-dag "Start" "Destination" {:multipath true}))
          '([5 ("Start" "A" "C" "E" "F" "Destination")]))
       "Breadth distance should be 5 for sample-dag.")
-  (is (= (get-weighted-paths 
-          (dijkstra sample-dag "Start" "Destination" {:multipath true}))
-         '([9 ("Start" "A" "C" "E" "F" "Destination")] 
-           [9 ("Start" "A" "B" "D" "G" "F" "Destination")] 
-           [9 ("Start" "A" "X" "Y" "Shortcut!" "F" "Destination")]))      
+  (is (= (set (get-weighted-paths 
+               (dijkstra sample-dag "Start" "Destination" {:multipath true})))
+         (set '([9 ("Start" "A" "C" "E" "F" "Destination")] 
+                [9 ("Start" "A" "B" "D" "G" "F" "Destination")] 
+                [9 ("Start" "A" "X" "Y" "Shortcut!" "F" "Destination")])))      
       "Dijkstra and priority-first-search should produce 3 9-weight paths for sample-dag.")
   (is (= (get-weighted-paths 
            (a-star sample-dag (fn [source target] 0) "Start" "Destination" {:multipath true}))
          (get-weighted-paths (dijkstra sample-dag "Start" "Destination" {:multipath true})))
       "a-star with a 0-weight heuristic is identical to dijkstra's algorithm")
-  (is (= (get-weighted-paths (bellman-ford sample-dag "Start" "Destination" {:multipath true}))
-         '([9 ("Start" "A" "C" "E" "F" "Destination")] 
-           [9 ("Start" "A" "X" "Y" "Shortcut!" "F" "Destination")]
-           [9 ("Start" "A" "B" "D" "G" "F" "Destination")]))
+  (is (= (set (get-weighted-paths (bellman-ford sample-dag "Start" "Destination" {:multipath true})))
+         (set '([9 ("Start" "A" "C" "E" "F" "Destination")] 
+                [9 ("Start" "A" "X" "Y" "Shortcut!" "F" "Destination")]
+                [9 ("Start" "A" "B" "D" "G" "F" "Destination")])))
       "Bellman-Ford should produce 3 9-weight paths for sample-dag, albeit slower."))
 
 
@@ -327,7 +334,7 @@
          "java.lang.Exception: Negative Arc Weight Detected in Dijkstra: [\"D\" \"E\" -200]")
       "dijkstra should throw negative arc exception on negative-graph [D E] .")
   (is (= (str (get-error (bellman-ford negative-cycle-graph "A" "E")))
-         "java.lang.Exception: Possible negative cycles in Bellman Ford![\"A\" \"C\"]")
+         "java.lang.Exception: Possible negative cycles in Bellman Ford![\"A\" \"B\" 5 :now -192]")
       "bellman-ford should find a negative cycle on negative-cycle-graph."))
 
 ;a directed graph with 2 components
@@ -405,19 +412,24 @@
                  [:unfilled :fillrule-a 0] 
                  [:fillrule-c :c 0]])))
 
+;;Note: we probably want to move the cyclical-components into
+;;a set-based representation, or a set-of-sets for testing purposes
+;;later.  The order is not guaranteed; as changes occur in things like
+;;hashing (as in clojure 1.6), order changes and may cause test failures
+;;where it's not really a problem.
 (deftest cycle-finding 
-  (is (= (directed-cycles cycle-graph) '((:e :b :c :d)))
+  (is (= (cyclical-components cycle-graph) '((:b :c :d :e)))
       "Should have one directed cycle spanning e to d")
-  (is (= (directed-cycles dicycle-graph) '((:e :b :c :d :a)))
+  (is (= (cyclical-components dicycle-graph) '((:a :b :c :d :e)))
       "should have one directed cycle spanning a to e.")
-  (is (= (directed-cycles negative-cycle-graph)
-         '(("E" "A" "C" "D" "B")))
+  (is (= (cyclical-components negative-cycle-graph)
+         '(("A" "B" "D" "E" "C")))
       "Should have one cycle spanning e and b.")
-  (is (= (directed-cycles big-cycle-graph)
+  (is (= (cyclical-components big-cycle-graph)
          '((:q :r :s :a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p)))
       "should have one cycle from q through a to p")
-  (is (= (directed-cycles cycles-graph)
-         '((:e :b :c :d) (:h :f :g)))
+  (is (= (cyclical-components cycles-graph)
+         '((:b :c :d :e) (:f :g :h)))
       "should have two directed cycles"))
 
 ;;Network Flow Testing
@@ -451,24 +463,24 @@
 (def actives (:active flow-results))
 
 (deftest mincostflow-test 
-  (is (= actives
-         '([[:bos :t] 300] 
-           [[:hou :t] 300]
-           [[:chi :hou] 100]
-           [[:chi :bos] 200]
-           [[:dc :bos] 100]
-           [[:dc :hou] 200]
-           [[:s :dc] 300] 
-           [[:s :chi] 300])))
-  (is (= (einfos cost-net)          
-         '(#spork.cljgraph.flow.einfo{:from :s, :to :chi, :capacity 0, :flow 300, :data nil} 
-           #spork.cljgraph.flow.einfo{:from :s, :to :dc, :capacity 0, :flow 300, :data nil} 
-           #spork.cljgraph.flow.einfo{:from :dc, :to :hou, :capacity 80, :flow 200, :data nil} 
-           #spork.cljgraph.flow.einfo{:from :dc, :to :bos, :capacity 250, :flow 100, :data nil} 
-           #spork.cljgraph.flow.einfo{:from :chi, :to :bos, :capacity 0, :flow 200, :data nil} 
-           #spork.cljgraph.flow.einfo{:from :chi, :to :hou, :capacity 100, :flow 100, :data nil} 
-           #spork.cljgraph.flow.einfo{:from :hou, :to :t, :capacity 0, :flow 300, :data nil} 
-           #spork.cljgraph.flow.einfo{:from :bos, :to :t, :capacity 0, :flow 300, :data nil}))
+  (is (= (set actives)
+         (set '([[:bos :t] 300] 
+                [[:hou :t] 300]
+                [[:chi :hou] 100]
+                [[:chi :bos] 200]
+                [[:dc :bos] 100]
+                [[:dc :hou] 200]
+                [[:s :dc] 300] 
+                [[:s :chi] 300]))))
+  (is (= (set (einfos cost-net))
+         (set '(#spork.cljgraph.flow.einfo{:from :s, :to :chi, :capacity 0, :flow 300, :data nil} 
+                #spork.cljgraph.flow.einfo{:from :s, :to :dc, :capacity 0, :flow 300, :data nil} 
+                #spork.cljgraph.flow.einfo{:from :dc, :to :hou, :capacity 80, :flow 200, :data nil} 
+                #spork.cljgraph.flow.einfo{:from :dc, :to :bos, :capacity 250, :flow 100, :data nil} 
+                #spork.cljgraph.flow.einfo{:from :chi, :to :bos, :capacity 0, :flow 200, :data nil} 
+                #spork.cljgraph.flow.einfo{:from :chi, :to :hou, :capacity 100, :flow 100, :data nil} 
+                #spork.cljgraph.flow.einfo{:from :hou, :to :t, :capacity 0, :flow 300, :data nil} 
+                #spork.cljgraph.flow.einfo{:from :bos, :to :t, :capacity 0, :flow 300, :data nil})))
       "Network should have expected flows." )
   (is (= (total-flow cost-net) 600)
       "There should be 600 units of flow")
@@ -491,9 +503,9 @@
       "Shipping costs 3300 units."))
   
 (deftest augmentation-test 
-  (is (= (:augmentations (augmentations the-net  :s :t)) 
-         (:augmentations (augmentations (transient-network the-net) :s :t))
-         '[[280 (:s :dc :hou :t)] [20 (:s :dc :bos :t)] [200 (:s :chi :bos :t)] [20 (:s :chi :hou :t)] [80 (:s :chi :hou :dc :bos :t)]])
+  (is (= (set (:augmentations (augmentations the-net  :s :t)) )
+         (set (:augmentations (augmentations (transient-network the-net) :s :t)))
+         (set '[[280 (:s :dc :hou :t)] [20 (:s :dc :bos :t)] [200 (:s :chi :bos :t)] [20 (:s :chi :hou :t)] [80 (:s :chi :hou :dc :bos :t)]]))
       "Augmentations should be identical in both networks."))
 
 (def scalar 7)
@@ -505,8 +517,8 @@
 (def scaled-flows (:active scaled-flow-results))
 
 (deftest scaled-flow-test 
-  (is (= scaled-flows
-         '([[:bos :t] 294] [[:hou :t] 294] [[:chi :hou] 98] [[:chi :bos] 196] [[:dc :bos] 98] [[:dc :hou] 196] [[:s :dc] 294] [[:s :chi] 294]))
+  (is (= (set scaled-flows)
+         (set '([[:bos :t] 294] [[:hou :t] 294] [[:chi :hou] 98] [[:chi :bos] 196] [[:dc :bos] 98] [[:dc :hou] 196] [[:s :dc] 294] [[:s :chi] 294])))
       "Scaled flows should be equal to reference values.")
   (is (every? zero? (for [[e flow] scaled-flows] (mod flow scalar)))
       "All flows should be divisible by the scalar, with no remainder"))

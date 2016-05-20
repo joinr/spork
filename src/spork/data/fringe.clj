@@ -30,6 +30,27 @@
 (defn ^PriorityQueue pop-pq  [^PriorityQueue q    ]  (do (.poll q) q))
 
 
+(deftype qset [^clojure.lang.PersistentHashSet enqueued
+               ^clojure.lang.PersistentQueue q]
+
+  clojure.lang.ISeq
+  (seq [obj] (seq q))
+  generic/IFringe
+  (conj-fringe [fringe n w]
+    (if (enqueued n)
+      fringe
+      (qset. (.cons enqueued n)
+             (.cons q n))))
+  (next-fringe [fringe]     (.peek q))
+  (pop-fringe  [fringe]
+    (qset.  (.disjoin enqueued  (.peek q))
+            (.pop   q))))
+
+(def emptyqset (qset. #{} emptyq))
+
+;;#note# Now, years later, I realize this is going to be slow
+;;since we're not using inlined method invokation.
+
 ;;__TODO__ re-evaluate the use of entries as a standard api choice.
 ;;Do we really need access to the node weights?  Can't we just look them up?
 ;;The current scheme is fine if the cost of a weight function is high, but 
@@ -120,7 +141,12 @@
 (def breadth-fringe 
   "Builds a fringe that stores [node weight] entries in first-in-first-out 
    FIFO order.  Backed by a persistent queue"
-    emptyq)
+  emptyq)
+
+(def bellman-fringe 
+  "Builds a fringe that stores [node weight] entries in first-in-first-out 
+   FIFO order.  Backed by a persistent queue"
+    emptyqset)
 ;;Currently not used, in favor of mutable priority queue.  May find
 ;;use again, if I can profile it and make it competitive.  It's not
 ;;terrible, but the implementation is weak compared to the mutable pq.

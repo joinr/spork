@@ -426,10 +426,18 @@
                                (assoc m cnt)))))))))
 
 
-(defn directed-cycles 
-  "Computes the directed cycles of digraph g."
+(defn cyclical-components 
+  "Returns non-singleton components, i.e. sequences of strongly connected nodes which are guaranteed to 
+   contain one or more cycles."
   ([g nodes] (filter (complement single?) (vals (strongly-connected-components g nodes list))))
   ([g]       (filter (complement single?) (vals (strongly-connected-components g (get-node-labels g) list)))))
+
+(defn directed-cycles 
+  "Note: This was intended to be a computation of simple cycles in a graph.  It uses Tarjan's SCC algorithm, and 
+   currently only returns the non-singleton SCCs of the graph - of which there is guarantee to be one or more 
+   cycles in the SCC.  Computes the directed cycles of digraph g."
+  ([g nodes] (throw (Exception. "Not Implemented: directed-cycles")))
+  ([g]       (throw (Exception. "Not Implemented: directed-cycles"))))
 
 ;;__Rewrite islands, you can do it more efficiently that using components.__
 (defn islands
@@ -517,12 +525,14 @@
         improvement? (fn [x]
                        (let [u (nth x 0)
                              v (nth x 1)]
-                         (when (< (+ (get distance u) (weightf g u v)) 
-                                  (get distance v))    u)))]
-    (->> 
-     (for [u nodes
-           v (generic/-get-sinks g u)]  [u v])
-     (filter improvement?))))
+                         (let [wold (get distance v)
+                               wnew (+ (get distance u) (weightf g u v))]
+                           (when (< wnew wold)
+                             [u v wold :now wnew]))))]
+    (->> (for [u nodes
+               v (generic/-get-sinks g u)]
+           (improvement? [u v]))
+         (filter identity))))
 
 ;;Searches
 ;;========
@@ -617,7 +627,7 @@
     [g startnode endnode {:keys [weightf neighborf multipath] 
                           :or   {weightf   (search/get-weightf g) 
                                  neighborf (search/get-neighborf g)}}]
-    (let [startstate    (-> (sstate/mempty-BFS startnode)
+    (let [startstate    (-> (sstate/mempty-bellman startnode)
                             (generic/set-multipath multipath)
                             (generic/set-start startnode)
                             (generic/set-target endnode))
