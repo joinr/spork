@@ -15,6 +15,10 @@
             [javax.swing JFrame JComponent JPanel]
             [javax.imageio ImageIO])) 
 
+;;Temporary hack to setup the lookand feel so we look like a windows app.
+(do (javax.swing.UIManager/setLookAndFeel
+     (javax.swing.UIManager/getSystemLookAndFeelClassName)))
+
 ;Java2D wrappers....
 (extend-protocol IColor
   Color 

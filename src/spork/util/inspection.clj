@@ -1,5 +1,6 @@
 (ns spork.util.inspection
   (:require [clojure [reflect :as reflect]]
+            [clojure.inspector :as inspect]
             [spork.data [orderedmap :as om]]))
 
 (def ^:dynamic *short-types* true)
@@ -79,4 +80,77 @@
       (last) 
       (dissoc nil)))
 
+;;Useful functions for inspecting trees...
   
+;;We could also be smarter about string comparers, to acccount for
+;;numbers...
+;;allows keywords and strings to be compared equally...
+(defn generic-comp [l r]
+  (cond (or (and (keyword? l) (string? r))
+            (and (string? l) (keyword? r)))                   (compare (name l) (name r))
+        (identical? (inspect/atom? l)  (inspect/atom? r))     (compare l r)
+        :else
+        (compare (str l) (str r))))
+
+;;#Useful Vizualizations of the simulation context
+;;TODO port this over to the new scenegraph api.
+(defn entryvis [x]
+  (cond (instance? java.util.Map$Entry x)
+        (reify
+          Object
+          (toString [o] 
+            (str (key x) " :: " (or (and (val x) (.getName (type (val x))))
+                                    "nil"))
+            )
+          clojure.lang.Seqable
+          (seq [o]
+            (when (val x)
+              (if (inspect/atom? (val x))
+                (list (val x))
+                (entryvis (val x))))))
+        (instance? java.util.Map x)
+         (let [entries (sort-by  key generic-comp (seq x))]
+           (map entryvis entries))
+        (inspect/atom? x) x
+        :else (map entryvis (seq x))
+        ))
+  
+;; (defn mapvis [^java.util.Map m]
+;;   (reify
+;;     Object
+;;     (toString [o] (str "/"))
+;;     clojure.lang.Seqable
+;;     (seq [x] (map entryvis (seq m)))))
+    
+;; ;;creates a treemodel, but 
+;; (defn map-model [data]
+;;   (proxy [javax.swing.tree.TreeModel] []
+;;     (getRoot [] (mapvis data))
+;;     (addTreeModelListener [treeModelListener])
+;;     (getChild [parent index]
+;;       (let [res      (inspect/get-child parent index)]
+;;         (case (inspect/collection-tag res)
+;;           :entry (entryvis res)
+;;           res)))
+;;     (getChildCount [parent]
+;;       (inspect/get-child-count parent))
+;;     (isLeaf [node]
+;;       (if (instance? clojure.lang.IDeref node)
+;;         (inspect/is-leaf node)
+;;         (inspect/is-leaf node)))
+;;     (valueForPathChanged [path newValue])
+;;     (getIndexOfChild [parent child] -1)
+;;     (removeTreeModelListener [treeModelListener])))
+
+;; (defn inspect-tree [data]
+;;   (doto (javax.swing.JFrame. "Clojure Inspector")
+;;     (.add (javax.swing.JScrollPane. (javax.swing.JTree. (entryvis data)
+;;                                                         )))
+;;     (.setSize 400 600)
+;;     (.setVisible true)))
+
+;;we'd like to make the clojure inspector a bit more useful...
+;;specifically, if we're looking at nested maps, it'b nice to
+;;use the map's keys as values instead of the entire string
+;;reprsentation
+(defn tree-view [obj] (inspect/inspect-tree (entryvis obj)))
