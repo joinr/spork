@@ -21,8 +21,6 @@
            [spork.cljgui.components PaintPanel]
            ))
 
-
-
 ;;This is basic gui stuff to walk the swing gui tree, finding components
 ;;and such.  We use it to do selection and querying pretty easily.
 (defn get-name [obj] (or (.getName obj) ""))
