@@ -36,8 +36,15 @@
     (org.apache.poi.xssf.usermodel XSSFWorkbook)
     (org.apache.poi.ss.usermodel Workbook Sheet Cell Row WorkbookFactory DateUtil
 				 IndexedColors CellStyle Font CellValue)
-    (org.apache.poi.ss.util CellReference AreaReference)))
+    (org.apache.poi.ss.util CellReference AreaReference)
+    ;;new
+    (org.apache.poi.xssf.eventusermodel XSSFReader)  ;;added by tom
+    (org.apache.poi.xssf.model SharedStringsTable)
+    (org.xml.sax.helpers DefaultHandler)
+    (org.apache.poi.openxml4j.opc OPCPackage) ;;added by tom
+    ))
 
+;;Tom's code..
 (def #^:dynamic *date-checking* true) 
 (defmacro ignoring-dates [& body]
   `(binding [*date-checking* false]
@@ -48,37 +55,60 @@
   `(when-not (isa? (class ~value) ~expected-type)
      (throw (IllegalArgumentException. (format "%s is invalid. Expected %s. Actual type %s, value: %s" (str '~value) ~expected-type (class ~value) ~value)))))
 
-(defn cell-reference [^Cell cell]
-  (.formatAsString (CellReference. (.getRowIndex cell) (.getColumnIndex cell))))
-
-(defmulti read-cell-value (fn [^CellValue cv date-format?] (.getCellType cv)))
-(defmethod read-cell-value Cell/CELL_TYPE_BOOLEAN  [^CellValue cv _]  (.getBooleanValue cv))
-(defmethod read-cell-value Cell/CELL_TYPE_STRING   [^CellValue cv _]  (.getStringValue cv))
-(defmethod read-cell-value Cell/CELL_TYPE_NUMERIC  [^CellValue cv date-format?]
-	   (if date-format? 
+(defn read-cell-value [^CellValue cv date-format?]
+  (case (.getCellType cv)
+    Cell/CELL_TYPE_BOOLEAN   (.getBooleanValue cv)
+    Cell/CELL_TYPE_STRING    (.getStringValue cv)
+    Cell/CELL_TYPE_NUMERIC  
+    (if date-format? 
 	     (DateUtil/getJavaDate (.getNumberValue cv))
-	     (.getNumberValue cv)))
+	     (.getNumberValue cv))
+    (throw (Exception. (str [:unknown :celltype (.getCellType cv)])))))
+;;again, get away from multimethods and go faster.....
+(defn read-cell [^Cell cell]
+  (case  (.getCellType cell)
+    Cell/CELL_TYPE_BLANK       nil
+    Cell/CELL_TYPE_STRING      (.getStringCellValue cell)
+    Cell/CELL_TYPE_FORMULA   
+      (let [evaluator (.. cell getSheet getWorkbook
+                          getCreationHelper createFormulaEvaluator)
+            cv (.evaluate evaluator cell)]
+        (read-cell-value cv false))
+    Cell/CELL_TYPE_BOOLEAN     (.getBooleanCellValue cell)
+    Cell/CELL_TYPE_NUMERIC     
+      (if (and *date-checking* (DateUtil/isCellDateFormatted cell))
+        (.getDateCellValue cell)
+        (.getNumericCellValue cell))
+      (throw (Exception. (str [:unknown-cell-type  (.getCellType cell)])))
+    ))
 
-;modification.....we spend a ton of time checking for dates.
-(defmulti  read-cell (fn [^Cell cell] (.getCellType cell)))
-(defmethod read-cell Cell/CELL_TYPE_BLANK     [_]     nil)
-(defmethod read-cell Cell/CELL_TYPE_STRING    [^Cell cell]  (.getStringCellValue cell))
-(defmethod read-cell Cell/CELL_TYPE_FORMULA   [^Cell cell]
-	   (let [evaluator (.. cell getSheet getWorkbook
-			       getCreationHelper createFormulaEvaluator)
-		 cv (.evaluate evaluator cell)]
-	     (read-cell-value cv false)))
-(defmethod read-cell Cell/CELL_TYPE_BOOLEAN   [^Cell cell]  (.getBooleanCellValue cell))
-(defmethod read-cell Cell/CELL_TYPE_NUMERIC   [^Cell cell]  
-  (if (and *date-checking* (DateUtil/isCellDateFormatted cell))
-    (.getDateCellValue cell)
-    (.getNumericCellValue cell)))
+
+;; (defn load-workbook 
+;;   "Load an Excel .xls or .xlsx workbook from a file."
+;;   [filename]
+;;   (with-open [stream (FileInputStream. filename)]
+;;     (WorkbookFactory/create stream)))
 
 (defn load-workbook 
   "Load an Excel .xls or .xlsx workbook from a file."
   [filename]
-  (with-open [stream (FileInputStream. filename)]
-    (WorkbookFactory/create stream)))
+                                        ;  (with-open [stream (FileInputStream. filename)]
+  (let [f   (java.io.File. filename)
+        ^OPCPackage opc (OPCPackage/open f)]
+    (XSSFWorkbook. opc)))
+
+;;holy wow...
+;; (defn sheet-handler [sst]
+;;   (proxy [org.xml.sax.helpers.DefaultHandler]
+      
+;; (defn read-workbook
+;;   [filename]
+;;   (let [^OPCPackage pkg (OPCPacakge/open filename)
+;;         ^XSSFReader r   (XSSFReader. pkg)
+;;         ^SharedStringsTable sst (.getSharedStringsTable r)
+;;         ^XMLReader parser (let [p (XMLReaderFactory/createXMLReader
+;;                                    "org.apache.xerces.parsers.SAXParser")
+;;                                 handler (SheetHandler
 
 (defn save-workbook! 
   "Save the workbook into a file."
@@ -366,3 +396,36 @@
   (let [the-name (.createName workbook)]
     (.setNameName the-name (name n))
     (.setRefersToFormula the-name string-ref)))
+
+
+;;OBE stuff, old multimethod implementation
+(comment 
+(defn cell-reference [^Cell cell]
+  (.formatAsString (CellReference. (.getRowIndex cell) (.getColumnIndex cell))))
+
+;;Note: we can spoeed this up a lot if we get away from multimethods....
+(defmulti read-cell-value (fn [^CellValue cv date-format?] (.getCellType cv)))
+(defmethod read-cell-value Cell/CELL_TYPE_BOOLEAN  [^CellValue cv _]  (.getBooleanValue cv))
+(defmethod read-cell-value Cell/CELL_TYPE_STRING   [^CellValue cv _]  (.getStringValue cv))
+(defmethod read-cell-value Cell/CELL_TYPE_NUMERIC  [^CellValue cv date-format?]
+	   (if date-format? 
+	     (DateUtil/getJavaDate (.getNumberValue cv))
+	     (.getNumberValue cv)))
+)
+
+(comment 
+;modification.....we spend a ton of time checking for dates.
+(defmulti  read-cell (fn [^Cell cell] (.getCellType cell)))
+(defmethod read-cell Cell/CELL_TYPE_BLANK     [_]     nil)
+(defmethod read-cell Cell/CELL_TYPE_STRING    [^Cell cell]  (.getStringCellValue cell))
+(defmethod read-cell Cell/CELL_TYPE_FORMULA   [^Cell cell]
+	   (let [evaluator (.. cell getSheet getWorkbook
+			       getCreationHelper createFormulaEvaluator)
+		 cv (.evaluate evaluator cell)]
+	     (read-cell-value cv false)))
+(defmethod read-cell Cell/CELL_TYPE_BOOLEAN   [^Cell cell]  (.getBooleanCellValue cell))
+(defmethod read-cell Cell/CELL_TYPE_NUMERIC   [^Cell cell]  
+  (if (and *date-checking* (DateUtil/isCellDateFormatted cell))
+    (.getDateCellValue cell)
+    (.getNumericCellValue cell)))
+)
