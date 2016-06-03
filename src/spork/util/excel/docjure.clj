@@ -55,8 +55,26 @@
   `(when-not (isa? (class ~value) ~expected-type)
      (throw (IllegalArgumentException. (format "%s is invalid. Expected %s. Actual type %s, value: %s" (str '~value) ~expected-type (class ~value) ~value)))))
 
+
+;faster...
+(def cell-types
+  {'Cell/CELL_TYPE_BOOLEAN Cell/CELL_TYPE_BOOLEAN
+   'Cell/CELL_TYPE_STRING  Cell/CELL_TYPE_STRING 
+   'Cell/CELL_TYPE_NUMERIC Cell/CELL_TYPE_NUMERIC
+   'Cell/CELL_TYPE_BLANK   Cell/CELL_TYPE_BLANK 
+   'Cell/CELL_TYPE_FORMULA Cell/CELL_TYPE_FORMULA}) 
+
+(defmacro case-cell [pred & cases]
+  (let [tl (when (odd? (count cases)) (last cases))]
+  `(case ~pred
+     ~@(mapcat (fn [[s expr]]
+                 [(or (get cell-types s) (throw (Exception. (str [:unknown-celltype s]))))
+                  expr])
+               (partition 2 cases))
+     ~@tl)))
+    
 (defn read-cell-value [^CellValue cv date-format?]
-  (case (.getCellType cv)
+  (case-cell  (int (.getCellType cv))
     Cell/CELL_TYPE_BOOLEAN   (.getBooleanValue cv)
     Cell/CELL_TYPE_STRING    (.getStringValue cv)
     Cell/CELL_TYPE_NUMERIC  
@@ -66,13 +84,13 @@
     (throw (Exception. (str [:unknown :celltype (.getCellType cv)])))))
 ;;again, get away from multimethods and go faster.....
 (defn read-cell [^Cell cell]
-  (case  (.getCellType cell)
+  (case-cell  (int (.getCellType cell))
     Cell/CELL_TYPE_BLANK       nil
-    Cell/CELL_TYPE_STRING      (.getStringCellValue cell)
+    Cell/CELL_TYPE_STRING     (.getStringCellValue cell)
     Cell/CELL_TYPE_FORMULA   
       (let [evaluator (.. cell getSheet getWorkbook
                           getCreationHelper createFormulaEvaluator)
-            cv (.evaluate evaluator cell)]
+            cv         (.evaluate evaluator cell)]
         (read-cell-value cv false))
     Cell/CELL_TYPE_BOOLEAN     (.getBooleanCellValue cell)
     Cell/CELL_TYPE_NUMERIC     
