@@ -101,19 +101,18 @@
     ))
 
 
-;; (defn load-workbook 
-;;   "Load an Excel .xls or .xlsx workbook from a file."
-;;   [filename]
-;;   (with-open [stream (FileInputStream. filename)]
-;;     (WorkbookFactory/create stream)))
-
 (defn load-workbook 
   "Load an Excel .xls or .xlsx workbook from a file."
   [filename]
-                                        ;  (with-open [stream (FileInputStream. filename)]
-  (let [f   (java.io.File. filename)
-        ^OPCPackage opc (OPCPackage/open f)]
-    (XSSFWorkbook. opc)))
+  (with-open [stream (FileInputStream. filename)]
+    (WorkbookFactory/create stream)))
+
+;; (defn load-workbook 
+;;   "Load an Excel .xls or .xlsx workbook from a file."
+;;   [filename]
+;;   (let [f   (java.io.File. filename)
+;;         ^OPCPackage opc (OPCPackage/open f)]
+;;     (XSSFWorkbook. opc)))
 
 ;;holy wow...
 ;; (defn sheet-handler [sst]
