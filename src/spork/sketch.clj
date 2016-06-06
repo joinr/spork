@@ -17,8 +17,7 @@
             [spork.cljgui.components [swing :as gui]]
             [spork.events [base :as evt]
                           [native :as nat]
-                          [observe :as obs]]
-            ))
+             [observe :as obs]]))
 
 ;;okay...
 ;;a bit of a shift here.

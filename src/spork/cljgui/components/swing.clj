@@ -853,7 +853,9 @@
                                      (str (str (System/getProperty "user.home") 
                                                "\\" "SavedBuffer.png")) ]
                                  (do (let [buffer (jgraphics/make-imgbuffer width height)
-                                           bg     (j2d/get-graphics (j2d/bitmap-graphics buffer))
+                                           bg     ;(j2d/get-graphics
+                                                   (j2d/bitmap-graphics buffer)
+                                                  ; )
                                            _      (paintf bg)]
                                        (j2d/write-image buffer savepath nil))
                                      (alert (str "Saved image to " savepath)))))))]                                      
@@ -1086,6 +1088,10 @@
        
 ;;       ))
 
+(defn scroll-view [frm]
+  (.getView (.getViewport
+             (first (.getComponents (.getContentPane frm))))))
+
 (defmethod view :default [s & {:keys [title cached?] :or {title "Shape" :cached? false}}] 
   (if (satisfies? j2d/IShape s)
     (let [{:keys [x y width height]} (j2d/shape-bounds s)
@@ -1100,8 +1106,23 @@
                        (inc (+ y height))
                        paintf)                      
                       (add-repaint-watch! s))
-           ]
-      (->scrollable-view panel :title title))))
+           ;; savelistener (proxy [MouseAdapter] []
+           ;;                (mouseClicked [^MouseEvent e]
+           ;;                  (do ;(alert :clicked!)
+           ;;                      ;(if (= (.getButton e) MouseEvent/BUTTON3)
+           ;;                        ;(.processEvent panel e)
+           ;;                        )))
+           v        (doto
+                        (->scrollable-view panel :title title)                                                     
+                      (.setPreferredSize (Dimension. width height)))
+           sv       (scroll-view v)
+          ;  _       (.addMouseListener sv savelistener)           
+                      ]                                    
+      v
+          
+      )))
+
+
 
 (defn swing-canvas [width height] 
   (let [frm (empty-frame)
