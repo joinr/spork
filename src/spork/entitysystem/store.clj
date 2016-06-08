@@ -380,7 +380,7 @@
    for composing entities, in that entity components can be contained in 
    a map."
   ([k v]
-    (cond (and (satisfies? IComponent v) (not (map? v)))  v
+    (cond (and (extends? IComponent (class v)) (not (map? v)))  v
           (and (map? v) 
                (contains? v :domain) 
                (contains? v :components))

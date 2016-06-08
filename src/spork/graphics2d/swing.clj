@@ -150,7 +150,8 @@
 (defprotocol IPaintable
   (as-paint [p]))
 
-
+;;Note: this throws an error if we pass int values
+;;to our rgba args...
 (defn get-gui-color 
   ([colorkey] (if (satisfies? IPaintable colorkey)
                 (as-paint colorkey)

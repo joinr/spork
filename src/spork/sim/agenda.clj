@@ -78,6 +78,9 @@
   "Predicate indicating that the agenda has no upper bound on its time horizon."
   [a] (or (nil? (final-time a)) 
           (= (final-time a) :inf)))
+
+;;This is causing a bit of a slowdown...
+;;We end up calling it pretty often.
 (defn still-time?
   "Predicate indicating that the agenda still has work remaining."
   [a] (and (not= (agenda-count a) 0)
