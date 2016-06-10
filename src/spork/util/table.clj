@@ -36,11 +36,11 @@
 ;;primitive-backed table IO
 ;;Added for parsing and storing large tables.
 (def primitives  #{:long   
-                    :double
-                    :int    
-                    :float        
-                    :boolean
-                    :char
+                   :double
+                   :int    
+                   :float        
+                   :boolean
+                   :char
                    :short})
 ;;generate a type-column based on t, if it's primitive we use
 ;;primitive-backed vectors.  optionally initialize column with seq xs.

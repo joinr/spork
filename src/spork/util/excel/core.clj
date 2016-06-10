@@ -5,7 +5,7 @@
 ;  (:use [dk.ative.docjure.spreadsheet])
   (:use [spork.util.excel.docjure])
   (:require [spork.util [table :as tbl] [vector :as v] [io :as io]])
-  (:import (org.apache.poi.ss.usermodel  Sheet Cell Row)))
+  (:import (org.apache.poi.ss.usermodel  Sheet Cell Row DataFormatter)))
 
 (set! *warn-on-reflection* true)
 
@@ -42,35 +42,77 @@
          (vector (.getColumnIndex c) (read-cell c))) 
        (iterator-seq (.iterator r))))
 
+;;TODO: revisit this, we can probably do mo betta.
 ;;causing problems here...
-(defn row->vec [^Row r & [bound]]
-  (let [bounded? (if (not (nil? bound)) 
-                   (fn [n] (> n bound))
-                   (fn [_] false))
-        vs (seq r)]
-    (loop [acc []
-           idx (int 0)
-           xs   vs]
-      (cond (empty? xs) acc           
-            (bounded? idx) (subvec acc 0 bound)
-            :else (let [^Cell x (first xs)                       
-                        y (read-cell x)
-                        i (.getColumnIndex x)                        
-                        missed (reduce conj acc (take (- i idx) (repeat nil)))]
-                    (recur (conj missed y) (inc i) (rest xs)))))))
+(defn row->vec
+  ([^Row r bound]
+   (let [bounded? (if (not (nil? bound)) 
+                    (fn [n] (> n bound))
+                    (fn [_] false))
+         vs (seq r)]
+     (loop [acc []
+            idx (int 0)
+            xs   vs]
+       (cond (empty? xs) acc           
+             (bounded? idx) (subvec acc 0 bound)
+             :else (let [^Cell x (first xs)                       
+                         y       (read-cell x) ;;This is where we'd hook in if we only wanted text.
+                         i       (.getColumnIndex x)                        
+                         missed  (reduce conj acc
+                                         (take (- i idx)
+                                               (repeat nil)))]
+                     (recur (conj missed y) (inc i) (rest xs)))))))
+  ([r] (row->vec nil)))
+
+(comment
+;;We use the dataformatter here, just getting strings out.
+(defn row->strings
+  ([^Row r ^DataFormatter df]
+   (let [bounded? (if (not (nil? bound)) 
+                    (fn [n] (> n bound))
+                    (fn [_] false))
+         vs (seq r)]
+     (loop [acc []
+            idx (int 0)
+            xs   vs]
+       (cond (empty? xs) acc           
+             (bounded? idx) (subvec acc 0 bound)
+             :else (let [^Cell x (first xs)                       
+                         y       (.formatCellValue df  x) ;;This is where we'd hook in if we only wanted text.
+                         i       (.getColumnIndex x)                        
+                         missed  (reduce conj acc
+                                         (take (- i idx)
+                                               (repeat nil)))]
+                     (recur (conj missed y) (inc i) (rest xs))))))))
+)
+
+;;Todo: revisit this.  we're eagerly building the rows, we could
+;;also stream them.
 (defn rows->table
   "Converts an excel worksheet into a columnar table.  Assumes first row defines 
    field names."
   [xs] 
   (when (seq xs)
-    (let [rows (->> xs 
-                 (reduce (fn [acc r]
-                             (conj acc (row->vec r))))
-                         [])
-          fields (first (subvec rows 0 1))
+    (let [rows    (->> xs 
+                       (reduce (fn [acc r]
+                                 (conj acc (row->vec r))))
+                       [])
+          fields  (first (subvec rows 0 1))
           records (v/transpose (subvec rows 1))]
-;      records)))
-      (tbl/make-table fields records))))   
+      (tbl/make-table fields records))))
+
+;; (defn rows->raw-table
+;;   "Converts an excel worksheet into a columnar table.  Assumes first row defines 
+;;    field names."
+;;   [xs] 
+;;   (when (seq xs)
+;;     (let [rows    (->> xs 
+;;                        (reduce (fn [acc r]
+;;                                  (conj acc (row->vec r))))
+;;                        [])
+;;           fields  (first (subvec rows 0 1))
+;;           records (v/transpose (subvec rows 1))]
+;;       (tbl/make-table fields records))))   
 
 (defn ucase [^String s] (.toUpperCase s))
 (defn lcase [^String s] (.toLowerCase s))
@@ -151,6 +193,8 @@
 ;        records (v/transpose (subvec rows 1))]      
 ;      (tbl/make-table fields records)))
 
+
+;;Maybe revisit this....
 (defn sheet->table
   "Converts an excel worksheet into a columnar table.  Assumes first row defines 
    field names.  Truncates remaining dataset to the contiguous, non-nil fields 

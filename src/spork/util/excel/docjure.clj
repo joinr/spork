@@ -57,7 +57,6 @@
              (format "%s is invalid. Expected %s. Actual type %s, value: %s"
                      (str '~value) ~expected-type (class ~value) ~value)))))
 
-
 ;faster...
 (def cell-types
   {'Cell/CELL_TYPE_BOOLEAN Cell/CELL_TYPE_BOOLEAN
@@ -84,6 +83,7 @@
 	     (DateUtil/getJavaDate (.getNumberValue cv))
 	     (.getNumberValue cv))
     (throw (Exception. (str [:unknown :celltype (.getCellType cv)])))))
+     
 ;;again, get away from multimethods and go faster.....
 (defn read-cell [^Cell cell]
   (case-cell  (int (.getCellType cell))
