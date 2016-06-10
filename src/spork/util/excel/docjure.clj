@@ -53,7 +53,9 @@
 ;(set! *warn-on-reflection* true)
 (defmacro assert-type [value expected-type]
   `(when-not (isa? (class ~value) ~expected-type)
-     (throw (IllegalArgumentException. (format "%s is invalid. Expected %s. Actual type %s, value: %s" (str '~value) ~expected-type (class ~value) ~value)))))
+     (throw (IllegalArgumentException.
+             (format "%s is invalid. Expected %s. Actual type %s, value: %s"
+                     (str '~value) ~expected-type (class ~value) ~value)))))
 
 
 ;faster...
@@ -413,7 +415,6 @@
   (let [the-name (.createName workbook)]
     (.setNameName the-name (name n))
     (.setRefersToFormula the-name string-ref)))
-
 
 ;;OBE stuff, old multimethod implementation
 (comment 
