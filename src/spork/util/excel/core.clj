@@ -62,7 +62,7 @@
                                          (take (- i idx)
                                                (repeat nil)))]
                      (recur (conj missed y) (inc i) (rest xs)))))))
-  ([r] (row->vec nil)))
+  ([r] (row->vec r nil)))
 
 (comment
 ;;We use the dataformatter here, just getting strings out.
