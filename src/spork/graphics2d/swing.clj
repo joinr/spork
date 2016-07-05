@@ -543,6 +543,8 @@
   )
 
 
+;;A "better" design for his would be to have 
+
 ;;Wraps an existing canvas item and makes it into a smart cartesian
 ;;coordinate system-based canvas, allowing us to draw images and strings
 ;;unaltered.  Standard shapes will be reflected normally, strings and images

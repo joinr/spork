@@ -224,6 +224,14 @@
   (keySet   [this] (.keySet ^java.util.Map m))
   IGetmap
   (getmap [this] m)
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [this f init]
+    (reduce-kv (fn [acc k v]
+                 (if (contains? m k)
+                   acc
+                   (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
+                     (f acc (.key e) (.val e))
+                     acc))) (reduce-kv f init m) db))
   )
 
 (defn lazy-join [source k] (passmap. k {} source))
