@@ -176,7 +176,7 @@
           (> pl pr) 1
           :else 0)))   
 
-(defn ^ArrayList  add-list   [^ArrayList l obj]   (doto l  (.add obj)))
+(defn ^ArrayList  add-list   [^ArrayList l  obj]   (doto l  (.add obj)))
 (defn ^ArrayDeque add-q      [^ArrayDeque q obj]  (doto q (.add obj)))
 
 (defn ^PriorityQueue make-pq [] (PriorityQueue. 11 entry-comparer))

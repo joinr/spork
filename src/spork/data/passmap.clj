@@ -96,7 +96,7 @@
               :else nil))  
   clojure.lang.IObj
   (meta     [this]    (.meta ^clojure.lang.IObj m))
-  (withMeta [this xs] (passmap. id (with-meta ^clojure.lang.IObj m xs) db db-keys))
+  (withMeta [this xs] (PassMap. id (with-meta ^clojure.lang.IObj m xs) db db-keys))
   clojure.lang.IPersistentMap
   (valAt [this k]
     (let [^clojure.lang.MapEntry res (.entryAt m k)]
@@ -120,9 +120,9 @@
                           (do (set! m (.assoc m k (.val res)))
                               (clojure.lang.MapEntry. k (.val res))                              
                               )))))
-  (assoc [this k v]   (passmap. id (.assoc m k v)  db db-keys))
-  (cons  [this e]     (passmap. id (.cons m e)     db  db-keys))
-  (without [this k]   (passmap. id (.without m k) (.without db k) (.disjoin db-keys k)))
+  (assoc [this k v]   (PassMap. id (.assoc m k v)  db db-keys))
+  (cons  [this e]     (PassMap. id (.cons m e)     db  db-keys))
+  (without [this k]   (PassMap. id (.without m k) (.without db k) (.disjoin db-keys k)))
   clojure.lang.Seqable
   (seq [this] (concat (seq m)
                       (filter identity
@@ -134,8 +134,8 @@
   (count [this]      (do (when db (join! db-keys db)) (.count m)))
   java.util.Map ;;some of these aren't correct....might matter.
   (put    [this k v]  (.assoc this k v))
-  (putAll [this c] (passmap. id (.putAll ^java.util.Map m c) db db-keys))
-  (clear  [this] (passmap.  id {} nil #{}))
+  (putAll [this c] (PassMap. id (.putAll ^java.util.Map m c) db db-keys))
+  (clear  [this] (PassMap.  id {} nil #{}))
   (containsKey   [this k]
     (or (.containsKey ^java.util.Map m k)
         (and db
@@ -159,7 +159,7 @@
 
 
 (defn lazy-join
-  ([source k] (passmap. k {} source #{}))
-  ([source k keyset]  (passmap. k {} source keyset)))
+  ([source k] (PassMap. k {} source #{}))
+  ([source k keyset]  (PassMap. k {} source keyset)))
 
 ;;testing 

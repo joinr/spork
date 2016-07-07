@@ -106,9 +106,9 @@
   sim/IEventSeq
   (add-event   [ctx e] (simcontext. (sim/add-event scheduler e) 
                                     updater propogator state))                                 
-  (drop-event  [ctx] (simcontext. (sim/drop-event scheduler) updater propogator state))
-  (first-event [ctx] (sim/first-event scheduler))
-  (nth-event [ctx n] (sim/nth-event scheduler n))
+  (drop-event  [ctx]   (simcontext. (sim/drop-event scheduler) updater propogator state))
+  (first-event [ctx]   (sim/first-event scheduler))
+  (nth-event [ctx n]   (sim/nth-event scheduler n))
   store/IEntityStore
   (add-entry      [db id domain data] 
     (simcontext. scheduler updater propogator 
