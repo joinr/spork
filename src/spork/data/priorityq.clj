@@ -67,14 +67,20 @@
   [q entries]
   (reduce conj-node q entries))
 
-(definline next-val
-  "Return the highest-priority value." 
-  [pq]
-  (let [entries (with-meta (gensym "entries") {:tag 'clojure.lang.ISeq})]
-    `(let [~entries (vals ~pq); (.first (.first (vals pq))))
-           ~entries (.first ~entries)]
-       (.first ~entries))))
-           
+;; (definline next-val
+;;   "Return the highest-priority value." 
+;;   [pq]
+;;   (let [entries (with-meta (gensym "entries") {:tag 'clojure.lang.ISeq})
+;;         q       (with-meta (gensym "q")       {:tag 'clojure.lang.PersistentQueue})]
+;;     `(let [~entries (first ~pq); (.first (.first (vals pq)))) ;;this is actually a persistentqueue
+;;            ~entries (.first ~entries)
+;;            ]
+;;        (.first ~entries))))
+
+(defn next-val [treemap]
+  (when-let [e (first treemap)]
+    (peek (val e))))
+
 (defn next-entry 
   "Return [priority x] for the highest-priority node." 
   [pq]

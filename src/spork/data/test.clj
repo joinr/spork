@@ -3,7 +3,9 @@
               [spork.protocols [core :as generic]]
               [spork.data [priorityq :as pq]
                           [fringe    :as fr]
-                          [mpq :as mpq]    ]))
+                          [mpq :as mpq]
+                          [passmap :as passmap]
+               ]))
 
 ;;priorityq testing
 ;;=================
@@ -20,10 +22,10 @@
 ;;changing values.
 ;;:c has the lowest priority.  changing it to 2.0 should move it.
 (deftest pq-alteration
-  (is (=  (pq/alter-value the-q :c 2.0)
-          (pq/alter-value the-q :c 0.589 2.0)
+  (is (=  (seq (pq/alter-value the-q :c 2.0))
+          (seq (pq/alter-value the-q :c 0.589 2.0))
          '(:d :a :b :c)))
-  (is (= (pq/alter-value the-q :c 0.589 2.0 (fn [nd] :Balls))
+  (is (= (seq (pq/alter-value the-q :c 0.589 2.0 (fn [nd] :Balls)))
          '(:d :a :b :Balls))))
   
 
@@ -123,4 +125,18 @@
     (is (= (generic/get-min pq) :p))
     (is (= (second pq) [0 :a]))
     (is (= (generic/get-max pq) :m))))
+
+;;Passmap Testing
+;;===============
+(def db {:name       {0 "bilbo"}
+         :age        {0 "baggins"}
+         :hobbies    {0 "smoking"}
+         :instrument {0 "voice"}})
+
+(deftest passthrough
+  (let [lm (passmap/lazy-join db 0)]
+    (is (= lm  {:name "bilbo", :age "baggins", :hobbies "smoking", :instrument "voice"})
+        "passmap should be equal to the union of the entries in the underlying store.")
+    (is (not= (assoc lm :name "tom") {:name "bilbo", :age "baggins", :hobbies "smoking", :instrument "voice"})
+        "Modified passmap should not be equal to underlying store.")))
 
