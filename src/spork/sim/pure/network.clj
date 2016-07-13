@@ -82,7 +82,10 @@
 ;Propogating an event through the network could result in the network topology
 ;changing, like defining new events.  
 (ns spork.sim.pure.network
-  (:use [spork.sim.data]))
+  (:require
+   [spork.sim.data :refer :all]
+   [spork.entitysystem [store :as store]]))
+
 ;Note -> there is currently no order of execution in notifying the observers 
 ;(actually, the order they register is the order of execution.  The net effect
 ;of this is that observations should be cummutative i.e., the effect of an
@@ -441,9 +444,15 @@
   (set-state [ctx s] (event-context. event s transition net))
   (set-net   [ctx n] (event-context. event state transition n))
   (get-event  [ctx] event)
-  (get-transition [ctx] transition )
+  (get-transition [ctx] transition)
   (get-state [ctx] state)
   (get-net   [ctx] net)
+  spork.sim.data.IEventSeq
+  (add-event   [ctx e] (event-context. event (spork.sim.data/add-event state e) 
+                                    transition net))                                 
+  (drop-event  [ctx]   (event-context. event (spork.sim.data/drop-event state) transition net))
+  (first-event [ctx]   (spork.sim.data/first-event state))
+  (nth-event [ctx n]   (spork.sim.data/nth-event state n))
   IEventSystem
   (get-events [ctx]  (.get-events net))
   (get-clients [ctx] (.get-clients  net))
@@ -452,7 +461,24 @@
   (unsubscribe  [obs client-name event-type] 
     (event-context. event state transition (.unsubscribe net client-name event-type)))
   (subscribe [obs client-name handler event-type] 
-    (event-context. event state transition (.subscribe net client-name handler event-type))))
+    (event-context. event state transition (.subscribe net client-name handler event-type)))
+  ;;Added to allow event contexts to be seen as entity stores...convoluted but useful.
+  store/IEntityStore
+  (add-entry      [db id domain data] 
+    (event-context. event (store/add-entry state id domain data) transition  net))
+  (drop-entry     [db id domain] 
+     (event-context. event 
+                     (store/drop-entry state id domain)
+                     transition  net)) 
+  (get-entry      [db id domain] (store/get-entry state id domain))
+  (entities       [db]     (store/entities state))
+  (domains        [db]     (store/domains state))
+  (domains-of     [db id]  (store/domains-of state id))
+  (components-of  [db id]  (store/components-of state id))
+  (get-entity     [db id]  (store/get-entity state id))
+  (conj-entity    [db id components] 
+    (event-context. event (store/conj-entity state id components)
+                    transition  net)))
 
 (def default-net      (empty-network "empty"))
 (def default-context  (event-context. nil nil  default-transition default-net))
