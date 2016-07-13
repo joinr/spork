@@ -382,7 +382,7 @@
   (domains-of     [db id]  "set of domains id intersects")
   (get-entity [db id] "Returns an IEntity associated with id")
   (conj-entity    [db id components] "Add an entity to the database.")   
-  (entities [db] "Return a map of {entityid #{components..}}"))
+  (entities       [db] "Return a map of {entityid #{components..}}"))
 
 ;  (alter-entity [db id f] "Alter an entity's components using f.  f
 ;  should take an entity and return a set of components that change.")
@@ -749,6 +749,16 @@
 (def entity-at get-entity)
 
 ;protocol-derived functionality 
+(defn map-component
+  "Map function f across entries in the component map associated with component c in store.
+   Updates associated entries with the result of f.  This is similar to fmap, treating the 
+   store as a functor."
+  [store c f]
+  (if-let [entries (get-domain store c)]
+    (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
+                 (assoce acc e c (f x)))
+               store entries)
+    store))
 
 (defn reduce-entries
   "Mechanism for updating the entity store.  

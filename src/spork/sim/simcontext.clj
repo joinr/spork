@@ -344,6 +344,15 @@
   (reduce (fn [context e] (simnet/register context client-name handler e))
           ctx subscriptions))
 
+(defn register-routes
+  "Shallowly imported from spork.sim.pure.network, allows us to specify 
+   a route-map, that is a map of {observer-name* {event-type* handler-fn*}},
+   which will traverse the map and register the observers to their interested
+   events using the specified handlers.  Computes the resulting context with 
+   an updated event propogration network."
+  [route-map ctx]
+  (simnet/register-routes route-map ctx))
+
 (def ^:constant +empty-msg-data+ {:msg nil :data nil})
 
 (defrecord packet [t type from to msg data]
