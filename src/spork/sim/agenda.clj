@@ -5,6 +5,7 @@
 (ns spork.sim.agenda
 ;  (:refer-clojure :exclude [contains?])
   (:require [spork.sim [data :as sim]]
+            [spork.data [cell :as cell]]
             [clojure.core [reducers :as r]]))
 
 ;Defined a simple protocol for agendas.  The operations on schedules are 
@@ -26,12 +27,24 @@
     (cond (or (= tf :inf) (nil? tf)) true
           (<= t tf) true 
           :else false)))
-          
-(defrecord agenda [tprev tfinal schedule item-count times]
+
+;;We have some overhead in the calls to current-time on this guy,
+;;since it delegates to first-event.  If we could cache the
+;;first event, we don't have to do the traversal over and
+;;over, which saves us a lot of time.  So, the typical
+;;option is to have a mutable value that serves as a one-time
+;;cache, where if we ask for the first event, we save it behind
+;;the scenes and cache the value (like a thunk).
+;;We can use a single-cell object array to act as our mutable
+;;value...that'd be compatible with our serialization...
+;;The cached version is significantly faster at access the
+;;head event now.
+(defrecord agenda [tprev tfinal schedule item-count times
+                   ^spork.data.cell.cell head]
   IAgenda 
   (previous-time  [a] tprev)
   (final-time     [a] tfinal)
-  (set-final-time [a tf]  (agenda. tprev tf schedule item-count times))
+  (set-final-time [a tf]  (agenda. tprev tf schedule item-count times head))
   (agenda-count   [a]     item-count)
   (time-segments  [a]     schedule)
   (add-times [a ts] 
@@ -42,12 +55,12 @@
                                        (conj! knowns t)
                                        (inc i)]))
                               [schedule (transient times) item-count]  (r/filter #(not (contains? times %)) ts))]
-      (agenda. tprev tfinal nsched  i (persistent! nt))))
+      (agenda. tprev tfinal nsched  i (persistent! nt) (cell/->cell))))
   (get-times [a] times)
   spork.sim.data.IEventSeq 
   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  
     (agenda. tprev tfinal (sim/add-event schedule e) (inc item-count)
-             (conj times (sim/event-time e)))) 
+             (conj times (sim/event-time e)) (cell/->cell))) 
   (drop-event  [a]  
     (if (> item-count 0)  
        (let [tnext (sim/current-time schedule)
@@ -56,12 +69,17 @@
                   (if (not= tnext 
                         (sim/current-time snext))
                     (disj times tnext)
-                    times)))
+                    times) (cell/->cell)))
        (throw (Exception. "No items left in the agenda!"))))    
-  (first-event [a] (sim/first-event schedule))
+  (first-event [a] (if (.isRealized head) (.deref head)
+                       (let [fe (sim/first-event schedule)
+                             _  (reset! head fe)]
+                         fe)))                         
   (nth-event [a n] (sim/nth-event schedule n)))
 
-(def empty-agenda (->agenda nil nil nil 0 #{}))
+
+(def empty-agenda (->agendacache nil nil nil 0 #{} (cell/->cell)))
+
 
 (defn get-quarter [day] ((comp inc int) (/ day 90)))
 
@@ -112,8 +130,47 @@
 (comment ;testing 
 (def simple-agenda (add-time empty-agenda 2))
 (def larger-agenda (add-times empty-agenda (range 100)))
+;;much faster....
+(def larger-cached (add-times empty-agenda-cache (range 100)))
 (defn time-pairs [] 
-  (map (juxt previous-time current-time)
+  (map (juxt sim/previous-time sim/current-time)
        (agenda-seq larger-agenda)))
 )
 
+;;older uncached version, mucho mas slower...
+
+;; (defrecord agenda [tprev tfinal schedule item-count times]
+;;   IAgenda 
+;;   (previous-time  [a] tprev)
+;;   (final-time     [a] tfinal)
+;;   (set-final-time [a tf]  (agenda. tprev tf schedule item-count times))
+;;   (agenda-count   [a]     item-count)
+;;   (time-segments  [a]     schedule)
+;;   (add-times [a ts] 
+;;     (let [itms (atom item-count)
+;;           [nsched nt i] (reduce (fn [[sched knowns i :as acc] t]
+;;                                   (if (knowns t) acc
+;;                                       [(sim/add-event sched (sim/->simple-event :time  t))
+;;                                        (conj! knowns t)
+;;                                        (inc i)]))
+;;                               [schedule (transient times) item-count]  (r/filter #(not (contains? times %)) ts))]
+;;       (agenda. tprev tfinal nsched  i (persistent! nt))))
+;;   (get-times [a] times)
+;;   spork.sim.data.IEventSeq 
+;;   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  
+;;     (agenda. tprev tfinal (sim/add-event schedule e) (inc item-count)
+;;              (conj times (sim/event-time e)))) 
+;;   (drop-event  [a]  
+;;     (if (> item-count 0)  
+;;        (let [tnext (sim/current-time schedule)
+;;              snext (sim/drop-event schedule)]
+;;          (agenda. tnext tfinal snext (dec item-count)
+;;                   (if (not= tnext 
+;;                         (sim/current-time snext))
+;;                     (disj times tnext)
+;;                     times)))
+;;        (throw (Exception. "No items left in the agenda!"))))    
+;;   (first-event [a] (sim/first-event schedule))
+;;   (nth-event [a n] (sim/nth-event schedule n)))
+
+;(def empty-agenda (->agenda nil nil nil 0 #{}))

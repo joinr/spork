@@ -226,11 +226,20 @@
 (defprotocol IChunkedEventSeq
   (event-chunks [ecoll] "returns a lazy seq of chunks of ordered events."))
 
+;;This is going to cost us in practice, because we're
+;;going to get hammered on the lookup cost due to extending the type
+;;vs. implementing inline directly...
+;;It'd make sense to just derive from persistentTreeMap and provide
+;;an implementation for the schedule, or wrap the map using deftype...
+;;Since we're not using the tree-map directly, it makes sense to
+;;just wrap it in a deftype (downside is we have to define serialization
+;;primitive for it...)
+
 (extend-type clojure.lang.PersistentTreeMap
   IEventSeq
-  (add-event [m e] (put-event m e)) 
-  (drop-event [m] (take-event m))                       
-  (first-event [m] (next-event  m))
+  (add-event   [m e] (put-event m e)) 
+  (drop-event  [m]   (take-event m))                       
+  (first-event [m]   (next-event  m))
   (nth-event  [m n] 
     (assert (pos? n) (throw (Exception. "index out of bounds in nth-event")))
     (let [cnt (long-array [-1])]
@@ -283,6 +292,11 @@
   [ecoll es] 
   (reduce add-event ecoll es)) 
 
+;;This is a known hotspot....should be cached internally.
+;;We end up repeatedly computing this, which typically calls
+;;a bunch of times into the same sorted seq, which is expensive.
+;;So, it's far faster to go ahead and cache the result in the
+;;container, and propogate it internally.
 (defn current-time 
   "Return the current time of the event collection (i.e. the time of the first 
    event)."

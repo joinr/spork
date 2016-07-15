@@ -332,6 +332,11 @@
                   :fail      (fail acc)))) (success ctx) xs)))
 
 
+;;We should eliminate the reduce funcall..
+;;Lots of overhead due to this getting called repeatedly...
+;;Seq is used a lot in behaviors....so instead of reduce,
+;;if we shift it to a loop, then we get something a bit faster.
+
 ;;Verify this, I think the semantics are wrong.
 (defn ->seq
   "Defines a sequential node, more or less the bread-and-butter of behavior tree architecture.
