@@ -78,7 +78,7 @@
   (nth-event [a n] (sim/nth-event schedule n)))
 
 
-(def empty-agenda (->agendacache nil nil nil 0 #{} (cell/->cell)))
+(def empty-agenda (->agenda nil nil nil 0 #{} (cell/->cell)))
 
 
 (defn get-quarter [day] ((comp inc int) (/ day 90)))
@@ -131,7 +131,7 @@
 (def simple-agenda (add-time empty-agenda 2))
 (def larger-agenda (add-times empty-agenda (range 100)))
 ;;much faster....
-(def larger-cached (add-times empty-agenda-cache (range 100)))
+;(def larger-cached (add-times empty-agenda-cache (range 100)))
 (defn time-pairs [] 
   (map (juxt sim/previous-time sim/current-time)
        (agenda-seq larger-agenda)))
