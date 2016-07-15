@@ -127,7 +127,7 @@
   (seq [this] (concat (seq m)
                       (filter identity
                               (map (fn [^clojure.lang.MapEntry e]
-                                     (if (contains? m (.key e))
+                                     (if (.containsKey ^clojure.lang.IPersistentMap m (.key e))
                                        nil
                                        (.entryAt this (.key e)))) db))))
   clojure.lang.Counted
@@ -150,7 +150,7 @@
   clojure.core.protocols/IKVReduce
   (kv-reduce [this f init]
     (reduce-kv (fn [acc k v]
-                 (if (contains? m k)
+                 (if (.containsKey ^clojure.lang.IPersistentMap m k)
                    acc
                    (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
                      (f acc (.key e) (.val e))

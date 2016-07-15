@@ -392,6 +392,10 @@
        @scc))
   ([g] (strongly-connected-components g (get-node-labels g) hash-set)))
 
+;;Note: Optimization point: we're seemingly spending a lot of time
+;;conjing onto the list...This gets called a lot from a client
+;;lib, and conj inside the atom seems to be a weak point.   Alternately,
+;;replace the atom with an arraylist.
 ;aux function for Tarjan's strongly connected components algo.
 (defn- strong-connect [g idx s v indices links sccs active containerf]
   (do  (swap! indices assoc  v @idx)
