@@ -1169,7 +1169,8 @@
       (reduce (fn [o r]                
                 (write-record! o r))
               (write-record! out header-record)       
-              xs))))
+              xs))
+    nil))
 
 ;establishes a simple table-viewer.
 ;we can probably create more complicated views later....
