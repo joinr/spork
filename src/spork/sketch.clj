@@ -1023,8 +1023,11 @@
                     background :grey
                     plot-by identity}}]
   (let [trend-box     (->rec [] width height)
-        clear-canvas! (fn [] (canvas/push-shape trend-box
-                                                (->rectangle background 0 0 width height)))
+        clear-canvas! (fn []
+                        (canvas/wipe trend-box)
+;                        (canvas/push-shape trend-box
+        ;                (->rectangle background 0 0 width height))
+        )
         _ (when initial-clear (clear-canvas!))
         ]
     (reify canvas/IShape

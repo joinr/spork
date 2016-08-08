@@ -154,3 +154,9 @@
 ;;use the map's keys as values instead of the entire string
 ;;reprsentation
 (defn tree-view [obj] (inspect/inspect-tree (entryvis obj)))
+
+
+(defn spec-view [obj]
+  (tree-view (for [[k xs] (seq (spec-map obj))]
+               (clojure.lang.MapEntry. k
+                      (for [[nm _ sig] (sort-by first xs)] (clojure.lang.MapEntry. nm (str sig)))))))
