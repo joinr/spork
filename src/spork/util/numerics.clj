@@ -98,7 +98,7 @@
       (aget fac-table n))))
 
 (let [ntop     2000
-      ^doubles cache (double-array (map #(gammln (inc-dbl %)) (range ntop)))] 
+      ^doubles cache (double-array (map #(gammln (double (inc  %))) (range ntop)))] 
   (defn ^double factln
     "Returns the natural log of the n factorial, or ln(n!)."
     [^double n]

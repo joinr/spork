@@ -38,7 +38,10 @@
                  ]
   :aot [spork.cljgui.components.PaintPanel]
   :profiles {:publish [:uberjar
-                       {:aot [spork.cljgui.components.PaintPanel
+                       {:aot [;spork.cljgui.components.PaintPanel
                               spork.cljgui.components.swing
-                              spork.util.table]}]}
+                              spork.util.table]}]
+             :install {:aot [;spork.cljgui.components.PaintPanel
+                             spork.cljgui.components.swing
+                             spork.util.table]}}
   :jvm-opts ^:replace ["-Xmx1g" "-XX:NewSize=200m"])
