@@ -14,22 +14,22 @@
   :url "None Currently"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure "1.7.0"]
+  :dependencies [[org.clojure/clojure  "1.7.0"]
                  ;[org.clojure.contrib/standalone "1.3.0-alpha4"]
-                 [clj-tuple "0.2.2"]
-                 [immutable-int-map "0.1.0"]
-                 [net.jpountz.lz4/lz4 "1.3"] ;lz4 compression test.
-                 [net.sf.jung/jung-api "2.0.1"]
-                 [net.sf.jung/jung-graph-impl "2.0.1"]
-                 [net.sf.jung/jung-algorithms "2.0.1"]
+                 [clj-tuple            "0.2.2"]
+                 [immutable-int-map    "0.1.0"]
+                 [net.jpountz.lz4/lz4    "1.3"] ;lz4 compression test.
+                 [net.sf.jung/jung-api           "2.0.1"]
+                 [net.sf.jung/jung-graph-impl    "2.0.1"]
+                 [net.sf.jung/jung-algorithms    "2.0.1"]
                  [net.sf.jung/jung-visualization "2.0.1"]
                  [net.sf.jung/jung-io "2.0.1"]
-                 [org.apache.poi/poi "3.9"]
+                 [org.apache.poi/poi    "3.9"]
 		 [org.apache.poi/poi-ooxml "3.9"]
                  [primitive-math         "0.1.3"]
                  [org.clojure/core.match "0.2.1"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
-                 [org.clojure/data.avl "0.0.13"]
+                 [org.clojure/data.avl   "0.0.13"]
                 ; [iota "1.1.2"]
                  [org.clojure/core.rrb-vector  "0.0.11"]
                  [org.clojure/data.finger-tree "0.0.2"]
@@ -37,4 +37,8 @@
 ;                 [clojure-watch "LATEST"] ;ephemeral dependency.
                  ]
   :aot [spork.cljgui.components.PaintPanel]
+  :profiles {:publish [:uberjar
+                       {:aot [spork.cljgui.components.PaintPanel
+                              spork.cljgui.components.swing
+                              spork.util.table]}]}
   :jvm-opts ^:replace ["-Xmx1g" "-XX:NewSize=200m"])

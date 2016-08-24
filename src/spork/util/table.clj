@@ -11,6 +11,7 @@
             [clojure.core.reducers :as r]
             [spork.util.reducers]
             [spork.util [clipboard :as board] [parsing :as parse] [io :as io]]
+            ;;this costs us.
             [spork.cljgui.components [swing :as gui]]
             [spork.util.general  :as general :refer [align-by]]
             [spork.data.sparse :as sparse]

@@ -620,3 +620,29 @@
              (do (reset! prev# ~'*now*)
                  ~expr))
            ~@body))))
+
+;;operations for working with camelcase and lispy forms,
+;;primarily for munging java interop.
+(defn camelize [x]
+  (str (clojure.string/upper-case (subs x 0 1))
+       (clojure.string/lower-case (subs x 1))))
+
+(defn camel-join [xs]
+  (reduce (fn [acc x]
+            (str acc (camelize x)))
+          (clojure.string/lower-case (first xs))
+          (rest xs)))
+;(def camel-regex #"[a-z]+|[A-Z][a-z]*")
+(defn camel-split [x]  (re-seq   #"[a-z]+|[A-Z][a-z]*" x))
+(defn camel->lisp [x]
+  (->> (camel-split x)
+       (map clojure.string/lower-case)
+       (clojure.string/join "-")))
+
+(defn constant->key [x]
+  (when-let [ys  (clojure.string/split (name x) #"_")]
+    (keyword (camel-join ys))))
+
+(defn constant->lisp-key [x]
+  (when-let [ys  (clojure.string/split (name x) #"_")]
+    (keyword (camel->lisp (camel-join ys)))))

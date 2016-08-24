@@ -1,7 +1,8 @@
 (ns spork.util.inspection
   (:require [clojure [reflect :as reflect]]
             [clojure.inspector :as inspect]
-            [spork.data [orderedmap :as om]]))
+            [spork.data [orderedmap :as om]])
+  (:import [javax.swing.JTree]))
 
 (def ^:dynamic *short-types* true)
 
@@ -153,8 +154,8 @@
 ;;specifically, if we're looking at nested maps, it'b nice to
 ;;use the map's keys as values instead of the entire string
 ;;reprsentation
-(defn tree-view [obj] (inspect/inspect-tree (entryvis obj)))
-
+(defn tree-view  [obj] (inspect/inspect-tree (entryvis obj)))
+(defn tree-panel [obj] (javax.swing.JTree. (inspect/tree-model (entryvis obj))))
 
 (defn spec-view [obj]
   (tree-view (for [[k xs] (seq (spec-map obj))]

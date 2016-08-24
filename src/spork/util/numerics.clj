@@ -16,7 +16,8 @@
 (defn ^double ceil [^double n] (Math/ceil n))
 (defn ^double abs [^double n] (Math/abs n))
 (defn ^double tan [^double n] (Math/tan n))
-
+(defn ^double inc-dbl [^double n] (+ n 1.0))
+  
 (defmacro SQR [n] `(* ~n ~n))
 
 (def cofs 
@@ -97,7 +98,7 @@
       (aget fac-table n))))
 
 (let [ntop     2000
-      ^doubles cache (double-array (map #(gammln (inc %)) (range ntop)))] 
+      ^doubles cache (double-array (map #(gammln (inc-dbl %)) (range ntop)))] 
   (defn ^double factln
     "Returns the natural log of the n factorial, or ln(n!)."
     [^double n]

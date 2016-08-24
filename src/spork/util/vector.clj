@@ -1,7 +1,6 @@
 ;A collection of utilities useful when operating on vectors
 ;effeciently.
 (ns spork.util.vector)
-
 (defn vec-filter
   "Vector-specific filter operation.  Since we're using vectors for our
    tables, this should be optimized a bit.  Not sure if it'll pay off though."
@@ -13,7 +12,6 @@
    Coercing vals into a vector using "
   [m]
   (vec (reverse (vals m))))
-
 
 (defn transient-vector? [v]
   (= type v clojure.lang.PersistentVector$TransientVector))
@@ -28,7 +26,6 @@
   "Persists the columns from a transient state."
   [tcols]
   (reduce (fn [acc tc]  (conj acc (persistent! tc))) [] (persistent! tcols)))
-
 
 (defn transpose
   "Given a vector of vectors, changes row-vectors to column-vectors.  

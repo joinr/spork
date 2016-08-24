@@ -3,7 +3,8 @@
 ;subjects.  Subjects are unique identifiers that are subjected to a tag.
 ;Tags are basically meta-data....except it's explicit.
 (ns spork.util.tags
-  (:require [spork.util [general :as gen]]))
+  (:require [spork.util [general :as gen]]
+            [clojure.set :as cljset]))
 
 (defprotocol ITagStore 
  (get-tags [store subject]  "Fetch any tags associated with a subject from database m.")
@@ -152,12 +153,12 @@
 (defn and-tags
   "Select subjects that have every tag in xs."
   [m xs]
-  (reduce #(clojure.set/intersection %1 (tag->subjects m %2)) #{} xs))
+  (reduce #(cljset/intersection %1 (tag->subjects m %2)) #{} xs))
 
 (defn or-tags
   "Select subjects that have any tag in xs."
   [m xs]
-  (reduce #(clojure.set/union %1 (tag->subjects m %2)) #{} xs))
+  (reduce #(cljset/union %1 (tag->subjects m %2)) #{} xs))
 
 (defn multi-tag
   "Impose many tags on a subject."
