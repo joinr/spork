@@ -108,7 +108,6 @@
 (defn ^double vector-degrees [u v] 
   (* ^double (vector-radians u v)  180.0 (/ 1.0 Math/PI))) 
 
-
 ;;I think the preferred orthogonality check is to use the dot product, since 
 ;;you just add components.
 (defn orthogonal? [u v] (zero? ^double (dot u v)))

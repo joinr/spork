@@ -1146,10 +1146,34 @@
   [xs]
   (board/paste! (spit-records xs)))
 
+;;provide a unified ordering of a known ordering
+;;and a set of candidate fields.  We want
+;;to return a vector of field names that
+;;are sorted according to ordered, derived
+;;from candidates.
+(defn approx-order [ordered candidates]
+  (vec (if (seq ordered)
+         (let [order (atom (into {} (map-indexed (fn [idx fld]
+                                        [fld idx]) ordered)))
+          keyf (fn [fld]
+                 (if-let [n (get @order fld)]
+                   n
+                   (let [n (count @order)
+                         _ (swap! order assoc fld n)]
+                     n)))
+                                               
+          ]
+       (sort-by keyf candidates))
+       candidates)))
+
 ;;this is a pretty useful util function.  could go in table.
-(defn records->file [xs dest]
+;;the only downside of this guy is that records are not guaranteed
+;;to be ordered.  So, if we want to write out positionally, i.e.
+;;according to some schema, we need to modify.
+(defn records->file [xs dest & {:keys [field-order]}]
   (let [hd   (first xs)
         flds (vec (keys hd))
+        flds (approx-order field-order flds)
         sep  (str \tab)
         header-record (reduce-kv (fn [acc k v]
                                    (assoc acc k
