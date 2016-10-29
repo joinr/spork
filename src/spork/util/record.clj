@@ -35,7 +35,7 @@
        (remove static?)
        (map #(.getName %))
        (remove #{"__meta" "__extmap"})))
- 
+
 (defmacro empty-record [record]
   (let [klass (Class/forName (name record))
         field-count (count (get-record-field-names klass))]

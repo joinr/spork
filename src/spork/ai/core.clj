@@ -36,6 +36,7 @@
 
 (def ^:dynamic *debug* false)
 
+;;Performance note:  This kills us on hotspots...
 (defmacro debug
   ([lvl msg]
    `(when (and ~'spork.ai.core/*debug*

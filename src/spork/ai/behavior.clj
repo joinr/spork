@@ -282,7 +282,7 @@
   (->bnode  :and nil
      (fn [ctx]
       (reduce (fn [acc child]
-                (let [[res ctx] (beval child (val! acc))]
+                (with-result [[res ctx] (beval child (val! acc))]
                   (case-identical? res
                     :run       (reduced (run ctx))
                     :success   (success ctx)
