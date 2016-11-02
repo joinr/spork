@@ -776,6 +776,7 @@
       (process-if unique select-distinct)
       (process-if order-by (partial order-by orderings)))))
 
+;;changed default for uniqueness to false.
 (defn select 
   "Allows caller to compose simple SQL-like queries on abstract tables.  
    Joins are implemented but not supported just yet.  The :from key for the 
@@ -783,7 +784,7 @@
    ITabular."
   [& {:keys [fields from where unique orderings]
       :or   {fields :* from nil where nil
-             unique true orderings nil }}]
+             unique false orderings nil }}]
   (select- fields from where unique orderings)) 
 
 

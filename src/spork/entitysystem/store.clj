@@ -576,10 +576,10 @@
                             ^java.util.ArrayList dirty]
   IEntityStore
   (add-entry [db id domain data] ;;this gets called a lot....
-    (let [^java.util.HashMap  e (or (.get entity-map id)
-                                         (let [res (java.util.HashMap.)
-                                               _  (.put entity-map id res)]
-                                           res))]
+    (let [^java.util.HashMap e (or (.get entity-map id)
+                                   (let [res (java.util.HashMap.)
+                                         _  (.put entity-map id res)]
+                                     res))]
       (do 
           (.put e domain data)
           db)))
@@ -589,14 +589,12 @@
           db)
       (throw (Exception. (str "entitystore does not contiain an entry for " id)))))
   (get-entry     [db id domain]
-    (when-let [ comps (.get entity-map id)]
+    (when-let [comps (.get entity-map id)]
       (.get ^java.util.HashMap comps domain)))
   (entities [db]  entity-map)
-  (domains [db]   entity-map)
+  (domains  [db]  entity-map)
   (domains-of     [db id]  (keys (.get entity-map id)))
-  (components-of  [db id]
-    (.get entity-map id)
-    )  
+  (components-of  [db id]  (.get entity-map id))  
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
   (get-entity [db id]
