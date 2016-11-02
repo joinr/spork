@@ -713,7 +713,20 @@
           (->> (select-distinct table) 
             (table-records) 
             (group-by get-key))] 
-      (into {} (map (fn [[k v]] [k (aggregator v)]) (seq groups)))))) 
+      (into {} (map (fn [[k v]] [k (aggregator v)]) (seq groups))))))
+
+(defn subtables-by
+  "groups records in table t by field f, creating a map of distinct values 
+   of f, associated with correspond tables derived from the grouped records.
+   Acts as a higher-order form of group-by, that maps one table to a 
+   map of [key table] entries."
+  [f t]   
+  (let [fields (table-fields t)]
+    (into {}
+          (for [[fval xs]  (group-by f (table-records t))]
+            [fval (->> xs
+                       (records->table)
+                       (order-fields-by fields))]))))
    
 (defn make-lookup-table 
   "Creates a lookup table from a table and a list of fields.  If more than one 
