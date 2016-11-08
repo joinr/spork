@@ -499,12 +499,12 @@
       "Wipes all updates associated with id from the schedule, including 
       last-update."
       [^simcontext ctx id]
-    (update-field ctx :updater #(updates/drop-entity-updates ctx id)))
+    (update-field ctx :updater #(updates/drop-entity-updates % id)))
 
 (defn drop-update-type  
   "Wipes an entire class of updates from the schedule."
   [^simcontext ctx utype]
-  (update-field ctx :updater #(updates/drop-update-type % ctx utype)))
+  (update-field ctx :updater #(updates/drop-update-type %  utype)))
 
 
 

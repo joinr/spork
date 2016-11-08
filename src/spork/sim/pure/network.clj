@@ -176,12 +176,14 @@
       (throw (Exception. 
                (str "Client does not exist" client-name))))))
 
-(defrecord event-network [name clients subscriptions]
+(defrecord event-network [name
+                          ^clojure.lang.ILookup clients
+                          ^clojure.lang.ILookup subscriptions]
   IEventSystem
   (get-events [net]  (keys subscriptions))
   (get-clients [net] (keys clients))
-  (get-event-clients [obs event-type]  (get subscriptions event-type))
-  (get-client-events [obs client-name] (get clients client-name))
+  (get-event-clients [obs event-type]  (.valAt subscriptions event-type))
+  (get-client-events [obs client-name] (.valAt clients client-name))
   (unsubscribe  [obs client-name event-type] 
     (-> (drop-event-client obs client-name event-type)
         (drop-client-event client-name event-type)))
