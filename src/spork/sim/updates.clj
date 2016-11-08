@@ -143,6 +143,61 @@
   [ctx store] 
   (->> ctx (simnet/register-routes {(:name store) routes})))
 
+;;Update Modification
+;;===================
+(defn entity-updates
+  "Relatively quick hack.  Not intended for mutable updater. Allows us to 
+   query the updater for entity-specific updates by id and update-type.
+   We typically use sets for filtering on entity."
+  ([updater ids update-type?]
+  ;;drop the last update.
+  ;;drop any events the entities might be involved in.
+   (let [res  (atom (transient []))
+         updates  (:updates updater)]
+     (doseq [[update-type xs] updates
+             [t name-evts]    xs
+             :when (update-type? update-type)]
+       (reduce (fn [acc id]
+                 (if-let [update (name-evts id)]
+                   (do (swap! acc conj! update)
+                       acc)))
+               res (case ids :* (keys name-evts) ids)))
+     (persistent! @res)))
+  ([updater ids]
+   (case ids
+     :* (entity-updates updater)
+     (entity-updates updater ids identity)))
+  ([updater]
+   (for [[u xs] (:updates updater)
+         [t name-evts] xs
+         [name u] name-evts]
+     u)))
+
+(defn drop-update
+  ([updater update]
+   (drop-update updater (:update-type  update)
+                        (:update-time update)
+                        (:requested-by update)))                               
+  ([updater update-type update-time requested-by]
+   (let [us (get-in updater [:updates update-type update-time])
+         us (dissoc us requested-by)]
+     (if (zero? (count us))
+       (update-in updater [:updates update-type] #(dissoc % update-time))
+       (assoc-in updater [:updates update-type update-time] us)))))
+
+(defn drop-entity-updates 
+  "Wipes all updates associated with id from the schedule, including 
+   last-update."
+  [updater id]
+  (let [ids (if (seq id) (set id) #{id})]
+    (-> (reduce drop-update updater (entity-updates updater ids))
+        (update :last-update #(dissoc % id)))))
+
+(defn drop-update-type    
+  "Wipes an entire class of updates from the schedule."
+  [updater utype]
+  (reduce  drop-update updater (entity-updates updater :* #{utype})))
+ 
 ;;need to elevate this....
 ;(defn listen-updates
 ;  "Register the update store as an event listener with the update source.

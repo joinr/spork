@@ -433,6 +433,10 @@
 ;;Since we're using propogate-event, can we handle it more efficiently? 
 ;;I.e. can we pull out the params for the propogation?
 ;;We can definitely use a mutable context for efficiency later..
+;;PERFORMANCE NOTE: Immutable Event Contexts end up costing quite
+;;a bit in practice.  Far from impractical, but we could realize a
+;;significant speedup if we went mutable, and/or disabled firing
+;;certain events...
 (defrecord event-context [event state transition ^event-network net]
   IEventContext
   (handle     [ctx e] (propogate-event (.set-event ctx e) net))

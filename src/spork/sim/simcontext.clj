@@ -480,7 +480,34 @@
    context."
   [update-type t ^simcontext ctx]
   (updates/get-updates (.updater ctx) update-type t))
-  
+
+(defn entity-updates
+  "Relatively quick hack.  Not intended for mutable updater. Allows us to 
+   query the updater for entity-specific updates by id and update-type.
+   We typically use sets for filtering on entity."
+  ([ctx ids update-type?] (updates/entity-updates (:updater ctx) ids update-type?))
+  ([ctx ids] (updates/entity-updates (:updater ctx) ids))
+  ([ctx] (entity-updates ctx :*)))
+
+(defn drop-update
+  ([^simcontext ctx update] (update-field ctx :updater #(updates/drop-update % update)))
+  ([^simcontext ctx update-type update-time requested-by]
+   (update-field ctx :updater
+       #(updates/drop-update % update-type update-time requested-by))))
+
+(defn drop-entity-updates
+      "Wipes all updates associated with id from the schedule, including 
+      last-update."
+      [^simcontext ctx id]
+    (update-field ctx :updater #(updates/drop-entity-updates ctx id)))
+
+(defn drop-update-type  
+  "Wipes an entire class of updates from the schedule."
+  [^simcontext ctx utype]
+  (update-field ctx :updater #(updates/drop-update-type % ctx utype)))
+
+
+
 (defn get-state 
   "Accesses the state of the simulation context."
   [^simcontext ctx] (.state ctx))
