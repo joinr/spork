@@ -1,7 +1,7 @@
 ;;This wraps a nice interface around Michael Marczyk's
 ;;port of ctries from Scala.  We base a lot of
 ;;our operations on the ctrie implementation.
-(ns spork.data.concurrent
+(ns spork.data.ctrie
   (:refer-clojure :exclude
      [into update update-in assoc-in assoc 
       dissoc dissoc-in conj disj contains?])
