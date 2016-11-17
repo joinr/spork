@@ -1106,9 +1106,12 @@
     nil))
 
 ;;Ported from proc.util
+;;Note: originally had a typehint on here for ln, of String, and
+;;it was tossing a wierd classcast unhandled exception when building
+;;uberjar, worked fine from repl....
 (defn spit-table [path t]
   (with-open [^java.io.BufferedWriter out (clojure.java.io/writer path)]
-    (doseq [^String ln (table->lines t)]
+    (doseq [ln (seq (table->lines t))]
       (write! out ln))))
 
 (defmulti table->file (fn [tbl path & {:keys [stringify-fields? data-format]}]
