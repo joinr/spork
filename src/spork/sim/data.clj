@@ -177,7 +177,7 @@
 ;;   "[s] Get the next active time"
 ;;   (get-time (next-active s)))
 
-(defn next-time [s]
+#_(defn next-time [s]
    "[s] Get the next active time"
    (get-time s))
 

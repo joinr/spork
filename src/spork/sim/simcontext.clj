@@ -110,8 +110,8 @@
   (first-event [ctx]   (sim/first-event scheduler))
   (nth-event [ctx n]   (sim/nth-event scheduler n))
   sim/IEventSchedule
-  (current-time [obj] (sim/current-time scheduler))
-  (next-time [obj]    (sim/next-time    scheduler))
+  (current-time [obj]  (sim/current-time scheduler))
+  (next-time    [obj]  (sim/next-time    scheduler))
   store/IEntityStore
   (add-entry      [db id domain data] 
     (simcontext. scheduler updater propogator 

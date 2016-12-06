@@ -40,11 +40,11 @@
 ;;The cached version is significantly faster at access the
 ;;head event now.
 (defrecord agenda [tprev tfinal schedule item-count times
-                   ^spork.data.cell.cell head]
+                   ^spork.data.cell.cell head ^spork.data.cell.cell t]
   IAgenda 
   (previous-time  [a] tprev)
   (final-time     [a] tfinal)
-  (set-final-time [a tf]  (agenda. tprev tf schedule item-count times head))
+  (set-final-time [a tf]  (agenda. tprev tf schedule item-count times head t))
   (agenda-count   [a]     item-count)
   (time-segments  [a]     schedule)
   (add-times [a ts] 
@@ -55,12 +55,12 @@
                                        (conj! knowns t)
                                        (inc i)]))
                               [schedule (transient times) item-count]  (r/filter #(not (contains? times %)) ts))]
-      (agenda. tprev tfinal nsched  i (persistent! nt) (cell/->cell))))
+      (agenda. tprev tfinal nsched  i (persistent! nt) (cell/->cell) (cell/->cell))))
   (get-times   [a] times)
   spork.sim.data.IEventSeq 
   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  
     (agenda. tprev tfinal (sim/add-event schedule e) (inc item-count)
-             (conj times (sim/event-time e)) (cell/->cell))) 
+             (conj times (sim/event-time e)) (cell/->cell) (cell/->cell))) 
   (drop-event  [a]  
     (if (> item-count 0)  
        (let [tnext (sim/current-time schedule)
@@ -69,7 +69,7 @@
                   (if (not= tnext 
                         (sim/current-time snext))
                     (disj times tnext)
-                    times) (cell/->cell)))
+                    times) (cell/->cell) (cell/->cell)))
        (throw (Exception. "No items left in the agenda!"))))    
   (first-event [a] (if (.isRealized head) (.deref head)
                        (let [fe (sim/first-event schedule)
@@ -77,10 +77,13 @@
                          fe)))                         
   (nth-event [a n] (sim/nth-event schedule n))
   sim/IEventSchedule
-  (current-time [obj] (sim/current-time schedule))
+  (current-time [obj] (if (.isRealized t) (.deref t)
+                          (let [ct (sim/current-time schedule)
+                                _ (reset! t ct)]
+                            ct)))
   (next-time    [obj] (sim/next-time    schedule)))
 
-(def empty-agenda (->agenda nil nil nil 0 #{} (cell/->cell)))
+(def empty-agenda (->agenda nil nil nil 0 #{} (cell/->cell) (cell/->cell)))
 
 ;; (defrecord agenda [tprev tfinal schedule item-count times
 ;;                    ^spork.data.cell.cell head]
