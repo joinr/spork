@@ -384,8 +384,6 @@
   (conj-entity    [db id components] "Add an entity to the database.")   
   (entities       [db] "Return a map of {entityid #{components..}}"))
 
-
-
 ;  (alter-entity [db id f] "Alter an entity's components using f.  f
 ;  should take an entity and return a set of components that change.")
 
@@ -495,14 +493,7 @@
   (entities [db]  entity-map)
   (domains [db]   domain-map)
   (domains-of     [db id]  (.valAt entity-map id))
-  (components-of  [db id]
-    ;; (set-reduce (fn [^clojure.lang.IPersistentMap acc dom]
-    ;;               (.assoc acc dom
-    ;;                       (.valAt ^clojure.lang.IPersistentMap (.valAt domain-map dom)
-    ;;                               id)))  ;;get-in is slowish; changed to direct method calls.
-    ;;             {} (get entity-map id))
-    (lazy-join domain-map id)
-    )  
+  (components-of  [db id]  (lazy-join domain-map id))  
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
   (get-entity [db id]
@@ -674,17 +665,27 @@
 ;;dissoc the domain from the store, and walk all effected entities,
 ;;or better yet, collect all effected entities in batch,
 ;;then walk them (and dissoc the domains from the store).
+
+
+;;if it supports row-ops, then we can
+;;perform optimized operations on the estore...
+;;otherwise, we default to columnar ops.
 (defprotocol IRowStore
-  (add-entity-r  [s id r]
-                 [s e])                  
+  (add-entity-r   [s id r]
+                  [s e]   )                  
   (drop-entity-r  [s id])
   (drop-domains-r [s ds])
   (entity-union-r [db domains])
   (entity-intersection-r [db domains]))
 
+
+
 ;;using instance is much faster.
+;;problem is we're using composition and delegation to
+;;accomplish this, so we're always hiding the rowstore
+;;behind the facade.  Unable to use faster row-ops.
 (definline row-store? [ces]
-  `(instance? spork.entitysystem.store.IRowStore ~ces ))
+  `(instance? spork.entitysystem.store.IRowStore ~ces))
 
 ;;convenience macros to help us defer to optimized row-based
 ;;operations.
@@ -717,23 +718,6 @@
            ces ds))
 
 (defn drop-domain [ces d]  (drop-domains ces [d]))
-
-;; (comment ;testing
-
-;; (def db (conj-entity emptystore 2 {:age 22 :name "some-entity"}))
-;; (domains db) ;=>      {:age {2 22} :name {2 "some-entity"}}
-;; (get-domain  db :age) => [:age {2 22}]
-;; (get-entities db) => {2 #{:age :name}}
-
-;; (get-entity db 2) => {id 2 {:age 22 :name "some-entity"}}
-;; (domains-of db 2)    => #{:age :name}
-;; (components-of db 2) => {:age 22 :name "some-entity"}
-
-;; (conj-entity db  2     {:age 22 :name "some-entity"})
-;; (drop-entity db 2) => {:entities {} :components {}}
-;; (add-entry db  2    :age 22)  
-;; (drop-entry db 2    :age 22) 
-;; )
 
 ;;These are the primary operations associated with entities...
 ;;Basically, having a managed 2dimensional map for us.
@@ -1469,13 +1453,15 @@
                      domain-map))
   IRowStore
   (add-entity-r   [s id r] (.conj-entity s  id      r))
-  (add-entity-r   [s e]    (.conj-entity s  (:id e) e))
+  (add-entity-r   [s e]    (.conj-entity s  (or (:name e) (:id e)) e))
   (drop-entity-r  [s id]   (EntityRowStore. (.without entity-map id) domain-map))
-  (drop-domains-r [s ds]   (EntityRowStore. (reduce-kv (fn [acc id ^clojure.lang.IPersistentMap e]                                                         
-                                                         (update acc id (drop-keys e ds)))
-                                                       entity-map ds) 
-                                            (reduce (fn [^clojure.lang.IPersistentMap acc d]
-                                                      (.without domain-map d)) domain-map ds)))
+  (drop-domains-r [s ds]
+    (EntityRowStore. (reduce-kv (fn [^clojure.lang.IPersistentMap acc id ^clojure.lang.IPersistentMap e]   
+                                  (.assoc acc id (drop-keys e ds)))
+                                {}
+                                entity-map) 
+                     (reduce (fn [^clojure.lang.IPersistentMap acc d]
+                               (.without acc d)) domain-map ds)))
   (entity-union-r        [db domains]
     (let [in? (set domains)]
       (filter (fn [e] (some in? (keys e))) entity-map)))
