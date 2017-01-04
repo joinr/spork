@@ -678,8 +678,6 @@
   (entity-union-r [db domains])
   (entity-intersection-r [db domains]))
 
-
-
 ;;using instance is much faster.
 ;;problem is we're using composition and delegation to
 ;;accomplish this, so we're always hiding the rowstore
@@ -689,26 +687,28 @@
 
 ;;convenience macros to help us defer to optimized row-based
 ;;operations.
-(defmacro row-op [name doc & arg-bodies]
-  (if (vector? (first arg-bodies)) ;;normal definition.
-    (let [[args & body] arg-bodies
-          x (first args)
-          row-name (symbol (str name "-r"))]
-    `(defn ~name ~doc ~args
-       (if (row-store? ~x)
-         (~row-name ~@args)
-         ~@body
-         )))
+#_(defmacro row-op [name doc & arg-bodies]
+    (if (vector? (first arg-bodies)) ;;normal definition.
+      (let [[args & body] arg-bodies
+            x (first args)
+            row-name (symbol (str name "-r"))]
+        `(defn ~name ~doc ~args
+           (if (row-store? ~x)
+             (~row-name ~@args)
+             ~@body
+             )))
     ;;multiple arities.
-    (let [row-name (symbol (str name "-r"))]
-      `(defn ~name ~doc
-         ~@(for [[args & body] arg-bodies]            
-             `([~@args]
-               (if (row-store? ~(first args))
-                 (~row-name ~@args)
-                 ~@body)))))))
-       
-(row-op drop-domains
+      (let [row-name (symbol (str name "-r"))]
+        `(defn ~name ~doc
+           ~@(for [[args & body] arg-bodies]            
+               `([~@args]
+                 (if (row-store? ~(first args))
+                   (~row-name ~@args)
+                   ~@body)))))))
+
+;;Temporarily reverting row-ops to simple functions.
+;;row-op 
+(defn drop-domains
   "Drop multiple domains from the store."
   [ces ds]
   (reduce  (fn [acc d]
@@ -831,7 +831,8 @@
 (def store (atom nil))
 ;;What about records?
 ;;we can add support for maps here...
-(row-op add-entity 
+;;row-op
+(defn add-entity 
   "Associate component data with id.  Records are {:component data} or 
   [[component data]] form.  Alternately, add a pre-built entity record."
   ([db id records]
@@ -863,7 +864,8 @@
   [db entities] (reduce add-entity db entities))
 
 ;;maybe elevate this to protocol-level?
-(row-op drop-entity
+;;row-op
+(defn drop-entity
   "drop component data associated with id, and id from entities in db." 
   [db id]
   (reduce (fn [acc dom] (drop-entry acc id dom)) db (domains-of db id)))
@@ -898,7 +900,8 @@
   (for [id (keys (entities db))]
     (get-entity db id)))
 
-(row-op entity-union
+;;row-op
+(defn entity-union
   "Returns the logical union of entities across one or more domains, 
    retuning a set of entity ids, in which each entity is a member of 
    one or more domains."
@@ -932,7 +935,8 @@
 ;;can we fold this? or do we kv reduce it...
 ;;frequencies creates a transient map too.
 
-(row-op entity-intersection
+;;row-op
+(defn entity-intersection
   "Returns the logical intersection of entities across one or more domains, 
    returning a set of entity ids, in which each entity is a member of 
    all domains."
@@ -1418,6 +1422,10 @@
 
 (definline drop-keys [m xs]
   `(reduce (fn [acc# k#] (without acc# k#)) ~m  ~xs))
+
+;;Note: This is in alpha, we need more testing, possibly
+;;revisit the row-op scheme to determine the proper course of action
+;;and if it's worth it to go with a row-store...
 
 ;;additional entity stores...
 (defrecord EntityRowStore [^clojure.lang.IPersistentMap entity-map
