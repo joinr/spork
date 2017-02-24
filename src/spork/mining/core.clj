@@ -1,3 +1,7 @@
+;;Pedagogical exercise in porting some of the machine learning / data mining
+;;stuff from Collective Intelligence into re-usable libraries, circa
+;;2013.  As of 2017, we'll probably call this OBE and move it out of
+;;the master branch.
 (ns spork.mining.core 
   (:require [spork.util [table :as tbl]]))
 

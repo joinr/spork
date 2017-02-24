@@ -1,5 +1,8 @@
-;this is a quick port of the stats work from megan's file...
-;Tom-> I moved this out of the main routines... .it's just a stats library....re
+;;A collection of basic stastical distributions and means for sampling from them.
+;;Implementations based on Law and Kelton.
+
+;;Feb 2017 update: Some of this stuff is in Incanter, so we could unify it at some point.
+;;However, the use-case at the time necessitated a boutique implementation.
 (ns spork.util.stats
   (:require [spork.util [vectors :as v]]
             [spork.util.numerics :refer :all]

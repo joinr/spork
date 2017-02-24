@@ -1,4 +1,10 @@
 ;;An API for defining entity-based, event-driven simulations.
+;;TODO: Pull in all of the disparate namespace vars into a
+;;convenient central location.  Currently, spork.sim.simcontext
+;;serves that purpose, providing a decent API for general purpose
+;;simulation stuff.  However, there are cases where we pull in
+;;from spork.sim.agenda and other areas.  Currently a placeholder
+;;until we reorganize the API.
 (ns spork.sim.core
   (:require [spork.sim [simcontext :as ctx]]
             [spork.entitysystem [store :as store]]))
@@ -18,5 +24,8 @@
 
 ;;An evented system takes a context, and event dispatch, 
 ;;and a SystemUpdate function.
-   
+
+;;Note:
+;;THe current "API" is in spork.sim.simcontext, more or less.
+;;This would just be importing vars from there, honestly.
 

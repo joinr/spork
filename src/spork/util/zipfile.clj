@@ -1,3 +1,5 @@
+;;Utilities for reading/writing GZIP zipfiles using java.io
+;;libraries.  Added support for lz4 compression as well.
 (ns spork.util.zipfile
   (:use [spork.util.io :only 
 			[fname fext fpath relative-path make-folders! make-file! 

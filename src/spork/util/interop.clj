@@ -1,6 +1,6 @@
 ;;Namespace for useful functions to make interop
 ;;with the host platform easier.  Initially
-;;targetted at java
+;;targetted at java.
 (ns spork.util.interop)
 
 (defmacro expose-private-accessors

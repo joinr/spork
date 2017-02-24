@@ -1,9 +1,14 @@
+;;DEPRECATED
 ;;A namespace for exploring speed ups using indexed traversals on
 ;;cache coherent chunked sequences and arrays.
+;;Much of these operations are supplanted by effecient
+;;reducer implementations introduced years after the original
+;;library was built.  Reducers/transducers probably solve this
+;;problem more cleanly.
 (ns spork.util.indexed
   (:require [spork.data [mutable :as m]]))
 
-(def xs (vec (range 1000000)))
+;(def xs (vec (range 1000000)))
 
 ;;traversing a vector
 

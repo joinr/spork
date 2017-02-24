@@ -3,6 +3,11 @@
 ;;of useful routines.  On the other hand, it's entirely feasible to use for 
 ;;2D and 3D graphics (which we do), as well as anywhere else good old vector 
 ;;math may be useful.
+
+;;Update Feb 2017 - There are plenty of excellent clojure libraries that
+;;implement vector math much better than I do here.  However, for a simplistic
+;;little library using inefficient pvectors, this isn't bad.  Retained for
+;;minor legacy utility.
 (ns spork.util.vecmath
   (:require [spork.util.vectors :refer :all]))
 

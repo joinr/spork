@@ -1,14 +1,17 @@
-;TOM SPOON 9 July 2012
-;A set of extensions for much more flexible file IO operations, folder functions
-;and convenience functions for high-level IO.  Many things that are msising in
-;clojure.java.io are here.
+;;TOM SPOON 9 July 2012
+;;A set of extensions for much more flexible file IO operations, folder functions
+;;and convenience functions for high-level IO.  Many things that are msising in
+;;clojure.java.io are here.
 
-;Maps are used as a basis for defining folder structure, and can serve as a 
-;serialization platform as well.  Provides quick access to common system paths,
-;and functions for creating relative paths from a given directory.
+;;Maps are used as a basis for defining folder structure, and can serve as a 
+;;serialization platform as well.  Provides quick access to common system paths,
+;;and functions for creating relative paths from a given directory.
 
-;Also provides a simple API for zipping files.  Maps can be persisted to 
-;zipfiles.
+;;Also provides a simple API for zipping files.  Maps can be persisted to 
+;;zipfiles.
+
+;;UPDATE Feb 2017 - There are good alternative libraries in this space now.
+;;There weren't when SPoRK was written.
 (ns spork.util.io
     (:require [clojure [string :as strlib] 
                [set :as setlib]]

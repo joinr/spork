@@ -1,3 +1,12 @@
+;;PaintPanel was an early (circa 2012/2013) Swing-based canvas.  It basically
+;;wraps an image buffer, captures the buffer's graphics2d locally, and
+;;has a paint-function that it used to render to the buffer.  Overloads
+;;are provided to allow external callers to change the paint function,
+;;add meta data, among other things.  This has more or less been replaced
+;;by the functionality in piccolo2d (and/or other backends like javafx/html5),
+;;so it's probably on the way to extinction.  Retained currently for legacy
+;;support.
+
 ;;Init is still jacked up....trying to figure out constructors, plus we get reflection warnings, blah.
 (ns spork.cljgui.components.PaintPanel
   (:import [java.awt.image  BufferedImage]

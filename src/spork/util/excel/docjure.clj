@@ -25,6 +25,8 @@
 ;FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;OTHER DEALINGS IN THE SOFTWARE.
 
+;;End Original License
+
 ;This is a slight rewrite of docjure to optimize reading large excel files.
 ;I'm finding that a ton of time is spent in reflection in excel processing 
 ;in docjure, which I think is due to the multimethod implementation.  

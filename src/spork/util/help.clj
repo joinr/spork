@@ -1,3 +1,6 @@
+;;DEPRECATED
+;;A lame little help utility for a stand-alone clojure repl of
+;;which SPoRK was the basis.  No longer in production.
 (ns spork.util.help
   (:use [clojure.pprint :only [pprint cl-format]]
         [clojure.repl :only [apropos doc]]

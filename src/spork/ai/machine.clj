@@ -1,29 +1,18 @@
-;a generic finite state machine.
+;;A generic finite state machine representation.
+;;Provides a set of data generally useful to any FSM.
 (ns spork.ai.machine)
-
-;'Provides a set of data useful to any FiniteStateMachine.
-;Option Explicit
-;Private updatestack() As Single
-;Private updateIdx As Long
-;Public updateCount As Long
-;
-;Public CurrentState As String 'Description of the current state
-;Public PreviousState As String 'Description of the previous state
-;Public nextstate As String 'Description of the next state, if not known, will be currentstate
-;Public timeinstate As Single 'time in current state
-;Public timeinstatePrior As Single
-;Public duration As Single 'duration of the state, if not specified, const infinite
-;Public DurationPrior As Single
-;Public StateStart As Single 'time state started
-;Private Const infinite As Single = 999999.999
-;Private Const buffer As Long = 50
-;Public StateHistory As Collection
 
 (def inf (java.lang.Double/POSITIVE_INFINITY))
 
-(defrecord statedata [curstate prevstate nextstate 
-                      timeinstate timeinstateprior duration durationprior
-                      statestart statehistory])
+(defrecord statedata [curstate ;Description of the current state
+                      prevstate
+                      nextstate 
+                      timeinstate
+                      timeinstateprior
+                      duration
+                      durationprior
+                      statestart
+                      statehistory])
 
 (def blank-data (statedata. nil nil nil 0 0 inf inf 0 [])) 
   

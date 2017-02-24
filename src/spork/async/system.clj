@@ -8,6 +8,13 @@
 ;;We should probably lift this into a localized system
 ;;definition, so that we can apply local control to systems,
 ;;possibly with the same names.
+
+;;Note Feb 2017 - There's a pending rewrite/update from
+;;lessons learned using this system in production contexts.
+;;It Works pretty well for the original use case, although
+;;the global vars create some inflexibility.
+;;THere also may be comparable libraries available that
+;;serve the same purpose by now.
 (ns spork.async.system
   (:require [clojure.core.async :as async :refer [alts! alts!!]]))
 

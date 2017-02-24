@@ -1,5 +1,8 @@
 ;;A quick patch site to add some missing reducer functionality.
 ;;Likely to vanish with later clojure updates.
+;;Note Feb 2017:  Most of these issues have been addressed.  Maintained
+;;for legacy compatibility.  Future libraries should use clojure.core
+;;idioms where possible.
 (ns spork.util.reducers
   (:require [clojure.core.reducers]))
 

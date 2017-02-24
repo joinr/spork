@@ -1,3 +1,6 @@
+;;DEPRECATE.
+;;Simple agent-based mailbox processor, originally
+;;designed to control a GUI.  May be useful in other contexts.
 (ns spork.util.mailbox
   (:require [clojure [pprint :as pprint]]))
 

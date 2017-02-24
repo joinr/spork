@@ -29,6 +29,12 @@
 ;;structures multiple times.  As a clean up step, to facilitate
 ;;purity, we simply compute the resulting structure by replacing the 
 ;;associated cells with their current values in a finalization step.
+
+;;Update 2017 - Needs further testing, and possibly revisiting some of
+;;the lower-level implementation details.  The idea is pretty cool,
+;;and there are definite benefits to avoiding associng and using
+;;localized mutation (almost like haskells state-thread cells/refs).
+;;We're not currently using this in production, marked as EXPERIMENTAL.
 (ns spork.util.cellular
   (:require [spork.util [metaprogramming :as util]
                         [collections :refer :all]

@@ -1,5 +1,7 @@
 ;;A namespace for defining simulated annealing stochastic optimization
 ;;strategies, using the optimization libraries in collective.core.
+
+;;Status: Mostly implemented, but still Work in Progress since 2013.
 (ns spork.opt.annealing
   (:require [spork.opt [core :as core :refer [with-solve]]]
             [spork.util [stats :as stats]

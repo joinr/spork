@@ -2,6 +2,10 @@
 ;;clojure.zip, aliasing all the names there.
 ;;functions will be available via zip/func-name.  Should be a drop-in 
 ;;replacement for clojure.zip
+
+;;Update Feb 2017 - We can probably dispense with this by using transducers
+;;or reducers.  I believe there are also reducible zipper libraries available
+;;as well that address the shortcomings I was patching here.
 (ns spork.util.zip
   (:refer-clojure :exclude (replace remove next))
   (:require [clojure [zip :as zip]]))

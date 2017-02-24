@@ -1,3 +1,8 @@
+;;Placeholder for logic programming wrapper, probably
+;;around core.logic.  For now, we only have core.logic
+;;examples.
+
+;;This could become OBE if we wrap a third party.
 (ns spork.ai.logic)
 
 (comment 

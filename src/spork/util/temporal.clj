@@ -1,6 +1,12 @@
 ;;A package of utilites for working with time, and data that has some time 
 ;;ordered quality, like event streams, data that has a notion of start and 
-;;duration, etc. 
+;;duration, etc.
+
+;;This library is fairly useful when working to project discrete event
+;;streams (or sequences of variable-width time-stepped activity records)
+;;onto something sequential that can be sampled at arbitrary intervals.
+;;Highly useful for stitching together multiple discrete timelines into
+;;a whole.
 (ns spork.util.temporal
   (:require [spork.util   [generators :as gen]]
             [spork.data   [priorityq  :as pq]]

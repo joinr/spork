@@ -1,3 +1,5 @@
+;;minor wrapper/extensions around clojure.xml.
+;;convenience functions.
 (ns spork.util.xml
   (:require [clojure [xml :as xml]]))
 

@@ -15,7 +15,10 @@
 ;;that we will impliment and use.  Having a simple, general purpose
 ;;optimization engine means that we can extend the solution
 ;;environment to include parameters specific to a strategy, and to
-;;decouple the solution representation. 
+;;decouple the solution representation.
+
+;;Status: Work In Progress (Stasis since 2013, may be architect
+;;astronauting a bit too much).
 (ns spork.opt.core)
 
 ;;Generic Problem Solving

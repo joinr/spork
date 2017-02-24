@@ -3,7 +3,12 @@
 ;;API.  For my use case - and partly as a learning experience - I implement a 
 ;;small library for working with vectors of primitive doubles.  These are as 
 ;;fast as working with arrays of doubles, but provide a map-like interface, 
-;;thanks to the use of records.   
+;;thanks to the use of records.
+
+
+;;Note Feb 2017: the difference between this and spork.util.vecmath is that we
+;;implement a concrete datatype here based on arrays.  Not entirely sure
+;;if this is any good any more.  Fairly rare in production.
 (ns spork.util.vectors)
 
 ;;Optimization.  This lets us go faster doing operations on primitives, with 

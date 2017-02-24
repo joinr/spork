@@ -3,6 +3,7 @@
 ;a substantial library in cljgui.gui, which contains most of the primitive 
 ;functions used to interact with Java2D, wrapped with Clojure.
 
+;;OBE
 (ns spork.cljgui.scenegraph
   (:use [cljgui.gui :only [IShape get-current-color get-gui-color  set-gui-color 
                            translate-xy rotate-xy  halve negate make-sprite 

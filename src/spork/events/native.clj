@@ -25,7 +25,13 @@
 ;  C. Define complex event routing via functional composition of Observables.
 ;  D. Make GUI development much less painful, but just as robust.
 
-
+;;NOTE - 2017:  This was intended to wrap the wierd interface-based
+;;adapter-based event system in Swing with something far more sane, based
+;;off of events-as-data (as defined in my port of the F# reactive observable
+;;system in events.observe).  Things have changed since 2011/12, so I'd
+;;recommend possibly using a different library for swing gui work.
+;;This is only maintained for legacy compatibility until some migration
+;;occurs.
 (ns spork.events.native
   (:use [spork.events.base]
         [spork.events.observe])

@@ -1,3 +1,7 @@
+;;DEPRECATED;
+;;The original intent was to provide functions for generating or
+;;unfolding sequences that clojure.core was missing.  I "think"
+;;we have idiomatic answers to these.  Retained for legacy support.
 (ns spork.util.generators)
 
 ;helper functions....I need these somewhere else, since they're universal.

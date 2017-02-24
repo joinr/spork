@@ -1,6 +1,8 @@
 ;;Grids come up a lot in gaph algorithms, game development, and data structures.
 ;;You have some abstract notion of a set of containers, indexed by a coordinate,
 ;;that are fully connected to surrounding containers.
+
+;;Upddate Feb 2017 - EXPERIMENTAL
 (ns spork.data.grid
   (:require [spork.protocols.core :refer :all]
             [spork.util [vectors :as v]

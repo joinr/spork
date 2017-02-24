@@ -3,6 +3,8 @@
 ;;These all have speed issues compared to persistent map.
 ;;Dammit.
 
+
+;;Update Feb 2017 - EXPERIMENTAL / FAILED
 (ns spork.data.associative
   (:require [clojure.core [reducers :as r]])
   (:import [clojure.lang MapEntry]))

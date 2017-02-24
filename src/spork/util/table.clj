@@ -5,6 +5,14 @@
 ;;or rrb-trees or anything that implements persistentvector.
 ;;Pending implementation of clojure.core.matrix.dataset protocols to
 ;;enable compatibility with other apps.
+
+;;Update Feb 2017 - util.table has grown significantly in scope, utility,
+;;and effeciency.  It's pervasively used to define tables from schema,
+;;lazily read streams of records, coerce to and from tables/files/record
+;;seqs, query tables, perform arbitrary transformations, etc.  It fits
+;;fairly well into the clojure idioms, although some of the operations
+;;and API could use a review.  Still, this is one of the better libraries.
+;;Based loosely off Peter Seibel's work in "Practical Common Lisp."
 (ns spork.util.table
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]

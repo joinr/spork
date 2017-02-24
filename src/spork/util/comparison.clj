@@ -1,5 +1,6 @@
 ;;General comparison operations, and a macro to compose 
-;;complex comparators.
+;;complex comparators.  Useful for complex or data-driven
+;;sort criteria.
 
 (ns spork.util.comparison
    (:require [spork.util   [general :as gen]]))

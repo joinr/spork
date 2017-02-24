@@ -1,6 +1,8 @@
 ;;An implementation of generic packing problem instances, i.e.
 ;;knapsack.  Currently used to implement packing problem solvers 
 ;;via dynamic programming, so that packing can be composed.
+
+;;Note: Looks like an experiment.  MARKED FOR DEPRECATION.
 (ns spork.opt.packing
   (:require [clj-tuple :refer [tuple]]))
 

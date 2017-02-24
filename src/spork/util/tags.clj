@@ -1,7 +1,12 @@
-;an abstract set of functions for working on maps, treating them as 
-;simple tag databases.  tags are categories applied to multiple 
-;subjects.  Subjects are unique identifiers that are subjected to a tag.
-;Tags are basically meta-data....except it's explicit.
+;;an abstract set of functions for working on maps, treating them as 
+;;simple tag databases.  tags are categories applied to multiple 
+;;subjects.  Subjects are unique identifiers that are subjected to a tag.
+;;Tags are basically meta-data....except it's explicit.
+
+;;Update Feb 2017 - Looking to revisit this.  There are more effecient
+;;ways to store tags.  Additionally, the original use-case may no longer
+;;be a production need.  Possible alternatives are logic-databases like
+;;datalog/datascript that store relations and facts to be queried.
 (ns spork.util.tags
   (:require [spork.util [general :as gen]]
             [clojure.set :as cljset]))

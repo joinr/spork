@@ -40,6 +40,12 @@
 ;the observable, that propogates the notion that no more observations are 
 ;coming down the pipe, which would allow observers to disconnect.
 
+;;Note: 2017 - this library was useful in the early days, and some
+;;spork-based guis still use it.  However, there are generally
+;;much better, idiomatic options available to clojure users now,
+;;including core.async and the transducer libraries.  Recommend
+;;not using this code for future endeavors (it's not demonstrably
+;;superior at the state, more a circumstantial result).
 (ns spork.events.observe)
 
 (defprotocol ICell

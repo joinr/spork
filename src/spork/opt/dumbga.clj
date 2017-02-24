@@ -5,6 +5,8 @@
 ;;optimizing a population of solutions based on some notion of
 ;;fitness, selection, and a stochastic process that creates new
 ;;candidate solutions.
+
+;;Status: Work In Progress since 2013...
 (ns spork.opt.dumbga
   (:require [spork.util.numerics :refer :all]
             [spork.util [vectors :as v] [bitset :as b]]))

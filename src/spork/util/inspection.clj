@@ -1,3 +1,8 @@
+;;Extends the facilitis of clojure.reflect and clojure.inspector with
+;;some nifty stuff.  Provides the ability to get a summary of a class in
+;;a tree-view, including the ML-like type signatures of the protoocols
+;;and interfaces an object implements.  Useful for learning about objects
+;;from the repl.
 (ns spork.util.inspection
   (:require [clojure [reflect :as reflect]]
             [clojure.inspector :as inspect]

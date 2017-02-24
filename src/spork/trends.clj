@@ -1,3 +1,7 @@
+;;Implementation of several abstractions for drawing dynamic trends, such as animated
+;;or live data in the form of area charts, scatter charts, stacked area, etc.
+;;Probably should move this into something like spork.geometry or somewhere
+;;other than the main ns.
 (ns spork.trends
   (:require [spork.graphics2d [canvas :as canvas]]
             [spork.sketch :refer :all]

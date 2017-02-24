@@ -1,6 +1,9 @@
-;Defines useful operations for ripping tables from excel workbooks, and 
-;piping data do excel workbooks programatically.  Uses Docjure, which in 
-;turn uses the Apache POI libraries to interact with Excel docs.
+;;Defines useful operations for ripping tables from excel workbooks, and 
+;;piping data do excel workbooks programatically.  Uses Docjure, which in 
+;;turn uses the Apache POI libraries to interact with Excel docs.
+
+;;Intended to be used seamlessly with spork.util.table abstract tables,
+;;or record sequences.
 (ns spork.util.excel.core
 ;  (:use [dk.ative.docjure.spreadsheet])
   (:use [spork.util.excel.docjure])

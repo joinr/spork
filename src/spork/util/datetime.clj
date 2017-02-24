@@ -1,3 +1,10 @@
+;;A very light wrapper around java's data and time functions, written back in
+;;2012ish.
+
+;;Arguably today, the Approved Solution, is to use clj-time, which wraps
+;;joda-time and provides a more robust and tested way of dealing with time.
+
+;;Marked as LEGACY
 (ns spork.util.datetime
   (:import java.util.GregorianCalendar))
 

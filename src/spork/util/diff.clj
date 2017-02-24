@@ -1,6 +1,8 @@
 ;;A little aux library for doing data diffs..
 ;;Different api and more limited in scope than
-;;clojure.data.diff.
+;;clojure.data.diff.  Primarily used for
+;;diffing complex nested-maps as found in
+;;spork.entitysystem entitystore.
 (ns spork.util.diff)
 ;;can we perform an efficient entity-diff in the entity-store
 ;;library?, or do we have to go the long route?

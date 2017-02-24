@@ -1,6 +1,9 @@
 ;;A set of operations that address some incredibly 
 ;;slow ops we find when using clojure's lazy 
 ;;infrastructure.
+
+;;Update Feb 2017 - Marked DEPRECATED.  Most of the
+;;performance issues addressed here are no longer relevant.
 (ns spork.util.eager)
 
 (defn keys! 

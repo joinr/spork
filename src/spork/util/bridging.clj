@@ -1,13 +1,16 @@
-;Tom Spoon 4 July 2012.
-;This is a simple library for solving a common problem: bridging data from 
-;external sources during import.  In my case, the catalyst was having a team
-;member submit data that "sort of" conformed to a shared specification, but 
-;not directly.  Specifically, the fields needed for the specification existed, 
-;but the names were altered, order was different, and some required fields were
-;missing.  I resolved to build a little library to facilitate building quick 
-;specifications for data bridges, basically maps that facilitate the re-mapping
-;of source data to a new specification. This could be thought of as a special 
-;case for SELECT queries in SQL, but a bit more composable. 
+;;Tom Spoon 4 July 2012.
+;;This is a simple library for solving a common problem: bridging data from 
+;;external sources during import.  In my case, the catalyst was having a team
+;;member submit data that "sort of" conformed to a shared specification, but 
+;;not directly.  Specifically, the fields needed for the specification existed, 
+;;but the names were altered, order was different, and some required fields were
+;;missing.  I resolved to build a little library to facilitate building quick 
+;;specifications for data bridges, basically maps that facilitate the re-mapping
+;;of source data to a new specification. This could be thought of as a special 
+;;case for SELECT queries in SQL, but a bit more composable.
+
+;;Update Feb 2017 - Maintained for legacy script support, marked for
+;;DEPRECATION.
 (ns spork.util.bridging
   (:require [clojure.java [io :as io]]
             [clojure [set :as setlib]]))

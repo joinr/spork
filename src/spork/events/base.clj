@@ -1,4 +1,6 @@
-;Tom Spoon Feb 13 2012.
+;;Tom Spoon Feb 13 2012.
+;;Base protocols and structures for
+;;generic event information.  
 (ns spork.events.base)
 
 (defprotocol IEvent 

@@ -1,7 +1,7 @@
-;TOM SPOON 9 July 2012
-;a clojure wrapper for working with the clipboard. 
-;REALLY useful for interactive work (i.e. munging data using excel for 
-;interop).
+;;TOM SPOON 9 July 2012
+;;a clojure wrapper for working with the clipboard. 
+;;REALLY useful for interactive work (i.e. munging data using excel for 
+;;interop).
 
 (ns spork.util.clipboard
   (:use [clojure.string :only [split-lines]])

@@ -1,3 +1,5 @@
+;;A useful set of parsing functions and parser definitions.
+;;Typically used to help read string data effeciently.
 (ns spork.util.parsing
   (:require [clojure.edn]
             [spork.util [general :as gen]]))

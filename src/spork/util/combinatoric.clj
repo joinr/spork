@@ -1,4 +1,11 @@
 ;;Simple combinatoric utilities used for solution representations.
+
+;;Note Feb 2017 - I found a better solution to the "combinatoric map"
+;;that this library tries to provide (i.e. a sparse map whos keys are
+;;computing based on the lexigraphic order of combinations).  The
+;;current library "works", but I never got around to using it -
+;;it stalled out between 2013/2014 around the same time its intended
+;;target - spork.opt - stalled.  Marked EXPERIMENTAL
 (ns spork.util.combinatoric)
 
 ;;An implementation of the algorithm described in:  

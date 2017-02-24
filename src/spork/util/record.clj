@@ -1,3 +1,4 @@
+;;Possibly useful operations on records.
 (ns spork.util.record
   (:use [spork.util.general :only [serial-comparer orient-comparer
                                    align-fields-by]]))

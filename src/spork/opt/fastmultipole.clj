@@ -1,7 +1,10 @@
-;Tom Spoon!
-(ns spork.opt.fastmultipole)
 ;Implementation of Dr. John Harrop's F# fast multipole method for tree
 ;based force computation, in clojure.
+
+;;Pedagogical port, possibly applications for speeding up
+;;approximate neighbor queries and the like for collision
+;;detection and more.  2012-ish
+(ns spork.opt.fastmultipole)
 
 (defrecord particle [mass radius])
 (defn rand-particle 

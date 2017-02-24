@@ -13,6 +13,11 @@
 ;;is suffering due to the instance checks we're performing.
 ;;This is currently more of a compatibility library to
 ;;allow us to go from/to mutable collections.
+
+;;Note Feb 2017 - The prospect of this library is somewhat
+;;dubious, particularly in light of the performance pentality
+;;for checking types at runtime.  Needs more testing.  Currently
+;;not used in production.  Marked EXPERIMENTAL.
 (ns spork.util.collections
   (:refer-clojure :exclude
      [into update update-in assoc-in assoc 
