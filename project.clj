@@ -1,7 +1,7 @@
 (defproject spork "0.1.9.8-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
-   Libraries are modular and are suppoorted as stand-alone dependencies.
+   Libraries are modular and will be supported as stand-alone dependencies.
    This project is an uberjar that includes all of the modular bits in a single
    jar, for easier dependencies.  spork is purpose-built to be clojure-centric,
    focusing on a functional API, a default towards purity and persistent data
@@ -21,10 +21,9 @@
                  [net.sf.jung/jung-graph-impl    "2.0.1"]
                  [net.sf.jung/jung-algorithms    "2.0.1"]
                  [net.sf.jung/jung-visualization "2.0.1"]
-                 [net.sf.jung/jung-io "2.0.1"]
-                 [org.apache.poi/poi    "3.9"]
-		 [org.apache.poi/poi-ooxml "3.9"]
-
+                 [net.sf.jung/jung-io            "2.0.1"]
+                 [org.apache.poi/poi             "3.9"]
+		 [org.apache.poi/poi-ooxml       "3.9"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [org.clojure/data.avl   "0.0.13"]
                 ; [iota "1.1.2"]
