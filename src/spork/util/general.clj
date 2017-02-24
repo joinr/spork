@@ -128,24 +128,29 @@
 ;;require using equiv to lookup the hashed value.  This guy uses 
 ;;a much more efficient key mechansim, Zach Tellman's tuple, which
 ;;is - at LEAST - 4 times faster than the default varargs stuff.
+
+;;note: programming targetting his (old) internal implementation
+;;caused compile time errors.  Plus there's not a huge benny.
+;;Switching back to his API funcall.
 (defmacro memo-fn 
   "Creates a memoized function, like defn, using a FINITE number of 
    arguments.  Intended for use with 1 to 6 arguments. Allows 
    arg masking, as with _ in defn."
   [raw-args body]
   (let [args (filterv (fn [a] (not= a '_)) raw-args)
-        n (count args)
-        tup  (case n
-                   1 (first args)
-                   2 `(clj_tuple.Tuple2. ~@args nil)
-                   3 `(clj_tuple.Tuple3. ~@args nil)
-                   4 `(clj_tuple.Tuple4. ~@args nil)
-                   5 `(clj_tuple.Tuple5. ~@args nil)
-                   6 `(clj_tuple.Tuple6. ~@args nil)
-                   (throw (Exception. "blah")))]
+        ;n (count args)
+        ;; tup  (case n
+        ;;            1 (first args)
+        ;;            2 `(clj_tuple.Tuple2. ~@args nil)
+        ;;            3 `(clj_tuple.Tuple3. ~@args nil)
+        ;;            4 `(clj_tuple.Tuple4. ~@args nil)
+        ;;            5 `(clj_tuple.Tuple5. ~@args nil)
+        ;;            6 `(clj_tuple.Tuple6. ~@args nil)
+        ;;            (throw (Exception. "blah")))
+        ]
     `(let [hash# (java.util.HashMap.)]
        (fn memoized# [~@raw-args] 
-         (let [k# ~tup]
+         (let [k# (~'clj-tuple/tuple ~@args)]
            (if-let [v# (.get hash# k#)]
              v#
              (let [newv# ~body]
