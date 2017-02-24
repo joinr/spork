@@ -1,3 +1,8 @@
+
+[[https://img.shields.io/clojars/v/spork.svg]]
+[[[https://clojars.org/spork]] Clojars Project]
+
+
 Originated 30 Aug 2012
 Updated 24 Feb 2017
 
