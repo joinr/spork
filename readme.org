@@ -38,7 +38,8 @@ I offer my meager tools for pedagogical values and learning about Clojure.
 
 * Motivation
 Exploit clojure and the benefits of the functional programming paradigm 
-in a deciedly mutable/imperative/object-oriented dominated realm. 
+in a deciedly mutable/imperative/object-oriented dominated realm: Discrete 
+Event Simulation. 
 
 Bitten by the snake of side-effects, mutation, and spooky action-at-a-distance 
 one too many times...I placed my faith in Clojure (and other FP platforms). I 
@@ -351,9 +352,6 @@ across different domains for a given project.  Still, I plan to automatically di
 distribute SPORK - optionally - as individual, modular projects. 
 
 * Differences From Traditional Simulation Implementations
-
-[Feel free to crib the following description for your own project if you 
-want to].
 
 SPORK.sim presents a significant departure from traditional Discrete Event
 Simulations, since the architecture embraces functional programming and 
