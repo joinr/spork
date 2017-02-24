@@ -1,0 +1,418 @@
+Originated 30 Aug 2012
+Updated 24 Feb 2017
+
+Hello! Welcome to Spoon's Operations Research Kit, hereafter known as SPORK.
+
+This document serves to highlight areas that are under development, or
+features that might be deprecated, as well as provide a high-level 
+overview of the various libraries and novel features lurking in the 
+repository.
+
+* What is SPORK?
+
+SPORK is a collection of libraries and utilities that I have built over the years 
+that provide a platform for much of the domain-specific work I do in Operations Research.
+Specifically, munging data, creating complex discrete event simulations, doing graph 
+theoretic stuff, optimizing, sampling, interoperating,  making cartoons (visualization/animation0 
+and on and on. 
+
+* Why should I care?
+
+SPORK is written in a functional style in Clojure, with an emphasis on reasoning about large 
+programs without navel gazing into oblivion.  In my work, I need to balance correctness 
+(paycheck / credibility is on the line if it's wrong) with a bit of performance.
+
+SPORK brings a bevy of useful libraries and utilities to the table, along with some 
+[I believe] novel ways of doing business - if your business includes discrete event simulation 
+among other things. While it's used to support "ORSA" work, it's really a toolset that 
+can address a bevy of computational tasks.
+
+Since this library has evolved - as have I - since 2012, I note that there are multiple 
+quality libraries in the ecosystem that may cover your bases.  They weren't around/accessible 
+when I needed them, so you may see some - by now - mundane things show up in here.  
+
+Feel free to ditch anything for a better alternative.  In some instances, I may be 
+actively migrating toward better stuff from the community.  There may still be some 
+value in seeing working examples and alternate implementations.  If nothing else, 
+I offer my meager tools for pedagogical values and learning about Clojure.
+
+* Motivation
+Exploit clojure and the benefits of the functional programming paradigm 
+in a deciedly mutable/imperative/object-oriented dominated realm. 
+
+Bitten by the snake of side-effects, mutation, and spooky action-at-a-distance 
+one too many times...I placed my faith in Clojure (and other FP platforms). I 
+think they offer a better alternative.  
+
+So far I haven't been disappointed (been almost a decade).
+
+* Organization
+
+** spork.ai
+Collection of data structures and functions that 
+support defining entity behavior in simulations.
+Written using a functional style.  
+*** behavior 
+Behavior tree implementation.  Pretty decent, and 
+close to the literature.
+*** fsm 
+Finite state machine data and functions.
+
+** spork.cljgraph 
+Signifcant and fairly well tested/profiled abstract graph
+and network library.  More or less a functional port 
+of Sedgewick's Graph Algorithms in C, up to and 
+"almost" including the Network Simplex algorithm.
+
+*** core
+top-level porcelain for invoking all sorts of graph related 
+queries, including defining graphs (directed and otherwise), 
+custom walks, single-shortest-path queries, and a whole lot more.
+
+Also has simple graph visualization support via JUNG and graphml 
+output (for visualization in yED for instance). 
+
+*** flow 
+Network flow extensions and algorithms.  Includes edmonds-karp, 
+and a naive (but useful) mincost-flow based on SSSP residual flows.
+
+Mutable and array-backed implementations available.  Pedagogical 
+value could be improved due to some macrology that could be averted 
+with what I now know.  It's cool to do flows in clojure.
+
+** spork.data 
+Slew of data structures that support other spork libraries.  Most 
+are functional and implement clojure protocols and interfaces.  
+
+** spork.entitysystem
+Draft implementation of an entitystore as in the Component Entity System 
+(or is it Entity Component System) architecture popular in games.
+Provides protocols and APIs for defining, querying, and updating 
+persistent and mutable stores.  Current implementation is a column-store, 
+with an experimental row-store in development.
+
+Also provides a DSL for defining entity construction functions - or specs.  
+
+** spork.incanter 
+Naive extensions for incanter.  Recent developments mean there are 
+actually a boatload more coming in the near future.  We could 
+benefit from modularity here...since SPORK implicitly requires 
+incanter even if you don't use it.
+
+** spork.mining 
+Early attempt to port examples from "Collective Intelligence" by 
+Segaran to clojure.  Intended to be a pedagogical tool and a 
+simple data-mining library.  Stalled out. There are better options 
+pre-built.
+
+** spork.events 
+Generic event datastructures for use with a reactive event system.
+*** native
+Wrappers around the Swing adapater-madness to create first-class 
+event streams compatible with the reactive observable event 
+system in spork.events.observe.
+*** observe
+An early port of the F# observable architecture to clojure.
+Brought events-as-data and functional paradigms (map, filter 
+, reduce, etc.) to GUI programming in Swing.  General purpose 
+despite the obvious GUI application.
+
+There are likely better options these days, including core.async.
+Still, worth a look and currently used in production. 
+** spork.examples 
+Currently barren set of examples.  More to come.  Typically there are 
+short examples and tests at the bottom of each namespace.  I'll look to 
+consolidate those here to show interesting use cases for SPORK.
+** spork.protocols 
+Shared protocols and core functionality.  Separated to appease the 
+clojure compiler.
+** spork.cljgui 
+Massive and early wrapping of Swing inspired by "Joy of Clojure."  Not 
+the prettiest, but it has a useful set of features.  
+*** components.swing 
+This is where all the gui widgets and custom components live. 
+Currently in production.
+
+** spork.sketch 
+Declarative 2D rendering in clojure.  Simple sketching API that 
+can produce suprisingly complex imagery.  Currently has some extra 
+features in there for plotting and the like, but the core is pretty small.
+
+** spork.graphics2d 
+2D graphics substrate that can render to Swing or alternative contexts.
+Provides clojure wrappers for image, color, canvas, and other idiomatic 2D
+features provided by the host.  Intended to be a portable rendering layer 
+with different backends.
+
+** spork.geometry 
+Wrapper for various shapes defined by the host platform, as well as 
+user-defined shapes.
+
+** spork.opt
+Generic optimization modeling functions, primarily targeting 
+combinatorial optimization methods like GA, Simulation Annealing, 
+etc.  Currently on Hiatus.
+** spork.mvc 
+Simple model-view-controller protocol and wrapper for Swing and other GUI
+substrates.  
+** spork.sim 
+Pure functional Discrete Event Simulation library. 
+
+*** core
+Currently a place-holder, with an empty simulation 
+context.  Intended to be porcelain API over spork.sim.simcontext, 
+but I never ended up needing it.
+*** data
+Primitive functions and protocols for "events" and 
+event sequences the form the basis for discrete event simulation.
+*** agenda
+Port of the agend from "Structure and Interpretation of Computer Programs"
+by Abelson and Sussman.  Provides a persistent timeline of events, 
+maintaining total order of all pending events as well as functions and 
+protocols for querying and manipulating the agenda.  
+*** pure
+Facilities for implementing a a pure event system.
+**** Network
+Event propogation network based on the observable/observer model 
+implemented as a reduction with pure functions.
+*** impure
+place-holder for a mutable implementation for event propogation.
+*** updates
+datastructure that maintains entities scheduled for updates at periods 
+in simulated time.  Similar to a scheduler.
+*** simcontext
+Primary API for defining, manpulating, and computing Discrete Event Simulations.
+Provides a simulation context datastructure that forms the basis of pure functional 
+simulation, and extends/implements all relevent protocols for event sequences, 
+agendas, updater, and the spork.entitysystem.store entitystore.  Provides 
+an organized means to manage all information relevant to the simulation in 
+a high-level API that makes shoving entities around at variable-width time steps with 
+event propogation in a persistent, functional context not only possible, but fun! 
+Did I mention that it's persistent?  You can audit your simulation, reason about 
+transitions between simulation context values, even time travel.  All of this occurs 
+at a high-level, rather than low-level mutation-at-a-distance.
+ 
+This gives rise to simulation histories, which are a pending addition to SPORK (currently in production/fielding).
+
+** spork.trends 
+Hacky visual components for rendering animated scatter plots 
+and stacked area charts in spork.sketch components.
+Used for animated visualizations.
+** spork.util
+Signifcant collection of utilities.  While some are eligible 
+for elevation to the pantheon of "Separate Libraries," just about 
+everything starts off as a smallish utility here.
+*** array
+Utilities for munging primitive arrays.
+*** bitset
+A hacky bitset implementation/wrapper, intended for 
+use with genetic algorithms.
+*** bridging
+Data translation between two table schemas.  Not 
+as impressive as it used to be, supplanted by 
+spork.util.table ops.
+*** cellular
+Experimental implemention of localized state within 
+deeply nested datastructures.  Attempts to mitigate the 
+performance penalties of multiple assoc/dissoc operations 
+by allowing temporary contexts where we can define "cells" 
+of mutability, and maintain handles to them.  Take 
+you nested map and temporarily get some mutable places...
+we'll clean up after you're done.
+*** clipboard
+Simple API for copying/pasting to the system clipboard.
+Great for moving data from the REPL to other programs 
+via the clipboard.
+*** collections
+Experimental and disappointing attempt to squeeze some 
+marginal speed gains out of common operations like 
+assoc/dissoc.  Teaching value.
+*** combinatoric
+Attempt to implement a sparse combinatoric map 
+where the keys are lexicographically ordered 
+combinations.  Allows one to conceivably 
+define combinations upon a set, and then 
+rapidly compute / hash thet nth combination to 
+provide a sparse hash-map.  Intended to be used to 
+support combinatorial optimization routines. 
+There's a better known implementation than this too.
+*** comparison
+Slew of functions for defining and composing 
+comparators for sorting and the like.
+*** datetime
+Unpopular, backwoods cousin of a real date-time library, 
+like clj-time.  Then again, it got the job done when it 
+was needed.
+*** diff
+Simple diffing functions for nested maps.  Used for delta 
+compression routines among other things.
+*** eager
+Probably no longer needed.  Non-lazy, "fast" [at the time] 
+replacement for core clojure functions.  Bypasses seqs.
+*** excel
+Extended wrapper + fork around an early version of Docjure.
+Provides deep integration with spork.util.table and a nice 
+API that allows you to rip to and from Excel workbooks 
+without touching Excel.
+*** general
+Useful functions that one accumulates over the years. 
+*** generators
+Unfold and the like.
+*** help
+Obsolete help system for an obsolete little clojure environment.
+*** indexed
+Useful? operations on indexed datastructures like vectors.  Things 
+like reducing backwards (without intermediate seqs) and others.
+*** inspection
+Really cool (imo) extension to clojure.reflect and clojure.inspector.
+Allows one to inspect objects from the repl and discern their lineage, 
+i.e. interfaces, protocols, methods, fields, etc.  Also provides a 
+nice ML-like type signature for the discerning functional programmer.
+*** interop
+Helpful macro that allows consenting adults to "crack open" the private
+fields in the steel cages and booby-trapped classes that enterprise java 
+programmers devoted so much time securing from perfidy.  Creates getters and 
+setters in a ns that gives you a functional API for mutating said hidden 
+treasures.
+*** io
+File system routines, convenience apis, path stuff, zip file management.
+*** log
+Logging protocol, mostly to service Clojure's demand for non-circular 
+dependencies.
+*** mailbox
+Primitive async mailbox implementation for an Agent.  Intended to manage 
+GUI, rendering, and other stuff.
+*** metaprogramming
+Useful tricks, macros, and other black magic for bending Clojure to your 
+will.  Practical and possibly pedadogical value.
+*** numerics
+Smallish packaging of math, numerics, and some numerical routines.
+Pedagocial value, likely obsolete in today's ecosystem.
+*** parsing
+General utilities and api for converting text to (typically, maybe?) 
+typed data.  Necessary if you want to read those big files.  String 
+canonicalization is coming very soon as well, to help compress 
+huge tables of snowflake java strings.  Heavily used by spork.util.table.
+*** processor
+Failed experiment to create something like a build system.
+*** ranges
+Simple data structures for defining and working with numerical ranges.
+Intended use was with spork.opt.
+*** record
+Operations for defining records, including some conveneinced wrappers 
+around defrecord that act more like Common Lisp (i.e. default values).
+*** reducers
+Mostly obsolete now that core has caught up.  At the time, provided 
+patches for reducible ranges, and other goodies.
+*** sampling
+Domain Specific Language for defining rules for stochastic sampling 
+functions over a set of discrete samples.
+*** stats
+Simple statistical functions for use with util.sampling, and simulation.
+Some overlap with incanter, some not.
+*** table
+Fairly robust implementation of a column-oriented table in clojure.
+Defines operations for manipulating said table at the field, row, or
+record level.  Also defines joins and SQL-like querying language.
+Allows type definitions and parsing schemas for reading tables 
+effeciently using spork.util.parse.  
+*** tags
+Simple fact database that "tags" subjects with facts.  Basically 
+a logic db / triple store before I knew what that meant.
+*** temporal
+Useful operations for working with data that is sampled at varying 
+intervals, namely output from discrete event simulations.  Generic 
+API allows anything with a start, duration, and name key to be 
+handled as if the signal were continuous rather than discrete.
+Useful for stitching together said signals.
+*** topotree
+A primitive implementation of a "purely functional" doubly-linked-list using a directed 
+graph as its backend.  Not used much.  
+*** vecmath
+Basic vector math, where vectors are implemented as clojure pvectors. 
+Not recommended for heavy duty work, but it's got some charm.
+*** vector
+Useful operations on vectors, like transpose and other shaping 
+operations.  Intended for use with spork.util.table column store.
+*** vectors
+Vector implementation using custom types.  
+*** xml
+Light wrapper around clojure.xml.  Pedantic.
+*** zip
+Wrapper around clojure.zip with some no-longer novel features, like 
+reducible/mappable/filterable zipper traversals.  Better libraries probably 
+exist.
+*** zipfile
+Simple API for creating/compressing/decompressing GZip and Lz4 files.
+
+* Modularity (Pending)
+Currently, SPORK exists in its communal form.  Much of the hacking and development occurs 
+across different domains for a given project.  Still, I plan to automatically dissect and 
+distribute SPORK - optionally - as individual, modular projects. 
+
+* Differences From Traditional Simulation Implementations
+
+[Feel free to crib the following description for your own project if you 
+want to].
+
+SPORK.sim presents a significant departure from traditional Discrete Event
+Simulations, since the architecture embraces functional programming and 
+persistent data structures wholly, rather than focusing on mutation.  
+
+SPORK's goal is to provide a simulation history, which is a sequence of 
+simulation contexts - or snapshots - of the entire "world" in the simulation.  
+This history is lazily generated, yet allows us to define means for observing 
+entities - typically the domain of clunky logging facilities and mutation in 
+most simulations - that can operate on the entire stream of differential 
+changes to the initial simulation context.  SPORK.sim combines several novel 
+features: 
+
+- building the simulation transition functions (or step functions) 
+  as a composition of smaller functions 
+  - (as opposed to OOP-based classes or imperative mutation)
+- Optionally persistent, lazily computed stream of simulation history
+- a database layer based on the Component-Entity-System paradigm
+- Maintains the ability to have a classic observable/observer simulation
+  model without sacrificing functional purity.
+  - Where convenient (i.e. for logging, visualization, other side-effects).
+- Event-step (i.e. variable-width time-step) simulation.
+- High-level transforms on the simulation history.
+  - Familiar idioms like map, filter, reduce work out of the box, since 
+    history is merely a time-indexed stream of simulation contexts.
+  - Allows for precise reasoning about causality, tracing, debugging, etc.
+- Entity behaviors based on Behavior Trees, but can be as simple as a 2-line 
+  function. 
+
+* Developer Notes
+Portions of the code base are somewhat roughshod, owing to the rapid-fire 
+pragmatic nature to support existing research software.  Additionally, there 
+are experimental and potentially deprecated namespaces.  I have pruned out 
+the name spaces where there appears to be little to no technical or 
+pedagogical value and placed them in a temporary /obe folder.
+
+Annotations are provided at the beginning of any namespace that looks "iffy".
+
+There are ongoing efforts to prune the codebase of noise, and to enhance the 
+documentation.  Certain heavily-used libs, like spork.cljgraph, have fairly decent docs.
+
+Where possible, SPORK is an attempt at a literate style of programming; 
+You can feed the source to Marginalia to produce a companion set of documentation 
+that should be useful.
+
+* License
+
+Copyright Tom Spoon 2012-2017
+
+Spoon's Operations Research Kit and encompassing libraries are licensed under the 
+Eclipse Public License v 1.0.
+
+Segments of inline open source code that have both license and attributions 
+provided for the gracious authors.  Please contact me via github if I missed someone and 
+need to issue a correction.
+
+
+
+ 
+
+ 
+
