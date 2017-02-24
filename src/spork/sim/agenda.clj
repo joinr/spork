@@ -20,7 +20,7 @@
   (agenda-count [a] "Return the count of the items on the agenda.")
   (time-segments [a] "Return a map of agenda events, keyed by time segment.")
   (add-times [a ts] "Add a elements of time to the agenda.")
-  (get-times [a] "Return an unordered set of all times in the agenda."))
+  (get-times   [a]  "Return an unordered set of all times in the agenda."))
 
 (defn feasible-time? [a t]
   (let [tf (final-time a)]
@@ -40,27 +40,27 @@
 ;;The cached version is significantly faster at access the
 ;;head event now.
 (defrecord agenda [tprev tfinal schedule item-count times
-                   ^spork.data.cell.cell head]
+                   ^spork.data.cell.cell head ^spork.data.cell.cell t]
   IAgenda 
   (previous-time  [a] tprev)
   (final-time     [a] tfinal)
-  (set-final-time [a tf]  (agenda. tprev tf schedule item-count times head))
+  (set-final-time [a tf]  (agenda. tprev tf schedule item-count times head t))
   (agenda-count   [a]     item-count)
   (time-segments  [a]     schedule)
   (add-times [a ts] 
-    (let [itms (atom item-count)
+    (let [itms          (atom item-count)
           [nsched nt i] (reduce (fn [[sched knowns i :as acc] t]
                                   (if (knowns t) acc
                                       [(sim/add-event sched (sim/->simple-event :time  t))
                                        (conj! knowns t)
                                        (inc i)]))
                               [schedule (transient times) item-count]  (r/filter #(not (contains? times %)) ts))]
-      (agenda. tprev tfinal nsched  i (persistent! nt) (cell/->cell))))
-  (get-times [a] times)
+      (agenda. tprev tfinal nsched  i (persistent! nt) (cell/->cell) (cell/->cell))))
+  (get-times   [a] times)
   spork.sim.data.IEventSeq 
   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  
     (agenda. tprev tfinal (sim/add-event schedule e) (inc item-count)
-             (conj times (sim/event-time e)) (cell/->cell))) 
+             (conj times (sim/event-time e)) (cell/->cell) (cell/->cell))) 
   (drop-event  [a]  
     (if (> item-count 0)  
        (let [tnext (sim/current-time schedule)
@@ -69,16 +69,62 @@
                   (if (not= tnext 
                         (sim/current-time snext))
                     (disj times tnext)
-                    times) (cell/->cell)))
+                    times) (cell/->cell) (cell/->cell)))
        (throw (Exception. "No items left in the agenda!"))))    
   (first-event [a] (if (.isRealized head) (.deref head)
                        (let [fe (sim/first-event schedule)
                              _  (reset! head fe)]
                          fe)))                         
-  (nth-event [a n] (sim/nth-event schedule n)))
+  (nth-event [a n] (sim/nth-event schedule n))
+  sim/IEventSchedule
+  (current-time [obj] (if (.isRealized t) (.deref t)
+                          (let [ct (sim/current-time schedule)
+                                _ (reset! t ct)]
+                            ct)))
+  (next-time    [obj] (sim/next-time    schedule)))
+
+(def empty-agenda (->agenda nil nil nil 0 #{} (cell/->cell) (cell/->cell)))
+
+;; (defrecord agenda [tprev tfinal schedule item-count times
+;;                    ^spork.data.cell.cell head]
+;;   IAgenda 
+;;   (previous-time  [a] tprev)
+;;   (final-time     [a] tfinal)
+;;   (set-final-time [a tf]  (agenda. tprev tf schedule item-count times head))
+;;   (agenda-count   [a]     item-count)
+;;   (time-segments  [a]     schedule)
+;;   (add-times [a ts] 
+;;     (let [itms          (atom item-count)
+;;           [nsched nt i] (reduce (fn [[sched knowns i :as acc] t]
+;;                                   (if (knowns t) acc
+;;                                       [(sim/add-event sched (sim/->simple-event :time  t))
+;;                                        (conj! knowns t)
+;;                                        (inc i)]))
+;;                               [schedule (transient times) item-count]  (r/filter #(not (contains? times %)) ts))]
+;;       (agenda. tprev tfinal nsched  i (persistent! nt) (cell/->cell))))
+;;   (get-times   [a] times)
+;;   spork.sim.data.IEventSeq 
+;;   (add-event  [a e] ;note->allowing the agenda to have events beyond tfinal  
+;;     (agenda. tprev tfinal (sim/add-event schedule e) (inc item-count)
+;;              (conj times (sim/event-time e)) (cell/->cell))) 
+;;   (drop-event  [a]  
+;;     (if (> item-count 0)  
+;;        (let [tnext (sim/current-time schedule)
+;;              snext (sim/drop-event schedule)]
+;;          (agenda. tnext tfinal snext (dec item-count)
+;;                   (if (not= tnext 
+;;                         (sim/current-time snext))
+;;                     (disj times tnext)
+;;                     times) (cell/->cell)))
+;;        (throw (Exception. "No items left in the agenda!"))))    
+;;   (first-event [a] (if (.isRealized head) (.deref head)
+;;                        (let [fe (sim/first-event schedule)
+;;                              _  (reset! head fe)]
+;;                          fe)))                         
+;;   (nth-event [a n] (sim/nth-event schedule n)))
 
 
-(def empty-agenda (->agenda nil nil nil 0 #{} (cell/->cell)))
+;;(def empty-agenda (->agenda nil nil nil 0 #{} (cell/->cell)))
 
 
 (defn get-quarter [day] ((comp inc int) (/ day 90)))

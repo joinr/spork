@@ -136,8 +136,15 @@
                     (reduced v#)
                     (do (aset n# 0 (unchecked-inc (aget n# 0)))
                         acc#))) nil ~m)))
-;define a schedule, a sorted-map of event queues keyed by time.
-(def empty-schedule (sorted-map))
+
+;;using faster numeric comparisons now.
+(defn ^long fast-comp [x y] (if (== x y) 0 (if (> x y) 1 -1)))
+
+;;okay....we can obviate some of the problems with the schedule if we create
+;;a custom type.  basically a wrapper around a priority-map.
+
+;;define a schedule, a sorted-map of event queues keyed by time.
+(def empty-schedule (sorted-map-by fast-comp))
 (definline empty-schedule? [s] `(identical? ~s spork.sim.data/empty-schedule))
 
 (defn get-segment
@@ -170,7 +177,7 @@
 ;;   "[s] Get the next active time"
 ;;   (get-time (next-active s)))
 
-(defn next-time [s]
+#_(defn next-time [s]
    "[s] Get the next active time"
    (get-time s))
 
@@ -223,8 +230,17 @@
   (drop-event  [ecoll]   "remove an event from the collection of events")
   (first-event [ecoll]   "return the next event in the collection")
   (nth-event   [ecoll n] "Return the nth event in the seq"))
+
 (defprotocol IChunkedEventSeq
   (event-chunks [ecoll] "returns a lazy seq of chunks of ordered events."))
+
+;;added to allow caching.
+(defprotocol IEventSchedule
+  (current-time [obj]
+    "Return the current time of the event collection
+    (i.e. the time of the first  event).  It's much faster to lazily 
+     cache the result instead of computing it over and over.")
+   (next-time [obj] "Compute the time of the next event in the sequence."))
 
 ;;This is going to cost us in practice, because we're
 ;;going to get hammered on the lookup cost due to extending the type
@@ -250,6 +266,20 @@
                      (let [offset (- (dec n) (aget cnt 0))]
                        (reduced (nth q offset)))))
                  nil m)))
+  ;;PERFORMANCE NOTE:
+;;This is a known hotspot....should be cached internally.
+;;We end up repeatedly computing this, which typically calls
+;;a bunch of times into the same sorted seq, which is expensive.
+;;So, it's far faster to go ahead and cache the result in the
+;;container, and propogate it internally.  We're also suffering
+;;a little bit due to extending vs inline implementation.
+  IEventSchedule 
+  (current-time 
+    [ecoll]
+    (event-time (first-event ecoll)))
+  (next-time
+    [ecoll]
+    (event-time (nth-event ecoll 1)))
   IChunkedEventSeq
   (event-chunks [ecoll] (vals ecoll))
   IEventReducer
@@ -292,21 +322,6 @@
   [ecoll es] 
   (reduce add-event ecoll es)) 
 
-;;This is a known hotspot....should be cached internally.
-;;We end up repeatedly computing this, which typically calls
-;;a bunch of times into the same sorted seq, which is expensive.
-;;So, it's far faster to go ahead and cache the result in the
-;;container, and propogate it internally.
-(defn current-time 
-  "Return the current time of the event collection (i.e. the time of the first 
-   event)."
-  [ecoll]
-  (event-time (first-event ecoll)))
-  
-(defn next-time
-  "Compute the time of the next event in the sequence."
-  [ecoll]
-  (event-time  (nth-event ecoll 1)  ))
 
 
 ;;#THis is a potential drag.  We don't really want to do this..we

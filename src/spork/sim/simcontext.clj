@@ -102,13 +102,16 @@
   (agenda-count   [a]     (.agenda-count scheduler))
   (time-segments  [a]     (.time-segments scheduler))
   (add-times      [a ts]  (simcontext. (.add-times scheduler ts) updater propogator state))
-  (get-times      [a]     (.get-times scheduler))
+  (get-times      [a]     (.get-times scheduler))  
   sim/IEventSeq
   (add-event   [ctx e] (simcontext. (sim/add-event scheduler e) 
                                     updater propogator state))                                 
   (drop-event  [ctx]   (simcontext. (sim/drop-event scheduler) updater propogator state))
   (first-event [ctx]   (sim/first-event scheduler))
   (nth-event [ctx n]   (sim/nth-event scheduler n))
+  sim/IEventSchedule
+  (current-time [obj]  (sim/current-time scheduler))
+  (next-time    [obj]  (sim/next-time    scheduler))
   store/IEntityStore
   (add-entry      [db id domain data] 
     (simcontext. scheduler updater propogator 
@@ -220,6 +223,9 @@
   (drop-event  [ctx] (do (set! scheduler (sim/drop-event scheduler)) ctx))
   (first-event [ctx] (sim/first-event scheduler))
   (nth-event [ctx n] (sim/nth-event scheduler n))
+  sim/IEventSchedule
+  (current-time [obj] (sim/current-time scheduler))
+  (next-time    [obj] (sim/next-time    scheduler))
   store/IEntityStore
   (add-entry      [db id domain data] 
     (do (set! state  (store/add-entry state id domain data)) db))
