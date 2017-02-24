@@ -2,11 +2,13 @@
 ;;intended for efficient operations
 ;;on message queues of small(ish)
 ;;sizes.
+
+;;EXPERIMENTAL
 (ns spork.data.simpleq
   (:require
    [spork.util.general :as gen]
-   [clojure.core.rrb-vector :as rrb]
-   [clojure.data.finger-tree :as ft]
+   ;[clojure.core.rrb-vector :as rrb]
+   ;[clojure.data.finger-tree :as ft]
    [spork.data.priorityq :as pq]
    [spork.data.protocols]
    [clj-tuple :as tpl]

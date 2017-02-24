@@ -150,7 +150,7 @@
         ]
     `(let [hash# (java.util.HashMap.)]
        (fn memoized# [~@raw-args] 
-         (let [k# (~'clj-tuple/tuple ~@args)]
+         (let [k# (~'tup/tuple ~@args)]
            (if-let [v# (.get hash# k#)]
              v#
              (let [newv# ~body]
