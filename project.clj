@@ -1,4 +1,4 @@
-(defproject spork "0.1.9.7-SNAPSHOT"
+(defproject org.clojars.joinr/spork "0.1.9.8-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and are suppoorted as stand-alone dependencies.
@@ -14,7 +14,7 @@
   :url "None Currently"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[org.clojure/clojure  "1.7.0"]
+  :dependencies [[org.clojure/clojure  "1.8.0"]
                  ;[org.clojure.contrib/standalone "1.3.0-alpha4"]
                  [clj-tuple            "0.2.2"]
                  [immutable-int-map    "0.1.0"]
