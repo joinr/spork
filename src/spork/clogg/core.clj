@@ -1,3 +1,4 @@
+;;OBSOLETE.
 ;;A clojure  grammar of graphics implementation.
 ;;Loosely based on julia's gadfly implementation.
 (ns spork.clogg.core)

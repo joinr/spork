@@ -90,3 +90,48 @@
 (def the-store
   (-> (->cstore)
       (store/add-entities es)))
+
+(defn ->db []
+  (assoc 
+   (ct/concurrent-map)
+   :attributes
+   (ct/concurrent-map)))
+
+(defn     assoc-in!! [^clojure.lang.ILookup m  out in  v]
+  (let [^ctries.clj.Ctrie inner (.valAt m out)]
+      (.assoc inner in v))
+  m)
+
+(defn     assoc-in! [^clojure.lang.IPersistentMap m  out in  v]
+  (.assoc m out (let [^clojure.lang.IPersistentMap inner (.valAt m out)]
+                  (.assoc inner in v))))
+
+(defn put-in [^java.util.Map m out in v]
+  (let [^java.util.Map tgt (.get m out)]
+    (do (.put tgt in v)
+        m)))
+(comment ;;testing
+
+  (def pairs (map vector (range 1000) (range 1000)))
+  (def the-map (into {:attributes {:name 2}}
+                     pairs))
+  (defn ->db []
+    (into (assoc 
+           (ct/concurrent-map)
+           :attributes
+           (ct/concurrent-map))
+          pairs))
+  
+  (def tr (->db))
+  (def cm (let [outer (java.util.HashMap.)
+                ]
+            (into 
+             (doto outer (.put :attributes
+                               (java.util.HashMap.)))
+             pairs)))
+  
+  (time (dotimes [i 1000000] (assoc-in!  the-map :attributes i :a)))
+  (time (dotimes [i 1000000] (assoc-in!! tr :attributes i :a)))
+  (time (dotimes [i 1000000] (put-in cm :attributes i :a)))
+  
+  )

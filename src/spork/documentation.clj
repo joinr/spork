@@ -9,7 +9,7 @@
 (def prelude ["marathon.prelude"])
 
 (defn expand-paths [root xs] (map #(str root \. %) xs))
-(defn path->file [p]
+(defn path->file   [p]
   (str "src/" (clojure.string/replace p \. \/) ".clj"))
 
 ;;#Discrete Event Simulation Library.
