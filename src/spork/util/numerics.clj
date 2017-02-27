@@ -5,18 +5,18 @@
 (set! *warn-on-reflection* true)
 
 ;;Another option is to make these macros instead of functions, for inlining..
-(defn ^double pow [^double n ^double x] (Math/pow n x)) 
-(defn ^double square [^double n] (* n n)) 
-(defn ^double sqrt [^double n] (Math/sqrt n)) 
-(defn ^double ln [^double n] (Math/log n)) 
-(defn ^double exp [^double n] (Math/exp n)) 
+(defn  pow [^double n ^double x] (Math/pow n x)) 
+(defn  square [^double n] (* n n)) 
+(defn  sqrt [^double n] (Math/sqrt n)) 
+(defn  ln   [^double n] (Math/log n)) 
+(defn  exp  [^double n] (Math/exp n)) 
 (def  E Math/E)
-(defn ^long round [^double n] (Math/round n))
-(defn ^double floor [^double n] (Math/floor n))
-(defn ^double ceil [^double n] (Math/ceil n))
-(defn ^double abs [^double n] (Math/abs n))
-(defn ^double tan [^double n] (Math/tan n))
-(defn ^double inc-dbl [^double n] (+ n 1.0))
+(defn  round [^double n] (Math/round n))
+(defn  floor [^double n] (Math/floor n))
+(defn  ceil [^double n] (Math/ceil n))
+(defn  abs [^double n] (Math/abs n))
+(defn  tan [^double n] (Math/tan n))
+(defn  inc-dbl [^double n] (+ n 1.0))
   
 (defmacro SQR [n] `(* ~n ~n))
 
@@ -66,7 +66,7 @@
                          2.1743961811521265E-4 -1.643181065367639E-4 8.441822398385275E-5 
                          -2.6190838401581408E-5 3.6899182659531625E-6])      
       rational (double (/ 671 128))]
-  (defn ^double gammln [^double xx]  
+  (defn gammln [^double xx]  
     (if (<= xx 0.0) (throw (Exception. "bad arg in gammln"))
       (let [x xx              
             tmp (+ x rational)
