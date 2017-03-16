@@ -10,6 +10,19 @@
             [spork.data.priorityq :as pq]
             [clojure.data.avl :as avl]))
 
+;;Disclaimer
+;;==========
+;;The spork.ai.core namespace is currently the remnant of an rapidly
+;;prototyped experiment into behavior trees.  Some of the functions -
+;;and protocols - are generally useful and are retained for use
+;;in behavior tree applications.  There is a simple message-driven
+;;event-step simulation implementation that should ideally be
+;;moved to a separate example namespace.  For now, please accept
+;;that this "core" namespace is not necessarily a porcelain api,
+;;or a hub of functions and vars.  For specific information on
+;;behavior trees, see spork.ai.behavior.  Core will be refactored
+;;in the possibly near future...
+
 ;;probably turn this into a record type...
 (defmacro ->msg
   ([t msg]  `{:t ~t :from (:from ~msg) :to (:to ~msg) :msg ~msg})
