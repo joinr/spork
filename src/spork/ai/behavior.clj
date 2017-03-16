@@ -36,22 +36,22 @@
 ;;behaviors - takes a fairly naive view and ignores the
 ;;run evaluation.  Rather, we always succeed or fail.
 
-;;Evaluation in the Behavior Context
+;;Evaluation in the Behavior Environment
 ;;==================================
 ;;Unlike traditional entity "update" or "step" functions,
 ;;we maintain an explicit context in which the behavior is
-;;evaluated - the behavior context (typically something implementing
+;;evaluated - the behavior environment (typically something implementing
 ;;the spork.ai.core/IEntityStorage and spork.ai.core/IEntityMessaging
 ;;protocols for utility). This context provides a consistent
 ;;accumulation of state through which we can view evaluation
 ;;of the behavior tree as a reduction, with the behavior
 ;;context being the accumulated result.  Thus, we traverse
-;;the tree with an initial behavior context [reified as  a
+;;the tree with an initial behavior environment [reified as  a
 ;;map with useful keys referencing the simulation
 ;;context/entity store, the entity being processed, the
 ;;simulated time of the evaluation, and any additional keys
 ;;useful to evaluation].  Taken as a lexical environment,
-;;the keys of the behavior context form a working set of
+;;the keys of the behavior environment form a working set of
 ;;"variables" or properties that we can either query,
 ;;update, redefine, add to, or otherwise use to guide behavior
 ;;evaluation.  Depending on the use case, we may use
@@ -60,7 +60,7 @@
 
 ;;When evaluating a behavior tree, we start from the root behavior
 ;;and use its evaluation rules to proceed with the reduction (i.e.
-;;compute a resulting behavior context).  The reduced behavior
+;;compute a resulting behavior environment).  The reduced behavior
 ;;context is then - typically - processed by merging the
 ;;entity reference into the simulation context reference, returning
 ;;the simulation context.  The function that encapsulates this
@@ -94,7 +94,7 @@
 ;;Behavior Functions
 ;;=================
 ;;Callers may define functions that operate on the
-;;behavior context directly; in some cases this is a useful
+;;behavior environment directly; in some cases this is a useful
 ;;- if low level - approach to defining behaviors.  
 ;;Arbitrary functions that map a context to a [:success ...]
 ;;or a [:fail ...] may be used as behaviors, and will
@@ -108,10 +108,10 @@
 ;;macro - to define behavior functions - is similar to
 ;;the standard clojure.core/defn form, with a change
 ;;the context:  The function arguments correspond to
-;;a map-destructing of the behavior context, and
+;;a map-destructing of the behavior environment, and
 ;;where specified by a type hint, will compile to
 ;;fast field-based accessors for the specific
-;;behavior context.  To elide repetitive use of
+;;behavior environment.  To elide repetitive use of
 ;;(success ...) and the like, and to align with
 ;;clojure's idiom of using nil for failure,
 ;;nil results are automatically converted to
