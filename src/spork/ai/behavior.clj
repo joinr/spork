@@ -184,7 +184,6 @@
 ;;entity, and the behavior tree - upon re-evaluation - should be
 ;;able to suss out what it should be doing.
 
-
 ;;One strategy could be to isolate the state-independent parts of the 
 ;;existing logic and identify them as behaviors; in other words, 
 ;;remove all state-changes.  We then have the idiom of defining 
