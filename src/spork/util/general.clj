@@ -124,7 +124,9 @@
                       (if (path? path-or-string)
                         (case  (re-find  #".gz|.lz4" path-or-string)
                           ".gz"   z/zip-reader
-                          ".lz4"  z/lz4-reader)))]                      
+                          ".lz4"  z/lz4-reader
+                          clojure.java.io/reader)
+                        string-reader))]                      
     (->line-reducer path-or-string :reader-fn reader-fn)))
 
 (defn compress-file!
