@@ -1,7 +1,12 @@
 ;A collection for general utilities.  This is basically a dumping ground for
 ;small utilities that are undeserving of a seperate library.
 (ns spork.util.general
-  (:require [clj-tuple :as tup]))
+  (:require [clj-tuple :as tup]
+            [spork.util.zipfile :as z]))
+
+(defn ref?
+  "Predicate yields true if the obj supports (deref ...)"
+  [obj] (instance? clojure.lang.IDeref obj))
 
 (defmacro case-identical?
   "Like case, except uses identical? directly to create the cases, rather than 
@@ -78,7 +83,7 @@
 ;;replacement for line-seq, allows a more useful idiom
 ;;for reading files, and is slightly more efficient (no intermediate
 ;;calls to seq, less garbage).
-(defn line-reducer
+(defn ->line-reducer
   "Given a string literal that encodes a path, or a newline-delimited 
    sequence of lines, returns a reducible obj that iterates over each line (string) 
    delimited by \newline."
@@ -105,6 +110,39 @@
                     acc)))
             nil)))
       )))
+
+(defn line-reducer
+  "Outer API for line-reducers, uses ->line-reducer internally.    
+   Now we can automatically grab lines from compressed files too.
+   Given a string literal that encodes a path, or a newline-delimited 
+   sequence of lines, returns a reducible obj that iterates over each line (string) 
+   delimited by \newline.  If the path is a gz or lz4 file, will automatically 
+   decompress and stream the file-lines."
+  [path-or-string & {:keys [reader-fn]}]
+  (let [reader-fn (or reader-fn
+                      (if (path? path-or-string)
+                        (case  (re-find  #".gz|.lz4" path-or-string)
+                          ".gz"   z/zip-reader
+                          ".lz4"  z/lz4-reader)))]                      
+    (->line-reducer path-or-string :reader-fn reader-fn)))
+
+(defn compress-file!
+  "Given a path to an existing file, compresses is using either 
+   :gzip or :lz4 compression.  Writes a corresponding filename with the 
+   .gz or .lz4 extension."
+  [from & {:keys [type] :or {type :gzip}}]
+  (let [writer-fn (case type
+                    :gzip z/zip-writer
+                    :lz4 z/lz4-writer
+                    (throw (Exception. (str "unknown compressor! " type))))]
+    (with-open [w (writer-fn
+                   (str from
+                        (case type
+                          :gzip ".gz"
+                          :lz4 ".lz4"
+                          (throw (Exception. (str "unknown compressor! " type))))))]
+      (reduce (fn [_ ^String l] (writeln! w l)) nil (line-reducer from)))))
+
 
 (defn reducer? [x]
   (extends? clojure.core.protocols/CollReduce (class x)))
@@ -185,7 +223,29 @@
        (ns ~current-ns))))
 
 ;helper functions....I need these somewhere else, since they're universal.
+(defn distinct-zipped
+  "Finds distinct elements of multiple collections, where collections 
+   are represnted by n-tuples, which are elements of n-colls.  
+   Returns a sequence of [#{s1} #{s2} #{s3}] for each element of the 
+   n-tuples across the collection sequence."
+  [n-colls]
+   (let [knowns   (atom (mapv (fn [i] (transient #{})) (range (count (first n-colls)))))
+         add-row  (fn [xs] (reduce (fn [idx x]
+                                     (let [known (nth @knowns idx)]
+                                       (do (when (not (known x)) 
+                                             (swap! knowns assoc idx (conj! known x)))
+                                           (unchecked-inc idx))))
+                                   0
+                                   xs))]
+     (do (doseq [xs n-colls]  (add-row xs))
+         (mapv persistent! @knowns))))
 
+(defn drop-nth
+  "Drops the n item in coll"
+  [n coll]
+  (concat
+    (take n coll)
+    (drop (inc n) coll)))
 
 (defn align-by
   "Given a vector, v, generates a sorting function that compares elements using

@@ -18,7 +18,8 @@
             [clojure [set :as setlib]]
             [clojure.core.reducers :as r]
             [spork.util.reducers]
-            [spork.util [clipboard :as board] [parsing :as parse] [io :as io]]
+            [spork.util [clipboard :as board] [parsing :as parse] [io :as io]
+                        [string :as s]]
             ;;this costs us.
             [spork.cljgui.components [swing :as gui]]
             [spork.util.general  :as general :refer [align-by]]
@@ -836,21 +837,22 @@
 ;;parsing.
 ;; (def split-by-tab
 ;;   #(strlib/split % re-tab))
+ 
 ;;Roughly 2X as fast as clojure.string/split
 ;;Note, it doesn't cost us much to wrap it as a
 ;;persistent vector.
 (defn split-by-tab [^String s]
   (clojure.lang.LazilyPersistentVector/createOwning
-   (.split s "\t")
-   ))
+   (.split s "\t")))
 
+;;note: we use spork.util.string/split-by 
 (defn check-header
   "Checks to see if a stringified header begins with a :.  If it does, removes the:"
   [h]
   (if (= (str (first h)) ":") (subs h 1) h))
 
 (defn unify-schema [s fields]
-  (let [fk (keyword? (first fields))
+  (let [fk    (keyword? (first fields))
         xform (if fk (fn [x] (if (keyword? x) x (keyword x)))
                   name)]
     (reduce-kv (fn [acc k v]
@@ -859,8 +861,9 @@
 
 ;;if we're not provided a schema, we can ascertain what kind of
 ;;data it is based on the first column.
-(defn derive-schema [row & {:keys [parsemode]}]
-  (let [xs     (split-by-tab row)
+(defn derive-schema [row & {:keys [parsemode line->vec]
+                            :or {line->vec split-by-tab}}]
+  (let [xs     (line->vec row)
         parser (if (= parsemode :scientific)  parse/parse-string
                     parse/parse-string-nonscientific);clojure.edn/read-string
         types  (mapv (comp type parser) xs)]    
@@ -880,21 +883,24 @@
    cases where there is an E in the string, parsing may return a number or 
    infinity.  Set the :parsemode key to any value to anything other than 
    :scientific to avoid parsing scientific numbers."
-   [lines & {:keys [parsemode keywordize-fields? schema default-parser] 
+   [lines & {:keys [parsemode keywordize-fields? schema default-parser delimiter] 
              :or   {parsemode :scientific
                     keywordize-fields? true
-                    schema {}}}] 
-  (let [tbl   (->column-table 
+                    schema {}
+                    delimiter #"\t"}}] 
+  (let [line->vec (s/->vector-line->vec delimiter)
+        tbl   (->column-table 
                  (vec (map (if keywordize-fields?  
                              (comp keyword check-header clojure.string/trim)
-                             identity) (split-by-tab (general/first-any lines)))) 
+                             identity)
+                           (line->vec (general/first-any lines)))) 
                  [])
         parsef (parse/parsing-scheme schema :default-parser  
                    (or default-parser
                        (if (= parsemode :scientific) parse/parse-string
                            parse/parse-string-nonscientific)))
         fields (table-fields tbl)      
-        parse-rec (comp (parse/vec-parser! fields parsef) split-by-tab) ;this makes garbage.
+        parse-rec (comp (parse/vec-parser! fields parsef) line->vec) ;this makes garbage.
         ]
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 
                       (r/map parse-rec (r/drop 1 lines)))
@@ -907,9 +913,12 @@
    c) throws an exception on missing fields."
   [ls schema & {:keys [parsemode keywordize-fields?] 
                 :or   {parsemode :scientific
-                       keywordize-fields? true}}]
-  (let [raw-headers   (mapv clojure.string/trim (clojure.string/split  (general/first-any ls) #"\t" ))
-        fields        (mapv (fn [h]
+                       keywordize-fields? true
+                       delimiter #"\t"}}]
+  (let [line->arr    (s/->array-splitter  delimiter) ;maybe unecessary
+        line->vec    (s/->vector-splitter line->arr)
+        raw-headers  (mapv clojure.string/trim (line->vec (general/first-any ls)))
+        fields       (mapv (fn [h]
                               (let [root  (if (= (first h) \:) (subs h  1) h)]
                                 (if keywordize-fields?
                                   (keyword root)
@@ -932,7 +941,7 @@
                                               [k (typed-col v)])))]                                          
     (->> ls
          (r/drop 1)
-         (r/map  (fn [^String ln] (.split ln "\t")))
+         (r/map  line->arr)
          (reduce (fn [acc  ^objects xs]
                    (reduce-kv (fn [acc idx fld]
                                 (let [c (get cols fld)]
@@ -940,19 +949,23 @@
                                       acc))) acc idx->fld)) cols)
          (unvolatile-hashmap!)
          (make-table))))
-  
+
 (defn lines->records
   "Produces a reducible stream of 
    records that conforms to the specifications of the 
    schema.  Unlike typed-lines->table, it does not store
    data as primitives.  Records are potentially ephemeral 
    and will be garbage collected unless retained.  If no 
-   schema is provided, one will be derived."
-  [ls schema & {:keys [parsemode keywordize-fields?] 
+   schema is provided, one will be derived.  Caller may supply 
+   a regex pattern, via delimiter, for custom record delimiting. Defaults
+   to tab-delimited records."
+  [ls schema & {:keys [parsemode keywordize-fields? delimiter] 
                 :or   {parsemode :scientific
-                       keywordize-fields? true}}]
-  (let [
-        raw-headers   (mapv clojure.string/trim (clojure.string/split  (general/first-any ls) #"\t" ))
+                       keywordize-fields? true
+                       delimiter #"\t"}}]
+  (let [line->arr    (s/->array-splitter delimiter)
+        line->vec    (s/->vector-splitter line->arr)        
+        raw-headers   (mapv clojure.string/trim (line->vec (general/first-any ls)))
         fields        (mapv (fn [h]
                               (let [root  (if (= (first h) \:) (subs h  1) h)]
                                 (if keywordize-fields?
@@ -960,7 +973,9 @@
                                   root)))
                             raw-headers)
         schema    (if (empty? schema)
-                    (let [types (derive-schema (general/first-any (r/drop 1 ls)) :parsemode parsemode)]
+                    (let [types (derive-schema (general/first-any (r/drop 1 ls))
+                                               :parsemode parsemode
+                                               :line->vec line->vec)]
                       (into {} (map vector fields types)))
                     schema)
         s         (unify-schema schema fields)
@@ -972,17 +987,25 @@
                                     _   (swap! idx unchecked-inc)]
                                 nxt)
                               (do (swap! idx unchecked-inc) acc))) {} fields)
+        last-fld-idx (apply max  (keys idx->fld))  
         ;;throw an error if the fld is not in the schema.
         _ (let [known   (set (map name (vals idx->fld)))
                 missing (filter (complement known) (map name (keys s)))]
             (assert (empty? missing) (str [:missing-fields missing])))]                                          
     (->> ls
          (r/drop 1)
-         (r/map  (fn [^String ln] (.split ln "\t")))
+         (r/map  line->arr)
          (r/map  (fn [^objects xs]
+                  ;;if the final field is empty, we won't get an extra empty string when splitting by tab.
+                  ;;If other fields are empty, we'll get an extra string.
+                  (let [last-fld-empty? (= (alength xs) last-fld-idx)]
                    (reduce-kv (fn [acc idx fld]
-                                  (assoc acc fld (parser fld (aget xs idx))))
-                              {} idx->fld))))))
+                                (let [new-val (if (and (= idx last-fld-idx) last-fld-empty?)
+                                                ""
+                                                (aget xs idx))]
+                                  (assoc acc fld (parser fld new-val))))
+                              {} idx->fld))))
+         )))
 
 (defn tabdelimited->table 
   "Primary table-creation API. Returns a map-based table abstraction from 
@@ -990,22 +1013,25 @@
    tries to parse an item as a number.  In  cases where there is an E in the 
    string, parsing may return a number or infinity.  Set the :parsemode key to
     any value to anything other than :scientific to avoid parsing scientific numbers."
-   [s & {:keys [parsemode keywordize-fields? schema relaxed? default-parser] 
+   [s & {:keys [parsemode keywordize-fields? schema relaxed? default-parser delimiter] 
          :or   {parsemode :scientific
                 keywordize-fields? true
                 schema {}
-                relaxed? false}}]
+                relaxed? false
+                delimiter #"\t"}}]
    (if (or (empty? schema) (and relaxed? schema))
      (lines->table (general/line-reducer s)
                    :parsemode parsemode
                    :keywordize-fields? keywordize-fields?
                    :schema schema                               
-                   :default-parser default-parser)
+                   :default-parser default-parser
+                   :delimiter delimiter)
      (typed-lines->table  (general/line-reducer s)
                          schema
                          :parsemode parsemode
                          :keywordize-fields? keywordize-fields?
-                         :schema schema)))
+                         :schema schema
+                         :delimiter delimiter)))
 
 (defn tabdelimited->records 
   "Secondary table-creation API. Returns a map-based record abstraction from 
@@ -1014,16 +1040,18 @@
    string, parsing may return a number or infinity.  Set the :parsemode key to
    any value to anything other than :scientific to avoid parsing scientific numbers.
    the return value is reducible."
-   [s & {:keys [parsemode keywordize-fields? schema relaxed? default-parser] 
+   [s & {:keys [parsemode keywordize-fields? schema relaxed? default-parser delimiter] 
          :or   {parsemode :scientific
                 keywordize-fields? true
                 schema {}
-                relaxed? false}}]
+                relaxed? false
+                delimiter #"\t"}}]
    (lines->records (general/line-reducer s)
                    schema
                    :parsemode parsemode
                    :keywordize-fields? keywordize-fields?                    
-                   :default-parser default-parser))
+                   :default-parser default-parser
+                   :delimiter delimiter))
 
 ;;deprecated
 (defn record-seq  

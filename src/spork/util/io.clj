@@ -17,7 +17,6 @@
                [set :as setlib]]
               [clojure.core.reducers :as r]
               [clojure.java [io :as io]]
-              [spork.util.general :as general]
               [clojure [pprint :as pp]]))
 
 ;;a map of the environment vars, really handy.
@@ -450,6 +449,56 @@
   "Returns a uniform resource indicator relative to path p."
   [p] (java.net.URI. (path->uripath p)))
 
+(defn get-resource
+  "Gets the resource provided by the path.  If we want a text file, we 
+   call '(get-res \"blah.txt\")"
+  [nm]
+  (clojure.java.io/input-stream (clojure.java.io/resource nm)))
+
+(defn resource-lines 
+  "Given a string literal that encodes a path to a resource, i.e. a file in the 
+   /resources folder, returns a reducible obj that iterates over each line (string) 
+   delimited by \newline."
+  [filename]
+  (let [reader-fn clojure.java.io/reader]
+    (reify clojure.core.protocols/CollReduce
+      (coll-reduce [o f init]
+        (with-open [^java.io.BufferedReader rdr (reader-fn (get-res filename))]
+          (loop [acc init]
+            (if (reduced? acc) @acc 
+                (if-let [ln (.readLine rdr)]
+                  (recur (f acc ln))
+                  acc)))))
+      (coll-reduce [o f]
+        (with-open [^java.io.BufferedReader rdr (reader-fn (get-res filename))]
+          (if-let [l1 (.readLine rdr)]
+            (loop [acc l1]
+              (if (reduced? acc) @acc 
+                  (if-let [ln (.readLine rdr)]
+                    (recur (f acc ln))
+                    acc)))
+            nil)))
+      )))
+
+
+(defn writeln!
+  "Convenience function.  write ln to writer w, write a 
+   newline afterwards."
+  [^java.io.BufferedWriter w ^String ln]
+  (do  (.write w ln)
+       (.newLine w)))
+
+(defn write!
+  "Convenience function.  write ln to writer w."
+  [^java.io.BufferedWriter w ^String ln]
+  (do  (.write w ln)))
+
+
+;;I'm using this instead of the java interfact in java.io   
+(defprotocol ICloseable 
+  (close [x]))
+
+
 (comment 
 ;If we weren't passed a path or paths at the command line,
 ;we'll initiate a file dialog.  This uses some java interop...
@@ -478,59 +527,3 @@
       nil)))
   ([] (select-folder @*path*)))
 )
-
-
-
-
-;;Work in progress on a buffered char reader..
-
-
-;;if we're reading into a buffer.
-;;we can get a view on the buffer as a sequence of buffers...
-;;init [0 0] [0..... 4096]
-;;read (<= 4096)
-;;[0 4096] [a b c d ..... blah]
-;;now that we have this, we can load our chararray.
-;;note: we can also tune the buffer to available system
-;;memory.
-
-;;so, if we're interested in breaking lines, all we need to
-
-;; (definterface ILineReader
-;;   (^String readLine [])
-;;   (byteLine         []))
-
-;; (deftype FastReader [^:unsynchronized-mutable ^chars array ^java.io.BufferedInputStream fbi ^:unsynchronized-mutable ^int length]
-;;   ILineReader
-;;   (byteLine [this]
-;;     (loop [start 0]
-;;       (let [len (.readLine fbi  ^bytes array start (- (alength ^bytes array) start)) ;number of bytes read.
-;;             ]
-;;         (if (neg? len) nil ;(String. ^bytes array start) ;no bytes read.
-;;             (if (== len  (- (alength ^bytes array) start) ) ;read bytes = number in the buffer.
-;;               (do ;(println [:read len :start start :length (alength ^bytes array)])
-;;                   (set! array (ByteArrays/grow ^bytes array (unchecked-inc (alength ^bytes array)))) ;grow the buffer, start at the next.
-;;                   (recur (unchecked-add start len)))
-;;                                         ;(String. ^bytes array 0 (unchecked-add start len))
-;;               (do (set! length len)
-;;                   this)
-;;               ))))))
-
-;; ;;we can have the buffer be as long as we want. 
-;; (defn next-line [^chars buff ^long offset ^long len]
-;;   (let [bound (unchecked-add idx len)]
-;;     (loop [idx offset]
-;;       (if (== idx bound) ;;ran out
-;;         -1
-;;         (if (== (int (aget ^chars buff idx)) 10)
-;;           idx
-;;           (recur (unchecked-inc idx)))))))
-
-;; (defn buffered-lines [n rdr]
-;;   (let [^chars buff (char-array n)]
-;;     (loop [l 0
-;;            r 0]
-;;       (let [len (.read rdr buff 0 n)]
-;;         ;;scan from the left to see if we have a line.
-;;         (if (pos? len) ;we got chars.
-;;           (let [nl (next-line buff l len)]
