@@ -5,13 +5,29 @@
 ;;Intended to be used seamlessly with spork.util.table abstract tables,
 ;;or record sequences.
 (ns spork.util.excel.core
-;  (:use [dk.ative.docjure.spreadsheet])
   (:use [spork.util.excel.docjure])
-  (:require [spork.util [table :as tbl] [vector :as v] [io :as io]])
-  (:import (org.apache.poi.ss.usermodel  Sheet Cell Row DataFormatter)))
+  (:require [spork.util [table :as tbl]
+                        [vector :as v]
+                        [io :as io]
+                        [string :as s]])
+  (:import [org.apache.poi.ss.usermodel Sheet Cell Row DataFormatter]))
 
+;;we want to enable the ability for tables that have
+;;a completely empty rowvector, i.e. all nil or blank,
+;;to be seen as a table terminator.
+
+(def +blank+ "")
+(defn blank? [v]
+  (or (nil? v)
+      (and (string? v)
+           (identical? v +blank+))))
+
+(defn empty-row? [xs]
+  (every? blank? xs))
+
+(def ^:dynamic *end-of-table*)
 (set! *warn-on-reflection* true)
-
+            
 (comment 
 ; Load a spreadsheet and read the first two columns from the 
 ; price list sheet:
@@ -47,8 +63,12 @@
 
 ;;TODO: revisit this, we can probably do mo betta.
 ;;causing problems here...
+;;Now we allow a custom function for cell->val to be passed in.
+;;Note: bound may not be necessary...
+;;Since rows are sparse, we're trying to fill in empties that
+;;we find.
 (defn row->vec
-  ([^Row r bound]
+  ([^Row r bound cell->val]
    (let [bounded? (if (not (nil? bound)) 
                     (fn [n] (> n bound))
                     (fn [_] false))
@@ -59,13 +79,15 @@
        (cond (empty? xs) acc           
              (bounded? idx) (subvec acc 0 bound)
              :else (let [^Cell x (first xs)                       
-                         y       (read-cell x) ;;This is where we'd hook in if we only wanted text.
-                         i       (.getColumnIndex x)                        
+                         y       (cell->val x) ;;This is where we'd hook in if we only wanted text.
+                         i       (.getColumnIndex x)
+                         ;; if i <> idx, we have skipped (i.e. sparse) values
                          missed  (reduce conj acc
                                          (take (- i idx)
                                                (repeat nil)))]
                      (recur (conj missed y) (inc i) (rest xs)))))))
-  ([r] (row->vec r nil)))
+  ([r bound] (row->vec r bound read-cell))
+  ([r] (row->vec r nil read-cell)))
 
 (comment
 ;;We use the dataformatter here, just getting strings out.
@@ -152,22 +174,6 @@
           (concat (map second (first parts)) 
                   (map (comp second second) (rest parts)))))))
 
-;(defn tabular-region
-;  "Assumes that sheet represents a table, in which case, the upper-left 
-;   corner, cell A1, is the beginning of a set of adjacent cells, which form
-;   a rectangle.  Nil values are allowed in cells in each row, except for the 
-;   first row, which is assumed to denote field names.  The rectangular region 
-;   will be truncated after the first nil is found in the field names."
-;  [sheet]
-;  (let [rows   (contiguous-rows sheet)
-;        fields (truncate-row (row->vec (first rows)))
-;        fieldcount (count fields)]    
-;      (reduce (fn [acc r]
-;                (let [r (row->vec r)]
-;                  (conj acc (if (= (count r) fieldcount) r  
-;                              (subvec r 0 (count fields))))))
-;              [fields] (rest rows))))
-
 (defn tabular-region
   "Assumes that sheet represents a table, in which case, the upper-left 
    corner, cell A1, is the beginning of a set of adjacent cells, which form
@@ -176,28 +182,27 @@
    will be truncated after the first nil is found in the field names."
   [sheet]
   (let [fields (truncate-row (row->vec (first (contiguous-rows sheet))))
-        fieldcount (count fields)]    
-    (map (fn [r]
-           (let [r (row->vec r)
-                 rcount (count r)]
-             (cond (= rcount fieldcount) r
-                   (> rcount fieldcount) (subvec r 0 (count fields))
-                   (< rcount fieldcount) (into r (take (- fieldcount rcount) 
-                                                       (repeat nil))))))
-           (contiguous-rows sheet))))
-
-;(defn sheet->table
-;  "Converts an excel worksheet into a columnar table.  Assumes first row defines 
-;   field names.  Truncates remaining dataset to the contiguous, non-nil fields 
-;   in the first row."
-;  [sheet] 
-;  (let [rows   (tabular-region sheet)
-;        fields (first (subvec rows 0 1))
-;        records (v/transpose (subvec rows 1))]      
-;      (tbl/make-table fields records)))
+        fieldcount (count fields)
+        pooled     (s/->string-pool 100 1000)
+        read-cell-pooled (fn [cl]
+                           (let [res (read-cell cl)]
+                             (if (string? res) (pooled res) res)))]
+    (->> (contiguous-rows sheet) 
+         (map (fn [r]
+                (let [r (row->vec r nil read-cell-pooled)
+                      rcount (count r)]
+                  (cond (= rcount fieldcount) r
+                        (> rcount fieldcount) (subvec r 0 fieldcount)
+                        (< rcount fieldcount) (into r (take (- fieldcount rcount) 
+                                                            (repeat nil)))))))
+         (take-while (complement empty-row?)) ;;we infer a blank row as the end of the table.
+         )))
 
 
 ;;Maybe revisit this....
+;;lots of garbage here.  We should be able to directly map the tabular
+;;region into corresponding field/rows without creating intermediate
+;;vectors...
 (defn sheet->table
   "Converts an excel worksheet into a columnar table.  Assumes first row defines 
    field names.  Truncates remaining dataset to the contiguous, non-nil fields 
