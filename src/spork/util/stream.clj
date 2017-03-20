@@ -29,7 +29,9 @@
           ^java.io.BufferedWriter w  (clojure.java.io/writer newfile)
           _  (println [:writing-to newfile])
           _  (swap! (.writers ms) assoc nm w)
-          _  (writeln! w (if (ref? (.headers ms)) (deref (.headers ms)) (.headers ms)))]
+          _  (io/writeln! w
+               (if (gen/ref? (.headers ms))
+                 (deref (.headers ms)) (.headers ms)))]
       w)))
 
 ;; on close, we want to record a manifest, in the root folder, of the 

@@ -32,15 +32,6 @@
 
 ;;__Aux Functions__
 
-;;Ported from proc.util
-(defn writeln! [^java.io.BufferedWriter w ^String ln]
-  (do  (.write w ln)
-       (.newLine w)))
-
-;;Ported from proc.util
-(defn write! [^java.io.BufferedWriter w ^String ln]
-  (do  (.write w ln)))
-
 ;;RRB-Vectors are the primary backing for our typed-tables, since they
 ;;have transient primitive-backed collections (clojure.core/vector doesn't
 ;;at the time of writing) and are drop-in replacements for persistent vectors.
@@ -888,7 +879,7 @@
                     keywordize-fields? true
                     schema {}
                     delimiter #"\t"}}] 
-  (let [line->vec (s/->vector-line->vec delimiter)
+  (let [line->vec (s/->vector-splitter delimiter)
         tbl   (->column-table 
                  (vec (map (if keywordize-fields?  
                              (comp keyword check-header clojure.string/trim)
@@ -911,7 +902,7 @@
    up our table columns, if applicable, using rrb-trees.
    b) enforces the schema, ignoring fields that aren't specified.
    c) throws an exception on missing fields."
-  [ls schema & {:keys [parsemode keywordize-fields?] 
+  [ls schema & {:keys [parsemode keywordize-fields? delimiter] 
                 :or   {parsemode :scientific
                        keywordize-fields? true
                        delimiter #"\t"}}]
@@ -1148,7 +1139,7 @@
 (defn spit-table [path t]
   (with-open [^java.io.BufferedWriter out (clojure.java.io/writer path)]
     (doseq [ln (seq (table->lines t))]
-      (write! out ln))))
+      (io/write! out ln))))
 
 (defmulti table->file (fn [tbl path & {:keys [stringify-fields? data-format]}]
                         data-format))

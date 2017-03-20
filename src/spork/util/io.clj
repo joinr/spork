@@ -463,14 +463,16 @@
   (let [reader-fn clojure.java.io/reader]
     (reify clojure.core.protocols/CollReduce
       (coll-reduce [o f init]
-        (with-open [^java.io.BufferedReader rdr (reader-fn (get-res filename))]
+        (with-open [^java.io.BufferedReader rdr
+                    (reader-fn (get-resource filename))]
           (loop [acc init]
             (if (reduced? acc) @acc 
                 (if-let [ln (.readLine rdr)]
                   (recur (f acc ln))
                   acc)))))
       (coll-reduce [o f]
-        (with-open [^java.io.BufferedReader rdr (reader-fn (get-res filename))]
+        (with-open [^java.io.BufferedReader rdr
+                    (reader-fn (get-resource filename))]
           (if-let [l1 (.readLine rdr)]
             (loop [acc l1]
               (if (reduced? acc) @acc 

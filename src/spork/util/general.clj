@@ -2,7 +2,8 @@
 ;small utilities that are undeserving of a seperate library.
 (ns spork.util.general
   (:require [clj-tuple :as tup]
-            [spork.util.zipfile :as z]))
+            [spork.util [zipfile :as z]
+                        [io :as io]]))
 
 (defn ref?
   "Predicate yields true if the obj supports (deref ...)"
@@ -141,7 +142,7 @@
                           :gzip ".gz"
                           :lz4 ".lz4"
                           (throw (Exception. (str "unknown compressor! " type))))))]
-      (reduce (fn [_ ^String l] (writeln! w l)) nil (line-reducer from)))))
+      (reduce (fn [_ ^String l] (io/writeln! w l)) nil (line-reducer from)))))
 
 
 (defn reducer? [x]
@@ -240,12 +241,12 @@
      (do (doseq [xs n-colls]  (add-row xs))
          (mapv persistent! @knowns))))
 
-(defn drop-nth
-  "Drops the n item in coll"
-  [n coll]
-  (concat
-    (take n coll)
-    (drop (inc n) coll)))
+(defn drop-nth 
+   "Drops the nth item in coll" 
+   [n coll] 
+   (concat 
+     (take n coll) 
+     (drop (inc n) coll)))
 
 (defn align-by
   "Given a vector, v, generates a sorting function that compares elements using
@@ -285,9 +286,7 @@
     (into (sorted-map-by (fn [lkey rkey] (compare (keyfn lkey)
                                                   (keyfn rkey))))
           (seq m))))
-    
-    
-
+   
 (defn clump
   "Returns a vector of a: results for which keyf returns an identical value.
    b: the rest of the unconsumed sequence."
