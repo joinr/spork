@@ -496,9 +496,24 @@
   (do  (.write w ln)))
 
 
+;;Should we not use this? More general for cljs too...
 ;;I'm using this instead of the java interfact in java.io   
 (defprotocol ICloseable 
   (close [x]))
+
+(defn ->closer
+  "Given a collection of opened and closeable resources 
+   xs, wraps them in an object that can be used with 
+   with-open for automatic failsafe resource cleanup.
+   Useful when bundling many references to open 
+   files, incase things go wrong or defining  
+   via with-open is prohibitive."
+  [xs]
+  (reify java.io.Closeable
+    (close [this]
+      (doseq [x xs]
+        (when x 
+          (.close ^java.io.Closeable x))))))
 
 
 (comment 
