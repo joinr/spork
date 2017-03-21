@@ -9,6 +9,28 @@
   "Predicate yields true if the obj supports (deref ...)"
   [obj] (instance? clojure.lang.IDeref obj))
 
+
+(defn approx-order
+  "provide a unified ordering of a known ordering
+  and a set of candidate fields.  We want
+  to return a vector of field names that
+  are sorted according to ordered, derived
+  from candidates."
+  [ordered candidates]
+  (vec (if (seq ordered)
+         (let [order (atom (into {} (map-indexed (fn [idx fld]
+                                        [fld idx]) ordered)))
+          keyf (fn [fld]
+                 (if-let [n (get @order fld)]
+                   n
+                   (let [n (count @order)
+                         _ (swap! order assoc fld n)]
+                     n)))
+                                               
+          ]
+       (sort-by keyf candidates))
+       candidates)))
+
 (defmacro case-identical?
   "Like case, except uses identical? directly to create the cases, rather than 
    the hash-based case function that's default.  Seems 3x faster than built in 
@@ -75,11 +97,13 @@
 ;;This is actually a pretty naive way to parse paths...but I think it'll work for
 ;;our use cases.
 (defn path? [s]
-  (with-open [rdr (string-reader s)]
-    (let [[l1 l2] (take 2 (line-seq rdr))]
-      (when  (and (nil? l2)
-                  (seq (re-seq #"\\|/" s)))
-        true))))
+  (or (io/fexists? s)
+      ;;not sure wtf this is...revisit?
+      (with-open [rdr (string-reader s)]
+        (let [[l1 l2] (take 2 (line-seq rdr))]
+          (when  (and (nil? l2)
+                      (seq (re-seq #"\\|/" s)))
+            true)))))
 
 ;;replacement for line-seq, allows a more useful idiom
 ;;for reading files, and is slightly more efficient (no intermediate

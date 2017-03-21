@@ -19,10 +19,10 @@
             [clojure.core.reducers :as r]
             [spork.util.reducers]
             [spork.util [clipboard :as board] [parsing :as parse] [io :as io]
-                        [string :as s]]
+                        [string :as s] [stream :as stream]]
             ;;this costs us.
             [spork.cljgui.components [swing :as gui]]
-            [spork.util.general  :as general :refer [align-by]]
+            [spork.util.general  :as general :refer [align-by approx-order]]
             [spork.data.sparse :as sparse]
             [clojure.core.rrb-vector :as rrb])
   (:use [spork.util.vector]
@@ -1207,56 +1207,15 @@
   [xs]
   (board/paste! (spit-records xs)))
 
-;;provide a unified ordering of a known ordering
-;;and a set of candidate fields.  We want
-;;to return a vector of field names that
-;;are sorted according to ordered, derived
-;;from candidates.
-(defn approx-order [ordered candidates]
-  (vec (if (seq ordered)
-         (let [order (atom (into {} (map-indexed (fn [idx fld]
-                                        [fld idx]) ordered)))
-          keyf (fn [fld]
-                 (if-let [n (get @order fld)]
-                   n
-                   (let [n (count @order)
-                         _ (swap! order assoc fld n)]
-                     n)))
-                                               
-          ]
-       (sort-by keyf candidates))
-       candidates)))
-
-;;this is a pretty useful util function.  could go in table.
-;;the only downside of this guy is that records are not guaranteed
-;;to be ordered.  So, if we want to write out positionally, i.e.
-;;according to some schema, we need to modify.
-(defn records->file [xs dest & {:keys [field-order]}]
-  (let [hd   (first xs)
-        flds (vec (keys hd))
-        flds (approx-order field-order flds)
-        sep  (str \tab)
-        header-record (reduce-kv (fn [acc k v]
-                                   (assoc acc k
-                                          (name k)))
-                                 hd
-                                 hd)
-        write-record! (fn [^java.io.BufferedWriter w r]
-                        (doto ^java.io.BufferedWriter
-                          (reduce (fn [^java.io.BufferedWriter w fld]
-                                    (let [x (get r fld)]
-                                      (doto w
-                                        (.write (str x))
-                                        (.write sep))))
-                                  w
-                                  flds)
-                            (.newLine)))]
-    (with-open [out (clojure.java.io/writer dest)]
-      (reduce (fn [o r]                
-                (write-record! o r))
-              (write-record! out header-record)       
-              xs))
-    nil))
+(defn records->file
+  "Given xs - a sequence of records, i.e. k-v pairs the support (get r k v) -
+   spits the records to the file at dest.  Optional arguments include
+   a record separator, a field order, and a writer.  Defaults to a fresh 
+   writer writing tab-delimited field values.  Writers headers."
+  [xs dest & {:keys [field-order sep writer]
+              :or {sep "\t"}}]
+  (with-open [out (stream/->record-writer dest :sep sep :writer writer)]
+    (reduce (fn [o r] (stream/write-record o r)) out  xs)))
 
 ;establishes a simple table-viewer.
 ;we can probably create more complicated views later....
