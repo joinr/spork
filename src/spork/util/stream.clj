@@ -59,7 +59,8 @@
 ;;to the field-order, to destination file at dest.
 ;;Else, field-order is derived from the first record.
 (defprotocol IRecordWriter
-  (write-record [w r]))
+  (write-record [w r])
+  (write-headers [w xs]))
 
 ;;Uses transduce at the moment.  Not sure about
 ;;performance implications at the moment.  Probably
@@ -91,22 +92,21 @@
   IRecordWriter
   (write-record [this r]
     (do (when-not hd ;emit the header on first record.
-          (let [flds (vec (keys r))
-                flds (gen/approx-order field-order flds)                
-                header-record (reduce-kv (fn [acc k v]
-                                   (assoc acc k
-                                          (name k)))
-                                 r
-                                 r)]            
-            (set! hd header-record)
-            (set! fields flds)
-            (spit-record! writer hd fields sep)))
+          (write-headers this (vec (keys r))))
         (spit-record! writer r fields sep)
         this))
+  (write-headers [this xs]
+    (let [flds (vec xs)
+          flds (gen/approx-order field-order flds)                
+          header-record (into {} (map vector xs (map name xs)))]            
+      (set! hd header-record)
+      (set! fields flds)
+      (spit-record! writer hd fields sep)
+      this))
   java.io.Closeable
   (close [this] (.close writer)))
 
-(defn ->record-writer
+(defn ^record-writer  ->record-writer
   "Creates a record writer on destination, which opens an 
    internally managed writer on the file specified by dest.
    Caller may specify optional field-order for the emitted 
@@ -117,3 +117,34 @@
   (let [w (or writer (clojure.java.io/writer dest))]
     (record-writer. dest w field-order sep nil nil)))
 
+(defn ^record-writer  ->strict-record-writer
+  "Creates a record writer on destination, which opens an 
+   internally managed writer on the file specified by dest.
+   Caller may specify optional field-order for the emitted 
+   records, separator, and supply a writer 
+   (for re-use/appending).  Writes headers immediately, 
+   and only writes fields that correspond to headers, 
+   as defined by field-order.  Field-order must be supplied
+   and not empty."
+  [dest field-order & {:keys [sep writer]
+                        :or {sep "\t"}}]
+  (assert (not (empty? field-order))
+          "Strict ordering must supply headers!")
+  (let [w (or writer (clojure.java.io/writer dest))]
+    (write-headers
+     (record-writer. dest w field-order sep nil nil)
+     field-order)))
+
+(defn records->file
+  "Given xs - a sequence of records, i.e. k-v pairs the support (get r k v) -
+   spits the records to the file at dest.  Optional arguments include
+   a record separator, a field order, and a writer.  Defaults to a fresh 
+   writer writing tab-delimited field values.  Writers headers."
+  [xs dest & {:keys [field-order sep writer strict?]
+              :or {sep "\t"}}]
+  (with-open [out (if strict?
+                    (->strict-record-writer dest
+                       field-order :sep sep :writer writer)
+                    (->record-writer dest :sep sep
+                       :field-order field-order :writer writer))]
+    (reduce (fn [o r] (write-record o r)) out  xs)))

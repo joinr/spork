@@ -563,21 +563,24 @@
             (recur (unchecked-inc j#))))))))
 ;;this is now optimized to contain the columns in an object array,
 ;;which eliminates extra calls to .assoc that we had.
+;;updated to handle empty rows gracefully.
 (defn conj-rows
   "Conjoins multiple rowvectors.  Should be fast, using transients.
    Returns a persistent collection."
   [columns rowvectors]
-  (let [fv (general/first-any rowvectors)]
-    (assert (= (count fv) (count columns)))
-    (if (vector? fv)
-      (mapv persistent! 
-            (reduce conj-row!!
-                    (object-array (map transient columns))
-                    rowvectors))
-      (mapv persistent! 
-            (reduce conj-row-obj!!
-                    (object-array (map transient columns))
-                    rowvectors)))))
+  (let [fv (general/first-any rowvectors)
+        cnt (count fv)]
+    (if (zero? cnt)     columns
+        (do (assert (= cnt (count columns)))
+            (if (vector? fv)
+              (mapv persistent! 
+                    (reduce conj-row!!
+                            (object-array (map transient columns))
+                            rowvectors))
+              (mapv persistent! 
+                    (reduce conj-row-obj!!
+                            (object-array (map transient columns))
+                            rowvectors)))))))
 
 (defn conj-row
   "Conjoins a rowvector on a vector of columns."
@@ -1327,6 +1330,56 @@
                   (let [_ (sparse/set-cursor c idx)]
                     (recur (unchecked-inc idx)
                            (f acc c))))))))))
+
+(comment
+  ;;Async channel-based writing routines.  Experimental.
+  ;;Should be able to use record-writer going forward...
+  ;;Dunno if we actually need this eithe
+(require '[clojure.core.async :as async])
+
+;;this doesn't work "quite" like we'd like it to...
+(defn records-channel->file [xs dest & {:keys [field-order]}]
+  (let [sep  (str \tab)
+        header-record! (fn [hd]
+                         (reduce-kv (fn [acc k v]
+                                      (assoc acc k
+                                             (name k)))
+                                    hd
+                                    hd))
+        write-record! (fn [^java.io.BufferedWriter w r flds]
+                        (doto ^java.io.BufferedWriter
+                          (reduce (fn [^java.io.BufferedWriter w fld]
+                                    (let [x (get r fld)]
+                                      (doto w
+                                        (.write (str x))
+                                        (.write sep))))
+                                  w
+                                  flds)
+                          (.newLine)))
+        in (if (or (coll? xs) (seq? xs))
+             (let [in (async/chan)
+                   _  (async/onto-chan  in  xs)]
+               in)
+             xs)
+        done? (async/chan)]
+    (async/go
+      (with-open [out (clojure.java.io/writer dest)]
+        (if-let [hd (async/<! in)]            
+          (let [flds (vec (keys hd))
+                flds (approx-order field-order flds)
+                _    (write-record! out (header-record! hd) flds)]
+            (loop [r (async/<! in)]
+              (if r
+                (do (write-record! out r flds)
+                    (recur (async/<! in)))
+                (async/>! done? true))))
+          (async/>! done? true))))
+    done?))
+
+(defn records-channel->file!! [xs dest & {:keys [field-order]}]
+  (async/<!! (records-channel->file xs dest :field-order field-order)))
+)
+
 
 (comment ;testing
   (def the-table
