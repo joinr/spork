@@ -585,10 +585,11 @@
 (defn conj-row
   "Conjoins a rowvector on a vector of columns."
   [columns rowvector]
-  (assert (= (count rowvector) (count columns)))
-  (reduce (fn [acc [j x]] (assoc acc j (conj (get acc j) x)))
-          columns (map-indexed vector rowvector)))
-
+  (if (zero? (count rowvector)) columns
+      (do (assert (= (count rowvector) (count columns)))
+          (reduce (fn [acc [j x]]
+                    (assoc acc j (conj (get acc j) x)))
+                  columns (map-indexed vector rowvector)))))
 
 ;;Should be a more efficient way to add maps/records when growing a
 ;;table.
