@@ -384,6 +384,17 @@
   (conj-entity    [db id components] "Add an entity to the database.")   
   (entities       [db] "Return a map of {entityid #{components..}}"))
 
+(defprotocol IColumnStore
+  (swap-domain [db c new] "Swap the underlying domain without changing 
+   relations."))
+
+(defn kv-map [f2 m]  (reduce-kv (fn [^clojure.lang.Associative acc k v] (.assoc acc k (f2 k v))) m  m))
+(defn kv-map! [f2 m]
+  (doseq [^java.util.Map$Entry e (seq m)]
+    (.setValue e (f2 (.getKey e) (.getValue e))))
+  m)
+
+
 ;  (alter-entity [db id f] "Alter an entity's components using f.  f
 ;  should take an entity and return a set of components that change.")
 
@@ -505,7 +516,14 @@
                      (.add-entry acc id dom dat))
                    db components)
         (reduce (fn [^EntityStore acc domdat] (.add-entry acc id (first domdat) (second domdat)))
-                db components))))
+                db components)))
+  IColumnStore
+  (swap-domain   [db c v]
+    (if-let [d (.valAt domain-map c)]
+      (EntityStore. entity-map
+        (.assoc ^clojure.lang.Associative domain-map
+                c v))
+      (throw (Exception. (str [:domain-does-not-exist c]))))))
 
 ;;Beginnings of a mutable entity store.  Note: this is about 6x faster than our
 ;;persistent counterpart, but it's 
@@ -552,6 +570,12 @@
     (when-let [comps (.components-of db id)]
       (entity. id nil nil comps #{})))
   (conj-entity     [db id components])
+  IColumnStore
+  (swap-domain   [db c v]
+    (if-let [^java.util.HashMap d (.get domain-map c)]
+      (do (.put domain-map c v)
+          db)
+      (throw (Exception. (str [:domain-does-not-exist c])))))
   clojure.lang.IDeref
   (deref [this] {:entity-map  entity-map
                  :domain-map domain-map})
@@ -606,7 +630,7 @@
    (reduce-kv (fn [acc domain m]
                 (reduce-kv (fn [acc id data]
                             (add-entry acc id domain data)) acc m))
-              emptystore (.domain-map store)))
+              emptystore (domains store)))
 
 (extend-protocol clojure.core.protocols/IKVReduce
   java.util.HashMap 
@@ -768,7 +792,7 @@
     `(gete ~store ~nm ~dom)))
 
 (def entity-at get-entity)
-
+  
 ;protocol-derived functionality 
 (defn map-component
   "Map function f across entries in the component map associated with component c in store.
@@ -776,10 +800,33 @@
    store as a functor."
   [store c f]
   (if-let [entries (get-domain store c)]
-    (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
-                 (assoce acc e c (f x)))
-               store entries)
+    (if (extends? IColumnStore (class store))
+      (swap-domain store c
+                   (reduce-kv (fn [acc e x]
+                                (assoc acc e (f x)))
+                              entries entries))
+      (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
+                   (assoce acc e c (f x)))
+                 store entries))
     store))
+
+(defn kv-map-component
+  "Map function f across entries in the component map associated with component c in store.
+   Updates associated entries with the result of f.  This is similar to fmap, treating the 
+   store as a functor."
+  [store c f]
+  (if-let [entries (get-domain store c)]
+    (if (extends? IColumnStore (class store))
+      (swap-domain store c
+                   (reduce-kv (fn [acc e x]
+                                (assoc acc e (f e x)))
+                              entries entries))
+      (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
+                   (assoce acc e c (f e x)))
+                 store entries))
+    store))
+
+
 
 (defn reduce-entries
   "Mechanism for updating the entity store.  

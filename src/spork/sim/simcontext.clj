@@ -127,7 +127,11 @@
   (get-entity     [db id]  (store/get-entity state id))
   (conj-entity    [db id components] 
     (simcontext. scheduler updater propogator 
-      (store/conj-entity state id components)))
+                 (store/conj-entity state id components)))
+  store/IColumnStore
+  (swap-domain [db c x]
+    (simcontext. scheduler updater propogator 
+                 (store/swap-domain state c x)))
   simnet/IEventSystem
   (get-events [ctx]  (simnet/get-event    propogator))
   (get-clients [ctx] (simnet/get-clients  propogator))
@@ -238,7 +242,10 @@
   (components-of  [db id]  (store/components-of state id))
   (get-entity     [db id]  (store/get-entity state id))
   (conj-entity    [db id components]                   
-    (do (set! state  (store/conj-entity state id components)) db))
+                  (do (set! state  (store/conj-entity state id components)) db))
+  store/IColumnStore
+  (swap-domain [db c x]
+    (do (set! state (store/swap-domain state c x)) db))
   simnet/IEventSystem
   (get-events [ctx]  (simnet/get-event    propogator))
   (get-clients [ctx] (simnet/get-clients  propogator))
