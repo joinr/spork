@@ -819,12 +819,12 @@
     (if (extends? IColumnStore (class store))
       (swap-domain store c
                    (reduce-kv (fn [acc e x]
-                                (if (pred? e x)
+                                (if (pred e x)
                                   (assoc acc e (f x))
                                   acc))
                               entries entries))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
-                   (if (pred? e x)
+                   (if (pred e x)
                      (assoce acc e c (f x))
                      acc))
                  store entries))
