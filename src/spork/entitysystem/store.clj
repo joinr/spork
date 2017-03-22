@@ -793,7 +793,7 @@
 
 (def entity-at get-entity)
   
-;protocol-derived functionality 
+;;protocol-derived functionality
 (defn map-component
   "Map function f across entries in the component map associated with component c in store.
    Updates associated entries with the result of f.  This is similar to fmap, treating the 
@@ -807,6 +807,26 @@
                               entries entries))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
                    (assoce acc e c (f x)))
+                 store entries))
+    store))
+
+(defn filter-map-component
+  "Map function f across entries in the component map associated with component c in store.
+   Updates associated entries with the result of f.  This is similar to fmap, treating the 
+   store as a functor."
+  [store c pred f]
+  (if-let [entries (get-domain store c)]
+    (if (extends? IColumnStore (class store))
+      (swap-domain store c
+                   (reduce-kv (fn [acc e x]
+                                (if (pred? e x)
+                                  (assoc acc e (f x))
+                                  acc))
+                              entries entries))
+      (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
+                   (if (pred? e x)
+                     (assoce acc e c (f x))
+                     acc))
                  store entries))
     store))
 
@@ -825,8 +845,6 @@
                    (assoce acc e c (f e x)))
                  store entries))
     store))
-
-
 
 (defn reduce-entries
   "Mechanism for updating the entity store.  
