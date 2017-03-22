@@ -245,13 +245,13 @@
           next-record! (fn [] (if (== @idx rbound) nil
                                   (fetch-record (swap! idx inc)
                                                cursor)))]
-      (when-let [r (next-record!)]
+      (if-let [r (next-record!)]
         (loop [ret (f init r)]
           (if (reduced? ret) @ret
               (if-let [nxt (next-record!)]                
                   (recur (f ret nxt))
-                  ret))))))
-  )
+                  ret)))
+        init))))
 
 (defn make-table  
   "Constructs a new table either directly from a vector of fields and  
