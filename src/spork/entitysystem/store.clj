@@ -758,37 +758,46 @@
 ;;==note== we can probably sidestep most of this if we just overload how the store acts like and
 ;;assoc map.  If we did that, the underlying clojure stuff would work out of the box.
 ;;stand-inds for nested updates and association.
+;;==Double note=== These originally assumed that only evaluated stores would be
+;;passed in as store args....that fell apart under use-cases where the store
+;;was being build from a reduction or other form.  We either need to just
+;;expand these into function calls or use inner bindings for the vars.
 (defmacro updatee [store nm k f & args]
-  `(if-let [entry# (get-entry ~store ~nm ~k)]
-     (assoce ~store ~nm ~k (~f entry# ~@args))
-     (throw (Exception. (str [:no-entry ~nm ~k])))))
+  `(let [store# ~store]
+     (if-let [entry# (get-entry store# ~nm ~k)]
+       (assoce store# ~nm ~k (~f entry# ~@args))
+       (throw (Exception. (str [:no-entry ~nm ~k]))))))
 
 (defmacro update-entity [store nm f & args]
-  `(if-let [e# (get-entity ~store ~nm)]
-     (add-entity ~store (~f e# ~@args))))
+  `(let [store# ~store]
+     (if-let [e# (get-entity store# ~nm)]
+       (add-entity store# (~f e# ~@args)))))
 
 (defmacro update-ine
   [store [nm dom & path :as xs] f & args]
   (if (seq path)
-    `(if-let [entry# (get-entry ~store ~nm ~dom)]
-       (let [res# (update-in  entry# ~(vec path) ~f ~@args)]
-         (assoce ~store ~nm ~dom res#))
-       (throw (Exception. (str [:invalid-entry ~xs]))))
+    `(let [store# ~store]
+       (if-let [entry# (get-entry store# ~nm ~dom)]
+         (let [res# (update-in  entry# ~(vec path) ~f ~@args)]
+           (assoce store# ~nm ~dom res#))
+         (throw (Exception. (str [:invalid-entry ~xs])))))
     `(updatee ~store ~nm ~dom ~f)))
  
 (defmacro assoc-ine
   [store [nm dom & path] v]
   (if (seq path)  
-    `(if-let [entry# (or (get-entry ~store ~nm ~dom) {})]
-       (let [res# (assoc-in  entry# ~(vec path) ~v)]
-         (assoce ~store ~nm ~dom res#)))
+    `(let [store# ~store]
+       (if-let [entry# (or (get-entry store# ~nm ~dom) {})]
+         (let [res# (assoc-in  entry# ~(vec path) ~v)]
+           (assoce store# ~nm ~dom res#))))
     `(assoce ~store ~nm ~dom ~v)))
 
 (defmacro get-ine
   [store [nm dom & path] & v]
   (if (seq path)  
-    `(when-let [entry# (get-entry ~store ~nm ~dom)]
-       (get-in entry# ~(vec path) ~@v))
+    `(let [store# ~store]
+       (when-let [entry# (get-entry store# ~nm ~dom)]
+         (get-in entry# ~(vec path) ~@v)))
     `(gete ~store ~nm ~dom)))
 
 (def entity-at get-entity)
