@@ -864,10 +864,10 @@
         types  (mapv (comp type parser) xs)]    
     (mapv (fn [t]
             (cond
-               (identical? t java.lang.String) :text
-               (identical? t java.lang.Integer) :long
-              (identical? t java.lang.Long)    :long
-              (identical? t java.lang.Double) :double
+               (identical? t java.lang.String)  :text
+               (identical? t java.lang.Integer) :number 
+               (identical? t java.lang.Long)    :number 
+               (identical? t java.lang.Double)  :double
               :else (throw (Exception. "unsupported parsing type " t)))) types)
     ))
 

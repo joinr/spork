@@ -55,8 +55,8 @@
    :text   identity
    :boolean (^boolean fn parse-boolean [^String x] (Boolean/parseBoolean x))
    :number  (fn parse-number [^String x] (try (Integer/parseInt x)
-                                  (catch NumberFormatException _
-                                    (Double/parseDouble x))))
+                                              (catch NumberFormatException _
+                                                (Double/parseDouble x))))
    :keyword  (^clojure.lang.Keyword fn [^String x] (keyword x))
    :float    (^double fn parse-float   [^String x]    (Double/parseDouble x))
    :double   (^double fn parse-double  [^String x]    (Double/parseDouble x))
