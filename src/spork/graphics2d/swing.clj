@@ -203,7 +203,12 @@
                   (throw (Exception. 
                           (str "Color " k " does not exist!")))))
   spork.graphics2d.canvas.color-rgba
-  (as-paint [c] (Color. (.r c) (.g c) (.g c) (.a c))))  
+  (as-paint [c] (Color. (.r c) (.g c) (.g c) (.a c)))
+  clojure.lang.PersistentVector
+  (as-paint [c] (Color. (int (nth c 0)) (int (nth c 1)) (int (nth c 2))
+                        (if-not (== (count c) 4)
+                          255
+                          (int (nth c 3))))))  
 
 
 
