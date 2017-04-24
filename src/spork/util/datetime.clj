@@ -22,12 +22,12 @@
 (defn ^java.util.Date num->date [num]
   (java.util.Date. (long num)))
 
-(defn daystream 
-  ([weekday] (daystream weekday (java.util.Date.)))
-  ([weekday ^java.util.Date startdate]
+(defn daystream
   "Find a stream of weekdays, where weekdays are proper names for days of 
    the week.  Added this due to Rick Hanson's relentless jibes.  Produces an 
    infinite sequence of monotonically increasing dates."
+  ([weekday] (daystream weekday (java.util.Date.)))
+  ([weekday ^java.util.Date startdate]
   (let [daysofweek (zipmap (range 1 8) ["Sunday" "Monday" "Tuesday" 
                          "Wednesday" "Thursday" "Friday" "Saturday"])
         dayfield java.util.GregorianCalendar/DAY_OF_WEEK
