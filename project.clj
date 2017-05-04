@@ -1,4 +1,4 @@
-(defproject spork "0.2.0.1-SNAPSHOT"
+(defproject spork "0.2.0.2-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and will be supported as stand-alone dependencies.

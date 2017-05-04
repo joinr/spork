@@ -1357,12 +1357,28 @@
             (partition 2 components)))
        (if (empty? specs) nil (str "inheriting from " specs))))
 
+(defn arg-seq [xs]
+  (->> xs
+       (tree-seq #(or (map? %) (vector? %)) #(if (map? %) (:keys %) %))
+       (filter #(not (or (map? %) (vector? %) (= % '&))))))
+  
+(defn find-duplicates [xs]
+  (->> (frequencies xs)
+       (keep (fn [[a v]] (when (> v 1) a)))
+       (seq)))
+
+(defn valid-args? [args]
+  (if-let [dupes (find-duplicates (arg-seq args))]
+    (throw (Exception. (str [:duplicate-arguments-in-entity-spec! dupes])))
+    true))
+    
 (defn valid-spec?
   "Determines if map m has the minimal keys necessary for an entity 
    specification."
   [m]
   (and (map? m) 
        (contains? m :args)
+       (valid-args? (:args m))
        (or (contains? m :specs) 
            (contains? m :components))))
 
