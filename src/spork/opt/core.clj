@@ -88,7 +88,7 @@
 (defn solve-accept? "Acceptance criteria for candidate solutions."
   [s] (:accept? (solve-parameters s)))
 (defn solve-decay "Hook for implementing parametric/state variations"
-  [s] ((:decayf (solve-parameters s) s)))
+  [s] ((:decayf (solve-parameters s)) s))
 
 (defmacro with-solve [sol & body]
   `(let [~'*state*      (solve-state ~sol)
@@ -175,17 +175,24 @@
           (assoc :n (if (< n equilibration) (inc n) 0)) ;equilibration
           (increment-state)))))
 
-(defn ->candidate [cost solution]
-  '(cost solution))
+(definline ->candidate [cost solution]
+  `[~cost ~solution])
 
 (defn candidate-cost     [c]     (first c))
 (defn candidate-solution [c]     (second c))
-(defn best-candidate     [env] (->candidate (solve-best env) (solve-optimum env)))
+(defn best-candidate     [env] (->candidate (solve-optimum env) (solve-best env)))
 (defn current-candidate  [env]
   (let [s (:state env)]
     (->candidate (get s :currentcost) 
                  (get s :currentsol) )))
 
+(def ^:dynamic *debugging* nil)
+
+(defmacro debug [msg & body]
+  `(do (when ~'spork.opt/*debugging*
+         (println ~msg))
+       ~@body))
+  
 (defn default-transition
   "Given a solveable environment, returns the result of choosing a 
    neighboring state from the current  state, using the search parameters
@@ -194,15 +201,17 @@
   (if-let [candidates  (solve-neighbors  env)] ;if we can move..
     (let  [{:keys [t currentcost bestcost iter] :as state} (solve-state env)
            nextsol  (rand-nth candidates)   ;find a new state
-           nextcost ((solve-cost  env) nextsol)] ;cost the new state
-      (solve-decay   ;decay/increment the result of...        
-        (solve-push-state env ;incoporating the new solution where...
-          (if ((solve-accept? env) ;found a desireable state.
-                (current-candidate env) (->candidate nextcost nextsol) env)                                                                       
-              (->> (move-state nextsol nextcost state) ;record transition
-                   (better-state nextsol nextcost)) ;check improvement
+           nextcost ((solve-cost  env) nextsol)
+           _        (debug (str [:stepping nextsol nextcost]))] ;cost the new state
+      (->> (if ((solve-accept? env) ;found a desireable state.
+                (current-candidate env) (->candidate nextcost nextsol) env)           
+             (->> (move-state nextsol nextcost state) ;record transition
+                  (better-state nextsol nextcost)) ;check improvement
             ;or we discard the new state.
-            state))))
+            state)
+           (solve-push-state env) ;incoporating the new solution where...
+           (solve-decay)   ;decay/increment the result of...        
+           ))
     ;otherwise we have converged on an absorbing state.
     (set-converged-state env)))
 
@@ -270,7 +279,7 @@
   (let [trans (get-parameter env :transition)]
     (loop [current-env env]
       (if (solve-continue?  current-env) 
-        (recur (solve-push-state  current-env (trans current-env)))
+        (recur (trans current-env))
         current-env))))
 
 (defn solutions
