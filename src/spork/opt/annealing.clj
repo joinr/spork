@@ -117,11 +117,13 @@
   "Use the Boltzmann energy equation to determine probability of accepting 
    a poorer solution at a given temperature t.  Better solutions are accepted
    with P = 1.0, while poorer solutions are accepted with P = e^(-delta / t)"
-  [t oldcost newcost] 
-  (let [delta (- oldcost newcost)]
-    (if (pos? delta) true 
-      (<= (rand) (boltzmann-sample t (* -1.0 delta))))))   
-
+  [t oldcost newcost]
+  (try
+    (let [delta (- oldcost newcost)]
+          (if (pos? delta) true 
+              (<= (rand) (boltzmann-sample t (* -1.0 delta)))))
+    (catch Exception e (throw (Exception. (str {:t t :oldcost oldcost :newcost newcost}))))))
+  
 ;;Decay Functions (Cooling Schedules) for Simulated Annealing 
 ;;===========================================================
 ;;Cooling schedules are crucial to the performance and correctness of
@@ -277,9 +279,9 @@
    x0, to compute x."
   [lower upper & {:keys [step-func] :or {step-func asa-dist}}]
   (let [width (- lower upper)
-        between? (fn [^double x] (and (>= x lower) (<= x upper)))
-        take-step!   (^double fn [^double temp] (* (step-func temp) width))]
-    (^double fn [^double temp ^double x0]
+        between? (fn between? [^double x] (and (>= x lower) (<= x upper)))
+        take-step!   (^double fn take-step! [^double temp] (* (step-func temp) width))]
+    (^double fn step!  [^double temp ^double x0]
       (loop [step (+ x0 (take-step! temp))
              n    0]
         (if (between? step) step
@@ -343,24 +345,34 @@
          opts 
          {:t (or temp (get blank-sa-params :temp))}))
 
+(defn asa-neighbor [bounds]
+  (let [steps (vec (for [[l u] bounds]
+                     (asa-stepper l u)))]
+    (core/parametric-neighbor 
+     (fn [vs env]
+       (let [t (-> (core/solve-state env) :t)]
+         (loop [ks  vs 
+                remaining steps
+                acc []]
+           (if (empty? remaining) [acc] 
+               (recur (rest ks)
+                      (rest remaining)
+                      (conj acc ((first remaining) t (first ks)))))))))))
 ;;this is a really crappy way to go, will implement a more performant version 
 ;;later...
 (defn simple-anneal [vars cost-func]  
   (let [binds (partition 2 vars)
-        steps (for [[n [l u]] binds]
-                 (asa-stepper l u))
-        xs    (vec (map first binds))
-        neighbor (core/parametric-neighbor 
-                   (fn [vs env]
-                     (let [t (-> (core/solve-state env) :t)]
-                       (loop [ks  vs 
-                              remaining steps
-                              acc []]
-                         (if (empty? remaining) [acc] 
-                           (recur (rest ks)
-                                  (rest steps)
-                                  (conj acc ((first steps) t (first ks)))))))))] 
-    (anneal xs cost-func neighbor {}))) 
+        xs    (vec (map first binds))]
+    (anneal xs cost-func (asa-neighbor (map second binds)) {})))
+
+(comment ;;testing
+  (def prob (simple-anneal [0 [0 100]
+                            1 [0 100]]
+                           (fn [xs]
+                             (- (reduce + xs
+  (doseq [i (range 10)] (println ((juxt core/solve-optimum core/solve-best ) (core/solve prob))))
+
+  )
 
 (comment 
 ;;test annealable...make a random number generator, where cost is number 

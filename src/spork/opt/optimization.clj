@@ -5,8 +5,7 @@
 ;fix this.  The system eventually optimizes by pushing "most" everything 
 ;into a corner :/ 
 (ns spork.opt.optimization
-  (:use     [clojure.contrib.combinatorics])
-  (:require [spork.opt [annealing :as ann]]))
+  (:require [spork.opt [core :as core] [annealing :as ann]]))
 
 (defn between [l u]
   (fn [n] (and (>= n l) (<= n u))))
@@ -36,9 +35,6 @@
   ([x1 y1 x2 y2] (+ (Math/abs (- x2 x1)) (Math/abs (- y2 y1))))
   ([[x1 y1] [x2 y2]] (manhattan  x1 y1 x2 y2))
   ([[x1 y1 x2 y2]] (manhattan  x1 y1 x2 y2)))
-
-(defn objective [lns]
-  (let [lnpairs (partition        
   
 ;(def line1 [0 1 3 3])
 ;(def line2 [0 1 4 4])
@@ -59,12 +55,20 @@
 (defn generate-lines [xlim ylim n & integers]
   (into [] (take n (random-linestream xlim ylim integers))))
 
+(defn pairwise-combinations [xs]
+  (let [n (count xs)]
+    (apply concat 
+           (for [i (range n)]
+             (let [l (nth xs i)]
+               (for [j (range (inc i) n)]
+                 [l (nth xs j)]))))))
+  
 ;This is a naive line-counting algorithm...it may be more 
 ;efficient to use a line-sweep algorithm from computational 
 ;geometry.  This is simple enough for small N.
 
 (defn count-crossings [ls]
-    (reduce + (map #(if (apply crosses? %) 1 0) (combinations ls 2))))
+    (reduce + (map #(if (apply crosses? %) 1 0) (pairwise-combinations ls))))
 
 (defn line-shifter [xlim ylim step]
   (let  [bracket (fn [lower upper v] 
@@ -96,27 +100,16 @@
 ;intersections...
 ;let's use the handy-dandy functions from the annealing library!
 (defn line-annealable [ls xlim ylim step]
-  (ann/make-annealable 
+  (ann/anneal
     ls ;initial value
     #(* 100 (count-crossings %));costf
-    (line-shifter xlim ylim step))) ;neighborhood fn
+    (line-shifter xlim ylim step) ;neighborhood fn
+    {})) 
 
 ;a simple test...which technically works, but it fails in spirit.
 (defn line-test [xlim ylim n step]
   (let [lns (generate-lines xlim ylim n :ints)]
     (-> (line-annealable lns xlim ylim step)
-        (ann/solution-seq)))) 
+        (core/solutions)))) 
 
 (def improving (line-test 600 800 10 100))
-    
-    
-    
-    
-    
-
-
-
-
-
-
-
