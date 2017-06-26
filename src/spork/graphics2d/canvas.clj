@@ -552,11 +552,6 @@
   (canvas-width  [c])
   (canvas-height [c]))
 
-(defn ->canvas-graphics [^Graphics2D g width height]
-  (let [g (doto g (.translate 0.0 (double (dec height)))
-                  (.scale   1.0 -1.0))]
-    (CanvasGraphics. g width height))) 
-
 (defop with-noncartesian
   "Given a drawing function f, where f::IGraphicsContext->IGraphicsContext, 
    inverts the global cartesian xform to the default j2d top-left-origin
