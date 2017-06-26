@@ -753,10 +753,3 @@
         (shape-bounds (size-panel s))
         (spork.protocols.spatial/bbox (.getX bnds) (.getY bnds) w h))))
   )
-
-(defn shape->png
-  "save a component to an image (even an offscreen component)."
-  [c path & {:keys [on-save] :or {on-save (fn [_] nil)}}]
-  (-> (spork.graphics2d.image/shape->img c)
-      (spork.graphics2d.canvas/as-buffered-image :buffered-image)
-      (spork.graphics2d.image/save-image  path on-save)))
