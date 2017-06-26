@@ -33,15 +33,17 @@
 	    (.createCompatibleImage gc w h t)))
   ([w h] (make-imgbuffer w h Transparency/TRANSLUCENT)))   
 
-(defn save-image [^BufferedImage img filepath postf]
+(defn save-image
+  ([^BufferedImage img filepath postf]
    (let [tgt (clojure.java.io/file filepath)]
-         (do 
-           (if (not (.exists tgt)) 
-              (.mkdirs (.getParentFile tgt)))
-           (.createNewFile tgt)                                                                                 
-           (ImageIO/write img "png" tgt)
-           (postf (str "Buffer saved to:" filepath)))))
-
+     (do 
+       (if (not (.exists tgt)) 
+         (.mkdirs (.getParentFile tgt)))
+       (.createNewFile tgt)                                                                                 
+       (ImageIO/write img "png" tgt)
+       (postf (str "Buffer saved to:" filepath)))))
+  ([img filepath] (save-image img filepath (fn [_] nil))))
+  
 (defn ^BufferedImage read-buffered-image [filepath]
   (if (string? filepath)
     (let [tgt (clojure.java.io/file filepath)]         
@@ -166,7 +168,17 @@
                 transparency)))
   ([s] (shape->img :translucent s)))
 
-
 (defn read-image [filepath]
   (let [buf (read-buffered-image filepath)]
     (->image :buffered-image buf  (bitmap-width buf) (bitmap-height buf) :translucent)))
+
+(defn shape->png
+  "Saves a component/shape to an image (even an offscreen component), per the 
+   implementation's method of drawing as a shape onto a canvas.
+   Creates a temporary, stand-alone image buffer.  Caller may supply a 
+   function to process the file-path, i.e. printing out to the console, 
+   or not."
+  [c path & {:keys [on-save] :or {on-save (fn [_] nil)}}]
+  (-> (shape->img c)
+      (spork.graphics2d.canvas/as-buffered-image :buffered-image)
+      (save-image  path on-save)))

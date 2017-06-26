@@ -556,9 +556,10 @@
 ;;will be drawn with their origin at the bottom-left (like the cartesian plane),
 ;;and not reflected.
 (defn ->canvas-graphics [^Graphics2D g width height]
-  (let [g (doto g (.translate 1.0 (double (dec height)))
+  (let [g (doto g (.translate 0.0 (double (dec height)))
                   (.scale   1.0 -1.0))]
-    (CanvasGraphics. g width height)))
+    (CanvasGraphics. g width height)))       
+
 ;;debug graphics lets us walk the set of instructions and get
 ;;a sense of the layout when we render a shape.  Useful for deriving
 ;;absolute coordinates from a high-level scene.  Allows us to capture
@@ -715,3 +716,47 @@
 ;                              (str "Cannot derive a j2d graphics from obj: "
 ;                                   (class obj)))))))
 ;(add-device :java-2d get-graphics-j2d)
+
+;;This is an analogue of the empty-frame in cljgui
+(defn ^javax.swing.JFrame hidden-frame
+  "Creates a hidden JFrame, useful for temporary or offscreen rendering."
+  [content & {:keys [title width height] :or {title "" width 400 height 600}}] 
+  (doto (JFrame. title)
+    (.setDefaultCloseOperation javax.swing.WindowConstants/DISPOSE_ON_CLOSE)
+    (.add content)
+    (.setSize width  height)
+    (.pack)))
+
+(defn size-panel
+  "Temporarily adds the panel to a hidden JFrame, long enough to pack it, 
+   then returns the panel with valid bounds determined by layout."
+  [p]
+  (let [frm (hidden-frame p)
+        _   (.remove frm p)]
+    p))
+
+;;Added shape implementations for JComponents, to facilitate
+;;rendering components to images, i.e. offscreen rendering...
+(extend-protocol IShape
+  javax.swing.JComponent
+  (draw-shape [s ctx]
+    (with-noncartesian ctx
+      #(let [^Graphics2D g (deref %)] ;hack!
+         (do (.paint ^javax.swing.JComponent s g)
+             g))))
+  (shape-bounds [s]
+    (let [bnds (.getBounds ^javax.swing.JComponent s)
+          w (.getWidth bnds)
+          h (.getHeight bnds)]
+      (if (and (zero? w)
+               (zero? h))
+        (shape-bounds (size-panel s))
+        (spork.protocols.spatial/bbox (.getX bnds) (.getY bnds) w h))))
+  )
+
+(defn shape->png
+  "save a component to an image (even an offscreen component)."
+  [c path & {:keys [on-save] :or {on-save (fn [_] nil)}}]
+  (-> (spork.graphics2d.image/shape->img c)
+      (spork.graphics2d.canvas/as-buffered-image :buffered-image)
+      (spork.graphics2d.image/save-image  path on-save)))
