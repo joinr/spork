@@ -1249,15 +1249,16 @@
   (defcomponent basicstats [{:keys [health agility strength] :as stats}] stats)"
   ([name args body]                       
     `(defn ~name ~args 
-       (->component ~(keyword name) ~body)))
+       (spork.entitysystem.store/->component ~(keyword name) ~body)))
   ([name docstring args body]
     `(defn ~name ~docstring ~args 
-       (->component ~(keyword name) ~body))))
+       (spork.entitysystem.store/->component ~(keyword name) ~body))))
 
 ;It'd also be nice to easily define functions that dispatch on components...
 (defn binding->component [expr] 
    (if (keyword? (first expr)) 
-     `(~'keyval->component ~(first expr) ~(second expr))
+     `(~'spork.entitysystem.store/keyval->component
+         ~(first expr) ~(second expr))
       expr))
 
 ;; (defmacro emit-entity-builder [args cs]

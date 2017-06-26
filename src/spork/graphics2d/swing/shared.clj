@@ -1,7 +1,8 @@
 (ns spork.graphics2d.swing.shared
   (:import  [java.awt Transparency Color]
             [java.awt.image BufferedImage ImageObserver]
-            [javax.imageio ImageIO]))
+            [javax.imageio ImageIO]
+            [javax.swing JFrame]))
 
 (def opaque Transparency/OPAQUE)
 (def +clear+ (Color. 255 255 255 0))
@@ -21,3 +22,4 @@
                   Transparency/BITMASK Transparency/BITMASK}]
     (fn [t]
       (get transmap t Transparency/OPAQUE))))
+

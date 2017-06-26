@@ -483,6 +483,23 @@
     (.pack)
     (.setVisible true)))
 
+(defn ^javax.swing.JFrame ->hidden-view
+  "Creates a hidden JFrame, useful for temporary or offscreen rendering."
+  [content & {:keys [title width height] :or {title "" width 400 height 600}}] 
+  (doto (empty-frame title)
+    (.add content)
+    (.setSize width  height)
+    (.pack)
+    (.setVisible false)))
+
+(defn size-panel
+  "Temporarily adds the panel to a hidden JFrame, long enough to pack it, 
+   then returns the panel with valid bounds determined by layout."
+  [p]
+  (let [frm (->hidden-view p)
+        _   (.remove frm p)]
+    p))
+
 (defn choose-from
   "Given a sequence of xs, presents the user with a view of the sequence, and 
    allows them to select an entry.  Selection is confirmed by double clicking
