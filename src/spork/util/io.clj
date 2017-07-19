@@ -19,6 +19,21 @@
               [clojure.java [io :as io]]
               [clojure [pprint :as pp]]))
 
+;;path separator (i.e. \\ for windows, / otherwise)
+(def ^:constant +separator+ java.io.File/separator)
+;;delineates between other recognized directory separators.
+(def +alien-separator+ (case +separator+
+                         "\\" "/"
+                         "\\"))
+
+;;We'd like to use windows and unix paths interchangeably...
+;;If we're given a path with unix delimiters, we'll keep the unix
+;;same for windows.
+(defn alien->native
+  "Converts alien paths to native paths via simple string replacement."
+  [p]
+  (clojure.string/replace p +alien-separator+ +separator+))
+
 ;;a map of the environment vars, really handy.
 (def  env-map 
   (->> (System/getenv) (map (fn [[k v]] [(keyword k) v])) (into {})))
@@ -30,12 +45,19 @@
   [k] (get env-map k))
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
-(defn as-directory [s] 
-  (if (= (subs s (dec (count s))) "\\")
-    s
-    (str s "\\")))
+(defn as-directory [s]
+  (let [s (alien->native s)]
+    (if (= (subs s (dec (count s))) +separator+)
+      s
+      (str s +separator+))))
 
 (def home-path (System/getProperty "user.home"))
+
+(defn hpath
+  "Provides a constructor for a path relative to the home, as defined 
+   by home-path, i.e., user.home"
+  [arg]
+  (str home-path +separator+ arg))
 
 (defn deep-copy 
 	"Copies all files in sourcedir to targetdir.  Creates folders as needed"
@@ -67,7 +89,7 @@
        ~body)))
 
 (def common-paths {:home home-path 
-                   :docs (str home-path  "\\Documents")
+                   :docs     (hpath "\\Documents")
                    :javapath (System/getProperty "sun.boot.library.path")
                    :startdir (System/getProperty "user.dir")
                    :tempdir (System/getProperty "java.io.tmpdir")
