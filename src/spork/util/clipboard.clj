@@ -10,15 +10,17 @@
            [java.awt Toolkit]))
 
 (def toolkit (Toolkit/getDefaultToolkit))
-(def ^Clipboard clipboard (.getSystemClipboard toolkit))
+(def ^Clipboard clipboard
+  (try (.getSystemClipboard toolkit)
+       ;;we are in a headless system..create a dummy clipboard.
+       (catch Exception e (Clipboard. "headless"))))
 
 (defn get-clipboard-text 
   "Rips text from the clipboard, if it's text-able..."
   []
   (let [^Transferable t (.getContents clipboard nil)]
-    (if (.isDataFlavorSupported t DataFlavor/stringFlavor)
-         (str (.getTransferData t DataFlavor/stringFlavor))
-         nil)))
+    (when (.isDataFlavorSupported t DataFlavor/stringFlavor)
+      (str (.getTransferData t DataFlavor/stringFlavor)))))
 
 (defn put-clipboard-text 
   [s]
