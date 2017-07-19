@@ -24,6 +24,7 @@
                  [net.sf.jung/jung-io            "2.0.1"]
                  [org.apache.poi/poi             "3.9"]
 		 [org.apache.poi/poi-ooxml       "3.9"]
+                 [org.apache.poi/poi-scratchpad  "3.9"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [org.clojure/data.avl   "0.0.13"]
                  [iota "1.1.3"]
