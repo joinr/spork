@@ -846,7 +846,9 @@
   [h]
   (if (= (str (first h)) ":") (subs h 1) h))
 
-(defn unify-schema [s fields]
+(defn unify-schema
+  "Ensures our schema maps to keyed field names or vice versa."
+  [s fields]
   (let [fk    (keyword? (first fields))
         xform (if fk (fn [x] (if (keyword? x) x (keyword x)))
                   name)]
