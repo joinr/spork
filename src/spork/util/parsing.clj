@@ -116,7 +116,6 @@
             (parsing-scheme (first revschemes) :default-parser default-parser)
             (rest revschemes))))
 
-
 ;;As a reducer, this is significantly faster than clojure.string/split
 (defn split-by
   [^String input ^Character delim]
@@ -127,7 +126,10 @@
         (loop [start 0
                end (.indexOf input d 0)
                acc (java.util.ArrayList.)]     
-          (if (== end -1) (seq acc)
+          (if (== end -1)
+            (do (when-not (zero? start)
+                  (.add acc (String. (.substring input start (unchecked-dec (count input))))))
+                  (seq acc))
               (recur (unchecked-inc end)
                      (.indexOf input d (unchecked-inc end))
                      (doto acc (.add (String. (.substring input start end))))))))

@@ -26,7 +26,7 @@
 		 [org.apache.poi/poi-ooxml       "3.9"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [org.clojure/data.avl   "0.0.13"]
-                ; [iota "1.1.2"]
+                 [iota "1.1.3"]
                  [org.clojure/core.rrb-vector  "0.0.11"]
                  [ctries.clj "0.0.3"]
                 ;experimental dependencies, ephemeral.
