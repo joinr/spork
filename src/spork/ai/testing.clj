@@ -1,6 +1,7 @@
 (ns spork.ai.testing
   (:require [spork.ai.core :as core :refer
-             [deref! fget fassoc  push-message- map->entityctx debug ->msg]]
+             [deref! fget fassoc  push-message-  debug ->msg]]
+            [spork.ai.demo :as demo]
             [spork.ai.behavior :as behavior
              :refer [beval
                      success?
@@ -38,7 +39,7 @@
             [spork.util.general     :as gen]        
             [spork.data.priorityq   :as pq]
             [clojure.core.reducers  :as r])
-  (:import [spork.ai.core behaviorenv]))
+  (:import [spork.ai.demo behaviorenv]))
 ;;Interesting quote today:
 ;;"rules are for fools"
 ;;hmm  
@@ -268,7 +269,7 @@
 ;;__Testing Functions__
 (defn simulate! [& {:keys [n default]
                     :or {n 2 default default}}]
-  (core/simulate! :init-ctx (core/->simple-ctx :n n :default default)))
+  (demo/simulate! :init-ctx (demo/->simple-ctx :n n :default default)))
 
 (defn stress-test []
   (time (dotimes [i 1]
