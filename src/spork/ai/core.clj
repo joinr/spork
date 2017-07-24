@@ -5,9 +5,7 @@
 ;;planning), although the facilities provided here may be used as such.  The goal is
 ;;to provide a common interface through which multiple AI implementations may work and
 ;;cooperate.   
-(ns spork.ai.core
-  (:require #_[spork.ai.behavior :as b :refer [return! swap!! beval befn success]]
-           ))
+(ns spork.ai.core)
 
 ;;Disclaimer
 ;;==========
