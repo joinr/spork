@@ -5,7 +5,7 @@
 ;;This was originally prototyped in an actual simulation, and as
 ;;the implementation solidified, it's been moved to a general,
 ;;portable namespace for reuse.
-(ns spork.ai.sim
+(ns spork.ai.behaviorctx
   (:require [spork.ai.core            :as ai]
             [spork.ai.behavior        :as b]
             [spork.entitysystem.store :as store]
