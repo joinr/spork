@@ -173,7 +173,7 @@
                     state)))
   (add-updates [ctx xs]   
      (let [t    (or  (sim/current-time scheduler) 0)]
-       (simcontext. (agenda/add-times scheduler xs)
+       (simcontext. (agenda/add-times scheduler (map first xs))
                     (reduce (fn [acc [tupdate by type]] 
                               (updates/request-update acc tupdate by type t))
                             (transient updater)  xs)
@@ -289,7 +289,7 @@
           ctx)))
   (add-updates [ctx xs]   
      (let [t    (or  (sim/current-time scheduler) 0)] 
-       (do (set! scheduler (agenda/add-times scheduler xs))
+       (do (set! scheduler (agenda/add-times scheduler (map first xs)))
            (set! updater  (reduce (fn [acc [tupdate by type]] 
                                     (updates/request-update acc tupdate by type t))
                                    updater  xs))
