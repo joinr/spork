@@ -92,7 +92,13 @@
        (do (set! lastupdate (assoc! lastupdate ent tnext)) u))
      (do (set! lastupdate   (assoc! lastupdate ent t)))))
  (conj       [coll e] (throw (Exception. "unsupported op")))
- (persistent [coll] (updatestore. name (gen/persistent2! updates) (persistent! lastupdate))))
+  (persistent [coll]
+     (let [realized (persistent! updates)]
+       (updatestore. name
+                     (reduce-kv (fn [acc k m]
+                                  (assoc acc k
+                                         (gen/persistent2! m))) {} realized)
+                     (persistent! lastupdate)))))
 
 ;;#Operations on stores and packets...
 (defn elapsed 
