@@ -9,6 +9,31 @@
   "Predicate yields true if the obj supports (deref ...)"
   [obj] (instance? clojure.lang.IDeref obj))
 
+(defn collect
+  "Given a seq of functions | a function, fs, and a seq xs, 
+   maps fs over xs, returning either a sequence of vectors 
+  [(fs1 x1) (fs2 x1) ...] or a sequence of (fs x)"
+  [fs xs]  
+  (let [f (if (coll? fs) (apply juxt fs) fs)]
+    (map f xs)))
+
+(defn atom?
+  "Quick check to see if x is a clojure.lang.Atom."
+  [x] (instance? clojure.lang.Atom x))
+
+(defn float-trunc
+  "Computes a truncated floating-point number from n, 
+   where the number is trunctated to places in decimal."
+  [n places]
+  (let [scale (Math/pow 10 places)]
+    (/ (long (* n scale)) scale)))
+
+(defn print-float
+  "Convenience function to pretty print floats.."
+  [n]
+  (pprint/cl-format nil
+    "~f" n))
+
 
 (defn approx-order
   "provide a unified ordering of a known ordering
@@ -221,6 +246,40 @@
              (let [newv# ~body]
                (do (.put hash# k# newv#)
                    newv#))))))))   
+
+;;TODO: Check to see if we still need this due to performance
+;;reasons...possibly deprecate.
+(defn rvals
+  "Returns a countable, reducible  view over the vals of rv, taking
+   advantage of reduce-kv."
+  [kvs]
+  (reify
+    clojure.lang.Counted 
+    (count [this] (count kvs))
+    clojure.lang.Seqable 
+    (seq [this] (seq kvs))
+    clojure.core.protocols/CollReduce
+    (coll-reduce [this f1]
+      (reduce-kv (fn [acc k v] (f1 acc v)) (f1) kvs))
+    (coll-reduce [_ f1 init]
+      (reduce-kv (fn [acc k v] (f1 acc v)) init kvs))))
+
+;;TODO: Check to see if we still need this due to performance
+;;reasons...possibly deprecate.
+(defn rkeys
+  "Returns a countable, reducible  view over the keys of rv,
+   taking advantage of reduce-kv."
+  [kvs]
+  (reify
+    clojure.lang.Counted 
+    (count [this] (count kvs))
+    clojure.lang.Seqable 
+    (seq [this] (seq kvs))
+    clojure.core.protocols/CollReduce
+    (coll-reduce [this f1]
+      (reduce-kv (fn [acc k v] (f1 acc k)) (f1) kvs))
+    (coll-reduce [_ f1 init]
+      (reduce-kv (fn [acc k v] (f1 acc k)) init kvs))))
 
 ;;testing some stuff...
 ;; (defn the-func [x y & {:keys [positive? blah] :or {positive? true blah 2}}]

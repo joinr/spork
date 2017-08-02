@@ -1569,3 +1569,54 @@
       (filter (fn [e] (every? in? (keys e))) entity-map))))
 
 (def empty-rowstore (EntityRowStore. {} {}))
+
+
+;;Common Utilities for Defining Paths into Entity Stores
+;;======================================================
+;;In the previous implementation, the 'state' was implemented as a class, with 
+;;concrete members to access each piece.  We retain that level of commonality
+;;via the paths, but the underlying representation is based on a dynamic map 
+;;structure, so we can still add new data as needed in a flexible manner.
+
+;;Creates a set of accessors for our simulation state.  This allows us to 
+;;dissect our nested map of state a bit easier.  Each symbol in the defpath 
+;;binding returns a function that, given a simulation context, points to the 
+;;named resource using standard clojure map operations via clojure.core/get-in.
+;; (defpaths   [:state] 
+;;   {parameters    [:parameters]
+;;    supplystore   [:supplystore]
+;;    demandstore   [:demandstore]
+;;    policystore   [:policystore]
+;;    fillstore     [:fillstore]
+;;    fill-function [:fillstore :fillfunction]
+;;    fillmap       [:fillstore :fillmap]
+;;    behaviors     [:behaviormanager]
+;;    supply-tags   [:supplystore :tags]
+;;    demand-tags   [:demandstore :tags]})
+
+(defmacro defpath
+  "Given a name and a path-vector, creates two functions in the current-namespace: 
+   get-{name}, set-{name}.  path-vector conforms to [entity-name| entity-name+ component-or-key*] .
+   If the path points to an entity (the path-vector is a singleton), then the result is 
+   akin to get-entity, otherwise, it's akin to get-ine, looking up components, and nested 
+   associations down the path."
+  [name path]
+  (if (coll? path)        
+    `(do (defn ~(symbol (str "get-" name)) [ctx#]
+           (spork.entitysystem.store/get-ine  ctx# ~path))
+         (defn ~(symbol (str "set-" name)) [ctx# v#]
+           (spork.entitysystem.store/assoc-ine  ctx# ~path v#)))
+    `(do (defn ~(symbol (str "get-" name)) [ctx#]
+           (with-meta (spork.entitysystem.store/get-entity  ctx# ~path)
+             {:ctx ctx#}))
+         (defn ~(symbol (str "set-" name)) [ctx# v#]
+           (spork.entitysystem.store/add-entity  ctx# ~path v#)))))
+
+(defmacro defpaths
+  "Given a map of {name* path-vector*}, calls defpath on each, defining 
+   get-{name} set-{name} functions for each path, allowing high-level 
+   access to specific nested places inside an entitystore. "
+  [& name-paths]
+  (assert (even? (count name-paths)))
+  `(do ~@(for [[name path] (partition 2 name-paths)]
+           `(spork.entitysystem.store/defpath ~name ~path))))
