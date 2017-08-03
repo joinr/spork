@@ -419,17 +419,27 @@
        (add-time tfinal)
        (set-final-time tfinal)))
 
-;; Public API for accounting for update requests, which consist of a time 
-;; to update a specific entity in the simulation, and a form of request.  No
-;; additional data is passed (although I may change that in future...)
+;;Public API for accounting for update requests, which consist of a time 
+;;to update a specific entity in the simulation, and a form of request.  No
+;;additional data is passed (although I may change that in future...)
+
+;;As it stands, update requests aren't events...
+;;They're disconnected...since the updater is handling the event
+;;separately...
+;;Maybe we can clear that up at some point....
 (definline request-update
+  "Wrapper around add-update, places context last.
+   Returns the resulting context where requested-by has an 
+   update, of request-type, scheduled at tupdate in simcontext 
+   ctx."
   [tupdate requested-by request-type ctx]
   `(add-update ~ctx ~tupdate ~requested-by ~request-type))
  
 ;;Allows user to request multiple updates, represented as 
 ;;[update-time request-by request-type] vectors.
-(definline
-  request-updates 
+(definline request-updates
+  "Processes a batch of update requests, xs :: [tupdate requested-by request-type]* , 
+   in simulation context ctx, returning the resulting context."
   [xs  ctx]
  `(add-updates ~ctx ~xs))
 

@@ -1,9 +1,10 @@
-;A collection for general utilities.  This is basically a dumping ground for
-;small utilities that are undeserving of a seperate library.
+;;A collection for general utilities.  This is basically a dumping ground for
+;;small utilities that are undeserving of a seperate library.
 (ns spork.util.general
   (:require [clj-tuple :as tup]
             [spork.util [zipfile :as z]
-                        [io :as io]]))
+                        [io :as io]]
+            [clojure.pprint :as pprint]))
 
 (defn ref?
   "Predicate yields true if the obj supports (deref ...)"
@@ -281,6 +282,18 @@
     (coll-reduce [_ f1 init]
       (reduce-kv (fn [acc k v] (f1 acc k)) init kvs))))
 
+;;TODO Verify, then deprecate!
+#_(defn collectr
+  "Similar to collect, but returns a reducer."
+  [fs xs]  
+  (let [f (if (coll? fs) (apply juxt fs) fs)]
+    (reify     
+      clojure.core.protocols/CollReduce
+      (coll-reduce [this f1]   (reduce f1 (f1) (r/map f xs)))        
+      (coll-reduce [_ f1 init] (reduce f1 init (r/map f xs)))
+      clojure.lang.Seqable 
+      (seq [this]  (seq (map f xs))))))
+
 ;;testing some stuff...
 ;; (defn the-func [x y & {:keys [positive? blah] :or {positive? true blah 2}}]
 ;;   (if positive? (+ x y) (- (+ x y))))
@@ -534,6 +547,17 @@
   (let [preds (vec (butlast ks))
         k     (last ks)]
     `(deep-update ~m ~preds ~dissoc ~k)))
+
+(defn prune-in
+  "If function results in an empty map, contained within another map, 
+   removes the entry associated with the empty map."
+  [m ks f & args]
+  (let [updated (apply update-in ks f args)]
+    (if (empty? (get-in updated ks))
+      (let [path   (butlast ks)
+            parent (get-in m path)]            
+        (assoc-in m path (dissoc parent (last ks))))
+      updated)))
 
 ;; (defn deep-prune [m ks f & args]
 ;;   (let [parents (java.util.ArrayList.)
