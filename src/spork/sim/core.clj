@@ -19,7 +19,8 @@
                         ;[cellular :as cells]
                         [inspection :as inspect]
                         [temporal :as temp]]
-            [spork.entitysystem.store :refer :all :exclude [entity-name merge-entity] :as store]
+            [spork.entitysystem.store :refer :all :exclude
+             [defpath defpaths entity-name merge-entity] :as store]
             [spork.entitysystem.ephemeral]            
             [spork.ai [core        :as ai]
                       [behaviorcontext :as b]
@@ -128,13 +129,6 @@
   add-time
   request-update
   request-updates])
-
-;;TODO: possibly deprecate?
-(defn location-table [ctx]
-    (let [t (sim/get-time ctx)]
-      (->> (store/only-entities ctx [:name :locationname :location])
-           (map #(assoc % :t t))
-           (tbl/records->table))))
 
 ;;Functions for dealing with subsets of supply/demand,
 ;;for defining smaller simulations.
@@ -533,33 +527,6 @@
 (defmacro defkey [name base] `(def ~name (key-tag-maker ~base)))
 
 ;;#Utils
-(defn ensure-name
-  "We tend to prefer unique names, and often times we accomplish that by concatenating the 
-   count of a container onto a non-unique name.  ensure-names generalizes this stuff."
-  [named names]                  
-  (let [nm (entity-name named)]
-    (if (contains? names nm)
-      (assoc named :name 
-             (msg nm "_" (count names)))
-    named)))
-
-(definline empty-string?
-  "Determines if input is empty string....slightly optimized version."
-  [x]
-  `(= ~x ""))
-
-(defn debug-print
-  "Prints message and returns obj, like a side-effecting identity."
-  [msg obj]
-  (do (println msg) obj))
-
-;;TODO: Possibly deprecate or move.
-(defn as-records
-  "Coerces the record-source to a sequence of maps"
-  [record-source]
-  (if (and (seq? record-source) (map? (first record-source))) record-source      
-      (tbl/record-seq record-source)))
-
 (let [idx (atom 0)]
   (defn next-idx 
     "Utility function for getting incrementing indices.  Used for 
@@ -571,10 +538,6 @@
               i)))
     ([new-idx] (do (reset! idx new-idx)
                    new-idx))))
-
-#_(def ^:constant +inf+
-  "The nominal code for infinity."
-    9999999)
 
 ;;Note/TODO: Probable Performance Enhancement for generating events.
 ;;We call sim/trigger-event quite a bit from the manager libraries.

@@ -22,6 +22,16 @@
   "Quick check to see if x is a clojure.lang.Atom."
   [x] (instance? clojure.lang.Atom x))
 
+(definline empty-string?
+  "Determines if input is empty string....slightly optimized version."
+  [x]
+  `(= ~x ""))
+
+(defn debug-print
+  "Prints message and returns obj, like a side-effecting identity."
+  [msg obj]
+  (do (println msg) obj))
+
 (defn float-trunc
   "Computes a truncated floating-point number from n, 
    where the number is trunctated to places in decimal."
@@ -684,11 +694,20 @@
 ;;it's stupid to incur the varargs cost here...
 (let [bodies (for [n (range (+ +max-params+ 2))]
                (string-func-body n))]
-  (eval `(defn ~'make-string
-           "With no args, returns the empty string. With one arg x, returns
+  (eval
+   `(defn ~'make-string
+           "Drop-in replacement for clojure.core/str, designed for faster 
+            string concatenation when creating strings is on a critical 
+            performance path.
+
+            With no args, returns the empty string. With one arg x, returns
             x.toString().  (str nil) returns the empty string. With more than
-            one arg, returns the concatenation of the str values of the args."
-           ~@bodies)))
+            one arg, returns the concatenation of the str values of the args.
+            When creating strings - many times over - using arity > 2, avoids
+            the overhead of calls to first/next that clojure.core/str invokes.
+            Roughly 33% faster for concatenating 3 strings, approaching  
+            60% faster for larger arities, up to 15."
+      ~@bodies)))
 
 ;;More effecient memoization functions.  Clojure's built in memo 
 ;;memoizes args using a variadic code path, which forces the creation

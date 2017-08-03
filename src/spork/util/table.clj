@@ -1334,6 +1334,13 @@
                     (recur (unchecked-inc idx)
                            (f acc c))))))))))
 
+(defn as-records
+  "Coerces the record-source to a sequence of maps"
+  [record-source]
+  (if (and (seq? record-source)
+           (map? (first record-source))) record-source      
+      (record-seq record-source)))
+
 (comment
   ;;Async channel-based writing routines.  Experimental.
   ;;Should be able to use record-writer going forward...

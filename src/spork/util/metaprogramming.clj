@@ -301,6 +301,23 @@
 
 ;;end Potemkin
 
+(defmacro nosymb [s]
+  `(symbol (str "#_" (quote ~s))))
+  
+(defn symbols-by-ns
+  "Useful for documenting imports and where 
+   symbols originated from...  Provides a vector,
+   that has #_symb for the originating namespace followed
+   by symbols that appear in source code line order.  
+   Provides a way to manage documenting calls to 
+   spork.util.metaprogramming/import-vars, if 
+   there are multiple references ala spork.sim.core."
+  [symbs]
+  (->> (for [[ns xs] (symbols-by-ns symbs)]
+         (into [(eval `(nosymb ~ns))]
+               (map first (sort-by #(nth % 2) xs))))
+       (flatten)
+       (vec)))
 
 ;;this doesn't really buy us much at the moment,
 ;;probably due to function call overhead?  It might be nice to inline
