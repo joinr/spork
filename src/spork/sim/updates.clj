@@ -159,10 +159,14 @@
   ;;drop the last update.
   ;;drop any events the entities might be involved in.
    (let [res  (atom (transient []))
-         updates  (:updates updater)]
+         updates  (:updates updater)
+         wanted?  (case update-type? :* (fn [_] true)
+                        (if (coll? update-type?) (set update-type?)
+                            #{update-type?}))
+         ids      (if (coll? ids) ids [ids])]
      (doseq [[update-type xs] updates
              [t name-evts]    xs
-             :when (update-type? update-type)]
+             :when (wanted? update-type)]
        (reduce (fn [acc id]
                  (if-let [update (name-evts id)]
                    (do (swap! acc conj! update)
@@ -182,7 +186,7 @@
 (defn drop-update
   ([updater update]
    (drop-update updater (:update-type  update)
-                        (:update-time update)
+                        (:update-time  update)
                         (:requested-by update)))                               
   ([updater update-type update-time requested-by]
    (let [us (get-in updater [:updates update-type update-time])
@@ -195,9 +199,9 @@
   "Wipes all updates associated with id from the schedule, including 
    last-update."
   [updater id]
-  (let [ids (if (seq id) (set id) #{id})]
-    (-> (reduce drop-update updater (entity-updates updater ids))
-        (update :last-update #(dissoc % id)))))
+  (let [ids (if (coll? id) (set id) #{id})]
+    (-> (reduce drop-update updater (entity-updates updater ids :*))
+        (update :lastupdate #(reduce dissoc % ids)))))
 
 (defn drop-update-type    
   "Wipes an entire class of updates from the schedule."

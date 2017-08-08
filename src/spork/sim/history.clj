@@ -178,7 +178,7 @@
            (throw (Exception.
                    (str [:expected :sequence-of  '[t simcontext]
                          :got (type res)])))))))
-  ([x] (as-stream *context->stream*)))
+  ([x] (as-stream *context->stream* x)))
 
 ;;Temporal API
 ;;============
@@ -242,12 +242,10 @@
                                (time? (:t ctx))))
                     sample?)]
   (->>  (as-stream ctx)
-        ;;(raw-frames) elided for now.
         (map (fn [[t ctx :as f]]
-               (let [;ctx (:ctx f)
-                     ;t   (:t   f)
-                     e   (store/get-entity ctx id)]
+               (let [e   (store/get-entity ctx id)]
                  (assoc e :t t))))
+        (filter :name) ;;unnamed entities don't exist
         (take-while (if tfinal (fn [f] (<= (:t f) tfinal))
                         (fn [x] true)))
         (filter #(and (sample? %)
