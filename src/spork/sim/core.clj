@@ -573,7 +573,10 @@
   ([e ctx] ;event is already baked.
    (sim/trigger-event ~e ~ctx)))
 
-
+(defn context?
+  "Predicate to determine if x is a simulation context."
+  [x]
+  (instance? spork.sim.simcontext.simcontext x))
 
 
 

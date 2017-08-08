@@ -27,7 +27,7 @@
 (defmacro ->msg
   "Convenience macro for constructing spork.sim.simcontext.packet 
    records that correspond to a message between two entities."
-  ([t msg] `(sim/->packet ~t :message (:from ~msg) (:to ~msg) ~msg))
+  ([t msg] `(sim/->packet ~t :message (:from ~msg) (:to ~msg) ~msg nil))
   ([from to t msg] `(sim/->packet ~t :message ~from ~to ~msg nil))
   ([from to t msg data] `(sim/->packet ~t :message ~from ~to ~msg ~data)))
 

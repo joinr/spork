@@ -147,10 +147,12 @@
    ;;TODO Check this for performance hits...
    (binding [spork.ai.core/*debug* (or spork.ai.core/*debug*  (= (:name e) *observed*))]
      (let [^behaviorenv benv (->benv ctx e msg default)
-           _    (ai/debug  [:<<<<<< :STEPPING (:name e) :last-update (:last-update e)  msg :>>>>>>])]
+           _    (ai/debug  [:<<<<<< :STEPPING (:name e) :last-update (:last-update e)  msg :>>>>>>])
+           ]
            (-> (b/beval (.behavior benv) benv)
                (b/return!)
-               (ai/commit-entity-))
+               (ai/commit-entity-)
+               )
            )))
   ([ctx e msg] (step-entity! ctx e msg @default-behavior)))
 

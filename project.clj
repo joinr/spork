@@ -29,6 +29,8 @@
                  [org.clojure/data.avl   "0.0.13"]
                  [iota "1.1.3"]
                  [org.clojure/core.rrb-vector  "0.0.11"]
+                 ;;serialization lib.
+                 [com.taoensso/nippy "2.11.0-RC1"] 
                  [ctries.clj "0.0.3"]
                 ;experimental dependencies, ephemeral.
                  
