@@ -366,11 +366,11 @@
     (anneal xs cost-func (asa-neighbor (map second binds)) {})))
 
 (comment ;;testing
-  (def prob (simple-anneal [0 [0 100]
-                            1 [0 100]]
-                           (fn [xs]
-                             (- (reduce + xs
-  (doseq [i (range 10)] (println ((juxt core/solve-optimum core/solve-best ) (core/solve prob))))
+  ;; (def prob (simple-anneal [0 [0 100]
+  ;;                           1 [0 100]]
+  ;;                          (fn [xs]
+  ;;                            (- (reduce + xs
+  ;; (doseq [i (range 10)] (println ((juxt core/solve-optimum core/solve-best ) (core/solve prob))))
 
   )
 

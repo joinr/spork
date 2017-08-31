@@ -189,7 +189,7 @@
 (def ^:dynamic *debugging* nil)
 
 (defmacro debug [msg & body]
-  `(do (when ~'spork.opt/*debugging*
+  `(do (when ~'spork.opt.core/*debugging*
          (println ~msg))
        ~@body))
   
