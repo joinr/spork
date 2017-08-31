@@ -5,8 +5,7 @@
 ;;from the repl.
 (ns spork.util.inspection
   (:require [clojure [reflect :as reflect]]
-            [clojure.inspector :as inspect]
-            [spork.data [orderedmap :as om]])
+            [clojure.inspector :as inspect])
   (:import [javax.swing.JTree]))
 
 (def ^:dynamic *short-types* true)
