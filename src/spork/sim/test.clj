@@ -1,29 +1,30 @@
 ;;A set of tests and examples for the simcontext API.
 (ns spork.sim.test
   (:use [spork.sim.simcontext])
-  (:require [spork.util.reducers]
-            [clojure.core.reducers :as r]))
+  (:require [spork.util.reducers :as r]))
+
+(def ctx (add-time 0 empty-context))
 
 (defn lots-of-events [n]
   (time (dotimes [i 1]
           (reduce (fn [ctx n] (request-update n :some-entity :generic ctx))
-                  empty-context
+                  ctx
                   (r/range n)))))
 
 (defn lots-of-events! [n]  
   (time (dotimes [i 1]
           (request-updates (r/map (fn [n] [n :some-entity :blah]) (r/range n))
-                           empty-context))))
+                           ctx))))
 
 (defn lots-of-events!! [n]    
   (time (dotimes [i 1]          
           (request-updates (r/map (fn [n] [n :some-entity :blah]) (r/range n))
-                           (transient empty-context)))))
+                           (transient ctx)))))
                                   
 (defn lots-of-events!!! [n]
   (time (dotimes [i 1]
           (reduce (fn [ctx n] (request-update n :some-entity :generic ctx))
-                  (transient empty-context)
+                  (transient ctx)
                   (r/range n)))))
 
 

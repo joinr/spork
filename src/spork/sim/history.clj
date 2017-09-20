@@ -4,8 +4,7 @@
 (ns spork.sim.history
   (:require [spork.util [io :as io]
                         [serial    :as ser]]
-            [clojure.core.reducers :as r]
-            [spork.util.reducers]
+            [spork.util.reducers :as r]
             [spork.entitysystem
              [diff     :as diff]
              [store :as store]]
@@ -14,13 +13,6 @@
 
 ;;Utilities
 ;;=========
-(defn- do-curried
-  [name doc meta args body]
-  (let [cargs (vec (butlast args))]
-    `(defn ~name ~doc ~meta
-       (~cargs (fn [x#] (~name ~@cargs x#)))
-       (~args ~@body))))
-
 (defn try-seq
   "Tries to coerce x to a seq, returning nil if unable.
    Useful wrapper around seq, since some fundamental types
@@ -30,39 +22,11 @@
   (try (seq x)
        (catch Exception e nil)))
 
-(defmacro  defcurried
-  "Builds another arity of the fn that returns a fn awaiting the last
-  param"
-  [name doc meta args & body]
-  (do-curried name doc meta args body))
-;;Note: there's a problem with the compile-time trick here...
-;;in-ns, used in spork.util.reducers, actually produces
-;;Huh...well, we'll have to cop this.
-;;we're going to add in iterate, range, and friends
-;;Reducers patch for Clojure courtesy of Alan Malloy, CLJ-992, Eclipse Public License
-(defcurried r-iterate
-  "A reducible collection of [seed, (f seed), (f (f seed)), ...]"
-  {:added "1.5"}
-  [f seed]
-  (reify
-    clojure.core.protocols/CollReduce
-    (coll-reduce [this f1] (clojure.core.protocols/coll-reduce this f1 (f1)))
-    (coll-reduce [this f1 init]
-      (loop [ret (f1 init seed), seed seed]
-        (if (reduced? ret)
-          @ret
-          (let [next (f seed)]
-            (recur (f1 ret next) next)))))
-
-    clojure.lang.Seqable
-    (seq [this]
-      (seq (clojure.core/iterate f seed)))))
-
 (defn merge-meta [obj m]
   (with-meta obj (merge (get meta obj) m)))
 
 (defn ->simreducer [stepf keep-simulating? init]
-  (r/take-while identity (r-iterate (fn [ctx]
+  (r/take-while identity (r/iterate (fn [ctx]
                                        (when  (keep-simulating? ctx)
                                           (let [init ctx
                                                 t  (sim/get-time ctx)

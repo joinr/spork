@@ -1,7 +1,5 @@
 (ns spork.sim.data
-  (:use [spork.util.datetime])
-  (:require  [spork.util.reducers]
-             [clojure.core [reducers :as r]]))
+  (:use [spork.util.datetime]))
 
 (defprotocol IEvent
   (event-type [e] 
@@ -338,10 +336,10 @@
                                     [(first-event ecoll) (drop-event ecoll)])))))
 (defn do-events
   ([s f n] (if (satisfies? IEventReducer s)
-             (do (reduce (fn [acc v] (f v)) nil (r/take n (event-reducer s))))
+             (do (transduce (take n) (completing (fn [acc x] (f x))) nil (event-reducer s)))
              (doseq [evt (take n (event-seq s))] (f evt))))
   ([s f]   (if (satisfies? IEventReducer s)
-             (do (reduce (fn [acc v] (f v)) nil (event-reducer s)))
+             (do (reduce (fn [acc x] (f x)) nil (event-reducer s)))             
              (doseq [evt (event-seq s)] (f evt)))))
 
 (defn print-events  

@@ -3,27 +3,70 @@
 ;;Note Feb 2017:  Most of these issues have been addressed.  Maintained
 ;;for legacy compatibility.  Future libraries should use clojure.core
 ;;idioms where possible.
+;;Note: to support AOT and generally not monkey patch clojure core libs,
+;;I've just taken to pulling in the entire reducers ns,
+;;importing all vars, and extending it with the new reducers.
+;;I'm trying to migrate everything to transducers anyway....but until
+;;then, we should be able to replace legacy code with spork.util.reducers
+;;requirements directly.
 (ns spork.util.reducers
-  (:require [clojure.core.reducers]))
+  (:refer-clojure :exclude
+   [cat drop filter flatten map mapcat reduce remove take
+    take-while iterate repeatedly repeat range map-indexed
+    first last nth])
+  (:require [clojure.core.reducers]
+            [spork.util.metaprogramming :as m]))
 
-(defn get-ns [ns symb]
-  (when-let [n (ns-resolve ns symb)]
-    (ns-name (:ns (meta n)))))
-
-(defn foreign? [ns symb]
-  (do (println [ns symb])
-      (not= (str (get-ns ns symb)) (str (ns-name ns)))))
-(defmacro eval-when [pred & expr]
-  (if (eval pred)
-     `(~@expr)))
+(m/import-vars
+ [clojure.core.reducers
+  ->Cat
+  CollFold
+  append!
+  cat
+  coll-fold
+  drop
+  filter
+  fjtask
+  flatten
+  fold
+  foldcat
+  folder
+  map
+  mapcat
+  monoid
+  pool
+  reduce
+  reducer
+  remove
+  take
+  take-while])
 
 ;;#Additional Reducers 
 ;;These haven't made it into clojure.core yet, they probably will in
 ;;1.7  .  I hacked together a couple of useful ones, like range.
-(in-ns 'clojure.core.reducers)
 
-(doseq [x '[iterate repeatedly repeat range map-indexed first last nth]]
-  (ns-unmap *ns* x))
+;;Pulled straight from clojure.core.reducers for clojure 1.8, under same EPL copyright
+(defn- fjfork [task] (.fork ^java.util.concurrent.ForkJoinTask task))
+(defn- fjjoin [task] (.join ^java.util.concurrent.ForkJoinTask task))
+(defn- fjinvoke [f]
+     (if (java.util.concurrent.ForkJoinTask/inForkJoinPool)
+       (f)
+       (.invoke ^java.util.concurrent.ForkJoinPool @pool ^java.util.concurrent.ForkJoinTask (fjtask f))))
+
+(defn- do-curried
+  [name doc meta args body]
+  (let [cargs (vec (butlast args))]
+    `(defn ~name ~doc ~meta
+       (~cargs (fn [x#] (~name ~@cargs x#)))
+       (~args ~@body))))
+
+(defmacro  defcurried
+  "Builds another arity of the fn that returns a fn awaiting the last
+  param"
+  [name doc meta args & body]
+  (do-curried name doc meta args body))
+;;End clojure.core.reducers code
+
 
 ;;we're going to add in iterate, range, and friends
 ;;Reducers patch for Clojure courtesy of Alan Malloy, CLJ-992, Eclipse Public License
@@ -77,29 +120,6 @@
         (seq [this]
           (seq (clojure.core/repeat v)))))
 
-;; (defn range
-;;   "Creates a reducible sequence of numbers, ala core/range, except 
-;;    there is no intermediate collection to muck with."
-;;   ([lower n]
-;;      (reify clojure.core.protocols/CollReduce 
-;;        (coll-reduce [coll f] 
-;;          (loop [idx (+ 2 lower)
-;;                 res (f lower (inc lower))]
-;;            (if (or (== idx n) (reduced? res))
-;;              res
-;;              (recur (unchecked-inc idx)
-;;                     (f res idx)))))
-;;            (coll-reduce [coll f val]
-;;              (loop [idx lower
-;;                     res val]
-;;                (if (or (== idx n) (reduced? res))
-;;                  res
-;;                  (recur (unchecked-inc idx)
-;;                         (f res idx)))))
-;;            clojure.lang.Seqable ;;good idea...saw this from patch CLJ992
-;;            (seq [this]  (clojure.core/range lower n))))
-;;   ([n] (range 0 n)))
-
 ;;Tom implementations:
 ;;I found out, after reading the postings on clojure dev on Jira, that
 ;;in fact, I have implemented a strategy very similar to some of the
@@ -135,6 +155,8 @@
                (fjfork t2) 
                (combinef (f1) (fjjoin t2)))))))
 
+(defn result [x] (if-not (reduced? x) x @x))
+
 (deftype Range [^long from ^long to ^long cnt]
   ISliceable
   (slice [this l r] 
@@ -152,11 +174,11 @@
   clojure.core.protocols/CollReduce
   (coll-reduce [this f] (loop [acc from
                                idx (unchecked-inc from)]
-                     (if (or (== idx to) (reduced? acc)) acc
+                     (if (or (== idx to) (reduced? acc)) (result acc)
                          (recur (f acc idx) (unchecked-inc idx))))) 
   (coll-reduce [this f init] (loop [acc init
                                     idx from]
-                          (if (or (== idx to) (reduced? acc)) acc
+                          (if (or (== idx to) (reduced? acc)) (result acc)
                               (recur (f acc idx) (unchecked-inc idx))))) 
   clojure.core.reducers/CollFold 
   (coll-fold [this n combinef reducef] (foldslice this n combinef reducef)))
@@ -183,9 +205,7 @@
 (defn first [r] (reduce right nil (take 1 r)))
 (defn nth   [n r] 
   (if (instance? clojure.lang.Indexed r)
-    (nth r n)
+    (.nth ^clojure.lang.Indexed r n)
     (cond (zero? n) (first r)
           (pos? n)  (last (take n r))                         
-          :else (throw (Exception. "Index for reducers/nth must be non-negative!")))))                     
-
-(in-ns 'spork.util.reducers)
+          :else (throw (Exception. "Index for reducers/nth must be non-negative!")))))
