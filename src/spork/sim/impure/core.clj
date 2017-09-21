@@ -4,6 +4,6 @@
 ;;parallel event propogation possibilities.  Additionally,
 ;;we can use contemporary (circa 2017) libraries like
 ;;core.async and others to accomplish this elegantly.
-(ns spork.sim.impure)
+(ns spork.sim.impure.core)
 
 ;;TBD

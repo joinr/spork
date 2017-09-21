@@ -19,9 +19,11 @@
 ;primary function, __event-step-marathon__, prescribes the order of application 
 ;;of each logical subsystem. 
 (ns spork.sim.engine
-  (:require [spork.sim     [observers :as obs]]
+  #_(:require [spork.sim     [observers :as obs]]
             [spork.sim     [simcontext :as sim]]
             [spork.entitysystem [store :as store]]))
+
+(comment ;;TODO port!
 
 ;;NOTE: This is Ripped from M4, we'd like to generalize some of the
 ;;lessons learned into library-specific functions that we can
@@ -335,7 +337,7 @@
             (recur next-day next-ctx))))))
 
 
-
+)
 ;;testing 
 (comment 
 (keep-simulating? (sim/add-time  22 emptysim))

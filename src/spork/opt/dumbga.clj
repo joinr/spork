@@ -67,7 +67,7 @@
    along with the fittest member."
   [f xs]
   (persistent! 
-   (reduce (fn [acc [idx x]] (evaluate-fitness! acc idx (f v)))                               
+   (reduce (fn [acc [idx x]] (evaluate-fitness! acc idx (f x)))                               
            (transient {}) (map-indexed vector xs))))
 
 ;;A simple implementation of a genetic algorithm: 
@@ -128,8 +128,8 @@
         get-mutants (fn [xs] (mapcat #(take k-spawn (repeatedly mutate %)) xs))
         conj-mutants (fn [pop scores] (let [parents (truncate pop scores)
                                             children (get-mutants parents)]
-                                        (reduce conj parents children)))
+                                        (reduce conj parents children)))]
     (evo-solve init-pop terminate? 
-               :size population-size :breed conj-mutants :join replacing-join))))
+               :size population-size :breed conj-mutants :join replacing-join)))
 
 

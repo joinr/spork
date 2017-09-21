@@ -12,7 +12,7 @@
 (defn map->tree [m]
   (let [trees (reduce-kv (fn [m child parent] 
                            (if (identical? child parent) (assoc m ::root child)
-                               (update-in m [parent] assoc child (count m)))) {} tmap)
+                               (update-in m [parent] assoc child (count m)))) {} m)
         aux (fn aux [tr nd] 
               ;;get parent from tr.  if parent exists in tr, it's a
               ;;subtree.  
@@ -31,14 +31,14 @@
 
 (defn reversed-path [preds from to]
   (loop [child from
-         p     empty-list]
+         p     nil]
     (if (identical? child to) (cons child p)
         (recur (get preds child)
                (cons child p)))))
 
 (defn path-to-root [preds from]
   (loop [child from
-         p     empty-list]
+         p     nil]
     (let [parent (get preds child)]
       (if (identical? child parent) (cons child p)
           (recur parent
@@ -56,7 +56,7 @@
 ;;====================
 
 ;;Directional walks - either source->sink, or sink->source
-(defn ascend  [tg k]  (top/walk tg k :neighbor-func (partial top/sources tg)))
+(defn ascend  [tg k]  (top/depth-walk tg k {:neighbor-func (partial top/sources tg)}))
 (defn descend [tg k]  (top/ordered-walk tg k))
 
 (defn parent-nodes

@@ -4,8 +4,8 @@
 ;;a problem with a zipper...
 (ns spork.data.indexed
   (:require [spork.protocols.core :refer :all]
-            [spork.util [topographic :as top]
-                        [topotree    :as toptree]]))
+            [spork.cljgraph.core :as top]
+            [spork.util [topotree :as toptree]]))
 
 ;;Graph-Backed Indexed Data Structures
 ;;====================================

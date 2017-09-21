@@ -53,10 +53,10 @@
 
           
 (definline get-k1 [m]
-  `(if (instance? clojure.lang.MapEntry ~m) (.key m) (nth m 0)))
+  `(if (instance? clojure.lang.MapEntry ~m) (.key ~m) (nth ~m 0)))
 
 (definline get-k2 [m]
-  `(if (instance? clojure.lang.MapEntry ~m) (.val m) (nth m 0)))
+  `(if (instance? clojure.lang.MapEntry ~m) (.val ~m) (nth ~m 0)))
 
 (defrecord nested-table2d [entries]
   IFastTable
@@ -85,24 +85,24 @@
   (drop-entry [tbl k1 k2])
   (drop-entry  [tbl k]))
 
-(defrecord tuple-table2d [entries]
-  IFastTable
-  (get-entry ([tbl k1 k2])
-             ([tbl k]))
-  (push-entry ([tbl k1 k2 v])
-              ([tbl k v]))
-  (drop-entry ([tbl k1 k2])
-              ([tbl k])))
+;; (defrecord tuple-table2d [entries]
+;;   IFastTable
+;;   (get-entry ([tbl k1 k2])
+;;              ([tbl k]))
+;;   (push-entry ([tbl k1 k2 v])
+;;               ([tbl k v]))
+;;   (drop-entry ([tbl k1 k2])
+;;               ([tbl k])))
 
 
-(defrecord array-table2d [entries]
-  IFastTable
-  (get-entry ([tbl k1 k2])
-             ([tbl k]))
-  (push-entry ([tbl k1 k2 v])
-              ([tbl k v]))
-  (drop-entry ([tbl k1 k2])
-              ([tbl k])))
+;; (defrecord array-table2d [entries]
+;;   IFastTable
+;;   (get-entry ([tbl k1 k2])
+;;              ([tbl k]))
+;;   (push-entry ([tbl k1 k2 v])
+;;               ([tbl k v]))
+;;   (drop-entry ([tbl k1 k2])
+;;               ([tbl k])))
 
 
 

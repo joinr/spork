@@ -4,6 +4,7 @@
   (:use [spork.entitysystem.store]
         [clojure.pprint :only [pprint]]))
 
+(comment
 ;; Examples/Tests....
 (defcomponent coords [xy] xy)
 (defcomponent visage [description] description)
@@ -65,3 +66,4 @@
        :order-by (fn [e] (->> e :components :playernumber :data)))))
 
 
+)
