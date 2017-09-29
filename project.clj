@@ -1,3 +1,9 @@
+(require 'clojure.edn)
+(def aot-order (let [f (clojure.java.io/file "order.edn")]
+                 (if (.exists f)
+                   (clojure.edn/read-string (slurp "order.edn"))
+                   '[spork.cljgui.components.PaintPanel])))
+
 (defproject spork "0.2.0.6-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
@@ -46,7 +52,18 @@
                        {:aot [;spork.cljgui.components.PaintPanel
                               spork.cljgui.components.swing
                               spork.util.table]}]
-             :install {:aot [;spork.cljgui.components.PaintPanel
-                             spork.cljgui.components.swing
-                             spork.util.table]}}
+             ;;due to problems with AOT, and an effort to GET
+             ;;everything to AOT, I had to use an approach derived
+             ;;from lein-aot-order, specifically using their code
+             ;;[since the plugin failed for me..] using
+             ;;clojure.tools.namespace to derive a load-order.
+             ;;From there, I manually pushed classes that
+             ;;must be AOT'd up to the top of the dependency
+             ;;tree (PaintPanel is the only one in this instance..)
+             ;;Then, I incrementally 'lein with-profile order compile
+             ;;correcting errors, identifying namespaces to prune along
+             ;;the way.  I either fixed, or non-aot'd the namespaces
+             ;;in the order vector.
+             :order  {:aot ~aot-order}
+             }
   :jvm-opts ^:replace ["-Xmx1g" "-XX:NewSize=200m"])

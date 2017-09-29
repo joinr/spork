@@ -3,6 +3,7 @@
 (ns spork.data.edge
   (:require [spork.data [mutable :as m]]))
 
+(def ^:const posinf Long/MAX_VALUE)
 
 ;;Note -> protocols are as efficient as interfaces if the dispatch is 
 ;;performed via a hinted field call.  If dispatch is performed via the 
@@ -40,10 +41,10 @@
   (edge-data     [e] data)
   (edge-pair [e] (clojure.lang.MapEntry. from to))
   IFlowEdgeInfo
-  (set-flow      [edge new-flow] (einfo. from to  capacity new-flow dir))
-  (set-capacity  [edge cap]      (einfo. from to cap flow dir))
+  (set-flow      [edge new-flow] (einfo. from to  capacity new-flow data))
+  (set-capacity  [edge cap]      (einfo. from to cap flow data))
   (inc-flow      [edge amt] (einfo. from to   (unchecked-subtract capacity amt)  
-                                              (unchecked-add flow amt) dir))
+                                              (unchecked-add flow amt) data))
   (edge-flow     [edge] flow)
   (edge-capacity [edge] capacity)  
   (capacity-to   [edge v]   (if (identical? v to) capacity flow)))
@@ -75,11 +76,11 @@
 ;;These are each 10x faster then the original varargs implementation.
 (definline ->edge-info2 
   [from to]
-  `(einfo. ~from  ~to posinf 0 nil))
+  `(einfo. ~from  ~to ~posinf 0 nil))
 
 (definline ->edge-info3
   [from to data]
-  `(einfo. ~from  ~to posinf 0 ~data))
+  `(einfo. ~from  ~to ~posinf 0 ~data))
 
 (definline ->edge-info4 
   [from to capacity flow]
@@ -88,11 +89,11 @@
 ;;Constructors for mutable edges.
 (definline ->medge-info2 
   [from to]
-  `(meinfo. ~from  ~to posinf 0 nil))
+  `(meinfo. ~from  ~to ~posinf 0 nil))
 
 (definline ->medge-info3 
   [from to data]
-  `(meinfo. ~from  ~to posinf 0 ~data))
+  `(meinfo. ~from  ~to ~posinf 0 ~data))
 
 (definline ->medge-info4 
   [from to capacity flow]

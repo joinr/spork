@@ -628,7 +628,7 @@
   (valAt [this k not-found]
     (if-let [v (.valAt rows k)]
       v
-      (cond (and (>= k 0) (< k length) nil)
+      (cond (and (>= k 0) (< k length)) nil
             :else not-found)))
   clojure.lang.IPersistentVector
   (count [this] length)
@@ -648,7 +648,7 @@
   (entryAt [this k]
     (if-let [e (.entryAt rows k)] e
             (if (< k length) nil
-                (throw (Exception. (str "Entry " l " out of bounds in sparserows!"))))))
+                (throw (Exception. (str "Entry " k " out of bounds in sparserows!"))))))
   (seq [this] (sparse-seq 0 rows length))
   ;;without implements (dissoc pm k) behavior
   ;; (without [this k]
@@ -682,8 +682,8 @@
   (count [this] length)
   (assocN [this k v]
     (cond (== k row) (sparsecolumn. row v length)
-          (not (neg? k) (sparserows. {row k} length) ;convert to sparserows
-               :else (throw (Exception. (Str "Cannot assoc a negative index in sparserows! " k))))))
+          (not (neg? k)) (sparserows. {row k} length) ;convert to sparserows
+               :else (throw (Exception. (str "Cannot assoc a negative index in sparserows! " k)))))
   (empty [this] (sparsecolumn. 0 nil 0))
   ;cons defines conj behavior
   (cons [this e] (.assoc this e))
@@ -691,7 +691,7 @@
                           (str "Equiv not implemented for sparsecolumn!"))))
   (hashCode [this] (* (hash val) row length))
   ;containsKey implements (contains? pm k) behavior
-  (containsKey [this k] (and (pos? k) (< k lenfth)))
+  (containsKey [this k] (and (pos? k) (< k length)))
   (entryAt [this k]
     (cond (== k row) (clojure.lang.MapEntry. row val)
           (< k length) nil
@@ -702,8 +702,8 @@
   clojure.lang.Indexed
   (nth [this i] (if (== i row) val
                     (.valAt this i)))
-  (nth [this i not-found (if (== i row) val
-                             (.valAt this i not-found))))
+  (nth [this i not-found] (if (== i row) val
+                              (.valAt this i not-found)))
   )
 
 (defn ->sparsecolumn
@@ -722,7 +722,7 @@
   (set-cursor [obj n]))
 (defn mapeq [l r]
   (reduce-kv (fn [acc k v]
-               (if-let [other (ger r k)]
+               (if-let [other (get r k)]
                  (if (= other v)
                    acc
                    (reduced nil))
@@ -752,7 +752,7 @@
                             obj))
   clojure.core.protocols.IKVReduce
   (kv-reduce [amap f init]
-    (reduce-kv s  (fn [acc col fld]
+    (reduce-kv (fn [acc col fld]
                     (f acc fld (row-col n col columns)))
                init fields))
   clojure.core.protocols.CollReduce
@@ -793,11 +793,11 @@
   ;cons defines conj behavior
   (cons [this e]   (.assoc this (first e) (second e)))
   (equiv [this o]
-    (cond (indentical? this o) true
-          (instance? clojure.lang.IHashEq p) (== (hash this) (hash o))
+    (cond (identical? this o) true
+          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
           (instance? clojure.lang.IPersistentMap o) (and (== (count this) (count o))
                                                          (mapeq this o))
-          (or (instance? clojure.lang.Sequential 0)
+          (or (instance? clojure.lang.Sequential o)
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
               :else nil))  
   (hashCode [this]
@@ -806,7 +806,7 @@
         (do (set! _hash (int h))
             h))
       _hash))
-  (equals [this o] (idnetical? this o))  
+  (equals [this o] (identical? this o))  
   ;containsKey implements (contains? pm k) behavior
   (containsKey [this k]  (reduce (fn [acc k]
                                    (if (= k k) (reduced true)

@@ -88,7 +88,7 @@
 (defn change-location [e newloc]
   (set-component e :location newloc))
 (defn add-to-gold-carried [e amount]
-  (alter-component e :gold-carried #(inc % amount)))
+  (alter-component e :gold-carried #(+ % amount)))
 (defn increase-fatigue [e]
   (alter-component e :fatigue inc))
 
@@ -96,19 +96,20 @@
 (defproperty pockets-full? [e [gold-carried]] (> gold-carried +max-gold+))
 (defproperty thirsty? [e [fatigue]]  (> fatigue +max-fatigue+))  
 
-(defstate enter-mine-and-dig-for-nugget 
-  {:enter (entfn [ent [name location]]               
-                 (if (not=  location :goldmine)
-                   (entlog name "Walkin' to the gold mine"
-                           (change-location ent :goldmine))
-                   ent))
-   :execute (entfn [ent [gold-carried fatigue]]
-                   (let [updated (-> ent
-                                     (add-to-gold-carried)
-                                     (increase-fatigue))]
-                     (cond (pockets-full? updated)
-                           ;;;
-                           (thirsty? updated)
+;;WIP
+;; (defstate enter-mine-and-dig-for-nugget 
+;;   {:enter (entfn [ent [name location]]               
+;;                  (if (not=  location :goldmine)
+;;                    (entlog name "Walkin' to the gold mine"
+;;                            (change-location ent :goldmine))
+;;                    ent))
+;;    :execute (entfn [ent [gold-carried fatigue]]
+;;                    (let [updated (-> ent
+;;                                      (add-to-gold-carried)
+;;                                      (increase-fatigue))]
+;;                      (cond (pockets-full? updated)
+;;                            ;;;
+;;                            (thirsty? updated)
                        
                        
               
@@ -121,7 +122,7 @@
                 :state init-state]})
 
 (defentity miner "A simple miner, toiling in the earth to earn his keep."
-  [id & {:keys [name money-in-bank gold-carried name init-location init-state] :or 
+  [id & {:keys [name money-in-bank gold-carried init-location init-state] :or 
          {name "Bob" money-in-bank 0 gold-carried 0}}]
   {:specs [(basic-entity id name init-location init-state)]
    :components [:money-in-bank money-in-bank

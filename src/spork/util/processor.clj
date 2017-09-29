@@ -15,6 +15,7 @@
   (:require [clojure [set :as set]]
             [spork.util [io :as io]]))
 
+(comment
 ;A processor is a named task that requires preconditions to hold, and provides 
 ;a set of post conditions, or effects.  A typical precondition would be the 
 ;existence of a resource..say a file or an in-memory map or something.
@@ -114,6 +115,7 @@
   (fn [env] (merge env {resname (slurp path)})))    
 
 
+)
 ;a sample of compiling an audit trail from a marathon run.
 (comment 
 	(defprocess compute-trends [rootdir]

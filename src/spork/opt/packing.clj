@@ -27,8 +27,8 @@
                       :else (throw (Exception. "non-exhaustive match")))]
     (persistent! (reduce-kv red-fun (transient []) xs))))
 
-(defn as-cost-table [kvps]
-  (reduce-kv (fn [m xs] (reduce 
+;(defn as-cost-table [kvps]
+;  (reduce-kv (fn [m xs] (reduce 
   
 
 (defn get-costs [m]

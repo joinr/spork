@@ -50,19 +50,19 @@
 
 ;;Note -> we're not doing any math here...
 
-(defrecord avector [^clojure.lang.IPersistentVector sources
-                    ^clojure.lang.IPersistentVector sinks]
-  IAdjacency
-  (^long   getSize      [this] (.count sources))
-  (setSize              [this ^long n] (throw (Exception. "Operation not supported")))
-  (^longs  getNodes     [this ] (throw (Exception. "Operation not supported")))
-  (connect              [this ^long from ^long to] 
-    (let [res (.valAt sources from )] (.assoc sources from to)
-  (disconnect           [this ^long from ^long to])
-  (^longs  getSources   [this ^long idx])
-  (^longs  getSinks     [this ^long idx])
-  (^long   getIntWeight [this ^long from ^long to])
-  (^double getWeight    [this ^long from ^long to]))
+;; (defrecord avector [^clojure.lang.IPersistentVector sources
+;;                     ^clojure.lang.IPersistentVector sinks]
+;;   IAdjacency
+;;   (^long   getSize      [this] (.count sources))
+;;   (setSize              [this ^long n] (throw (Exception. "Operation not supported")))
+;;   (^longs  getNodes     [this ] (throw (Exception. "Operation not supported")))
+;;   (connect              [this ^long from ^long to] 
+;;     (let [res (.valAt sources from )] (.assoc sources from to)
+;;   (disconnect           [this ^long from ^long to])
+;;   (^longs  getSources   [this ^long idx])
+;;   (^longs  getSinks     [this ^long idx])
+;;   (^long   getIntWeight [this ^long from ^long to])
+;;   (^double getWeight    [this ^long from ^long to]))
 
 
 ;;A simple adjacency vector.
@@ -211,8 +211,8 @@
 ;;This is more dynamic.  We have numerical indices, and object costs.
 ;;Coded as a pair of adjacencies: 
 ;;[1..n] 
-(defrecord adjacency-table  [sources sinks]
-  ITopograph
+(defrecord adjacency-table  [nodes sources sinks]
+  generic/ITopograph
   (-get-nodes [tg] nodes)
   (-set-nodes [tg m] (assoc tg :nodes m))
   (-conj-node [tg k v] 
@@ -223,9 +223,9 @@
   (-disj-node [tg k]
     (assert (contains? nodes k) (str "Node " k " does not exist!")) 
     (let [new-sources (reduce #(update-in %1 [%2] dissoc k)
-                              (dissoc sources k)  (-get-sinks tg k))
+                              (dissoc sources k)  (generic/-get-sinks tg k))
           new-sinks   (reduce #(update-in %1 [%2] dissoc k)
-                              (dissoc sinks k)  (-get-sources tg k))]
+                              (dissoc sinks k)  (generic/-get-sources tg k))]
       (-> tg 
           (assoc :nodes   (dissoc nodes k))
           (assoc :sources new-sources)
@@ -250,7 +250,7 @@
   (-get-sinks   [tg k]   (keys (get sinks   k))))
 
 (defrecord adjacency-map [nodes sources sinks]
-  ITopograph
+  generic/ITopograph
   (-get-nodes [tg] nodes)
   (-set-nodes [tg m] (assoc tg :nodes m))
   (-conj-node [tg k v] 
@@ -261,9 +261,9 @@
   (-disj-node [tg k]
     (assert (contains? nodes k) (str "Node " k " does not exist!")) 
     (let [new-sources (reduce #(update-in %1 [%2] dissoc k)
-                              (dissoc sources k)  (-get-sinks tg k))
+                              (dissoc sources k)  (generic/-get-sinks tg k))
           new-sinks   (reduce #(update-in %1 [%2] dissoc k)
-                              (dissoc sinks k)  (-get-sources tg k))]
+                              (dissoc sinks k)  (generic/-get-sources tg k))]
       (-> tg 
           (assoc :nodes   (dissoc nodes k))
           (assoc :sources new-sources)
@@ -309,6 +309,8 @@
 ;;should be a big win...both sparseness and mutation.
 
 ;;if we have a structure that captures adjacencies...
+(comment
+  
 (defprotocol IAdjacency
   (adj-sources [adj v])
   (adj-sinks   [adj w]))
@@ -318,4 +320,4 @@
   (adj-sources [adj v] (get froms v))
   (adj-sinks   [adj v] (get tos v)))
 
-  
+)  
