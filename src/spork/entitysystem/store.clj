@@ -251,7 +251,7 @@
                   ^:unsynchronized-mutable components
                   db
                   ^java.util.HashSet altered
-                 ]
+                  ]
   clojure.lang.IHashEq
   (hasheq   [this]   (.hasheq   ^clojure.lang.IHashEq m))
   (hashCode [this]   (.hashCode ^clojure.lang.IHashEq m))
@@ -318,7 +318,7 @@
   (coll-reduce [coll f init] (reduce m f init))
   (coll-reduce [coll f] (reduce m f))
   IAlteredKeys
-  (altered-keys [m] (if (identical? altered #{}) nil altered))
+  (altered-keys [m] (if (.isEmpty altered) nil altered))
   )
 ;;We can define entity-reductions which allow the dsl to extend for reduce...
 ;;(entity-merge ent {component val*}) => update the entries in the db via assoc
