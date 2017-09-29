@@ -527,8 +527,8 @@
 
 ;;Beginnings of a mutable entity store.  Note: this is about 6x faster than our
 ;;persistent counterpart, but it's 
-(deftype MapEntityStore [^java.util.HashMap entity-map
-                         ^java.util.HashMap domain-map]
+(defrecord MapEntityStore [^java.util.HashMap entity-map
+                           ^java.util.HashMap domain-map]
   IEntityStore
   (add-entry [db id domain data] ;;this gets called a lot....
     (let [^java.util.HashSet
@@ -575,11 +575,7 @@
     (if-let [^java.util.HashMap d (.get domain-map c)]
       (do (.put domain-map c v)
           db)
-      (throw (Exception. (str [:domain-does-not-exist c])))))
-  clojure.lang.IDeref
-  (deref [this] {:entity-map  entity-map
-                 :domain-map domain-map})
-  )
+      (throw (Exception. (str [:domain-does-not-exist c]))))))
 
 (comment 
 ;;rather than maintaining the domains explicitly, we can lazily compute them
@@ -638,17 +634,16 @@
     (reduce (fn [acc ^java.util.Map$Entry ent]
               (f acc (.getKey ent) (.getValue ent))) init obj)))
 
-(declare mutate!)
-(defn memptystore
-  ([] (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.)))
-  ([store] (mutate! store)))
-
 (defn mutate! [store]
   (reduce-kv (fn [acc domain m]
                (reduce-kv (fn [acc id data]
                             (add-entry acc id domain data)) acc m))
-             (memptystore)
+             (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.))
              (:domain-map store)))
+
+(defn memptystore
+  ([] (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.)))
+  ([store] (mutate! store)))
 
 (defn domain-keys [db]   (keys (domains db)))
 (defn get-domain  [db d] (get (domains db) d))
@@ -1490,6 +1485,16 @@
     (-> emptystore
         (add-entities es)))
 
+  ;;mutable vs persistent update tests...
+  (let [the-store (mutate! the-store)]
+    (time (dotimes [i 1000000]
+            (assoce the-store 45 :q :hello!))))
+
+  (time (dotimes [i 1000000]
+          (assoce the-store 45 :q :hello!)))
+
+  
+  
   (let [^clojure.lang.IPersistentMap store {:es {0 #{:a :b :c}}  :cs {:a {0 true} :b {0 true} :c {0 true}}}]
     (time (dotimes [i 1000000] (update store :cs
                                        (fn [m]

@@ -110,22 +110,35 @@
   (let [^java.util.Map tgt (.get m out)]
     (do (.put tgt in v)
         m)))
+
+(defprotocol IMutableCollection
+  (into! [x xs]))
+
+(extend-protocol IMutableCollection
+  java.util.HashMap
+  (into! [x xs]
+    (reduce (fn [^java.util.HashMap acc kv]
+              (doto acc (.put (first kv) (second kv))))
+            x xs))
+  ctries.clj.Ctrie
+  (into! [x xs] (reduce conj! x xs)))
+
 (comment ;;testing
 
   (def pairs (map vector (range 1000) (range 1000)))
   (def the-map (into {:attributes {:name 2}}
                      pairs))
   (defn ->db []
-    (into (assoc 
-           (ct/concurrent-map)
-           :attributes
-           (ct/concurrent-map))
+    (into! (assoc! 
+            (ct/concurrent-map)
+            :attributes
+            (ct/concurrent-map))
           pairs))
   
   (def tr (->db))
   (def cm (let [outer (java.util.HashMap.)
                 ]
-            (into 
+            (into! 
              (doto outer (.put :attributes
                                (java.util.HashMap.)))
              pairs)))
