@@ -83,6 +83,11 @@
     (app)
     (SwingUtilities/invokeAndWait app)))
 
+(defmacro swing! [& body]
+  `(let [res# (atom nil)
+         f#  (fn [] (reset! res# ~@body))]
+     (run-now f#)
+     (deref res#)))
 ;;Composable gui components....
 ;; (defn ^JFrame empty-frame 
 ;;   ([] (JFrame.))
@@ -124,7 +129,8 @@
 
 (defn visible? [^JFrame frm] (.isVisible frm))
 (defn ^JFrame toggle-top [^JFrame frm]
-  (doto frm (.setAlwaysOnTop (not (.isAlwaysOnTop frm))))) 
+  (swing!
+   (doto frm (.setAlwaysOnTop (not (.isAlwaysOnTop frm))))) )
 
 (defn clear-contents [^JFrame frm]
   (let [cp (.removeAll (.getContentPane frm))]
@@ -132,27 +138,31 @@
     (.repaint))))
 
 (defn display-stretched [^JFrame frm ^JPanel pane]
-  (doto frm 
+  (swing!
+   (doto frm 
      (add-view pane)
-     (make-visible)))
+     (make-visible))))
     
 ;Display any generic swing component.  All implementations support JComponent.
 (defn  display [^JFrame frm ^JPanel pane]
-	  (doto frm
-	    (clear-contents)
-            (.add pane BorderLayout/CENTER)
-	    (make-visible)))
-
+  (swing!
+   (doto frm
+     (clear-contents)
+     (.add pane BorderLayout/CENTER)
+     (make-visible))))
+  
 (defn display-simple [^JPanel pane]
-  (doto (empty-frame)
-    (clear-contents)
-    (.add pane)
-    (make-visible)))
+  (swing!
+   (doto (empty-frame)
+     (clear-contents)
+     (.add pane)
+     (make-visible))))
 
 (defn alert 
   ([msg] (alert nil msg))
-  ([frame msg] 
-    (javax.swing.JOptionPane/showMessageDialog frame msg)))
+  ([frame msg]
+   (swing!
+    (javax.swing.JOptionPane/showMessageDialog frame msg))))
 
 
 (defn ^JMenu menu [name & items]
@@ -366,11 +376,12 @@
   "Initiates a file selection dialogue using a Swing file chooser.  
    Returns the path to the selected file."
   ([initpath]
-  (let [fc (JFileChooser. initpath)
-        res (. fc showOpenDialog nil)]
+   (swing!
+    (let [fc  (JFileChooser. initpath)
+          res (. fc showOpenDialog nil)]
     (if (= res (. JFileChooser APPROVE_OPTION))
       (str (.getSelectedFile fc))
-      nil)))
+      nil))))
   ([] (select-file (System/getProperty "user.dir"))))
 
 (defn- folder-chooser [initpath]
@@ -382,11 +393,13 @@
 (defn select-folder
   "Initiates a folder selection dialogue using a swing folder chooser.
    Returns the path to the selected folder."  
-  ([initpath]   (let [f (folder-chooser initpath)
-                      res (. f showOpenDialog nil)]
-                  (if (= res (. JFileChooser APPROVE_OPTION))
-                    (str (.getSelectedFile f))
-                    nil)))
+  ([initpath]
+   (swing!
+    (let [f (folder-chooser initpath)
+          res  (. f showOpenDialog nil)]
+      (if (= res (. JFileChooser APPROVE_OPTION))
+        (str (.getSelectedFile f))
+        nil))))
   ([] (select-folder (System/getProperty "user.dir"))))
 
 ;again, inspired by the awesome work from Incanter!  
@@ -476,29 +489,32 @@
   ([name data] (shelf (label name)
                       (as-JTable data :sorted true))))
 
-(defn ^JFrame ->scrollable-view [content & {:keys [title width height] :or {title "" width 400 height 600}}] 
-  (doto (empty-frame title)
-    (.add (JScrollPane. content))
-    (.setSize width  height)
-    (.pack)
-    (.setVisible true)))
+(defn ^JFrame ->scrollable-view [content & {:keys [title width height] :or {title "" width 400 height 600}}]
+  (swing!
+   (doto (empty-frame title)
+     (.add (JScrollPane. content))
+     (.setSize width  height)
+     (.pack)
+     (.setVisible true))))
 
 (defn ^javax.swing.JFrame ->hidden-view
   "Creates a hidden JFrame, useful for temporary or offscreen rendering."
-  [content & {:keys [title width height] :or {title "" width 400 height 600}}] 
-  (doto (empty-frame title)
-    (.add content)
-    (.setSize width  height)
-    (.pack)
-    (.setVisible false)))
+  [content & {:keys [title width height] :or {title "" width 400 height 600}}]
+  (swing!
+   (doto (empty-frame title)
+     (.add content)
+     (.setSize width  height)
+     (.pack)
+     (.setVisible false))))
 
 (defn size-panel
   "Temporarily adds the panel to a hidden JFrame, long enough to pack it, 
    then returns the panel with valid bounds determined by layout."
   [p]
-  (let [frm (->hidden-view p)
-        _   (.remove frm p)]
-    p))
+  (swing!
+   (let [frm (->hidden-view p)
+         _   (.remove frm p)]
+     p)))
 
 (defn choose-from
   "Given a sequence of xs, presents the user with a view of the sequence, and 
@@ -564,9 +580,8 @@
 (defn text-dialogue
   "Presents the user with a simple input box to enter information into."
   [prompt & {:keys [text-component exit-on] 
-             :or {text-component (text-field "")
-                  exit-on :newline}}]
-  (let [inbox    text-component      
+             :or {exit-on :newline}}]
+  (let [inbox    (or text-component (text-field ""))
         read-box (fn [] (.getText inbox))
         input    (promise) 
         key-events   (native/get-observer inbox :key)
@@ -658,7 +673,8 @@
 
 
 (defn simple-repl
-  "Makes a very rudimentary embedded repl.  This is still in Alpha, needs to 
+  "DEPRECATED.  Use nightclub!
+   Makes a very rudimentary embedded repl.  This is still in Alpha, needs to 
    get the kinks worked out."
   []
   (let [name-space  (ns-name *ns*) 
@@ -762,11 +778,12 @@
 
 ;Display any generic swing component.  All implementations support JComponent.
 (defmethod  display :component [^JFrame frm ^JPanel pane]
-	  (doto frm
-	    (clear-contents)
-	    (.setContentPane (doto (JPanel.) 
-	                       (.add pane BorderLayout/CENTER)))
-	    (make-visible)))
+  (swing!
+   (doto frm
+     (clear-contents)
+     (.setContentPane (doto (JPanel.) 
+                        (.add pane BorderLayout/CENTER)))
+     (make-visible))))
   
 (defmethod display :modelview [^JFrame frm mvc]
   (display frm (mvc-view mvc)))

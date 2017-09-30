@@ -246,80 +246,80 @@
 ;;What we really want here is a flyweight entity container...
 ;;mutable entity for hashmaps and the like...maintains a
 ;;reference to the underlying entity store....
-(deftype mentity [^:unsynchronized-mutable name
-                  ^:unsynchronized-mutable domains
-                  ^:unsynchronized-mutable components
-                  db
-                  ^java.util.HashSet altered
-                  ]
-  clojure.lang.IHashEq
-  (hasheq   [this]   (.hasheq   ^clojure.lang.IHashEq m))
-  (hashCode [this]   (.hashCode ^clojure.lang.IHashEq m))
-  (equals   [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
-  (equiv    [this o]
-    (cond   (identical? this o) true
-            (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
-          (or (instance? clojure.lang.Sequential o)
-              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
-              :else nil))  
-  clojure.lang.IObj
-  (meta     [this] (.meta ^clojure.lang.IObj m))
-  (withMeta [this xs] (entity. name domains components
-                               (with-meta ^clojure.lang.IObj m xs) altered))
-  IEntity 
-  (entity-name [e] (if name name
-                       (do (set! name (.get m :name))
-                           name)))
-  (conj-component [e c] 
-    (do (.put m (component-domain c) (component-data c))
-        (.add altered (component-domain c))
-        e))  
-  (disj-component [e c] 
-    (entity. name domains components (.without m (component-domain c))
-                                     (.cons altered (component-domain c))))
-  (get-component [e domain]          (.valAt m domain))
-  (entity-components [e]  (if components components
-                              (do (set! components (into [] (seq  m)))
-                                  components)))
-  (entity-domains [e] (if domains domains
-                          (do (set! domains (keys m))
-                              domains)))
-  clojure.lang.IPersistentMap
-  (valAt [this k] (.valAt m k))
-  (valAt [this k not-found] (.valAt m k not-found))
-  (entryAt [this k] (.entryAt m k))
-  (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
-  (cons  [this e]   
-    (entity. nil nil nil (.cons m e)
-             (if (map? e) (into altered (keys e))
-                 (.cons altered (key e)))))
-  (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
-  clojure.lang.Seqable
-  (seq [this] (seq m))
-  clojure.lang.Counted
-  (count [coll] (.count m))
-  java.util.Map
-  (put    [this k v]  (.assoc this k v))
-  (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c)  m))
-  (clear  [this] (entity. nil nil nil {} #{}))
-  (containsKey   [this o] (.containsKey ^java.util.Map m o))
-  (containsValue [this o] (.containsValue ^java.util.Map m o))
-  (entrySet [this] (.entrySet ^java.util.Map m))
-  (keySet   [this] (.keySet ^java.util.Map m))
-  (get [this k] (.valAt m k))
-  ;(equals [this o] (.equals ^java.util.Map m o))
-  (isEmpty [this] (.isEmpty ^java.util.Map m))
-  (remove [this o] (.without this o))
-  (values [this] (.values ^java.util.Map m))
-  (size [this] (.count m))
-  clojure.core.protocols/IKVReduce
-  (kv-reduce [coll f init] (reduce-kv f init m))
-  clojure.core.protocols/CollReduce
-  (coll-reduce [coll f init] (reduce m f init))
-  (coll-reduce [coll f] (reduce m f))
-  IAlteredKeys
-  (altered-keys [m] (if (.isEmpty altered) nil altered))
-  )
+;; (deftype mentity [^:unsynchronized-mutable name
+;;                   ^:unsynchronized-mutable domains
+;;                   ^:unsynchronized-mutable components
+;;                   db
+;;                   ^java.util.HashSet altered
+;;                   ]
+;;   clojure.lang.IHashEq
+;;   (hasheq   [this]   (.hasheq   ^clojure.lang.IHashEq m))
+;;   (hashCode [this]   (.hashCode ^clojure.lang.IHashEq m))
+;;   (equals   [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
+;;   (equiv    [this o]
+;;     (cond   (identical? this o) true
+;;             (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+;;           (or (instance? clojure.lang.Sequential o)
+;;               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+;;               :else nil))  
+;;   clojure.lang.IObj
+;;   (meta     [this] (.meta ^clojure.lang.IObj m))
+;;   (withMeta [this xs] (entity. name domains components
+;;                                (with-meta ^clojure.lang.IObj m xs) altered))
+;;   IEntity 
+;;   (entity-name [e] (if name name
+;;                        (do (set! name (.get m :name))
+;;                            name)))
+;;   (conj-component [e c] 
+;;     (do (.put m (component-domain c) (component-data c))
+;;         (.add altered (component-domain c))
+;;         e))  
+;;   (disj-component [e c] 
+;;     (entity. name domains components (.without m (component-domain c))
+;;                                      (.cons altered (component-domain c))))
+;;   (get-component [e domain]          (.valAt m domain))
+;;   (entity-components [e]  (if components components
+;;                               (do (set! components (into [] (seq  m)))
+;;                                   components)))
+;;   (entity-domains [e] (if domains domains
+;;                           (do (set! domains (keys m))
+;;                               domains)))
+;;   clojure.lang.IPersistentMap
+;;   (valAt [this k] (.valAt m k))
+;;   (valAt [this k not-found] (.valAt m k not-found))
+;;   (entryAt [this k] (.entryAt m k))
+;;   (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
+;;   (cons  [this e]   
+;;     (entity. nil nil nil (.cons m e)
+;;              (if (map? e) (into altered (keys e))
+;;                  (.cons altered (key e)))))
+;;   (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
+;;   clojure.lang.Seqable
+;;   (seq [this] (seq m))
+;;   clojure.lang.Counted
+;;   (count [coll] (.count m))
+;;   java.util.Map
+;;   (put    [this k v]  (.assoc this k v))
+;;   (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c)  m))
+;;   (clear  [this] (entity. nil nil nil {} #{}))
+;;   (containsKey   [this o] (.containsKey ^java.util.Map m o))
+;;   (containsValue [this o] (.containsValue ^java.util.Map m o))
+;;   (entrySet [this] (.entrySet ^java.util.Map m))
+;;   (keySet   [this] (.keySet ^java.util.Map m))
+;;   (get [this k] (.valAt m k))
+;;   ;(equals [this o] (.equals ^java.util.Map m o))
+;;   (isEmpty [this] (.isEmpty ^java.util.Map m))
+;;   (remove [this o] (.without this o))
+;;   (values [this] (.values ^java.util.Map m))
+;;   (size [this] (.count m))
+;;   clojure.core.protocols/IKVReduce
+;;   (kv-reduce [coll f init] (reduce-kv f init m))
+;;   clojure.core.protocols/CollReduce
+;;   (coll-reduce [coll f init] (reduce m f init))
+;;   (coll-reduce [coll f] (reduce m f))
+;;   IAlteredKeys
+;;   (altered-keys [m] (if (.isEmpty altered) nil altered))
+;;   )
 ;;We can define entity-reductions which allow the dsl to extend for reduce...
 ;;(entity-merge ent {component val*}) => update the entries in the db via assoc
 ;;and friends.  Could further optimize via diffing and other stuff.

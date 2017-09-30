@@ -184,6 +184,20 @@
 ;;whether this fits our semantics...Currently, assumes non-concurrent
 ;;access...so this "can" work.
 
+;;assuming we're not doing concurrent access...
+;;just using mutation as an optimization.
+;;we don't need locks and the like.
+;;alternately...
+;;we can have a model where new fields are appended to the
+;;entity ref...dropped fields are mutably removed....
+;;updated fields are passed through?
+
+;;In the case where we're operating on a single entity,
+;;I think this works okay.
+
+;;Alternately, we just disallow row operations and
+;;force everything to delegate to the store via
+;;add/remove entry?
 
 ;; (deftype PassMapMutable [id                  
 ;;                          ^java.util.Map db
