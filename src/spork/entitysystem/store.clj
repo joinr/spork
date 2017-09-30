@@ -600,7 +600,10 @@
                 c v))
       (throw (Exception. (str [:domain-does-not-exist c]))))))
 
-;;Beginnings of a mutable entity store.  Note: this is about 6x faster than our
+
+(deftype MutableRecord [^IEntityStore db id])
+
+;;Beginnings of a mutable entity store.  Note: this is approximately 10x faster than our
 ;;persistent counterpart, but it's 
 (defrecord MapEntityStore [^java.util.HashMap entity-map
                            ^java.util.HashMap domain-map]

@@ -278,6 +278,50 @@
   (size [this] (.size m)))
 
 
+(deftype txmutmap [^:unsynchronized-mutable ^long tx ^java.util.HashMap m
+                   ^:unsynchronized-mutable ^int _hash]
+  IUpdateable
+  (update- [o k f]
+    (do (.put m k (f (.get m k)))
+        o))
+  clojure.lang.IPersistentMap
+  (valAt [this k]           (.get m k))
+  (valAt [this k not-found] (or (.get m k) not-found))
+  (assoc [this k v] (do  (.put m k v) this))
+  (cons  [this e]
+    (if (entry? e)
+      (let [^java.util.Map$Entry e e]
+        (do (.put m (.getKey e) (.getValue e)) this))
+      (let [[k v] e]      
+        (do (.put m k v) this))))
+  (without [this k]   (do (.remove m k) this))
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.Counted 
+  (count [coll] (.size m))
+  IMutable
+  (mutable [this] this)
+  (immutable [this] (into {} m))
+  java.util.Map
+  (put    [this k v] (do (set! tx (unchecked-inc tx))
+                         (.put m k v) this))
+  (putAll [this c] (do (set! tx (unchecked-inc tx))
+                       (.putAll m c) this))
+  (clear  [this] (do (set! tx 0)
+                     (.clear m) this))
+  (containsKey   [this o] (.containsValue m o))
+  (containsValue [this o] (.containsValue m o))
+  (entrySet [this] (.entrySet m))
+  (keySet   [this] (.keySet m))
+  (get [this k] (.get m k))
+  (equals [this o] (.equals m o))
+  (hashCode [this] (.hashCode m))
+  (isEmpty [this] (.isEmpty m))
+  (remove [this o] (do (set! tx (unchecked-inc tx))
+                       (.remove m o) this))
+  (values [this] (.values m))
+  (size [this] (.size m)))
+
 ;; (deftype mutsortedmap [^java.util.TreeMap m]
 ;;   IUpdateable
 ;;   (update- [o k f]
@@ -435,7 +479,10 @@
                                   (doto m (.put  k v))))) (java.util.HashMap.)  xs)))
 (defn ^mutmap ->mutmap [& xs]  
   (into (mutmap. (java.util.HashMap.)) xs))
-                    
+
+(defn ^txmutmap ->txmutmap [& xs]  
+  (into (txmutmap. 0 (java.util.HashMap.)) xs))
+
 (defn ^mutlist ->mutlist [& xs]  
    (mutlist. (reduce (fn [^java.util.ArrayList m k] (doto m (.add k)))  (java.util.ArrayList.)  xs)))
 
