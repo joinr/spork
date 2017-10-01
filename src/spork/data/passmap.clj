@@ -16,7 +16,8 @@
 ;;the cached map, so that the lazy-map will, over time,
 ;;build up a new map on-demand, and avoid joining all
 ;;fields of the entity.
-(ns spork.data.passmap)
+(ns spork.data.passmap
+  (:require [spork.data [mutable :as mutable]]))
 
 ;;We care about adds and drops....right?
 ;;If we just always assoc a sentinel value when we merge the map,
@@ -76,6 +77,7 @@
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap db
                   ;;the original keys in the database, what we're lazily passing through.                  
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentSet db-keys
+                  ^boolean mutable
                   ]
   clojure.lang.IHashEq
   (hasheq [this]   (if-not db (.hasheq ^clojure.lang.IHashEq m)
@@ -96,12 +98,14 @@
               :else nil))  
   clojure.lang.IObj
   (meta     [this]    (.meta ^clojure.lang.IObj m))
-  (withMeta [this xs] (PassMap. id (with-meta ^clojure.lang.IObj m xs) db db-keys))
+  (withMeta [this xs] (PassMap. id (with-meta ^clojure.lang.IObj m xs) db db-keys mutable))
   clojure.lang.IPersistentMap
   (valAt [this k]
     (let [^clojure.lang.MapEntry res (.entryAt m k)]
       (if res (.val res)
-        (if-let [res  (.valAt  ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
+          (if-let #_[res  (.valAt  ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
+                  ;;temporarily rewritten to accomodate mutable hashmaps...
+                  [res  (.get  ^java.util.Map (.valAt db k {}) id)]
           (do ;(println :caching k)
               (set! m (.assoc m k res))
               res)
@@ -115,27 +119,29 @@
   (entryAt [this k] (if-let [res (.entryAt m k)]
                       res
                       (when-let [k (if  (some-set db-keys) (db-keys k)
-                                         k)]                                        
-                        (when-let [^clojure.lang.MapEntry res (.entryAt ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
-                          (do (set! m (.assoc m k (.val res)))
-                              (clojure.lang.MapEntry. k (.val res))                              
+                                        k)]
+                        ;;temporarily rewritten to be compatible with maps.
+                        (when-let #_[^clojure.lang.MapEntry res (.entryAt ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
+                                  [v (.get ^java.util.Map (or (.get ^java.util.Map db k) {}) id)]
+                          (do (set! m (.assoc m k v #_(.val res)))
+                              (clojure.lang.MapEntry. k v #_(.val res))                              
                               )))))
-  (assoc [this k v]   (PassMap. id (.assoc m k v)  db db-keys))
-  (cons  [this e]     (PassMap. id (.cons m e)     db  db-keys))
-  (without [this k]   (PassMap. id (.without m k) (.without db k) (.disjoin db-keys k)))
+  (assoc [this k v]   (PassMap. id (.assoc m k v)  db db-keys mutable))
+  (cons  [this e]     (PassMap. id (.cons m e)     db  db-keys mutable))
+  (without [this k]   (PassMap. id (.without m k) (if-not mutable (.without db k) db) (.disjoin db-keys k) mutable))
   clojure.lang.Seqable
   (seq [this] (concat (seq m)
                       (filter identity
-                              (map (fn [^clojure.lang.MapEntry e]
-                                     (if (.containsKey ^clojure.lang.IPersistentMap m (.key e))
+                              (map (fn [^java.util.Map$Entry e]
+                                     (if (.containsKey ^clojure.lang.IPersistentMap m (.getKey e))
                                        nil
-                                       (.entryAt this (.key e)))) db))))
+                                       (.entryAt this (.getKey e)))) db))))
   clojure.lang.Counted
   (count [this]      (do (when db (join! db-keys db)) (.count m)))
   java.util.Map ;;some of these aren't correct....might matter.
   (put    [this k v]  (.assoc this k v))
-  (putAll [this c] (PassMap. id (.putAll ^java.util.Map m c) db db-keys))
-  (clear  [this] (PassMap.  id {} nil #{}))
+  (putAll [this c] (PassMap. id (.putAll ^java.util.Map m c) db db-keys mutable))
+  (clear  [this] (PassMap.  id {} nil #{} mutable))
   (containsKey   [this k]
     (or (.containsKey ^java.util.Map m k)
         (and db
@@ -159,8 +165,14 @@
 
 
 (defn lazy-join
-  ([source k] (PassMap. k {} source #{}))
-  ([source k keyset]  (PassMap. k {} source keyset)))
+  ([source k] (PassMap. k {} source #{} false))
+  ([source k keyset]  (PassMap. k {} source keyset false)))
+
+;;quick hack to allow wrapped hashmaps; re-uses the existing
+;;passmap code.  Doesn't alter the underlying hashmap on .dissoc.
+(defn lazy-join-mutable
+  ([source k] (PassMap. k {} (mutable/hashmap->mutmap source) #{} true))
+  ([source k keyset]  (PassMap. k {} (mutable/hashmap->mutmap source) keyset true)))
 
 ;;testing 
 
@@ -198,82 +210,3 @@
 ;;Alternately, we just disallow row operations and
 ;;force everything to delegate to the store via
 ;;add/remove entry?
-
-(deftype PassMapMutable [id                  
-                         ^java.util.Map db
-                         ^:unsynchronized-mutable ^int _hasheq
-                         ^:unsynchronized-mutable ^int _hash
-                         ^:unsynchronized-mutable  _meta
-                         ]
-  clojure.lang.IHashEq
-  (hasheq [this]
-    (if (== _hasheq (int -1))
-      (let [h (hash-unordered-coll (seq this))]
-        (do (set! _hasheq (int h))
-            h))
-      _hasheq))
-  (hashCode [this]
-    (if (== _hash (int -1))
-      (let [h (hash-unordered-coll (seq this))]
-        (do (set! _hash (int h))
-            h))
-      _hash))
-  (equals [this o] (clojure.lang.APersistentMap/mapEquals this o))
-  (equiv  [this o]
-    (cond (identical? this o) true
-          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
-          (or (instance? clojure.lang.Sequential o)
-              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
-              :else nil))  
-  clojure.lang.IObj
-  (meta     [this]    _meta)
-  (withMeta [this xs] (do (set! _meta xs) this))
-  clojure.lang.IPersistentMap ;;debatable if we should use this interface...
-  (valAt [this k] (.get db k))                            
-  (valAt [this k not-found]
-    (if-let [res (.valAt this k)]
-      res
-      not-found))
-  (entryAt [this k] (when-let [v (.valAt this k)]
-                    (clojure.lang.MapEntry. k (.val res))))
-  (assoc [this k v]  
-                       (.put c id v)
-                       (let [^java.util.HashMap c (java.util.HashMap.)
-                             _ (.put db k c)
-                             _ (.put c id v)]
-                             
-  (cons  [this e]     
-  (without [this k]   (PassMap. id (.without m k) (.without db k) (.disjoin db-keys k)))
-  clojure.lang.Seqable
-  (seq [this] (concat (seq m)
-                      (filter identity
-                              (map (fn [^clojure.lang.MapEntry e]
-                                     (if (.containsKey ^clojure.lang.IPersistentMap m (.key e))
-                                       nil
-                                       (.entryAt this (.key e)))) db))))
-  clojure.lang.Counted
-  (count [this]      (do (when db (join! db-keys db)) (.count m)))
-  java.util.Map ;;some of these aren't correct....might matter.
-  (put    [this k v]  (.assoc this k v))
-  (putAll [this c] (PassMap. id (.putAll ^java.util.Map m c) db db-keys))
-  (clear  [this] (PassMap.  id {} nil #{}))
-  (containsKey   [this k]
-    (or (.containsKey ^java.util.Map m k)
-        (and db
-             (when-let [k (if  (some-set db-keys) (db-keys k)
-                               k)]            
-               (.containsKey ^java.util.Map db k)))))
-  (containsValue [this o] (throw (Exception. "containsValue not supported")))
-  (entrySet [this]   (do  (when db (join!  db-keys db))
-                          (.entrySet ^java.util.Map m))) 
-  (keySet   [this]   (do (when db (join!  db-keys db)) 
-                         (.keySet ^java.util.Map m)))   
-  clojure.core.protocols/IKVReduce
-  (kv-reduce [this f init]
-    (reduce-kv (fn [acc k v]
-                 (if (.containsKey ^clojure.lang.IPersistentMap m k)
-                   acc
-                   (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
-                     (f acc (.key e) (.val e))
-                     acc))) (reduce-kv f init m) db))
-  )

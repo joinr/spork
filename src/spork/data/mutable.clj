@@ -254,6 +254,8 @@
       (let [[k v] e]      
         (do (.put m k v) this))))
   (without [this k]   (do (.remove m k) this))
+  (entryAt [this k]   (when-let [v (.get m k)]
+                        (clojure.lang.MapEntry. k v)))
   clojure.lang.Seqable
   (seq [this] (seq m))
   clojure.lang.Counted 
@@ -275,7 +277,37 @@
   (isEmpty [this] (.isEmpty m))
   (remove [this o] (do (.remove m o) this))
   (values [this] (.values m))
-  (size [this] (.size m)))
+  (size [this] (.size m))
+  clojure.core.protocols/IKVReduce 
+  (kv-reduce [amap f init] 
+    (let [^java.util.Set es (.entrySet ^java.util.HashMap m)
+          ^java.util.Iterator it (.iterator es)]
+      (loop [acc init]
+        (if (reduced? acc) @acc
+            (if (.hasNext it)
+              (let [^java.util.Map$Entry e (.next it)]
+                (recur (f acc (.getKey e) (.getValue e))))
+              acc)))))
+  clojure.core.protocols/CollReduce  
+  (coll-reduce [coll f]     
+       (let [^java.util.Set es (.entrySet ^java.util.HashMap m)
+             ^java.util.Iterator it (.iterator es)]
+         (when (.hasNext it) 
+           (loop [acc (.next it)]
+             (if (reduced? acc) @acc
+                 (if (.hasNext it)
+                   (let [^java.util.Map$Entry e (.next it)]
+                     (recur (f acc  e)))
+                   acc))))))
+  (coll-reduce [coll f val]
+       (let [^java.util.Set es (.entrySet ^java.util.HashMap m)
+             ^java.util.Iterator it (.iterator es)]
+         (loop [acc val]
+           (if (reduced? acc) @acc
+               (if (.hasNext it)
+                 (let [^java.util.Map$Entry e (.next it)]
+                   (recur (f acc  e)))
+                 acc))))))
 
 
 (deftype txmutmap [^:unsynchronized-mutable ^long tx ^java.util.HashMap m
@@ -480,8 +512,10 @@
 (defn ^mutmap ->mutmap [& xs]  
   (into (mutmap. (java.util.HashMap.)) xs))
 
+(defn hashmap->mutmap [hm] (mutmap. hm))
+
 (defn ^txmutmap ->txmutmap [& xs]  
-  (into (txmutmap. 0 (java.util.HashMap.)) xs))
+  (into (txmutmap. 0 (java.util.HashMap.) -1) xs))
 
 (defn ^mutlist ->mutlist [& xs]  
    (mutlist. (reduce (fn [^java.util.ArrayList m k] (doto m (.add k)))  (java.util.ArrayList.)  xs)))

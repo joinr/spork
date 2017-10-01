@@ -143,6 +143,19 @@
   ([domain-map id domains]
    (passmap/lazy-join domain-map id domains)))
 
+(defn lazy-join-mutable
+  "Creates a map-based representation of an entity, reifed as lazily-joined
+   components.  Uses a spork.data.passmap.PassMap to cache the joined components.
+   The entity map acts just like a regular hashmap, with equality semantics 
+   and support for meta.  We do this to provide the convenience of joining 
+   all the entity's components, without the inefficieny of eagerly creating 
+   very large maps for entities with lots of components.  Mutable version
+   assumes domain-map is a mutable hashmap."
+  ([domain-map id]
+   (passmap/lazy-join-mutable domain-map id))
+  ([domain-map id domains]
+   (passmap/lazy-join-mutable domain-map id domains)))
+
 (definline has-entry? [m k]
   (let [m (with-meta m {:tag 'clojure.lang.IPersistentMap})]
     `(.entryAt ~m ~k)))
@@ -600,9 +613,6 @@
                 c v))
       (throw (Exception. (str [:domain-does-not-exist c]))))))
 
-
-(deftype MutableRecord [^IEntityStore db id])
-
 ;;Beginnings of a mutable entity store.  Note: this is approximately 10x faster than our
 ;;persistent counterpart, but it's 
 (defrecord MapEntityStore [^java.util.HashMap entity-map
@@ -640,7 +650,7 @@
   (domains [db]   domain-map)
   (domains-of     [db id]  (.get entity-map id))
   (components-of  [db id]
-    (lazy-join domain-map id)
+    (lazy-join-mutable domain-map id)
     )  
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
@@ -712,6 +722,8 @@
     (reduce (fn [acc ^java.util.Map$Entry ent]
               (f acc (.getKey ent) (.getValue ent))) init obj)))
 
+;;todo: make this more effecient using with-mutable macro....
+;;possibly link to spork.data.mutable protocols.
 (defn mutate! [store]
   (reduce-kv (fn [acc domain m]
                (reduce-kv (fn [acc id data]
@@ -1553,38 +1565,6 @@
          `(def ~(with-meta name m)  
             (entity-spec ~args ~specs ~components)))
        (throw (Exception. "Entity spec is invalid!")))))
-
-(comment ;testing
-  (def cs [:a :b :c :d :e :f :g :h :i :j :k :l :m :n :o :p :q :r :s :t :u :v :w :x :y :z])
-  (def es (for [n (range 50)]
-            (into {:name n} (map (fn [c] [c (str  c n)]) cs))))            
-                
-  (def the-store
-    (-> emptystore
-        (add-entities es)))
-
-  ;;mutable vs persistent update tests...
-  (let [the-store (mutate! the-store)]
-    (time (dotimes [i 1000000]
-            (assoce the-store 45 :q :hello!))))
-
-  (time (dotimes [i 1000000]
-          (assoce the-store 45 :q :hello!)))
-
-  
-  
-  (let [^clojure.lang.IPersistentMap store {:es {0 #{:a :b :c}}  :cs {:a {0 true} :b {0 true} :c {0 true}}}]
-    (time (dotimes [i 1000000] (update store :cs
-                                       (fn [m]
-                                         (update m :a
-                                                 (fn [m] (assoc m 0 false))))))))
-
-  (let [^clojure.lang.IPersistentMap store {:es {0 #{:a :b :c}}  :cs {:a {0 true} :b {0 true} :c {0 true}}}]
-    (time (dotimes [i 1000000] (update store :cs
-                                       (fn [m]
-                                         (update m :a
-                                                 (fn [m] (assoc m 0 false))))))))
-)
 
 (defmacro valAt [m k & [default]]
   `(if-let [res# (.valAt ~(with-meta m {:tag 'clojure.lang.IPersistentMap}) ~k)]
