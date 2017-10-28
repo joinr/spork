@@ -72,6 +72,20 @@
        (set! ~db-keys #{})
        (set! ~db nil)))
 
+(defmacro get!
+  "This is a quick performance hack to allow direct method invocation
+   with a type-hinted java.util.Map object.  If we didn't do this,
+   using the intermediate let binding, expressions aren't hinted and
+   we wind up with reflections.  It may seem like overkill, but
+   this ends up being ~3x faster than using clojure.core/get,
+   which is still quite fast.  Still, we're on a hot path,
+   so I'm using this to provide compatibility between
+   persistent maps and hashmaps."
+  [m k]
+  (let [the-map (with-meta (gensym "the-map")  {:tag 'java.util.Map})]
+    `(let [~the-map ~m]
+       (.get ~the-map ~k))))
+
 (deftype PassMap [id
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap m
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap db
@@ -122,7 +136,7 @@
                                         k)]
                         ;;temporarily rewritten to be compatible with maps.
                         (when-let #_[^clojure.lang.MapEntry res (.entryAt ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
-                                  [v (.get ^java.util.Map (or (.get ^java.util.Map db k) {}) id)]
+                                  [v (get! (or (get! db k) {}) id)]
                           (do (set! m (.assoc m k v #_(.val res)))
                               (clojure.lang.MapEntry. k v #_(.val res))                              
                               )))))
