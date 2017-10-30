@@ -634,14 +634,15 @@
           db)))
   (drop-entry [db id domain]
     (if-let [^java.util.HashSet e (.get entity-map id)]
-      (do (if (not (== 1 (.size e)))
-            (.remove e domain)
-            (.remove entity-map id))
-          (let [^java.util.HashMap comps (.get domain-map domain)]
-            (if (not (== 1 (.size comps)))
-              (.remove comps id)
-              (.remove domain-map domain)))
-          db)
+      (do (when (.contains e domain) ;;entity has domain..
+            (if (not (== 1 (.size e)))
+              (.remove e domain)
+              (.remove entity-map id))
+            (let [^java.util.HashMap comps (.get domain-map domain)]
+              (if (not (== 1 (.size comps)))
+                (.remove comps id)
+                (.remove domain-map domain))))
+            db)
       (throw (Exception. (str "entitystore does not contiain an entry for " id)))))
   (get-entry     [db id domain]
     (when-let [^java.util.HashMap comps (.get domain-map domain)]

@@ -224,3 +224,22 @@
 ;;Alternately, we just disallow row operations and
 ;;force everything to delegate to the store via
 ;;add/remove entry?
+
+
+
+
+
+;;Updated thoughts on buffering the underlying db...
+;;Semantics follow:
+;;We maintain the local cache, the db, and a set of db-keys.
+;;  If a key is dropped from the db,
+;;     future assoc/dissoc should be routed to the cache...
+;;     the db-keys should remove the dropped key.
+;;  If a key is added,
+;;     the key should be modified in the cache.
+;;  IF a key is read
+;;     the key should be looked up in the cache,
+;;     then - if not dropped from the db -
+;;      looked up in the db.
+
+;;So, if we add an extra bit of info
