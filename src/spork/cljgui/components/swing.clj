@@ -10,7 +10,7 @@
         ;   [java.io OutputStream PrintStream]
            [javax.swing JFrame JPanel Box BoxLayout JTextField JSplitPane
             JLabel JButton JOptionPane JScrollPane Timer SwingUtilities
-            JFileChooser JTable JFrame JMenuBar JMenu JMenuItem JTextArea
+            JFileChooser JTable JFrame JMenuBar JMenu JPopupMenu JMenuItem JTextArea
             JList ListModel ListSelectionModel AbstractListModel JTabbedPane JComponent ImageIcon]
            [javax.swing.event ChangeListener]
            [java.awt GridBagConstraints GridBagLayout BorderLayout FlowLayout 
@@ -171,6 +171,12 @@
         (.add m item))
     m))
 
+(defn ^JPopupMenu popup-menu [name & items]
+  (let [m (JPopupMenu. (str name))]
+    (doseq [item items]
+        (.add m item))
+    m))
+
 (defn ^JMenuItem menu-item [name & {:keys [action-handler]
                                     :or   {action-handler (fn [] nil)}}]
   (let [m (JMenuItem. (str name))]
@@ -188,14 +194,15 @@
     mb))
 
 
-(defn map->menu [name action-map]
-  (reduce (fn [m [item-name & [v]]]
-            (let [itm (if (map? v)
-                        (map->menu (str item-name) v)
-                        (menu-item item-name  
-                                   :action-handler v))]
-              (doto m 
-                (.add itm)))) (menu name) (seq action-map))) 
+(defn map->menu [name action-map & {:keys [popup?]}]
+  (let [the-menu (if popup? (popup-menu name) (menu name))]
+    (reduce (fn [m [item-name & [v]]]
+              (let [itm (if (map? v)
+                          (map->menu (str item-name) v :popup? popup?)
+                          (menu-item item-name  
+                                     :action-handler v))]
+                (doto m 
+                  (.add itm)))) the-menu (seq action-map)))) 
 
 (defn menu-spec->ui-map [spec & {:keys [keywordize?] :or 
                                         {keywordize? true}}]
@@ -225,9 +232,9 @@
          (with-meta {:ui-map ui-map
                      :event-stream event-stream}))))
 
-(defn map->reactive-menu [name spec]
+(defn map->reactive-menu [name spec & {:keys [popup?]}]
   (let [reactive-spec (reactive-menu-spec spec)]
-    {:view (map->menu name reactive-spec)
+    {:view (map->menu name reactive-spec :popup? popup?)
      :control (meta reactive-spec)}))
 
   
