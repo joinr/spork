@@ -94,14 +94,15 @@
    map is consulted to determine if a parser is defined for the field; If not, 
    the optional default-parser is used.  The standard default-parser is to 
    parse any input as an int, or a float, or a string.  This is slow, but 
-   general."
-  [field-parser & {:keys [default-parser] 
+   general.  Caller may supply a map of custom parsers, of {type parsing-fn} to
+   override the built-in parsing defaults."
+  [field-parser & {:keys [default-parser custom-parsers] 
                    :or   {default-parser parse-string}}]
   (let [get-parser (gen/memo-1  (fn [field] 
                                   (if-let [pfunc (get-key-or-string field-parser field default-parser)]
-                                    (lookup-parser pfunc default-parser) 
-                                    parse-string)))]
-    (fn [field ^String v] ((get-parser field) v))))
+                                    (with-parsers  custom-parsers  (lookup-parser pfunc default-parser)) 
+                                      parse-string)))]
+      (fn [field ^String v] ((get-parser field) v))))
 
 (defn nested-parser 
   "A nested-parser allows us to compose a sequence of parsers; where 

@@ -855,10 +855,18 @@
                {} s)))
 
 ;;if we're not provided a schema, we can ascertain what kind of
-;;data it is based on the first column.
-(defn derive-schema [row & {:keys [parsemode line->vec]
+;;data it is based on the first row.
+;;Note: if the row is nil, then we have an empty table...
+;;The schema is undefined...so we can revert to a default
+;;schema.
+(defn derive-schema [row & {:keys [parsemode line->vec fields]
                             :or {line->vec split-by-tab}}]
-  (let [xs     (line->vec row)
+  (let [xs     (cond  (string? row) (line->vec row)
+                      (and (coll? fields) (pos? (count fields)))
+                                    (repeat (count fields) "")
+                      :else (throw
+                             (Exception. (str [:cannot-derive-schema
+                                               {:row row :fields fields}]))))
         parser (if (= parsemode :scientific)  parse/parse-string
                     parse/parse-string-nonscientific);clojure.edn/read-string
         types  (mapv (comp type parser) xs)]    
@@ -870,6 +878,25 @@
                (identical? t java.lang.Double)  :double
               :else (throw (Exception. "unsupported parsing type " t)))) types)
     ))
+
+(defn pooled-parsing-scheme
+  "Overrides the default parsing defaults for string-based
+   field types to use a string-pool.  Caller may supply their
+   own string-pool, otherwise defaults to a pool of 100 resetting
+   after growing to 1000 entries.  For java 8, and large string
+   based datasets read from files, this is important for
+   performance and memory consumption, since it uses a
+   canonical string representation."
+  [field-parser & {:keys [default-parser] 
+                   :or   {default-parser parse/parse-string}}]
+  (let [pool    (s/->string-pool 100 1000)
+        default (fn pooled-default-parser [x]
+                  (let [v (default-parser x)]
+                    (if (string? v) (pool v) v)))]
+    (parse/parsing-scheme field-parser
+                          :default-parser default
+                          :custom-parser {:string pool
+                                          :text   pool})))
 
 ;older table abstraction, based on maps and records...
 (defn lines->table 
@@ -890,7 +917,7 @@
                              identity)
                            (line->vec (general/first-any lines)))) 
                  [])
-        parsef (parse/parsing-scheme schema :default-parser  
+        parsef (pooled-parsing-scheme #_parse/parsing-scheme schema :default-parser  
                    (or default-parser
                        (if (= parsemode :scientific) parse/parse-string
                            parse/parse-string-nonscientific)))
@@ -920,7 +947,7 @@
                                   root)))
                             raw-headers)
         s         (unify-schema schema fields)
-        parser    (spork.util.parsing/parsing-scheme s)
+        parser    (#_spork.util.parsing/parsing-scheme pooled-parsing-scheme s)
         idx       (atom 0)
         idx->fld  (reduce (fn [acc h]
                             (if (get s h)
@@ -969,12 +996,13 @@
                             raw-headers)
         schema    (if (empty? schema)
                     (let [types (derive-schema (general/first-any (r/drop 1 ls))
-                                               :parsemode parsemode
-                                               :line->vec line->vec)]
-                      (into {} (map vector fields types)))
+                                                 :parsemode parsemode
+                                                 :line->vec line->vec
+                                                 :fields fields)]
+                        (into {} (map vector fields types)))
                     schema)
         s         (unify-schema schema fields)
-        parser    (spork.util.parsing/parsing-scheme s)
+        parser    (pooled-parsing-scheme #_spork.util.parsing/parsing-scheme s)
         idx       (atom 0)
         idx->fld  (reduce (fn [acc h]
                             (if (get s h)
@@ -1218,7 +1246,7 @@
    writer writing tab-delimited field values.  Writers headers."
   [xs dest & {:keys [field-order sep writer]
               :or {sep "\t"}}]
-  (with-open [out (stream/->record-writer dest :sep sep :writer writer)]
+  (with-open [out (stream/->record-writer dest :sep sep :writer writer :field-order field-order)]
     (reduce (fn [o r] (stream/write-record o r)) out  xs)))
 
 ;establishes a simple table-viewer.
