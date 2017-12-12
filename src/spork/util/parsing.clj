@@ -117,50 +117,6 @@
             (parsing-scheme (first revschemes) :default-parser default-parser)
             (rest revschemes))))
 
-;;As a reducer, this is significantly faster than clojure.string/split
-(defn split-by
-  [^String input ^Character delim]
-  (let [d (int delim)]
-    (reify
-      clojure.lang.ISeq
-      (seq  [o]
-        (loop [start 0
-               end (.indexOf input d 0)
-               acc (java.util.ArrayList.)]     
-          (if (== end -1)
-            (do (when-not (zero? start)
-                  (.add acc (String. (.substring input start (unchecked-dec (count input))))))
-                  (seq acc))
-              (recur (unchecked-inc end)
-                     (.indexOf input d (unchecked-inc end))
-                     (doto acc (.add (String. (.substring input start end))))))))
-      clojure.core.protocols/CollReduce
-      (coll-reduce [o f init]
-        (loop [start 0
-               end (.indexOf input d 0)
-               acc init]     
-          (cond (reduced? acc) @acc
-                (== end -1) acc
-                :else
-                (recur (unchecked-inc end)
-                       (.indexOf input d (unchecked-inc end))
-                       (f acc  (String. (.substring input start end)))))))
-      (coll-reduce [o f]
-        (let [end1 (.indexOf input d 0)]
-          (if (== end1 -1) nil
-              (let [end2 (.indexOf input d  ^long (unchecked-inc end1))]
-                (if (== end2 -1) (String. (.substring input 0 end1))                   
-                    (loop [start (unchecked-inc end2)
-                           end   (.indexOf input d  (unchecked-inc end2))
-                           acc   (f (String. (.substring input 0 end1))
-                                    (String. (.substring input (unchecked-inc end1) end2)))]
-                      (cond (reduced? acc) @acc
-                            (== end -1) acc
-                            :else
-                            (recur (unchecked-inc end)
-                                   (.indexOf input d  (unchecked-inc end))
-                                   (f acc (.substring input start end)))))))))))))
-
 (comment
 (defn vec-parser 
   "Given a set of fields, and a function that maps a field name to 
