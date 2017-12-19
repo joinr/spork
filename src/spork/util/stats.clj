@@ -353,17 +353,24 @@
                           (let [v @current]
                             (do (reset! current
                                         (gen/swapv from to v))
-                                (swap! upper-bound dec))))]
+                                (swap! upper-bound dec))))
+            clear!    (fn []
+                        (reset! current sample)
+                        (reset! upper-bound bound)
+                        nil)]
         (assert (pos? bound) (str "cannot create an empirical sample from nothing : " xs))
-        (fn [] 
-          (let [ub @upper-bound]
-            (if (== ub 1) 
-              (do (reset! upper-bound bound)
-                  (first @current))
-              (let [drawn (rand-int ub)
-                    val   (nth @current drawn)]
-                (do (push! drawn (dec ub))
-                    val)))))))))           
+        (fn
+          ([] 
+           (let [ub @upper-bound]
+             (if (== ub 1) 
+               (do (reset! upper-bound bound)
+                   (first @current))
+               (let [drawn (rand-int ub)
+                     val   (nth @current drawn)]
+                 (do (push! drawn (dec ub))
+                     val)))))
+          ([clear] (clear!)))))))
+
 
 (def lower-case clojure.string/lower-case)
 

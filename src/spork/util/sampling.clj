@@ -469,7 +469,8 @@
      (->node :choice {:sample-func f :children nodes})))
 (defn ->without-replacement [xs] 
   (let [sampler (spork.util.stats/non-replacing-samples xs)]
-    (->choice (fn [xs] (sampler)) xs)))    
+    (with-meta (->choice (fn [xs] (sampler)) xs)
+      {:clear (fn [] (sampler :clear))})))    
 (defn ->transform    
   [f nodes]  
   (->node :transform {:f  f :children nodes})) 
@@ -527,6 +528,11 @@
 
 (defn lift [x] (fn [ctx] (sample-node x ctx)))
 (defn node? [x] (and (map? x) (contains? x :node-type)))
+(defn leaf? [node]
+  (or (keyword? node) 
+      (symbol? node) 
+      (number? node) 
+      (string? node)))
 
 ;;The default behavior for sampling a node is to determine if the node is 
 ;;a primitive atom (leaf/data),a singleton node (leaf), or  a composite node 
@@ -536,13 +542,10 @@
 ;;recursively.  Sequences of nodes (composite nodes), are sampled sequentially.
 (defmethod sample-node :default  [node ctx]
   (cond (sequential? node) (map #(sample-node % ctx) node) 
-        (or (keyword? node) 
-            (symbol? node) 
-            (number? node) 
-            (string? node)) 
-          (let [res (get ctx node)]
-            (if res (sample-node res ctx) ;continue sampling... 
-              (or res (when ((complement node?) node) node))))
+        (leaf? node)
+           (let [res (get ctx node)]
+             (if-not (leaf? res) (sample-node res ctx) ;continue sampling...
+                     res))
         :else (if-let [remaining (node-data node)]
                 (sample-node remaining ctx)
                 node)))
