@@ -301,7 +301,7 @@
         
 ;;Patched to use rand binding in stats.rand 
 
-(defn weighted-choice
+#_(defn weighted-choice
   "Identical to choice, except it takes a map of node->probability densities.
    Where the keys are resolvable nodes, and the densities are the probabilities
    from [0 1], that a node will be chosen.  Densities must sum to 1.0 to be
@@ -325,15 +325,7 @@
    from [0 1], that a node will be chosen.  Densities must sum to 1.0 to be
    valid."
   [pdf-map]
-  (let [length (reduce + (vals pdf-map))
-        nodes  (keys pdf-map) 
-        choose (fn [] (loop [r (* length (stats/*rand*))
-                             xs nodes
-                             ds (vals pdf-map)]
-                        (cond (= (count xs) 1)  (first xs)
-                              (<= r (first ds)) (first xs)
-                              :else (recur (- r (first ds)) 
-                                           (rest xs) (rest ds)))))]
+  (let [choose (stats/weighted-samples pdf-map)]
     (fn [ctx] ((choose) ctx))))
 
 (defn tree-mapcat
@@ -466,11 +458,27 @@
   ([nodes]    
      (->node :choice {:sample-func sample-nth :children nodes}))
   ([f nodes] 
-     (->node :choice {:sample-func f :children nodes})))
-(defn ->without-replacement [xs] 
-  (let [sampler (spork.util.stats/non-replacing-samples xs)]
-    (with-meta (->choice (fn [xs] (sampler)) xs)
-      {:clear (fn [] (sampler :clear))})))    
+   (->node :choice {:sample-func f :children nodes})))
+
+;;Need to lift xs since we have a stateful sampling function
+;;in the form of non-replacing-samples.
+;;This is a bit janky, but it works around the problem of
+;;sampling atoms vs. functions.
+(declare lift)
+(defn ->without-replacement [xs]
+  (if (map? xs)
+    (let [rendered-map (zipmap (map lift (keys xs)) (vals xs)) 
+          sampler (spork.util.stats/non-replacing-weighted-samples
+                   rendered-map)]
+      (with-meta (->choice (fn [xs] (sampler)) rendered-map)
+        {:clear (fn [] (sampler :clear))
+         :sampler sampler
+         :no-replacement true}))
+    (let [sampler (spork.util.stats/non-replacing-samples (mapv lift xs))]
+      (with-meta (->choice (fn [xs] (sampler)) xs)
+        {:clear (fn [] (sampler :clear))
+         :sampler sampler
+         :no-replacement true}))))
 (defn ->transform    
   [f nodes]  
   (->node :transform {:f  f :children nodes})) 
@@ -485,7 +493,6 @@
   (->transform flatten nodes))
 (defn ->chain [nodes]    
   (->transform following-recs (->flatten nodes)))
-
 
 ;;Evaluation Semantics for Sampling Rules
 ;;=======================================
@@ -504,17 +511,6 @@
    step."
   (fn [node ctx] (node-type node)))
 
-;; (defn lift-children
-;;   "Helper function to allow us to ensure that values we need to pass the 
-;;    rendering context to are able to be evaluated.  Things that are keywords 
-;;    or functions are fine already, where anything else - like a node - needs to 
-;;    be lifted using node rendering.  The only reason for this is to allow 
-;;    inlining node definitions anywhere in the sample graph, but it's useful 
-;;    enough to justify the overhead."
-;;   [xs] 
-;;   (into [] (map (fn [x] (if (or (keyword? x) (fn? x)) x 
-;;                           (fn [ctx] (sample-node x ctx)))) xs)))
-
 (defn lift-children
   "Helper function to allow us to ensure that values we need to pass the 
    rendering context to are able to be evaluated.  Things that are keywords 
@@ -523,16 +519,25 @@
    inlining node definitions anywhere in the sample graph, but it's useful 
    enough to justify the overhead."
   [xs] 
-  (into [] (map (fn [x] (if (fn? x) x 
+  (into [] (map (fn [x] (if (or (fn? x) (keyword? x)) x 
                           (fn [ctx] (sample-node x ctx)))) xs)))
 
-(defn lift [x] (fn [ctx] (sample-node x ctx)))
+(defn lift [x] (if (or (fn? x) (keyword? x))
+                 x
+                 (fn [ctx] (sample-node x ctx))))
 (defn node? [x] (and (map? x) (contains? x :node-type)))
 (defn leaf? [node]
   (or (keyword? node) 
       (symbol? node) 
       (number? node) 
       (string? node)))
+
+;;Notes on performance:
+;;We have a couple of spots where we're doing a lot of extra work that
+;;could easily be cached.  Namely: lifting children, tree-concat
+;;during replications) are obvious areas.  lift-children gets
+;;called so often (and is actually pretty minimal) that we
+;;should be caching it.
 
 ;;The default behavior for sampling a node is to determine if the node is 
 ;;a primitive atom (leaf/data),a singleton node (leaf), or  a composite node 
@@ -561,13 +566,14 @@
         ((chain (lift-children data)) ctx)))
 ;;sample-node now delegates to its function data to perform sampling.
 (defmethod sample-node :choice   [node ctx]
-  (let [data (:children (node-data node))
+  (let [data        (:children    (node-data node))
         sample-func (:sample-func (node-data node))]
-    (if (map? data) 
-      (let [rendered-map (zipmap (lift-children (keys data))
-                                                  (vals data))]                                             
-        (sample-node ((weighted-choice rendered-map) ctx) ctx))
-      (sample-node ((choice sample-func (lift-children data)) ctx) ctx))))
+    (cond (:no-replacement (meta node)) (sample-node ((sample-func ctx) ctx) ctx)
+          (map? data)  (let [rendered-map (zipmap (lift-children (keys data))
+                                                  (vals data))]
+                         (sample-node ((weighted-choice rendered-map) ctx) ctx))
+          :else 
+          (sample-node ((choice sample-func (lift-children data)) ctx) ctx))))
 
 (defmethod sample-node :transform [node ctx]
   (let [{:keys [f children]} (node-data node)

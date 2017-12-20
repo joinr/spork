@@ -371,6 +371,63 @@
                      val)))))
           ([clear] (clear!)))))))
 
+(defn weighted-samples
+  "Takes a map of choice->probability densities.  Where the keys are
+  unique elements of the discrete set, and the densities are the
+  probabilities from [0 1], that a node will be chosen.  Densities
+  must sum to 1.0 to be valid."
+  [pdf-map]
+  (let [length (reduce + (vals pdf-map))
+        nodes  (keys pdf-map)] 
+     (fn choose [] (loop [r (* length (*rand*))
+                          xs nodes
+                          ds (vals pdf-map)]
+                     (cond (= (count xs) 1)  (first xs)
+                           (<= r (first ds)) (first xs)
+                           :else (recur (- r (first ds)) 
+                                        (rest xs) (rest ds)))))))
+
+(defn non-replacing-weighted-samples
+  "Takes a map of choice->probability densities.  Where the keys are
+  unique elements of the discrete set, and the densities are the
+  probabilities from [0 1], that a node will be chosen.  Densities
+  must sum to 1.0 to be valid. Non-replacing, exhausts the sample
+  space and curtails the CDF based on remaining samples."
+  [pdf-map]
+  (let [length         (reduce + (vals pdf-map))
+        entries        (vec (seq pdf-map))
+        active-entries (atom entries)
+        active-length  (atom length)
+        clear! (fn []  (reset! active-entries entries)
+                       (reset! active-length length))]
+    (reify
+      clojure.lang.IDeref
+      (deref [this] {:active-entries active-entries
+                    :active-length active-length})
+      clojure.lang.IFn
+      (invoke [this]
+        (if (== (count @active-entries) 1)
+          (let [choice (first @active-entries)
+                _      (clear!)
+                ]
+            (first choice))
+          (let [pc (atom (* @active-length (*rand*)))
+                choice  (reduce (fn [acc [k p :as e]]
+                                  (if (<= @pc p)                                    
+                                    (reduced e)
+                                    (do (swap! pc - p)
+                                        acc)))
+                                       nil  @active-entries)
+                [k p] choice
+                _ (swap! active-length - p)
+                _ (reset! active-entries
+                          (remove #(= (first %) k) @active-entries))]
+            k)))
+        (invoke [this arg] (do (clear!) this))
+      )))
+            
+   
+
 
 (def lower-case clojure.string/lower-case)
 
