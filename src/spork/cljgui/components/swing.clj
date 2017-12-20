@@ -1133,7 +1133,7 @@
   (.getView (.getViewport
              (first (.getComponents (.getContentPane frm))))))
 
-(defmethod view :default [s & {:keys [title cached?] :or {title "Shape" :cached? false}}] 
+(defmethod view :default [s & {:keys [title cached?] :or {title "Shape" cached? false}}] 
   (if (satisfies? j2d/IShape s)
     (let [{:keys [x y width height]} (j2d/shape-bounds s)
           paintf (if (atom? s) (fn [c] (j2d/draw-shape @s c))

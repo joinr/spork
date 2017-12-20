@@ -35,7 +35,7 @@
 (ns spork.events.native
   (:use [spork.events.base]
         [spork.events.observe])
-  (require [clojure [reflect :as r]
+  (:require [clojure [reflect :as r]
                     [string :as s]])
   (:import  
     [java.util EventListener EventObject]
