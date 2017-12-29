@@ -74,6 +74,7 @@
    :clojure clojure.edn/read-string
    :symbol  clojure.edn/read-string
    :literal clojure.edn/read-string
+   :edn     clojure.edn/read-string
    :code    read-string})
 
 (def ^:dynamic *parsers* parse-defaults) 
