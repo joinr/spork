@@ -461,6 +461,12 @@
   [^simcontext ctx] 
   (sim/next-time  ctx))
 
+(defn get-previous-time
+  "Returns the time of the prior event in the context, if this is the first
+   event processed, returns nil."
+  [^simcontext ctx] 
+  (agenda/previous-time  ctx))
+
 ;;I don't think we'll need this too much any more.
 ;;We get this automatically by requesting updates, since
 ;;the pending updates correspond to times.
