@@ -119,7 +119,7 @@
   "Computes peak concurrent activities, as per activity-profile, for a sequence 
    of temporal records xs.  Returns the top N active days.  Caller may supply 
    a custom peak-function, which operates on records of 
-   {t {:actives #{...}} :count n}"
+  {:actives #{...} :count n}"
   [xs & {:keys [start-func duration-func peak-function] 
          :or   {start-func :Start duration-func :Duration 
                 peak-function (fn [r] (:count r))}}]
