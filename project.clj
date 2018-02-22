@@ -4,7 +4,7 @@
                    (clojure.edn/read-string (slurp "order.edn"))
                    '[spork.cljgui.components.PaintPanel])))
 
-(defproject spork "0.2.0.8-SNAPSHOT"
+(defproject spork "0.2.0.9-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and will be supported as stand-alone dependencies.

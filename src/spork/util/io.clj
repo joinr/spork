@@ -21,21 +21,61 @@
 
 ;;path separator (i.e. \\ for windows, / otherwise)
 (def ^:constant +separator+ java.io.File/separator)
+(def ^:constant +re-separator+  (re-pattern +separator+))
 ;;delineates between other recognized directory separators.
 (def +alien-separator+ (case +separator+
                          "\\" "/"
                          "\\"))
+(def re-dupe (re-pattern (str +separator+ "+")))
+(defn dedupe-separators [s]
+  (strlib/replace s re-dupe +separator+))
+
+;;we want to coerce a path like
+;;~/blah/some-file -> home-path/blah/some/file
+;;./some-file  -> current-dir/some-file
+;;../some-file -> (file-path (parent-path .) some-file)
+
+(def relative-re #"(^~.*|.*\.+)")
+(declare relative-path)
+
+(defn normalize-path
+  "Parses path s to allow relative path characters
+   like ~, . ,.. to delineate home, present working dir,
+   and parent directory for relative paths.  Otherwise
+   returns input unaltered if path contains no relative
+   characters."
+  [s]
+    (if-not (re-seq relative-re s)
+            s ;;absolute path
+     (->> (list-path s)
+          (reduce (fn [[pwd p] x]
+                    (case x
+                      "~"  [(common-path :home) p]
+                      "."  [pwd p]
+                      ".." (try [(parent-path pwd) p]
+                                (catch Exception e
+                                  (throw (Exception.
+                                          (str [:invalid-relative-path
+                                                :went-beyond-root-directory
+                                                :for s])))))
+                      [pwd (conj p x)]))
+                  [*current-dir* []] )
+          (apply relative-path))))
 
 ;;We'd like to use windows and unix paths interchangeably...
 ;;If we're given a path with unix delimiters, we'll keep the unix
 ;;same for windows.
 (defn alien->native
-  "Converts alien paths to native paths via simple string replacement."
+  "Converts alien paths to native paths via simple string replacement.
+   Also cleans the path - if there are duplicate file separators,
+   replaces them with singletons."
   [p]
-  (clojure.string/replace p +alien-separator+ +separator+))
+  (-> (clojure.string/replace p +alien-separator+ +separator+)
+      (dedupe-separators)
+      (normalize-path)))
 
 ;;a map of the environment vars, really handy.
-(def  env-map 
+(def  env-map
   (->> (System/getenv) (map (fn [[k v]] [(keyword k) v])) (into {})))
 
 (defn get-env
@@ -45,7 +85,10 @@
   [k] (get env-map k))
 
 (def emptyq clojure.lang.PersistentQueue/EMPTY)
-(defn as-directory [s]
+(defn as-directory
+  "Coerces s to a path, ensuring that there is a trailing separator
+   indicating a directory."
+  [s]
   (let [s (alien->native s)]
     (if (= (subs s (dec (count s))) +separator+)
       s
@@ -71,7 +114,7 @@
 			(when (.isFile kf) (io/copy kf vf))))))
 
 
-(declare relative-path)
+
 
 (defmacro with-path
   "Given a root directory, and a collection of bindings in the form 
@@ -89,7 +132,7 @@
        ~body)))
 
 (def common-paths {:home home-path 
-                   :docs     (hpath "\\Documents")
+                   :docs     (hpath "Documents")
                    :javapath (System/getProperty "sun.boot.library.path")
                    :startdir (System/getProperty "user.dir")
                    :tempdir (System/getProperty "java.io.tmpdir")
@@ -109,26 +152,26 @@
    :path      - A list of paths on the system Path.
    :classpath - A list of paths on the Class Path.
    :javahome  - The path to the Java Runtime Environment."
-  [key] (get common-paths key))                           
+  [key] (get common-paths key))
 
 (defn relative-path
   "Given a root path (a string), and a list of strings, generates a relative
    path.  Auxillary function for making paths easier to deal with."
   [root pathlist]
-  (let [compath (common-path root)]    
-    (apply str (as-directory (if compath compath root)) 
-                             (butlast (interleave pathlist (repeat "\\"))))))
+  (let [compath (common-path root)]
+    (apply str (as-directory (if compath compath root))
+                             (butlast (interleave pathlist (repeat +separator+))))))
 
 (def ^:dynamic *current-dir* (common-path :startdir))
 
 (defmacro with-currentdir
-  "Supplies the most recent binding of *current-dir* as the root to with-path, 
+  "Supplies the most recent binding of *current-dir* as the root to with-path,
    operating identically to with-path."
   [binds & body]
   `(with-path *current-dir* ~binds ~@body))
 
-(defn load-script 
-  "Identical to load-file, except it assumes the filename is relative to a 
+(defn load-script
+  "Identical to load-file, except it assumes the filename is relative to a
    scripts directory relative to the current dir."
   [fname]
   (load-file (relative-path *current-dir* ["scripts" fname])))
@@ -182,11 +225,11 @@
   (reduce #(conj %1 (f %2)) [] v))
 
 (defn hock
-  "A variation of spit.  hock takes the same args as spit, but ensures that 
+  "A variation of spit.  hock takes the same args as spit, but ensures that
    the parents in the path exist."
   [path contents & options]
   (let [f (io/file path)]
-    (do 
+    (do
 	    (if (.exists f)
 	      (io/delete-file path)
 	      (make-folders! path []))
@@ -196,14 +239,14 @@
 
 (defn list-path
   "Split the file path into a vector of strings."
-  [fl] 
-  (strlib/split  
-    (if (string? fl) 
+  [fl]
+  (strlib/split
+    (if (string? fl)
       fl
-     (.getPath fl)) #"\\"))
-  
+     (.getPath fl)) +re-separator+))
+
 (defn butlast-vec
-  "Similar to butlast, but uses vector operations to avoid sequence op 
+  "Similar to butlast, but uses vector operations to avoid sequence op
    overhead."
   [v]
   (when (seq v)
@@ -448,11 +491,11 @@
   (let [f (io/file filepath)]
     (do (make-folders! (.getParent f))
         (.createNewFile (io/file filepath))
-        f))) 
+        f)))
 
-(def fcopy clojure.java.io/copy) 
+(def fcopy clojure.java.io/copy)
 
-;Since URIs are really useful for cross-platform stuff, and for dealing with 
+;Since URIs are really useful for cross-platform stuff, and for dealing with
 ;ZIP files, here are some helper functions...
 (defn file->uri
   "Maps a file to a uniform resource indicator."
@@ -470,6 +513,37 @@
 (defn path->uri
   "Returns a uniform resource indicator relative to path p."
   [p] (java.net.URI. (path->uripath p)))
+
+
+;;aux function to clean up path separator stuff.
+(defn parent-path
+  "Returns the path to the parent directory, with a trailing path
+   separator"
+  [p]
+  (case p
+    "/" (throw (Exception. (str [:no-parent-beyond-root-path p])))
+    (let [res  (fdir p)]
+      (if (not= res +separator+)
+        (str res +separator+)
+        res))))
+
+(defn file-path
+  "Generously interpets xs - one or more strings
+   or path fragments - into a native path string
+   without a trailing path separator, indicating
+   a file."
+  [& xs]
+  (-> (apply str (interpose  +separator+ xs))
+      (alien->native)))
+
+(defn dir-path
+  "Generously interpets xs - one or more strings
+   or path fragments - into a native path string
+   with a trailing path separator indicating a
+   directory."
+  [& xs]
+  (-> (apply file-path xs)
+      (str +separator+)))
 
 (defn get-resource
   "Gets the resource provided by the path.  If we want a text file, we 
