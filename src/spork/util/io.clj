@@ -515,17 +515,6 @@
   [p] (java.net.URI. (path->uripath p)))
 
 
-;;aux function to clean up path separator stuff.
-(defn parent-path
-  "Returns the path to the parent directory, with a trailing path
-   separator"
-  [p]
-  (case p
-    "/" (throw (Exception. (str [:no-parent-beyond-root-path p])))
-    (let [res  (fdir p)]
-      (if (not= res +separator+)
-        (str res +separator+)
-        res))))
 
 (defn file-path
   "Generously interpets xs - one or more strings
@@ -544,6 +533,18 @@
   [& xs]
   (-> (apply file-path xs)
       (str +separator+)))
+
+;;aux function to clean up path separator stuff.
+(defn parent-path
+  "Returns the path to the parent directory, with a trailing path
+   separator"
+  [p]
+  (case p
+    "/" (throw (Exception. (str [:no-parent-beyond-root-path p])))
+    (let [res  (fdir (file-path p))]
+      (if (not= res +separator+)
+        (str res +separator+)
+        res))))
 
 (defn get-resource
   "Gets the resource provided by the path.  If we want a text file, we 
