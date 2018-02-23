@@ -509,8 +509,22 @@
 ;;~/blah/some-file -> home-path/blah/some/file
 ;;./some-file  -> current-dir/some-file
 ;;../some-file -> (file-path (parent-path .) some-file)
+(def re-sep (case +separator+ "\\"
+                  #"\\"
+                  #"/"))
 
-(def relative-re #"(^~.*|.*\.+)")
+;;recognize dots...
+(def dots-re
+  (let [dot-path (str "^\\..*"
+                      re-sep)]
+    (re-pattern (str "(\\.\\.|" ;;up-dir
+                    dot-path ;;current-dir ./ or .\\ 
+                    "|^\\.$"  ;;lone dot
+                    ")"
+                    ))))
+
+(def relative-re ;#"(^~.*|.*\.+)"
+  (re-pattern (str "(^~.*|" dots-re ")" )))
 
 (defn normalize-path
   "Parses path s to allow relative path characters
