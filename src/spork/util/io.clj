@@ -21,58 +21,14 @@
 
 ;;path separator (i.e. \\ for windows, / otherwise)
 (def ^:constant +separator+ java.io.File/separator)
-(def ^:constant +re-separator+  (re-pattern +separator+))
+(def ^:constant +re-separator+  (re-pattern (case +separator+ "\\" "\\\\"
+                                                  +separator+)))
 ;;delineates between other recognized directory separators.
 (def +alien-separator+ (case +separator+
                          "\\" "/"
                          "\\"))
-(def re-dupe (re-pattern (str +separator+ "+")))
-(defn dedupe-separators [s]
-  (strlib/replace s re-dupe +separator+))
-
-;;we want to coerce a path like
-;;~/blah/some-file -> home-path/blah/some/file
-;;./some-file  -> current-dir/some-file
-;;../some-file -> (file-path (parent-path .) some-file)
-
-(def relative-re #"(^~.*|.*\.+)")
-(declare relative-path)
-
-(defn normalize-path
-  "Parses path s to allow relative path characters
-   like ~, . ,.. to delineate home, present working dir,
-   and parent directory for relative paths.  Otherwise
-   returns input unaltered if path contains no relative
-   characters."
-  [s]
-    (if-not (re-seq relative-re s)
-            s ;;absolute path
-     (->> (list-path s)
-          (reduce (fn [[pwd p] x]
-                    (case x
-                      "~"  [(common-path :home) p]
-                      "."  [pwd p]
-                      ".." (try [(parent-path pwd) p]
-                                (catch Exception e
-                                  (throw (Exception.
-                                          (str [:invalid-relative-path
-                                                :went-beyond-root-directory
-                                                :for s])))))
-                      [pwd (conj p x)]))
-                  [*current-dir* []] )
-          (apply relative-path))))
-
-;;We'd like to use windows and unix paths interchangeably...
-;;If we're given a path with unix delimiters, we'll keep the unix
-;;same for windows.
-(defn alien->native
-  "Converts alien paths to native paths via simple string replacement.
-   Also cleans the path - if there are duplicate file separators,
-   replaces them with singletons."
-  [p]
-  (-> (clojure.string/replace p +alien-separator+ +separator+)
-      (dedupe-separators)
-      (normalize-path)))
+(def re-dupe (re-pattern (str (case +separator+ "\\" "\\\\" +separator+)
+                              "+")))
 
 ;;a map of the environment vars, really handy.
 (def  env-map
@@ -84,15 +40,7 @@
    variable names, so PATH would be :PATH, TheVar woul be :TheVar ."
   [k] (get env-map k))
 
-(def emptyq clojure.lang.PersistentQueue/EMPTY)
-(defn as-directory
-  "Coerces s to a path, ensuring that there is a trailing separator
-   indicating a directory."
-  [s]
-  (let [s (alien->native s)]
-    (if (= (subs s (dec (count s))) +separator+)
-      s
-      (str s +separator+))))
+(declare alien->native)
 
 (def home-path (System/getProperty "user.home"))
 
@@ -112,9 +60,6 @@
 		(let [[kf vf] (map io/file kv)]		
 			(when (not (.exists vf)) (io/make-parents vf))
 			(when (.isFile kf) (io/copy kf vf))))))
-
-
-
 
 (defmacro with-path
   "Given a root directory, and a collection of bindings in the form 
@@ -153,6 +98,15 @@
    :classpath - A list of paths on the Class Path.
    :javahome  - The path to the Java Runtime Environment."
   [key] (get common-paths key))
+
+(defn as-directory
+  "Coerces s to a path, ensuring that there is a trailing separator
+   indicating a directory."
+  [s]
+  (let [s (alien->native s)]
+    (if (= (subs s (dec (count s))) +separator+)
+      s
+      (str s +separator+))))
 
 (defn relative-path
   "Given a root path (a string), and a list of strings, generates a relative
@@ -545,6 +499,54 @@
       (if (not= res +separator+)
         (str res +separator+)
         res))))
+
+(defn dedupe-separators [s]
+  (strlib/replace s re-dupe (case +separator+
+                              "\\" "\\\\"
+                              +separator+)))
+
+;;we want to coerce a path like
+;;~/blah/some-file -> home-path/blah/some/file
+;;./some-file  -> current-dir/some-file
+;;../some-file -> (file-path (parent-path .) some-file)
+
+(def relative-re #"(^~.*|.*\.+)")
+
+(defn normalize-path
+  "Parses path s to allow relative path characters
+   like ~, . ,.. to delineate home, present working dir,
+   and parent directory for relative paths.  Otherwise
+   returns input unaltered if path contains no relative
+   characters."
+  [s]
+    (if-not (re-seq relative-re s)
+            s ;;absolute path
+     (->> (list-path s)
+          (reduce (fn [[pwd p] x]
+                    (case x
+                      "~"  [(common-path :home) p]
+                      "."  [pwd p]
+                      ".." (try [(parent-path pwd) p]
+                                (catch Exception e
+                                  (throw (Exception.
+                                          (str [:invalid-relative-path
+                                                :went-beyond-root-directory
+                                                :for s])))))
+                      [pwd (conj p x)]))
+                  [*current-dir* []] )
+          (apply relative-path))))
+
+;;We'd like to use windows and unix paths interchangeably...
+;;If we're given a path with unix delimiters, we'll keep the unix
+;;same for windows.
+(defn alien->native
+  "Converts alien paths to native paths via simple string replacement.
+   Also cleans the path - if there are duplicate file separators,
+   replaces them with singletons."
+  [p]
+  (-> (clojure.string/replace p +alien-separator+ +separator+)
+      (dedupe-separators)
+      (normalize-path)))
 
 (defn get-resource
   "Gets the resource provided by the path.  If we want a text file, we 
