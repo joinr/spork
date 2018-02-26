@@ -191,12 +191,13 @@
        (spit f contents options)
        (spit f contents)))))
 
+(declare clean-path)
 (defn list-path
   "Split the file path into a vector of strings."
   [fl]
   (strlib/split
     (if (string? fl)
-      fl
+      (clean-path fl)
      (.getPath fl)) +re-separator+))
 
 (defn butlast-vec
@@ -550,6 +551,10 @@
                   [*current-dir* []] )
           (apply relative-path))))
 
+(defn clean-path [p]
+  (-> (clojure.string/replace p +alien-separator+ +separator+)
+      (dedupe-separators)))
+
 ;;We'd like to use windows and unix paths interchangeably...
 ;;If we're given a path with unix delimiters, we'll keep the unix
 ;;same for windows.
@@ -558,8 +563,7 @@
    Also cleans the path - if there are duplicate file separators,
    replaces them with singletons."
   [p]
-  (-> (clojure.string/replace p +alien-separator+ +separator+)
-      (dedupe-separators)
+  (-> (clean-path p)
       (normalize-path)))
 
 (defn get-resource
