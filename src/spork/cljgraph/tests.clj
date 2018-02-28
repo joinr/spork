@@ -472,15 +472,15 @@
                 [[:dc :hou] 200]
                 [[:s :dc] 300] 
                 [[:s :chi] 300]))))
-  (is (= (set (einfos cost-net))
-         (set '(#spork.cljgraph.flow.einfo{:from :s, :to :chi, :capacity 0, :flow 300, :data nil} 
-                #spork.cljgraph.flow.einfo{:from :s, :to :dc, :capacity 0, :flow 300, :data nil} 
-                #spork.cljgraph.flow.einfo{:from :dc, :to :hou, :capacity 80, :flow 200, :data nil} 
-                #spork.cljgraph.flow.einfo{:from :dc, :to :bos, :capacity 250, :flow 100, :data nil} 
-                #spork.cljgraph.flow.einfo{:from :chi, :to :bos, :capacity 0, :flow 200, :data nil} 
-                #spork.cljgraph.flow.einfo{:from :chi, :to :hou, :capacity 100, :flow 100, :data nil} 
-                #spork.cljgraph.flow.einfo{:from :hou, :to :t, :capacity 0, :flow 300, :data nil} 
-                #spork.cljgraph.flow.einfo{:from :bos, :to :t, :capacity 0, :flow 300, :data nil})))
+  (is (= (set (map #(into {} %) (einfos cost-net)))
+         (set '({:from :s, :to :chi, :capacity 0, :flow 300, :data nil} 
+                {:from :s, :to :dc, :capacity 0, :flow 300, :data nil} 
+                {:from :dc, :to :hou, :capacity 80, :flow 200, :data nil} 
+                {:from :dc, :to :bos, :capacity 250, :flow 100, :data nil} 
+                {:from :chi, :to :bos, :capacity 0, :flow 200, :data nil} 
+                {:from :chi, :to :hou, :capacity 100, :flow 100, :data nil} 
+                {:from :hou, :to :t, :capacity 0, :flow 300, :data nil} 
+                {:from :bos, :to :t, :capacity 0, :flow 300, :data nil})))
       "Network should have expected flows." )
   (is (= (total-flow cost-net) 600)
       "There should be 600 units of flow")

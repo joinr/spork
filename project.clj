@@ -38,6 +38,7 @@
                  ;;serialization lib.
                  [com.taoensso/nippy "2.11.0-RC1"] 
                  [ctries.clj "0.0.3"]
+                 [zcaudate/lucid.distribute "1.4.3"]
                 ;experimental dependencies, ephemeral.
                  
                 ;[org.clojure/data.finger-tree "0.0.2"]
