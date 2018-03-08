@@ -73,6 +73,8 @@
   (bitmap-format [b] :buffered-image)
   (as-buffered-image [b fmt] b)
   (write-image [b dest fmt] (save-image b dest (fn [_] nil)))
+  IShapeable
+  (as-shape [s] s)
   IShape
   (draw-shape    [shp c] (draw-image c shp (.getTransparency shp) 0 0))
   (shape-bounds  [shp] (spork.protocols.spatial/bbox 0 0 (.getWidth shp) (.getHeight shp)))
@@ -102,6 +104,8 @@
   IShape 
   (shape-bounds [s]   (spatial/bbox 0 0 width height))
   (draw-shape   [s c] (draw-image c data transparency 0 0))
+  IShapeable
+  (as-shape [s] s)
   I2DGraphicsProvider
   (get-graphics [s] (get-graphics-img data))
   ICanvas2D

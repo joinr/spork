@@ -54,6 +54,9 @@
   state
   smooth])
 
+(defn node-map? [m]
+  (or (instance? clojure.lang.PersistentHashMap  m)
+      (instance? clojure.lang.PersistentArrayMap m)))
 ;;this allows us to tag nodes easily.
 (defn tag
   "Tagging lets us associate metadata with the parent, and its children, which 
@@ -61,7 +64,7 @@
    of the shape."
   [props obj]
 
-  (if (map? obj)   (let [shp (as-shape obj)
+  (if (node-map? obj)   (let [shp (as-shape obj)
                          ps  (merge props (dissoc obj :children))]
                      (vary-meta obj assoc :shape
                                 (canvas/with-properties props shp)))

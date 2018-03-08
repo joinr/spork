@@ -68,13 +68,15 @@
        (map (fn [ctx] [(core/get-time ctx) ctx]))
        (take-while
         (fn [^clojure.lang.Indexed v]
-          (<= (.nth v 0) tfinal)))
+          (when-let [t (.nth v 0)] ;;ensure we have time.
+               (<= t tfinal))))
        ))
 
 ;;Now using transducers.
 (defn ->history [tfinal stepf  keep-simulating? init-ctx]
   (into {} (comp (map (fn [ctx] [(core/get-time ctx) ctx]))
-                 (take-while #(<= (first %) tfinal)))
+                 (take-while #(when-let [t (first %)]
+                                (<= t tfinal))))
         (->simulator stepf  keep-simulating? init-ctx)))
 
 (defn ending [h t] (get (meta (get h t) :end  )))
