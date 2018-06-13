@@ -501,6 +501,15 @@
         (str res +separator+)
         res))))
 
+(defn file
+  "Convenience wrapper around java.util.io/file, to allow
+   flexible platform agnostic path-processing ala
+   spork.util.io/file-path.  This supports posix paths
+   and provides a platform-correct representation, which
+   is passed to io/file."
+  [path]
+  (io/file (file-path path)))
+
 (defn dedupe-separators [s]
   (strlib/replace s re-dupe (case +separator+
                               "\\" "\\\\"

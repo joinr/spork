@@ -165,3 +165,8 @@
   (tree-view (for [[k xs] (seq (spec-map obj))]
                (clojure.lang.MapEntry. k
                       (for [[nm _ sig] (sort-by first xs)] (clojure.lang.MapEntry. nm (str sig)))))))
+
+
+;;examine an obj's members..
+(defn obj-view [obj]
+  )

@@ -5,11 +5,13 @@
 ;;Intended to be used seamlessly with spork.util.table abstract tables,
 ;;or record sequences.
 (ns spork.util.excel.core
-  (:use [spork.util.excel.docjure])
-  (:require [spork.util [table :as tbl]
+  (:use [spork.util.excel.docjure]) ;;poor form!
+  (:require [spork.util.excel [docjure :as doc]]
+            [spork.util [table :as tbl]
                         [vector :as v]
                         [io :as io]
-                        [string :as s]])
+                        [string :as s]]
+            [clojure.string :refer [lower-case]])
   (:import [org.apache.poi.ss.usermodel Sheet Cell Row DataFormatter]))
 
 ;;we want to enable the ability for tables that have
@@ -25,41 +27,7 @@
 (defn empty-row? [xs]
   (every? blank? xs))
 
-(def ^:dynamic *end-of-table*)
 (set! *warn-on-reflection* true)
-            
-(comment 
-; Load a spreadsheet and read the first two columns from the 
-; price list sheet:
-(->> (load-workbook "spreadsheet.xlsx")
-     (select-sheet "Price List")
-     (select-columns {:A :name, :B :price}))
-
-;; Create a spreadsheet and save it
-(let [wb (create-workbook "Price List"
-                          [["Name" "Price"]
-                           ["Foo Widget" 100]
-                           ["Bar Widget" 200]])
-      sheet (select-sheet "Price List" wb)
-      header-row (first (row-seq sheet))]
-  (do
-    (set-row-style! header-row (create-cell-style! wb {:background :yellow,
-                                                       :font {:bold true}}))
-    (save-workbook! "spreadsheet.xlsx" wb)))
-)
-
-;(defn row->vec [r]  
-;  (vec (map read-cell (into-seq r))))
-
-
-(defn row->seq
-  [^Row r]
-  (vec (for [^Cell item (iterator-seq (.iterator r))] item)))
-
-(defn row->indexed-cells [^Row r] 
-  (map (fn [^Cell c] 
-         (vector (.getColumnIndex c) (read-cell c))) 
-       (iterator-seq (.iterator r))))
 
 ;;TODO: revisit this, we can probably do mo betta.
 ;;causing problems here...
@@ -89,28 +57,6 @@
   ([r bound] (row->vec r bound read-cell))
   ([r] (row->vec r nil read-cell)))
 
-(comment
-;;We use the dataformatter here, just getting strings out.
-(defn row->strings
-  ([^Row r ^DataFormatter df]
-   (let [bounded? (if (not (nil? bound)) 
-                    (fn [n] (> n bound))
-                    (fn [_] false))
-         vs (seq r)]
-     (loop [acc []
-            idx (int 0)
-            xs   vs]
-       (cond (empty? xs) acc           
-             (bounded? idx) (subvec acc 0 bound)
-             :else (let [^Cell x (first xs)                       
-                         y       (.formatCellValue df  x) ;;This is where we'd hook in if we only wanted text.
-                         i       (.getColumnIndex x)                        
-                         missed  (reduce conj acc
-                                         (take (- i idx)
-                                               (repeat nil)))]
-                     (recur (conj missed y) (inc i) (rest xs))))))))
-)
-
 ;;Todo: revisit this.  we're eagerly building the rows, we could
 ;;also stream them.
 (defn rows->table
@@ -126,38 +72,16 @@
           records (v/transpose (subvec rows 1))]
       (tbl/make-table fields records))))
 
-;; (defn rows->raw-table
-;;   "Converts an excel worksheet into a columnar table.  Assumes first row defines 
-;;    field names."
-;;   [xs] 
-;;   (when (seq xs)
-;;     (let [rows    (->> xs 
-;;                        (reduce (fn [acc r]
-;;                                  (conj acc (row->vec r))))
-;;                        [])
-;;           fields  (first (subvec rows 0 1))
-;;           records (v/transpose (subvec rows 1))]
-;;       (tbl/make-table fields records))))   
-
-(defn ucase [^String s] (.toUpperCase s))
-(defn lcase [^String s] (.toLowerCase s))
+;;maybe not used?
 (defn nth-row [idx ^Sheet sheet] (.getRow sheet idx))
 (defn first-row [sheet] (nth-row 0 sheet))
+
 (defn truncate-row [v] 
   (let [n (dec (count v))]
     (loop [idx 0]
       (cond (> idx n) v
             (nil? (get v idx)) (subvec v 0 idx)
             :else (recur (inc idx))))))
-
-;(defn contiguous-rows
-;  "Fetch a seq of contiguous rows, starting at startrow.  Rows may have
-;   noncontiguous cells, however...."
-;  [sheet & {:keys [startrow] :or {startrow 0}}]
-;  (->> (iterate inc startrow)
-;       (map (fn [idx] (nth-row idx sheet)))
-;       (take-while #(not (nil? %)))))
-
 
 (defn contiguous-rows
   "Fetch a seq of contiguous rows, starting at startrow.  Rows may have
@@ -174,30 +98,111 @@
           (concat (map second (first parts)) 
                   (map (comp second second) (rest parts)))))))
 
+
+(def +default-options+
+  {:skip            0
+   :read-cell       doc/read-cell
+   ;:sheet->rows     tabular-region ;;maybe later..
+   :ignore-dates?   false})
+
+(defn replace-newlines
+  "Given any input x, applies a replacement ala clojure.string/replace
+   to x iff x is a string, to swap out the corner case of newlines in
+   the input."
+  ([x replacement]
+    (if (string? x)
+      (clojure.string/replace x "\n" replacement)
+      x))
+  ([x] (replace-newlines x "")))
+
+;;collection of shorthands for our cell readers.
+;;could grow, who knows.
+(def cell-readers
+  {:default         doc/read-cell
+   :strip-newlines  (fn newline-reader [cl]
+                      (-> (doc/read-cell  cl)
+                          (replace-newlines "")))
+   :dash-newlines   (fn newline-reader [cl]
+                      (-> (doc/read-cell  cl)
+                          (replace-newlines "-")))
+   :under-newlines  (fn newline-reader [cl]
+                      (-> (doc/read-cell  cl)
+                          (replace-newlines "_")))
+   :verbose-newlines (fn newline-reader [cl]
+                      (-> (doc/read-cell  cl)
+                          (replace-newlines "[NEWLINE]")))})
+
+(defn as-cell-reader
+  "aux function, coerces x into a known cell reader, or allows
+   functions to pass through."
+  [x]
+  (cond (keyword? x)
+        (or (get cell-readers x)
+            (throw (ex-info "unknown reader keyword"
+                            {:input x :expected (keys cell-readers)})))
+        (fn? x)   x
+        :else (throw (ex-info "expected keyword or function"
+                              {:input x :cause :invalid-cell-reader}))))
+
+;;this buys us the opportunity to load any relevant options.
+#_{:sheetnames    ["Blah" "Blee"]
+   :options       {:default +default-options+
+                   "Blah" {:skip 1
+                           :read-cell :strip-newlines}
+                   "Blee" {:read-cell (fn [cl]
+                                        (let [res (doc/read-cell cl)]
+                                          (if (string? res)
+                                            (str res "[Blee!]")
+                                            res)))}}}
+
 (defn tabular-region
   "Assumes that sheet represents a table, in which case, the upper-left 
    corner, cell A1, is the beginning of a set of adjacent cells, which form
    a rectangle.  Nil values are allowed in cells in each row, except for the 
    first row, which is assumed to denote field names.  The rectangular region 
-   will be truncated after the first nil is found in the field names."
-  [sheet]
-  (let [fields (truncate-row (row->vec (first (contiguous-rows sheet))))
-        fieldcount (count fields)
-        pooled     (s/->string-pool 100 1000)
-        read-cell-pooled (fn [cl]
-                           (let [res (read-cell cl)]
-                             (if (string? res) (pooled res) res)))]
-    (->> (contiguous-rows sheet) 
-         (map (fn [r]
-                (let [r (row->vec r nil read-cell-pooled)
-                      rcount (count r)]
-                  (cond (= rcount fieldcount) r
-                        (> rcount fieldcount) (subvec r 0 fieldcount)
-                        (< rcount fieldcount) (into r (take (- fieldcount rcount) 
-                                                            (repeat nil)))))))
-         (take-while (complement empty-row?)) ;;we infer a blank row as the end of the table.
-         )))
+   will be truncated after the first nil is found in the field names.
+   Callers may supply a map of options to control the behavior of reading
+   the region.  Options take the form:
+  
+   :skip - [0] integer number of lines to skip before reading the table fields
+   
+   :ignore-dates? - [false] a boolean indicator of whether additional
+   parsing (potentially more time) should be spent trying to parse
+   dates. Performance sensitive cases may opt for true.
+  
+   :read-cell - [:default] a keyword defining a pre-defined cell
+   reader, one of #{:default :strip-newlines :dash-newlines
+   :under-newlines :verbose-newlines} or a function that takes a cell
+   and returns a value.
 
+   Typically, the easiest way for callers to override behavior of read-cell
+   is to wrap the default spork.util.excel.docjure/read-cell, applying it
+   to the input value, then computing the result."
+  ([sheet] (tabular-region sheet +default-options+))
+  ([sheet options]
+   (let [{:keys [skip read-cell ignore-dates?]
+          :or   {skip          0
+                 read-cell     doc/read-cell
+                 ignore-dates? true}} options
+         read-cell  (as-cell-reader read-cell)
+         fields     (truncate-row (row->vec (nth (contiguous-rows sheet) skip)))
+         fieldcount (count fields)
+         pooled     (s/->string-pool 100 1000)
+         read-cell-pooled (fn [cl]
+                            (let [res (read-cell cl)]
+                              (if (string? res) (pooled res) res)))]
+     (binding [doc/*date-checking* (not ignore-dates?)]
+       (->> (contiguous-rows sheet)
+            (drop skip)
+            (map (fn [r]
+                   (let [r (row->vec r nil read-cell-pooled)
+                         rcount (count r)]
+                     (cond (= rcount fieldcount) r
+                           (> rcount fieldcount) (subvec r 0 fieldcount)
+                           (< rcount fieldcount) (into r (take (- fieldcount rcount) 
+                                                               (repeat nil)))))))
+            (take-while (complement empty-row?)) ;;we infer a blank row as the end of the table.
+            )))))
 
 ;;Maybe revisit this....
 ;;lots of garbage here.  We should be able to directly map the tabular
@@ -207,24 +212,29 @@
   "Converts an excel worksheet into a columnar table.  Assumes first row defines 
    field names.  Truncates remaining dataset to the contiguous, non-nil fields 
    in the first row."
-  [sheet] 
-  (let [rows    (tabular-region sheet)]
-    (when-let [fields  (first rows)]
-      (if-let [records (vec (rest rows))]
-        (tbl/make-table fields (v/transpose  records))
-        (tbl/make-table fields)))))
+  ([sheet] (sheet->table sheet +default-options+))
+  ([sheet options]
+   (let [rows    (tabular-region sheet options)]
+     (when-let [fields  (first rows)]
+       (if-let [records (vec (rest rows))]
+         (tbl/make-table fields (v/transpose  records))
+         (tbl/make-table fields))))))
 
 (defn wb->tables
   "Extract sheets from the workbook located at wbpath, coercing them to tables 
    as per util.table."
-  [wb & {:keys [sheetnames] :or {sheetnames :all}}]
+  [wb & {:keys [sheetnames options] :or {sheetnames :all}}]
   (let [sheets  (sheet-seq wb)]
     (->> (if (= sheetnames :all) sheets
-           (let [names (set (map lcase sheetnames))]
-             (filter #(contains? names ((comp lcase sheet-name) %))
+           (let [names (set (map lower-case sheetnames))]
+             (filter #(contains? names ((comp lower-case sheet-name) %))
                      sheets)))
-      (map (fn [s] (do (println (sheet-name s))
-                       [(sheet-name s) (sheet->table s)])))
+         (map (fn [s] (let [nm (sheet-name s)
+                            _  (println nm)
+                            options (or (get options nm)
+                                        (get options :default)
+                                        +default-options+)]
+                       [(sheet-name s) (sheet->table s options)])))
       (into {}))))
 
 (defn tables->workbook
@@ -240,7 +250,7 @@
     (do (doseq [[n data] (rest specs)]
                 (let [sheet (add-sheet! wb (tbl/field->string n))]
                   (add-rows! sheet data)))
-      wb)))        
+      wb)))
 
 (defn tables->xlsx
   "Given a map of {tablename0 table0...tablenameN tableN}, renders the
@@ -255,36 +265,95 @@
   [wbpath sheetname t]
   (tables->xlsx wbpath {sheetname t}))
 
+;;using portable file-path from spork.util.io
 (defn workbook-dir [wbpath] 
   (-> wbpath 
-    (clojure.string/replace  ".xlsx" "\\")
-    (clojure.string/replace  ".xlsm" "\\")))
+     (clojure.string/replace  ".xlsx" "\\")
+     (clojure.string/replace  ".xlsm" "\\")
+     (io/file-path)))
+
+(defn tables->tabdelimited
+  "Auxillary function.  Provided a path to a root directory, and
+   a map (or seq) of [nm tbl], emits the table as a tabdelimited
+   text file in /root/nm.txt .  This assumes valid names for the
+   potential files-to-be.  Responsibility is on caller for now!
+   May be composed with output from xlsx->tables for
+   custom parsing/xforms."
+  [rootdir tmap]
+  (doseq [[nm t] (seq tmap)]
+    (let [textpath (io/relative-path rootdir [(str nm ".txt")])]
+      (io/hock textpath (tbl/table->tabdelimited t)))))
 
 (defn xlsx->tabdelimited 
   "Dumps all the tabular worksheets in an xlsx file into a set of tabdelimited 
    text files.  By default, the text files are dumped in a folder sharing the 
    same name as the original workbook.  Caller can supply a seq of sheetnames 
    and an alternate directory to dump the text files in using :sheetname and 
-   :rootdir key arguments."
-  [wbpath & {:keys [rootdir sheetnames] 
-             :or {sheetnames :all rootdir (workbook-dir wbpath)}}]
-  (let [tmap (wb->tables (load-workbook wbpath) :sheetnames sheetnames)]
-    (doseq [[nm t] (seq tmap)]
-      (let [textpath (io/relative-path rootdir [(str nm ".txt")])]
-        (io/hock textpath (tbl/table->tabdelimited t))))))  
+   :rootdir key arguments.
 
+   Caller may supply a map of sheet-related options, as per
+   spork.excel.core/tabular-regions.  When processing worksheets
+   into tables, this map of options will be consulted to see
+   if a specific options map exists for the current sheetname.
+   If not, options associated with :default will be used,
+   and spork.excel.core/+default-options+ serving in case
+   no :default is specified.
+
+   ex. options: sheets named \"Blah\" will have the first row skipped,
+   and cells will have newlines removed.
+
+   sheets names \"Blee\" will be read normally, but every string
+   cell value will have \"[Blee!]\" appended to it in the resulting
+   table:
+  
+   {:default +default-options+
+     \"Blah\" {:skip 1
+               :read-cell :strip-newlines}
+     \"Blee\" {:read-cell (fn [cl]
+                             (let [res (doc/read-cell cl)]
+                               (if (string? res)
+                                 (str res \"[Blee!]\")
+                                  res)))}}"
+  [wbpath & {:keys [rootdir sheetnames options] 
+             :or {sheetnames :all rootdir (workbook-dir wbpath)}}]
+ (let [options (merge {:default +default-options+} options)] 
+   (->> (wb->tables (load-workbook wbpath) :sheetnames sheetnames :options options)
+        (tables->tabdelimited rootdir))))
+  
 (defn xlsx->tables
   "Extract one or more worksheets from an xls or xlsx workbook as a map of 
    tables, where each sheet is rendered as a contiguous table, with first row 
-   equal to field names."
-  [wbpath & {:keys [sheetnames ignore-dates?] 
-             :or {sheetnames :all ignore-dates? false}}]
-  (if ignore-dates?
-    (ignoring-dates
-      (wb->tables (load-workbook wbpath) :sheetnames sheetnames))
-    (wb->tables (load-workbook wbpath) :sheetnames sheetnames)))
-   
+   equal to field names.
 
+   Caller may supply a map of sheet-related options, as per
+   spork.excel.core/tabular-regions.  When processing worksheets
+   into tables, this map of options will be consulted to see
+   if a specific options map exists for the current sheetname.
+   If not, options associated with :default will be used,
+   and spork.excel.core/+default-options+ serving in case
+   no :default is specified.
+  
+   ex. options: sheets named \"Blah\" will have the first row skipped,
+   and cells will have newlines removed.
+
+   sheets names \"Blee\" will be read normally, but every string
+   cell value will have \"[Blee!]\" appended to it in the resulting
+   table:
+  
+   {:default +default-options+
+     \"Blah\" {:skip 1
+               :read-cell :strip-newlines}
+     \"Blee\" {:read-cell (fn [cl]
+                             (let [res (doc/read-cell cl)]
+                               (if (string? res)
+                                 (str res \"[Blee!]\")
+                                  res)))}}"
+  [wbpath & {:keys [sheetnames ignore-dates? options] 
+             :or {sheetnames :all ignore-dates? false}}]
+  (let [options (-> (merge {:default +default-options+} options)
+                    (assoc-in [:default :ignore-dates?] ignore-dates?))] 
+    (wb->tables (load-workbook wbpath) :sheetnames sheetnames :options options)))
+   
 (defn xlsx->wb
   "API wrapper for docjure/load-workbook.  Loads an excel workbook from 
    a given workbook path."
@@ -308,12 +377,13 @@
 
 (comment 
 (def wbpath
-  "C:\\Users\\thomas.spoon\\Documents\\sampling-utils\\record-rules-large.xlsx")
+  "~Documents/sampling-utils/record-rules-large.xlsx")
 
 ;testing  
 (def wbpath   
-  "C:\\Users\\thomas.spoon\\Documents\\Marathon_NIPR\\OngoingDevelopment\\MPI_3.76029832.xlsm")
-(def outpath "C:\\Users\\thomas.spoon\\Documents\\newWB.xlsx")
+  "~Documents/Marathon_NIPR/OngoingDevelopment/MPI_3.76029832.xlsm")
+(def outpath "~Documents/newWB.xlsx")
+
 
 (def wb (as-workbook wbpath))
 (def tables ["Deployments"
@@ -333,6 +403,70 @@
 
 
 (def bigpath 
-  "C:\\Users\\thomas.spoon\\Documents\\sampling-utils\\record-rules-large.xlsx")
+  "~/Documents/sampling-utils/record-rules-large.xlsx")
 )
+
+
+
+;;OBE
+
+(comment
+  ;;We use the dataformatter here, just getting strings out.
+  (defn row->strings
+    ([^Row r ^DataFormatter df]
+     (let [bounded? (if (not (nil? bound)) 
+                      (fn [n] (> n bound))
+                      (fn [_] false))
+           vs (seq r)]
+       (loop [acc []
+              idx (int 0)
+              xs   vs]
+         (cond (empty? xs) acc           
+               (bounded? idx) (subvec acc 0 bound)
+             :else (let [^Cell x (first xs)                       
+                         y       (.formatCellValue df  x) ;;This is where we'd hook in if we only wanted text.
+                         i       (.getColumnIndex x)                        
+                         missed  (reduce conj acc
+                                         (take (- i idx)
+                                               (repeat nil)))]
+                     (recur (conj missed y) (inc i) (rest xs))))))))
+  )
+
+
+(comment 
+; Load a spreadsheet and read the first two columns from the 
+; price list sheet:
+(->> (load-workbook "spreadsheet.xlsx")
+     (select-sheet "Price List")
+     (select-columns {:A :name, :B :price}))
+
+;; Create a spreadsheet and save it
+(let [wb (create-workbook "Price List"
+                          [["Name" "Price"]
+                           ["Foo Widget" 100]
+                           ["Bar Widget" 200]])
+      sheet (select-sheet "Price List" wb)
+      header-row (first (row-seq sheet))]
+  (do
+    (set-row-style! header-row (create-cell-style! wb {:background :yellow,
+                                                       :font {:bold true}}))
+    (save-workbook! "spreadsheet.xlsx" wb)))
+)
+
+;;not used
+#_(def ^:dynamic *end-of-table*)
+
+
+;;not used...already exists via cell-seq 
+#_(defn row->seq
+  [^Row r]
+  (vec (for [^Cell item (iterator-seq (.iterator r))] item)))
+
+;;not used...
+#_(defn row->indexed-cells [^Row r] 
+  (map (fn [^Cell c] 
+         (vector (.getColumnIndex c) (read-cell c))) 
+       (iterator-seq (.iterator r))))
+
+;;not used...
 
