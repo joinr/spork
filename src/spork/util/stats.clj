@@ -12,7 +12,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:dynamic *rand* clojure.core/rand) 
+(def ^:dynamic *rand* clojure.core/rand)
 
 (def even-samples [3, 6, 7, 8, 8, 10, 13, 15, 16, 20])
 (def odd-samples (conj even-samples 22))
@@ -23,8 +23,8 @@
   (let [xs (vec (sort xs))
         n  (count xs)
         rank (fn [k] (long (Math/ceil (+ (* n (/ k q)) 0.5))))]
-    (map #(get xs (dec %)) 
-         (take-while #(<= % n) (map rank (iterate inc 1))))))    
+    (map #(get xs (dec %))
+         (take-while #(<= % n) (map rank (iterate inc 1))))))
 
 (defn median
   "Computs the median of a set of values xs.  Does not assume xs are ordered."
@@ -44,52 +44,52 @@
         (recur (+ tot (first ks))
                (unchecked-inc n)
                (rest ks)))))
-(defprotocol IDistribution 
+(defprotocol IDistribution
   (^double sample [d rng])
-  (^double pdf [d x] 
+  (^double pdf [d x]
    "Samples the probability density function from d, using u.")
   (^double cdf [d  x]
    "Samples the cumulative distribution function from d, using u.")
   (^double invcdf [d p]
    "Samples the inverse cumulative distribution function, given p."))
 
-(defn sample! 
+(defn sample!
   ([dist rng] (sample dist rng))
   ([dist]     (sample dist *rand*)))
 
 (defn ranged-distribution
-  "Given an IDistribution d, derives a new distribution that constrains values 
-   according to the given range specification, where range-spec is a valid 
+  "Given an IDistribution d, derives a new distribution that constrains values
+   according to the given range specification, where range-spec is a valid
    range as defined by spork.util.ranges ."
   [dist range-spec]
   (let [clamp (r/as-range range-spec)]
     (reify IDistribution
-      (sample [s rng] (clamp     (sample dist rng)))             
-      (pdf    [s  x]  (pdf dist  (clamp  dist x)))        
+      (sample [s rng] (clamp     (sample dist rng)))
+      (pdf    [s  x]  (pdf dist  (clamp  dist x)))
       (cdf    [s  x]  (cdf dist  (sample dist x)))
-      (invcdf [d  p]  (clamp     (invcdf dist p))))))   
+      (invcdf [d  p]  (clamp     (invcdf dist p))))))
 
 (defn no-op [] (throw (Exception. "Not implemented")))
 
 (defn distribute!
-  "Provides a generating function of one argument that generates samples." 
+  "Provides a generating function of one argument that generates samples."
   [f] (fn [_] (f)))
 
 (defn ^java.util.Random make-random [^long seed]
   (java.util.Random. seed))
 
-(defprotocol IRNG 
+(defprotocol IRNG
   (^double draw [prng]))
 
-(extend-protocol IRNG 
+(extend-protocol IRNG
   java.util.Random
   (^double draw [gen] (.nextDouble gen))
-  clojure.core$rand 
+  clojure.core$rand
   (^double draw [gen] (gen)))
 
 (defmacro with-generator
-  "Temporarily overrides clojure.rand to use a new random number 
-   generator seeded by seed.  All calls in the body that use 
+  "Temporarily overrides clojure.rand to use a new random number
+   generator seeded by seed.  All calls in the body that use
    rand will instead use the seeded generator."
   [gen-expr & body]
   `(let [g# ~gen-expr]
@@ -97,13 +97,13 @@
        ~@body)))
 
 (defmacro with-seed [n & body]
-  `(with-generator (make-random ~n) ~@body)) 
+  `(with-generator (make-random ~n) ~@body))
 
-(defn sample-seq 
+(defn sample-seq
   ([gen f]
-    (if gen 
-	    (->> (iterate 
-	           (fn [[x gen]]  [(binding [*rand* #(draw gen)] (f))  gen]) 
+    (if gen
+	    (->> (iterate
+	           (fn [[x gen]]  [(binding [*rand* #(draw gen)] (f))  gen])
 	           [0 gen])
 	      (drop 1)
 	      (map first)))
@@ -115,7 +115,7 @@
   (sample [d rng]  (loop [w 2.0]
                      (let [u1 (draw rng)
                            u2 (draw rng)
-                           v1 (dec (* 2.0 u1)) 
+                           v1 (dec (* 2.0 u1))
                            v2 (dec (* 2.0 u2))
                            wnext (double (+ (square v1) (square v2)))]
                        (if (<= wnext 1.0)
@@ -144,28 +144,28 @@
 
 ;;cauchy distribution, ported from GSL
 (defrecord cauchyd [^double scale ^double loc]
-   IDistribution 
-   (sample [s rng] (invcdf s (draw rng)))             
-   (pdf [s  x]   
+   IDistribution
+   (sample [s rng] (invcdf s (draw rng)))
+   (pdf [s  x]
      (let [u (/ (- x loc) scale)]
        (/ (/ 1.0 (* Math/PI scale)) (+ 1.0 (square u)))))
    (cdf    [s  x]  (+ (/ (Math/atan (/ (- x loc) scale)) Math/PI) 0.5))
-   (invcdf [d  p] 
-     (+ (* scale (tan (* Math/PI (- p 0.5)))) loc)))   
+   (invcdf [d  p]
+     (+ (* scale (tan (* Math/PI (- p 0.5)))) loc)))
 
 (def ucauchy (->cauchyd 1.0 0.0))
 
 
 ;;another way of generating cauchy vars....
-;;have two random variables that are normally distributed.  If their mean is 
+;;have two random variables that are normally distributed.  If their mean is
 ;;0, then we get a cauchy distribution.
-(comment ;;still working on this guy. 
+(comment ;;still working on this guy.
 	(defn ->normal-ratiod [x y]
 	  (let [x (->normald loc 1.0)
-	        y (->normald loc 1.0)]        
+	        y (->normald loc 1.0)]
 	   (reify IDistribution 
-	     (sample [s rng] (invcdf s (draw rng)))             
-	     (pdf    [s  x]   
+	     (sample [s rng] (invcdf s (draw rng)))
+	     (pdf    [s  x]
 	       (let  [u (/ (- x loc) scale)]
 	         (/ (/ 1.0 (* Math/PI scale)) (+ 1.0 (square u)))))
 	     (cdf    [s  x]  (+ (/ (Math/atan (/ (- x loc) scale)) Math/PI) 0.5))
@@ -174,8 +174,8 @@
 
 
 (defn rand-cauchy
-  "Projects a random variable drawn from a normal cauchy distribution 
-   onto the range [0,1]  Acts a drop-in replacement for the standard random 
+  "Projects a random variable drawn from a normal cauchy distribution
+   onto the range [0,1]  Acts a drop-in replacement for the standard random
    variable, which is based on a [0 1] uniform distribution."
   ([] (cdf ucauchy (sample! ucauchy)))
   ([rng] (cdf ucauchy (sample! ucauchy rng))))
@@ -183,13 +183,12 @@
 ;gsl_ran_gaussian_ratio_method (const gsl_rng * r, const double sigma)
 ;{double u, v, x, y, Q;
 ;  const double s = 0.449871  ;    /* Constants from Leva */
-;  const double t = -0.386595 ;		
+;  const double t = -0.386595 ;
 ;  const double a = 0.19600   ;
 ;  const double b = 0.25472   ;
 ;  const double r1 = 0.27597  ;
 ;  const double r2 = 0.27846  ;
-;  do                            
-;     /* This loop is executed 1.369 times on average  */
+;  do                        ;     /* This loop is executed 1.369 times on average  */
 ;    {/* Generate a point P = (u, v) uniform in a rectangle enclosing
 ;        the K+M region v^2 <= - 4 u^2 log(u). */
 ;      /* u in (0, 1] to avoid singularity at u = 0 */

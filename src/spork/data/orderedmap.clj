@@ -129,6 +129,20 @@
 
 (def empty-ordered-map (->ordered-map 0 {} (sorted-map) {} {}))
 
+(defn ordered-hash-map
+  "keyval => key val Returns a new hash map with supplied mappings. If any keys
+  are equal, they are handled as if by repeated uses of assoc."
+  {:added "1.0"
+   :static true}
+  ([] empty-ordered-map)
+  ([& keyvals]
+   (into empty-ordered-map (comp (partition-all 2)
+                                 (map (fn [kv]
+                                        (if (second kv) kv
+                                            (throw (ex-info "Ordered map requires even number of arguments!"
+                                                            {:pair kv}))))))
+         keyvals)))
+
 (comment ;testing 
   (def the-map (into empty-ordered-map (map vector (map #(keyword (str "A" %)) (range 1000)) (range 1000))) )
   (assert (= (take 10 the-map)
