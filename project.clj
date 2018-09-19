@@ -4,7 +4,7 @@
                    (clojure.edn/read-string (slurp "order.edn"))
                    '[spork.cljgui.components.PaintPanel])))
 
-(defproject spork "0.2.1.0-SNAPSHOT"
+(defproject spork "0.2.1.1-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and will be supported as stand-alone dependencies.
@@ -28,24 +28,22 @@
                  [net.sf.jung/jung-algorithms    "2.0.1"]
                  [net.sf.jung/jung-visualization "2.0.1"]
                  [net.sf.jung/jung-io            "2.0.1"]
-                 [org.apache.poi/poi             "3.9"]
-		 [org.apache.poi/poi-ooxml       "3.9"]
-                 [org.apache.poi/poi-scratchpad  "3.9"]
+                 [org.apache.poi/poi             "3.16"]
+                 [org.apache.poi/poi-ooxml       "3.16"]
+                 [org.apache.poi/poi-scratchpad  "3.16"]
                  [org.clojure/core.async "0.1.346.0-17112a-alpha"]
                  [org.clojure/data.avl   "0.0.13"]
                  [iota "1.1.3"]
                  [org.clojure/core.rrb-vector  "0.0.11"]
                  ;;serialization lib.
-                 [com.taoensso/nippy "2.11.0-RC1"] 
+                 [com.taoensso/nippy "2.11.0-RC1"]
                  [ctries.clj "0.0.3"]
 ;                 [zcaudate/lucid.distribute "1.4.3"]
                 ;experimental dependencies, ephemeral.
-                 
                 ;[org.clojure/data.finger-tree "0.0.2"]
                 ;[primitive-math         "0.1.3"]
                 ;[org.clojure/core.match "0.2.1"]
                 ;[immutable-int-map    "0.1.0"]
-                
 ;                 [clojure-watch "LATEST"] ;ephemeral dependency.
                  ]
   :aot [spork.cljgui.components.PaintPanel]
