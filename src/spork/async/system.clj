@@ -89,9 +89,10 @@
                      (cond (= ch# poison#) (do (println (str [~nm "stopping"]))
                                                (reset! status# :stopped))
                            (reduced? ~v)   (reset! status# [:stopped ~v])
-                           :else (do
-                                   ~expr 
-                                   (recur))))))
+                           :else (let [res# ~expr]
+                                   (if (reduced? res#)
+                                     (reset! status# :stopped)
+                                     (recur)))))))
          wnew# (reify ~'spork.async.system/IWorker
                  (~'stop! [obj#]
                    (case @status#
@@ -156,9 +157,10 @@
                       (cond (= ch# poison#) (do (println (str [~nm "stopping"]))
                                                 (reset! status# :stopped))
                             (reduced? ~v)   (reset! status# [:stopped ~v])
-                            :else (do
-                                    ~expr 
-                                   (recur)))))))
+                            :else (let [res# ~expr]
+                                    (if (reduced? res#)
+                                      (reset! status# :stopped)
+                                      (recur))))))))
          wnew# (reify ~'spork.async.system/IWorker
                  (~'stop! [obj#]
                    (case @status#
