@@ -79,8 +79,8 @@
 ;;another idea is to interleave the poison on a pub/sub level...fyi..
 ;;This is an idea ripped from stackoverflow, thanks to danneu:
 (defmacro go-pull [nm input-ch v expr] 
-  `(let [cleanup#  (when-let [w# (get @quilsample.system/system ~nm)]
-                     (do (quilsample.system/try-stop! w#) nil))
+  `(let [cleanup#  (when-let [w# (get @spork.async.system/system ~nm)]
+                     (do (spork.async.system/try-stop! w#) nil))
          poison# (clojure.core.async/chan)
          status# (atom :started)
          run# (fn ~'run! []
@@ -92,7 +92,7 @@
                            :else (do
                                    ~expr 
                                    (recur))))))
-         wnew# (reify ~'quilsample.system/IWorker
+         wnew# (reify ~'spork.async.system/IWorker
                  (~'stop! [obj#]
                    (case @status#
                      :started (do (clojure.core.async/put! poison# :stop)
@@ -107,14 +107,14 @@
                                   obj#)))
                  ~'clojure.lang.IDeref
                  (~'deref [obj#] @status#))
-          updated# (swap! quilsample.system/system assoc ~nm wnew#)]     
+          updated# (swap! spork.async.system/system assoc ~nm wnew#)]     
      (run#)
      wnew#
      ))
 
 (defmacro go-push [nm output-ch expr] 
-  `(let [cleanup#  (when-let [w# (get @quilsample.system/system ~nm)]
-                     (do (quilsample.system/try-stop! w#) nil))
+  `(let [cleanup#  (when-let [w# (get @spork.async.system/system ~nm)]
+                     (do (spork.async.system/try-stop! w#) nil))
          poison# (clojure.core.async/chan)
          status# (atom :started)
          run# (fn ~'run! []
@@ -126,7 +126,7 @@
                          (if (= ch# poison#) (do (println (str [~nm "stopping"]))
                                                    (reset! status# :stopped)) 
                                (recur)))))))
-         wnew# (reify ~'quilsample.system/IWorker
+         wnew# (reify ~'spork.async.system/IWorker
                  (~'stop! [obj#]
                    (case @status#
                      :started (do (clojure.core.async/put! poison# :stop)
@@ -139,14 +139,14 @@
                      :stopped (do (reset! status# :started) (run#) obj#)))
                  ~'clojure.lang.IDeref
                  (~'deref [obj#] @status#))
-          updated# (swap! quilsample.system/system assoc ~nm wnew#)]     
+          updated# (swap! spork.async.system/system assoc ~nm wnew#)]     
      (run#)
      wnew#
      ))
 
 (defmacro thread-pull [nm input-ch v expr] 
-  `(let [cleanup#  (when-let [w# (get @quilsample.system/system ~nm)]
-                     (do (quilsample.system/try-stop! w#) nil))
+  `(let [cleanup#  (when-let [w# (get @spork.async.system/system ~nm)]
+                     (do (spork.async.system/try-stop! w#) nil))
          poison# (clojure.core.async/chan)
          status# (atom :started)
          run# (fn ~'run! []
@@ -159,7 +159,7 @@
                             :else (do
                                     ~expr 
                                    (recur)))))))
-         wnew# (reify ~'quilsample.system/IWorker
+         wnew# (reify ~'spork.async.system/IWorker
                  (~'stop! [obj#]
                    (case @status#
                      :started (do (clojure.core.async/put! poison# :stop)
@@ -172,14 +172,14 @@
                      :stopped (do (reset! status# :started) (run#) obj#)))
                  ~'clojure.lang.IDeref
                  (~'deref [obj#] @status#))
-          updated# (swap! quilsample.system/system assoc ~nm wnew#)]     
+          updated# (swap! spork.async.system/system assoc ~nm wnew#)]     
      (run#)
      wnew#
      )) 
 
 (defmacro thread-push [nm output-ch expr] 
-  `(let [cleanup#  (when-let [w# (get @quilsample.system/system ~nm)]
-                     (do (quilsample.system/try-stop! w#) nil))
+  `(let [cleanup#  (when-let [w# (get @spork.async.system/system ~nm)]
+                     (do (spork.async.system/try-stop! w#) nil))
          poison# (clojure.core.async/chan)
          status# (atom :started)
          run# (fn ~'run! []
@@ -192,7 +192,7 @@
                           (if (= ch# poison#) (do (println (str [~nm "stopping"]))
                                                    (reset! status# :stopped)) 
                               (recur))))))))
-         wnew# (reify ~'quilsample.system/IWorker
+         wnew# (reify ~'spork.async.system/IWorker
                  (~'stop! [obj#]
                    (case @status#
                      :started (do (clojure.core.async/put! poison# :stop)
@@ -205,7 +205,7 @@
                      :stopped (do (reset! status# :started) (run#) obj#)))
                  ~'clojure.lang.IDeref
                  (~'deref [obj#] @status#))
-          updated# (swap! quilsample.system/system assoc ~nm wnew#)]     
+          updated# (swap! spork.async.system/system assoc ~nm wnew#)]     
      (run#)
      wnew#
      ))

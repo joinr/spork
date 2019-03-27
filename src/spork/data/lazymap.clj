@@ -14,7 +14,7 @@
            (set! ~lm (force ~thunk)))
        (let [~the-map ~lm]
          ~@body))))
-             
+
 (deftype LazyMap [^clojure.lang.Delay thunk
                   ^:unsynchronized-mutable ^clojure.lang.IPersistentMap m]
   clojure.lang.IHashEq
