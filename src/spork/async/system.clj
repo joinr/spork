@@ -35,17 +35,6 @@
 ;;Alternately, we could synchronize based on an atom that indicates the locale.
 ;;We could also have a keep-alive to determine whether or not we should kill everything.
 
-;;singleton system for now...
-(defonce system (atom nil))
-(defn kill-all! []
-;;for hard reloads...i.e. reload-all, this keeps our protocols from getting
-;;hosed.  Protocols don't play nice at the repl if we're restarting things often.
-  (when @system
-    (do (doseq [[nm proc] @system]
-          (.stop! proc))
-        (reset! system nil))))
-(kill-all!)
-
 (defprotocol IWorker
   (start! [obj])
   (stop!  [obj]))
@@ -58,8 +47,19 @@
     (or (= stat :stopped) (vector? stat))))
 
 (defn try-stop! [w]
-    (if (stopped? w) w
-        (stop! w)))
+  (if (stopped? w) w
+      (stop! w)))
+
+;;singleton system for now...
+(defonce system (atom nil))
+(defn kill-all! []
+;;for hard reloads...i.e. reload-all, this keeps our protocols from getting
+;;hosed.  Protocols don't play nice at the repl if we're restarting things often.
+  (when @system
+    (do (doseq [[nm proc] @system]
+          (try-stop! proc))
+        (reset! system nil))))
+(kill-all!)
 
 ;;keywords are simple workers, they just map into the existing
 ;;values of active systems.
