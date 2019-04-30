@@ -62,16 +62,16 @@
 			(when (.isFile kf) (io/copy kf vf))))))
 
 (defmacro with-path
-  "Given a root directory, and a collection of bindings in the form 
-   [path [subdir1 subdir2...file]], evals body inside an expression 
-   with *root* bound to the root path, and each binding available as 
-   a fully-realized file path (relative-path *root* %) is called on 
-   each pathlist)."
+  "Given a root directory, and a collection of bindings in the form
+   [path [subdir1 subdir2...file]], evals body inside an expression
+   with *root* bound to the root path, and each
+   binding available as a fully-realized file path
+   (relative-path *root* %) is called on each pathlist)."
   [root bindings body]
-  (let [binds (mapcat 
-                (fn [[nm pathlist]] 
-                  (list nm (list 'relative-path '*root* pathlist)))
-                    (partition 2 bindings))]               
+  (let [binds (mapcat
+               (fn [[nm pathlist]]
+                 (list nm `(relative-path ~root ~pathlist)))
+               (partition 2 bindings))]
     `(let [~'*root* ~root
            ~@binds]
        ~body)))
