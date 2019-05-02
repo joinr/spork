@@ -494,7 +494,9 @@
 ;starting with the ActionListener....it's simple and is used by the Swing timer.
 (comment 
 
-(use 'cljgui.components.swing)
+  (use 'spork.cljgui.components.swing)
+  (use 'clojure.pprint)
+  
 (def btn (button "Test!"))
 (def inbox (text-field "blah"))
 (def mevents (mouse-observer btn))

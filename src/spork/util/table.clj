@@ -917,11 +917,20 @@
                              identity)
                            (line->vec (general/first-any lines)))) 
                  [])
+        fields    (table-fields tbl)
+        schema    (if (empty? schema)
+                    (let [types (derive-schema (general/first-any (r/drop 1 lines))
+                                               :parsemode parsemode
+                                               :line->vec line->vec
+                                               :fields fields)]
+                      (into {} (map vector fields types)))
+                    schema)
+        ;s         (unify-schema schema fields)
         parsef (pooled-parsing-scheme #_parse/parsing-scheme schema :default-parser  
                    (or default-parser
                        (if (= parsemode :scientific) parse/parse-string
                            parse/parse-string-nonscientific)))
-        fields (table-fields tbl)      
+
         parse-rec (comp (parse/vec-parser! fields parsef) line->vec) ;this makes garbage.
         ]
       (->> (conj-rows (empty-columns (count (table-fields tbl))) 

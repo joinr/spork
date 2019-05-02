@@ -1,11 +1,15 @@
 ;;Currently broken, need to update to use the reactive behaviors in a different
 ;;package. Mostly rerouting.
-(ns spork.cljgui.animation.example
+(ns sporkfrp.animation
+  (:require [spork.sketch :as sketch]
+            [spork.graphics2d.scene :as scene
+             :refer [translate rotate scale color fade]]
+            [spork.cljgui.components.swing :as gui])
   (:use [spork.graphics2d.canvas]
         [spork.geometry.shapes]
 ;        [spork.behavior] ;Broken at the moment, need to point to a reactive
-        [spork.scene.scenegraph]
-        [spork.cljgui.components.swing])
+        ;[spork.scene.scenegraph]
+        )
   (:import [java.awt Graphics2D]
            [java.awt.event ActionListener]
            [javax.swing Timer JPanel]))
@@ -14,33 +18,31 @@
 ;this will let us maintain the state of the shape records, and call their 
 ;draw-shape functions....
 
-(def greencircle (->group 
-                   [(->relative-circle :green 100)
-                    (->relative-ring :black 100)]))
-(def bluecircle (->group 
-                  [(->relative-circle :blue 100)
-                   (->relative-ring :black 100)]))
+(def greencircle [(->relative-circle :green 100)
+                    (->relative-ring :black 100)])
+(def bluecircle [(->relative-circle :blue 100)
+                 (->relative-ring :black 100)])
 
-(defn compose-scene [s1 s2]  (->group [s1 s2]))
+(defn compose-scene [s1 s2]  [s1 s2])
 
 (def greenandblue
-      (compose-scene (translate-scene -35 35 greencircle)
-                     (translate-scene 35 -35 bluecircle)))
+      (compose-scene (translate -35 35 greencircle)
+                     (translate 35 -35 bluecircle)))
 
 (defn compose-b [scene1b scene2b]
   (lift2 compose-scene scene1b scene2b))
 
 (defn translate-b [xb yb sceneb] 
-  (lift3 translate-scene xb yb sceneb))
+  (lift3 translate xb yb sceneb))
 
 (defn scale-b [xb yb sceneb]
-  (lift3 scale-scene xb yb sceneb))
+  (lift3 scale xb yb sceneb))
 
 (defn rotate-b [thetab sceneb]
-  (lift2 rotate-scene thetab sceneb))
+  (lift2 rotate thetab sceneb))
 
 (defn fade-b [alphab sceneb]
-  (lift2 fade-scene alphab sceneb))
+  (lift2 fade alphab sceneb))
 
 (defn offset-scale-b [scale xb yb sceneb]
   (let [[scaledx scaledy] (map #(map-b * scale-b %) [xb yb])]
