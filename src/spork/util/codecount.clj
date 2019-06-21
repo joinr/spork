@@ -2,7 +2,8 @@
   (:require [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as gen]
             [clojure.spec.test.alpha :as stest]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [spork.util [io :as io]]))
 
 
 ;;Given a source file, let's break it down
@@ -83,7 +84,7 @@
 ;;============================
 (defn source->tree [path]
   (->> (slurp path)
-       (clojure.string/split-lines)
+       (str/split-lines)
        (s/conform ::source-code)))
 
 ;;once we have our tagged tree, we can
@@ -141,7 +142,7 @@
        frequencies))
 
 (defn clojure-source? [path]
-  (and (clojure.string/includes?
+  (and (str/includes?
         path ".clj")
        (not (re-find #"\~|\#" path))))
 
@@ -156,7 +157,7 @@
 
 (defn classify-project [root]
   (let [pieces (classify-tree root)
-        totals (reduce (partial merge-with +) (vals pieces))]
+        totals (reduce (partial merge-with +) {:code 0 :comment 0 :blank 0} (vals pieces))]
     (with-meta {:path   root
                 :totals totals}
       {:pieces pieces})))
