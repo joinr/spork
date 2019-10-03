@@ -141,19 +141,33 @@
        (map classify)
        frequencies))
 
+(defn selective-file-seq
+  "A tree seq on java.io.Files"
+  ([dir file-filter]
+   (tree-seq
+    (fn [^java.io.File f] (. f (isDirectory)))
+    (fn [^java.io.File d] (filter file-filter (seq (. d (listFiles)))))
+    dir))
+  ([dir] (selective-file-seq dir identity)))
+
+(def exclusions #{".git"
+                  "checkouts"
+                  "target"})
+
 (defn clojure-source? [path]
-  (and (str/includes?
-        path ".clj")
+  (and (str/includes? path ".clj")
        (not (re-find #"\~|\#" path))))
 
+(defn valid-folder? [path]
+  (not (some (fn [s] (str/includes? path s)) exclusions)))
+
 (defn classify-tree [root]
-  (let [files (atom [])
-        root-dir (io/as-directory root)]
+  (let [root-dir (io/as-directory root)]
     (->> (for [f (file-seq (io/file root-dir))
-               :when (clojure-source? (io/fname f))]
+               :when  (and (clojure-source? (io/fpath f))
+                           (valid-folder? (io/fpath f)))]
            [(clojure.string/replace (io/fpath f) root-dir "") (classify-file f)])
          (into {}))))
-
 
 (defn classify-project [root]
   (let [pieces (classify-tree root)

@@ -838,3 +838,51 @@
 (defn constant->lisp-key [x]
   (when-let [ys  (clojure.string/split (name x) #"_")]
     (keyword (camel->lisp (camel-join ys)))))
+
+
+;;Collection interpolation utilities.
+;;===================================
+(defn time-weighted-samples
+  "Given a function keyf, which maps elements of
+   the collection coll onto a numeric value (typically
+   some notion of time), returns a lazy sequence of
+   [entry t dt], where t is the value of (keyf entry), and dt is the result of
+  comparing the difference in keyf values for adjacent entries in the
+  collection."
+  [keyf coll]
+  (let [final (atom nil)]
+    (concat
+     (for [[l r] (partition 2 1 coll)]
+       (let [lt (keyf l)
+             rt (keyf r)
+             _  (reset! final [r rt 1])]
+           [l  lt (- rt lt)]))
+     (lazy-seq (vector @final)))))
+
+(defn interpolate
+  "Given a function keyf, which maps elements of
+   the collection coll onto a numeric value (typically
+   some notion of time), and a
+   function lerpf, which projects an initial value x, an initial time t0, and a dt
+   onto a new value x'.  lerpf will be mapped over the range defined by
+   the initial time, t0, (+ t0 dt), such that multiple interpolated
+   entries will be generated.  The resulting sequence is a concatenation
+   of the interpolated values.
+
+  (interpolate :t (fn [r t dt] (assoc r :t (+ t dt)))
+     [{:t 0 :id :a} {:t 10 :id :b} {:t 20 :id :c} {:t 25 :id :d} {:t 26 :id :d}])
+  =>
+  ({:t 0, :id :a} {:t 1, :id :a} {:t 2, :id :a} {:t 3, :id :a} {:t 4, :id :a}
+  {:t 5, :id :a} {:t 6, :id :a} {:t 7, :id :a} {:t 8, :id :a} {:t 9, :id :a} {:t
+  10, :id :b} {:t 11, :id :b} {:t 12, :id :b} {:t 13, :id :b} {:t 14, :id :b}
+  {:t 15, :id :b} {:t 16, :id :b} {:t 17, :id :b} {:t 18, :id :b} {:t
+  19, :id :b} {:t 20, :id :c} {:t 21, :id :c} {:t 22, :id :c} {:t 23, :id :c}
+  {:t 24, :id :c} {:t 25, :id :d} {:t 26, :id :d})
+  "
+
+  [keyf lerpf coll]
+  (apply concat
+         (for [[x t0 dt] (time-weighted-samples keyf coll)]
+           (if (= dt 1)  (list x)
+               (for [n (range dt)]
+                 (lerpf x t0 n))))))
