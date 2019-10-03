@@ -857,7 +857,8 @@
              rt (keyf r)
              _  (reset! final [r rt 1])]
            [l  lt (- rt lt)]))
-     (lazy-seq (vector @final)))))
+     (lazy-seq (when-let [f @final]
+                 (vector f))))))
 
 (defn interpolate
   "Given a function keyf, which maps elements of
