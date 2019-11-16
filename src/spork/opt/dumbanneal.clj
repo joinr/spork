@@ -178,4 +178,61 @@
                      )
       :best-solution))
 
+;;Some functions from
+;;https://en.wikipedia.org/wiki/Test_functions_for_optimization
+
+;;what about rosenbrock constrained to a disc?
+
+;;f(x,y)=(1-x)^2+100(y-x^2)^2
+;;s.t. x^2 + y^2 <= 2
+;;-1.5 <= x <= 1.5
+;;-1.5 <= y <= 1.5
+(defn sqr ^double [x] (Math/pow (double x) 2 ))
+(defn cub ^double [x] (Math/pow (double x) 3))
+(defn rosenbrock [x y]
+  (+ (sqr (- 1.0 x))
+     (* 100
+        (sqr (- y (sqr x))))))
+
+(let [penalty   (fn [x y]
+                  (let [d (- (+ (sqr x) (sqr y))
+                             2)]
+                    (if (pos? d) d 0.0)))]
+
+  (simple-anneal (fn [v]
+                   (let [x (nth v 0)
+                         y (nth v 1)]
+                     (+ (* 10000 (penalty x y))
+                        (rosenbrock x y))))
+                 [0 0]
+                 :ranges [[-1.5 1.5]
+                          [-1.5 1.5]]
+                 :decay (ann/geometric-decay 0.8)
+                 :equilibration 100))
+
+;;rosenbrock with a cubic line constraint
+(let [below-zero (fn [x]
+                   (if (neg? x)
+                     0
+                     x))
+      penalty   (fn [x y]
+                  (let [d1 (+ (cub (- x 1))
+                              (- y)
+                              1)
+                        d2 (+ x y -2)
+                        ]
+                    (+ (below-zero d1)
+                       (below-zero d2))))]
+
+  (simple-anneal (fn [v]
+                   (let [x (nth v 0)
+                         y (nth v 1)]
+                     (+ (* 10000 (penalty x y))
+                        (rosenbrock x y))))
+                 [0 0]
+                 :ranges [[-1.5 1.5]
+                          [-1.5 1.5]]
+                 :decay (ann/geometric-decay 0.8)
+                 :equilibration 100))
+
  )

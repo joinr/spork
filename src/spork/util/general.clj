@@ -6,6 +6,31 @@
                         [io :as io]]
             [clojure.pprint :as pprint]))
 
+(defn rmerge! [^clojure.lang.IKVReduce l  r]
+  (.kvreduce l
+             (fn [^clojure.lang.ITransientAssociative acc k v]
+               (if-not (acc k)
+                 (.assoc acc k v)
+                 acc)) r))
+
+;;~38 - 50% faster.
+(defn fast-merge
+  ([] {})
+  ([m] m)
+  ([m1 m2]          (rmerge m1 m2))
+  ([m1 m2 m3]       (->> (transient m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4]    (->> (transient m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4 m5] (->> (transient m5) (rmerge! m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4 m5 & ms]
+   (let [rs (reverse ms)]
+     (->> (reduce rmerge! (transient (first rs)) (rest rs))
+          (rmerge! m5)
+          (rmerge! m4)
+          (rmerge! m3)
+          (rmerge! m3)
+          (rmerge! m1)
+          persistent!))))
+
 (defn ref?
   "Predicate yields true if the obj supports (deref ...)"
   [obj] (instance? clojure.lang.IDeref obj))
@@ -62,7 +87,6 @@
                    (let [n (count @order)
                          _ (swap! order assoc fld n)]
                      n)))
-                                               
           ]
        (sort-by keyf candidates))
        candidates)))
@@ -358,7 +382,7 @@
 
 (defn align-by
   "Given a vector, v, generates a sorting function that compares elements using
-   the following rules: 
+   the following rules:
    elements that exist in v have order in v as their key.
    elements that do not exist in v are conjed onto v after they're found.
    align-by makes no guarantee that ks even have to exist in coll, only that 
@@ -371,10 +395,10 @@
                                 (conj acc kv))) {}
                          (map-indexed (fn [i v] [v i]) ks)))
         keyfn (fn [x] (if (contains? @ordering x) 
-                        (get @ordering x)
+                        (#_get .valAt ^clojure.lang.PersistentHashMap @ordering x)
                         (let [y (inc (count @ordering))]
                           (do (swap! ordering assoc x y)
-                            y))))]                                                    
+                            y))))]
     (vec (sort-by keyfn coll))))
 
 (defn align-fields-by
@@ -515,38 +539,167 @@
 
 (definline dissoc2! [m from to]
   `(let [res# (dissoc! (get ~m ~from) ~to)]
-     (if (zero-items? res#) 
+     (if (zero-items? res#)
        (dissoc! ~m ~from)
        ~m)))
 
-(definline transient2 [coll] 
-  `(reduce-kv (fn [m# k# v#] 
+(definline transient2 [coll]
+  `(reduce-kv (fn [m# k# v#]
                 (assoc! m#  k# (transient v#)))
            (transient ~coll)  ~coll))
 
-(definline persistent2! [coll]  
+(definline persistent2! [coll]
   `(let [realized# (persistent! ~coll)]
-     (reduce-kv (fn [m# k# v#] 
+     (reduce-kv (fn [m# k# v#]
                (assoc m# k# (persistent! v#)))
              realized# realized#)))
 
-;;Operations optimized for speed.  the -in and friends 
+;;faster merge
+(defn rmerge! [^clojure.lang.IKVReduce l  r]
+  (.kvreduce l
+             (fn [^clojure.lang.ITransientAssociative acc k v]
+               (if-not (acc k)
+                 (.assoc acc k v)
+                 acc)) r))
+
+;;~50% faster.
+(defn fast-merge
+  "Optimized implementaiton of clojure.core/merge, which
+   - prefer discrete args vs. the default var-args for everything version,
+   - uses transients instead of persistent map-based conj,
+   - use direct method invocation everywhere,
+   - accumulates keys from r->l instead of l->r, since we can prune
+     more (in some cases, e.g. 2-arg versions like
+     (merge {:a 2 :b 3 :c 4} {:a 1 :b 1 :c 1}) we can exclude
+     all keys from l since they already appear in r,
+     leading to 0 actual assoc's)
+
+   Assumes all inputs support assoc.  Drop-in replacement for
+   clojure.core/merge."
+  ([] {})
+  ([m] m)
+  ([m1 m2]          (->> (transient m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3]       (->> (transient m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4]    (->> (transient m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4 m5] (->> (transient m5) (rmerge! m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4 m5 & ms]
+   (let [rs (reverse ms)]
+     (->> (reduce rmerge! (transient (first rs)) (rest rs))
+          (rmerge! m5)
+          (rmerge! m4)
+          (rmerge! m3)
+          (rmerge! m3)
+          (rmerge! m1)
+          persistent!))))
+
+
+#_(defmacro static-merge
+  [& ms]
+  (assert (every? map? (rest ms)))
+  (assert (every? #(= 1 %) (->> (rest ms) (mapcat keys) frequencies vals)))
+  (let [kvs (mapcat seq (rest ms))]
+    (reduce (fn [acc [k v]]
+              `(assoc ~acc ~k ~v)) (first ms) kvs)))
+
+;;type hinted method invocations avoid clojure.lang.RT
+(defmacro static-merge
+  "If we enforce the invariant that all inputs to merge (barring the
+   first) must be maps, we can statically compile an efficient
+   merge where we don't have to traverse all the keys.
+   This then becomes a simple bunch of assoc calls to
+   specific maps in the input, removing any need to iterate
+   or assoc redundant values."
+  [& ms]
+  (assert (every? map? (rest ms)))
+  (assert (every? #(= 1 %) (->> (rest ms) (mapcat keys) frequencies vals)))
+  (let [kvs (mapcat seq (rest ms))
+        assoc! (fn [m k v]
+                 `(.assoc  ~(with-meta m {:tag 'clojure.lang.Associative})
+                              ~k ~v))]
+    (reduce (fn [acc [k v]]
+              (assoc! acc k v)) (first ms) kvs)))
+
+;;Operations optimized for speed.  the -in and friends
 ;;are not sufficient...
-(defmacro deep-assoc 
+(defmacro deep-assoc
   "Replacement for assoc-in, but without the function call overhead.
-   If the key-path is composed of literals, this is about 
+   If the key-path is composed of literals, this is about
    3 times faster then assoc-in."
   [m [k & ks] v]
   (if ks
     `(assoc ~m ~k (deep-assoc (get ~m ~k) ~ks ~v))
     `(assoc ~m ~k ~v)))
 
-;;This is a clone of get-in, directly from source.
-(def deep-get get-in)
+;;This is a clone of clojure.core/get-in, directly from source,
+;;modified to support short circuiting.
+(defn deep-get
+    "Returns the value in a nested associative structure,
+     where ks is a sequence of keys. Returns nil if the key
+     is not present, or the not-found value if supplied.
+     Short circuits if get returns nil along the path."
+    ([m ks]
+     (reduce (fn [acc k]
+               (if-let [res (get acc k)]
+                 res
+                 (reduced nil)))  ks))
+    ([m ks not-found]
+     (loop [sentinel (Object.)
+            m m
+            ks (seq ks)]
+       (if ks
+         (let [m (get m (first ks) sentinel)]
+           (if (identical? sentinel m)
+             not-found
+             (recur sentinel m (next ks))))
+         m))))
 
-(defmacro deep-update 
+;;This is on average 3x faster than get-in,
+;;and up to 8x faster if short circuiting applies.
+(defmacro deep-get-map
+  "Like get-in, except it's optimized to work with a sequence of
+   map lookups where we have java.util.Map values
+   and short circuits on nil, as opposed to clojure.core/get-in
+   which naively reduces over the keys regardless of nil.
+   More general than invoke-in since it works with
+   java map implementations, less general than invoke-in
+   since it doesn't work with arbitrary function applications."
+  ([m ks]
+   (if (seq ks)
+     `(let [^java.util.Map m# ~m]
+        (if-let [res# (.get ^java.util.Map m#  ~(first ks))]
+          (deep-get-map res# ~(rest ks))))
+     `~m))
+  ([m ks not-found]
+   `(if-let [res# (deep-get-map ~m ~ks)]
+      res#
+      ~not-found)))
+
+(defmacro deep-invoke-aux
+  ([m _ ks]
+   (if (seq ks)
+     `(if-let [res# (~m  ~(first ks))]
+        (deep-invoke-aux res# nil ~(rest ks)))
+     `~m))
+  ([m ks]
+   `(let [m# ~m]
+      (deep-invoke-aux m# ~m ~ks))))
+
+;;This is on average 3x faster than get-in,
+;;and up to 8x faster if short circuiting applies.
+(defmacro deep-invoke
+  "Like get-in, except it's optimized to work with a sequence of
+   function invocations - which for maps/sets is application -
+   and short circuits on nil, as opposed to clojure.core/get-in
+   which naively reduces over the keys regardless of nil."
+  ([m ks]   `(deep-invoke-aux m ks))
+  ([m ks not-found]
+   `(if-let [res# (deep-invoke m ks)]
+      res#
+      ~not-found)))
+
+(defmacro deep-update
   "Replacement for update-in, but without the function call overhead.
-   If the key-path is composed of literals, this is about 
+   If the key-path is composed of literals, this is about
    3 times faster then assoc-in."
   [m [k & ks] f & args]
    (if ks
@@ -565,24 +718,9 @@
   (let [updated (apply update-in ks f args)]
     (if (empty? (get-in updated ks))
       (let [path   (butlast ks)
-            parent (get-in m path)]            
+            parent (get-in m path)]
         (assoc-in m path (dissoc parent (last ks))))
       updated)))
-
-;; (defn deep-prune [m ks f & args]
-;;   (let [parents (java.util.ArrayList.)
-;;         acc     (object-array [parents nil])
-;;         parents (reduce (fn [^objects acc k]
-;;                           (if-let [child (get (.get acc (.size acc)) k)]                            
-;;                             (doto acc (.add  child)
-                                  
-;;                           (java.util.ArrayList.)
-;;                           ks))
-;;      (if (empty? (deep-get updated ks))
-;;        (let [path   (butlast ks)
-;;              parent (get-in m path)]            
-;;          (assoc-in m path (dissoc parent (last ks))))
-;;        updated)))
 
 ;;It might be nice to pull this out into a protocol at some point...
 ;;There are other things, which are functors, that can be folded or 
@@ -638,15 +776,17 @@
 (definline kv2 [coll]
   `(loop [xs# ~coll
           acc# (transient {})]
-     (if (empty? xs#) (persistent2! acc#)                                                    
+     (if (empty? xs#) (persistent2! acc#)
          (let [lrv#  (first xs#)
                lr#   (first lrv#)]
            (recur (rest xs#) 
                   (assoc2! acc# (first lr#) (second lr#) (second lrv#)))))))
 
 ;;list-spectific optimizations.
-(definline cons-head [the-list] `(.first ~(vary-meta the-list assoc        :tag 'clojure.lang.Cons)))
-(definline cons-next [the-list] `(.first (.next ~(vary-meta the-list assoc :tag 'clojure.lang.Cons))))
+(definline cons-head [the-list]
+  `(.first ~(vary-meta the-list assoc :tag 'clojure.lang.Cons)))
+(definline cons-next [the-list]
+  `(.first (.next ~(vary-meta the-list assoc :tag 'clojure.lang.Cons))))
 
 
 
@@ -709,16 +849,50 @@
             60% faster for larger arities, up to 15."
       ~@bodies)))
 
+;;eventually deprecate these in favor of the ones from clj-fast
+
 ;;More effecient memoization functions.  Clojure's built in memo 
 ;;memoizes args using a variadic code path, which forces the creation
 ;;of tons of arrayseqs....this is horrible for small, fast lookups.
 (defn memo-1 [f]
-  (let [tbl (java.util.HashMap.)]
+  (let [tbl (java.util.concurrent.ConcurrentHashMap.)]
     (fn [k] (if-let [res (.get tbl k)]
-              res 
+              res
               (let [res (f k)]
-                (do (.put tbl k res)
+                (do (.putIfAbsent tbl k res)
                     res))))))
+
+;;4x faster than clojure.core/memoize...
+;;we can do better with a macro, but I haven't sussed it out.
+;;This is a much as we probably need for now though, meh.
+(defn memo-2 [f]
+  (let [xs (java.util.concurrent.ConcurrentHashMap.)]
+    (fn [x y]
+      (if-let [^java.util.concurrent.ConcurrentHashMap ys (.get xs x)]
+        (if-let [res (.get ys y)]
+          res
+          (let [res (f x y)]
+            (do (.putIfAbsent ys y res)
+                res)))
+        (let [res     (f x y)
+              ys    (doto (java.util.concurrent.ConcurrentHashMap.)
+                      (.putIfAbsent y res))
+              _     (.putIfAbsent xs x ys)]
+          res)))))
+
+(defmacro deref!! [v]
+  (let [v (with-meta v {:tag 'clojure.lang.IDeref})]
+    `(.deref ~v)))
+
+(defmacro val-at
+  "Synonimous with clojure.core/get, except it uses interop to 
+   directly inject the method call and avoid function invocation.
+   Intended to optimize hotspots where clojure.core/get adds  
+   unwanted overhead."
+  [m & args]
+   (let [m (with-meta m  {:tag 'clojure.lang.ILookup})]
+    `(.valAt ~m ~@args)))
+
 
 (defn mutable-memo 
   "DEPRECATED. Returns a memoized version of a referentially transparent function. The
@@ -758,6 +932,31 @@
         _     (assert (> arity 1) "need at least one key and one value")]
     `(get ~m (tup/tuple ~@idxs))
     ))
+
+;;optimized short-circuiting set intersection.
+;;about 3x faster than (first (clojure.set/intersection s1 s2))
+;;about 2x as fast as
+;; (defn some-member [s1 s2]
+;;   (let [[l r]  (if (< (count s1) (count s2)) [s1 s2]
+;;                    [s2 s1])]
+;;     (reduce (fn [acc x]
+;;               (if (r x)
+;;                 (reduced x)
+;;                 acc)) nil l)))
+
+(defn some-member
+  "Detects if s1 contains any element of s2, returns first
+   found intersecting member as fast as possible.
+   Akin to clojure.core/some optimized for sets."
+  [^clojure.lang.APersistentSet s1
+   ^clojure.lang.APersistentSet s2]
+  (let [l  (if (< (.count s1) (.count s2)) s1
+               s2)
+        r   (if (identical? l s1) s2 s1)]
+    (reduce (fn [acc x]
+              (if (r x)
+                (reduced x)
+                acc)) nil l)))
 
 ;;Weakish.  
 
