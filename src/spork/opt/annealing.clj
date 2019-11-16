@@ -287,7 +287,7 @@
         (if (between? step) step
             (if (> n 30) 
               (throw (Exception. "Problem in asa-stepper, too many reps."))
-            (recur (+ x0 (take-step! temp)) (unchecked-inc n))))))))
+              (recur (+ x0 (take-step! temp)) (unchecked-inc n))))))))
 
 (defn midpoint [x y] 
   (+ x (/ (-  y x) 2.0)))
