@@ -8,7 +8,7 @@
             [spork.util.numerics :refer :all]
             [spork.util [ranges :as r]]
             [spork.util [general :as gen]])
-  (:import [java.util.Random]))
+  (:import  java.util.Random))
 
 (set! *warn-on-reflection* true)
 

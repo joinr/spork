@@ -7,7 +7,7 @@
             [spork.opt  [annealing :as ann]]))
 
 ;;Simulated annealing just overrides the default acceptance criterion,
-;;and uses the Boltzmann energy equation to bias the search toward
+;;and uses the Boltzmann energy equation to biase search toward
 ;;exploration early, and exploitation as the search proceeds.
 ;;__blank-sa-params__ provides a sane set of defaults for simulated
 ;;annealing, and will garantee that a solve will terminate.
@@ -61,6 +61,7 @@
                        (min new-cost best-cost))
                 (recur temp n i converged? current-sol 
                        current-cost best-sol best-cost)))))))))
+
 ;;testing 
 (comment 
 (def the-solution [5])
@@ -71,5 +72,53 @@
                      (reduce + (map (fn [x] 
                                       (abs (- x 2))) xs))))
 
+;;Can we get a decent solution to the function
+;;ArgMin x,  f(x) = |x - 2|
+
+(simple-anneal (fn [v] (abs (- (nth v 0) 2)))
+               [100]
+               :decay (ann/geometric-decay 0.8)
+               :equilibration 30)
+
+;;how about a root for f(x) =  3x + 2?
+
+(let [f (fn [x]
+          (abs (+ (* 3 x) 2)))]
+  (simple-anneal (fn [v] (f (nth v 0)))
+                 [100]
+                 :decay (ann/geometric-decay 0.8)
+                 :equilibration 30))
+
+;;let's optimize a knapsack problem.
+(let [items {:green  {:value 4 :weight  12}
+             :grey   {:value 2 :weight  1}
+             :blue   {:value 2 :weight  2}
+             :orange {:value 1 :weight  1}
+             :yellow {:value 10 :weight 4}}
+      ks    (vec (keys items))
+      max-weight 15
+      init-pack  {:weight 0 :items #{} :value 0}
+      cost  (fn [pack]
+              ( + (:value pack)
+                  ( * -100 (Math/abs (- max-weight (:weight pack))))))
+      random-step (fn [_ pack]
+                    (let [item    (rand-nth ks)
+                          loaded  (pack :items)
+                          weight  (pack :weight)
+                          value   (pack :value)]
+                      (if (loaded item)
+                        {:weight (- weight (-> item items :weight))
+                         :value  (- value  (-> item items :value))
+                         :items  (disj loaded item)}
+                        {:weight (+ weight (-> item items :weight))
+                         :value  (+ value  (-> item items :value))
+                         :items  (conj loaded item)})))]
+  (-> (simple-anneal (comp - cost)
+                     init-pack
+                     :decay (ann/geometric-decay 0.8)
+                     :equilibration 30
+                     :step-function random-step
+                     )
+      :best-solution))
 
  )
