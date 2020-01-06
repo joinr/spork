@@ -6,6 +6,61 @@
                         [io :as io]]
             [clojure.pprint :as pprint]))
 
+(defn map-conj [^clojure.lang.IPersistentMap l r]
+  (.cons l r))
+
+(defn transient-conj [^clojure.lang.IPersistentMap l r])
+
+(defn rmerge [^clojure.lang.IKVReduce l  r]
+  (persistent!
+   (.kvreduce l
+               (fn [^clojure.lang.ITransientAssociative acc k v]
+                 (if-not (acc k)
+                   (.assoc acc k v)
+                   acc))
+               (transient r))))
+
+(defn rmerge! [^clojure.lang.IKVReduce l  r]
+  (.kvreduce l
+             (fn [^clojure.lang.ITransientAssociative acc k v]
+               (if-not (acc k)
+                 (.assoc acc k v)
+                 acc)) r))
+
+(defn rmerge! [^clojure.lang.IKVReduce l  r]
+  (.kvreduce l
+             (fn [^clojure.lang.ITransientAssociative acc k v]
+               (if-not (acc k)
+                 (.assoc acc k v)
+                 acc)) r))
+
+;;~38 - 50% faster.
+(defn fast-merge
+  ([] {})
+  ([m] m)
+  ([m1 m2]          (rmerge m1 m2))
+  ([m1 m2 m3]       (->> (transient m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4]    (->> (transient m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4 m5] (->> (transient m5) (rmerge! m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
+  ([m1 m2 m3 m4 m5 & ms]
+   (let [rs (reverse ms)]
+     (->> (reduce rmerge! (transient (first rs)) (rest rs))
+          (rmerge! m5)
+          (rmerge! m4)
+          (rmerge! m3)
+          (rmerge! m3)
+          (rmerge! m1)
+          persistent!))))
+
+(defn faster-merge
+  ([] {})
+  ([m] m)
+  ([m1 m2] (persistent! (.conj ^clojure.lang.ITransientCollection (.asTransient ^clojure.lang.IEditableCollection m1) m2)))
+  ([m1 m2 m3]       (-> m1 (map-conj m2) (map-conj m3)))
+  ([m1 m2 m3 m4]    (-> m1 (map-conj m2) (map-conj m3) (map-conj m4)))
+  ([m1 m2 m3 m4 m5] (-> m1 (map-conj m2) (map-conj m3) (map-conj m4) (map-conj m5)))
+  ([m1 m2 m3 m4 m5 & ms] (reduce map-conj (fast-merge m1 m2 m3 m4 m5) ms)))
+
 (defn ref?
   "Predicate yields true if the obj supports (deref ...)"
   [obj] (instance? clojure.lang.IDeref obj))
@@ -358,7 +413,7 @@
 
 (defn align-by
   "Given a vector, v, generates a sorting function that compares elements using
-   the following rules: 
+   the following rules:
    elements that exist in v have order in v as their key.
    elements that do not exist in v are conjed onto v after they're found.
    align-by makes no guarantee that ks even have to exist in coll, only that 
@@ -371,10 +426,10 @@
                                 (conj acc kv))) {}
                          (map-indexed (fn [i v] [v i]) ks)))
         keyfn (fn [x] (if (contains? @ordering x) 
-                        (get @ordering x)
+                        (#_get .valAt ^clojure.lang.PersistentHashMap @ordering x)
                         (let [y (inc (count @ordering))]
                           (do (swap! ordering assoc x y)
-                            y))))]                                                    
+                            y))))]
     (vec (sort-by keyfn coll))))
 
 (defn align-fields-by
