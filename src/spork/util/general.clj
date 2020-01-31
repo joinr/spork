@@ -6,31 +6,6 @@
                         [io :as io]]
             [clojure.pprint :as pprint]))
 
-(defn rmerge! [^clojure.lang.IKVReduce l  r]
-  (.kvreduce l
-             (fn [^clojure.lang.ITransientAssociative acc k v]
-               (if-not (acc k)
-                 (.assoc acc k v)
-                 acc)) r))
-
-;;~38 - 50% faster.
-(defn fast-merge
-  ([] {})
-  ([m] m)
-  ([m1 m2]          (rmerge m1 m2))
-  ([m1 m2 m3]       (->> (transient m3) (rmerge! m2) (rmerge! m1) persistent!))
-  ([m1 m2 m3 m4]    (->> (transient m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
-  ([m1 m2 m3 m4 m5] (->> (transient m5) (rmerge! m4) (rmerge! m3) (rmerge! m2) (rmerge! m1) persistent!))
-  ([m1 m2 m3 m4 m5 & ms]
-   (let [rs (reverse ms)]
-     (->> (reduce rmerge! (transient (first rs)) (rest rs))
-          (rmerge! m5)
-          (rmerge! m4)
-          (rmerge! m3)
-          (rmerge! m3)
-          (rmerge! m1)
-          persistent!))))
-
 (defn ref?
   "Predicate yields true if the obj supports (deref ...)"
   [obj] (instance? clojure.lang.IDeref obj))
@@ -855,7 +830,8 @@
 ;;memoizes args using a variadic code path, which forces the creation
 ;;of tons of arrayseqs....this is horrible for small, fast lookups.
 (defn memo-1 [f]
-  (let [tbl (java.util.concurrent.ConcurrentHashMap.)]
+  (let [^java.util.concurrent.ConcurrentHashMap tbl
+        (java.util.concurrent.ConcurrentHashMap.)]
     (fn [k] (if-let [res (.get tbl k)]
               res
               (let [res (f k)]
