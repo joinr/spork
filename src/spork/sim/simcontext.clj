@@ -569,15 +569,17 @@
                   (assoc-state  k v c)))
             ctx m)))
 
-(defn merge-entity [m  ctx] 
+(defn merge-entity [m  ctx]
   (if (map? m)
-    (reduce-kv (fn [^simcontext c k v]
-                 (if (identical? k :trigger) (v c) 
+    (reduce-kv (fn simple-merge [^simcontext c k v]
+                 (if (identical? k :trigger) (v c)
                      (store/mergee c k v)))
                ctx m)
-    (reduce (fn [^simcontext c [k v]]
-              (if (identical? k :trigger) (v c) 
-                  (store/mergee c k v)))
+    (reduce (fn [^simcontext c ^clojure.lang.Indexed kv]
+              (let [k (.nth kv 0)
+                    v (.nth kv 1)]
+                (if (identical? k :trigger) (v c)
+                    (store/mergee c k v))))
             ctx m)))
 
 ;it'd be really nice if we had a simple language for describing updates...

@@ -37,15 +37,7 @@
                  [org.clojure/core.rrb-vector  "0.0.11"]
                  ;;serialization lib.
                  [com.taoensso/nippy "2.11.0-RC1"]
-                 [ctries.clj "0.0.3"]
-;                 [zcaudate/lucid.distribute "1.4.3"]
-                ;experimental dependencies, ephemeral.
-                ;[org.clojure/data.finger-tree "0.0.2"]
-                ;[primitive-math         "0.1.3"]
-                ;[org.clojure/core.match "0.2.1"]
-                ;[immutable-int-map    "0.1.0"]
-;                 [clojure-watch "LATEST"] ;ephemeral dependency.
-                 ]
+                 [ctries.clj "0.0.3"]]
   :aot [spork.cljgui.components.PaintPanel]
   :profiles {:publish [:uberjar
                        {:aot [;spork.cljgui.components.PaintPanel
