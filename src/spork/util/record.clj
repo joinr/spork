@@ -383,15 +383,14 @@
                                         (and (seq impl)
                                              (#{'valAt  'clojure.core/valAt}
                                               (first impl)))))
-                              #_(concat (lookup 'valAt))))
+                              (concat (lookup 'valAt))))
         replace-deftype (fn [emitted]
                           (->> emitted
                                (reduce (fn [acc x]
                                          (if (and (seq? x)
                                                   (= (first x) 'deftype*))
                                            (let [init (take 6 x)
-                                                 impls (drop 6 x)
-                                                 _ (println impls)]
+                                                 impls (drop 6 x)]
                                              (conj acc (concat init
                                                                (replace-val-at impls))))
                                            (conj acc x))) [])
@@ -404,3 +403,46 @@
                    (walk/postwalk-replace {'clojure.core/case caser
                                            'case caser}))]
     `(~@rform)))
+
+
+spork.util.record> (let [fr (assoc (fr. 10 10) :a 2 :b :3 :c 4)]  (c/quick-bench (get fr :x)))
+Evaluation count : 53604480 in 6 samples of 8934080 calls.
+             Execution time mean : 9.381978 ns
+    Execution time std-deviation : 0.057688 ns
+   Execution time lower quantile : 9.321729 ns ( 2.5%)
+   Execution time upper quantile : 9.436063 ns (97.5%)
+                   Overhead used : 1.860554 ns
+nil
+spork.util.record> (let [fr (assoc (fr. 10 10) :a 2 :b :3 :c 4)]  (c/quick-bench (get fr :c)))
+Evaluation count : 34729932 in 6 samples of 5788322 calls.
+             Execution time mean : 15.436899 ns
+    Execution time std-deviation : 0.237012 ns
+   Execution time lower quantile : 15.263644 ns ( 2.5%)
+   Execution time upper quantile : 15.810472 ns (97.5%)
+                   Overhead used : 1.860554 ns
+
+Found 1 outliers in 6 samples (16.6667 %)
+	low-severe	 1 (16.6667 %)
+ Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
+nil
+spork.util.record> (let [fr (assoc (r. 10 10) :a 2 :b :3 :c 4)]  (c/quick-bench (get fr :x)))
+Evaluation count : 31582332 in 6 samples of 5263722 calls.
+             Execution time mean : 17.620178 ns
+    Execution time std-deviation : 0.734314 ns
+   Execution time lower quantile : 17.137678 ns ( 2.5%)
+   Execution time upper quantile : 18.777557 ns (97.5%)
+                   Overhead used : 1.860554 ns
+
+Found 1 outliers in 6 samples (16.6667 %)
+	low-severe	 1 (16.6667 %)
+ Variance from outliers : 13.8889 % Variance is moderately inflated by outliers
+nil
+spork.util.record> (let [fr (assoc (r. 10 10) :a 2 :b :3 :c 4)]  (c/quick-bench (get fr :c)))
+Evaluation count : 22709778 in 6 samples of 3784963 calls.
+             Execution time mean : 24.598666 ns
+    Execution time std-deviation : 0.030144 ns
+   Execution time lower quantile : 24.567735 ns ( 2.5%)
+   Execution time upper quantile : 24.637346 ns (97.5%)
+                   Overhead used : 1.860554 ns
+nil
+spork.util.record> (let [fr (assoc (r. 10 10) :a 2 :b :3 :c 4)]  (c/quick-bench (get fr :c)))
