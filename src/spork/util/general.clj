@@ -668,7 +668,7 @@
      (reduce (fn [acc k]
                (if-let [res (get acc k)]
                  res
-                 (reduced nil)))  ks))
+                 (reduced nil))) m  ks))
     ([m ks not-found]
      (loop [sentinel (Object.)
             m m
