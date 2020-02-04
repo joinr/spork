@@ -57,4 +57,5 @@
              ;;in the order vector.
              :order  {:aot ~aot-order}
              }
-  :jvm-opts ^:replace ["-Xmx1g" "-XX:NewSize=200m"])
+  ;:jvm-opts ^:replace ["-Xmx1g" "-XX:NewSize=200m"]
+  )

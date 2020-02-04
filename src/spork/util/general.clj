@@ -66,65 +66,117 @@
        (sort-by keyf candidates))
        candidates)))
 
-(defmacro case-identical?
-  "Like case, except uses identical? directly to create the cases, rather than 
-   the hash-based case function that's default.  Seems 3x faster than built in 
-   clojure.core/case if you're using keyword literals....Beware the downfall of 
-   using/expecting identity-based comparison on anything else though.  This is a 
-   specific use case.  Caller beware."
-  [e & clauses]
-  (let [v       (gensym "v")
-        default (when (odd? (count clauses)) (last  clauses))                   
-        pairs      (partition 2 clauses)
-        assoc-test (fn assoc-test [m test expr]
-                     (if (contains? m test)
-                       (throw (IllegalArgumentException. (str "Duplicate case test constant: " test)))
-                       (assoc m test expr)))
-        pairs (reduce
-               (fn [m [test expr]]
-                 (if (seq? test)
-                   (reduce #(assoc-test %1 %2 expr) m test)
-                   (assoc-test m test expr)))
-               {} pairs)
-        tests (reduce (fn [acc [case res]]
-                        (-> acc 
-                            (conj `(identical? ~v ~case))
-                            (conj res))) [] pairs) ]
-    (if (odd? (count clauses))
-      `(let [~v ~e]    (cond ~@tests :else ~default))
-      `(let [~v ~e]    (cond ~@tests
-                             :else (throw (IllegalArgumentException. (str "No matching clause: " ~v)))))
-      )))
 
-;; (defmacro case-eq?
-;;   "Like case, except uses == directly to create the cases, rather than 
-;;    the hash-based case function that's default.  Seems 3x faster than built in 
-;;    clojure.core/case if you're using keyword literals....Beware the downfall of 
-;;    using/expecting identity-based comparison on anything else though.  This is a 
-;;    specific use case.  Caller beware."
-;;   [e & clauses]
-;;   (let [v       (gensym "v")
-;;         default (when (odd? (count clauses)) (last  clauses))                   
-;;         pairs      (partition 2 clauses)
-;;         assoc-test (fn assoc-test [m test expr]
-;;                      (if (contains? m test)
-;;                        (throw (IllegalArgumentException. (str "Duplicate case test constant: " test)))
-;;                        (assoc m test expr)))
-;;         pairs (reduce
-;;                (fn [m [test expr]]
-;;                  (if (seq? test)
-;;                    (reduce #(assoc-test %1 %2 expr) m test)
-;;                    (assoc-test m test expr)))
-;;                {} pairs)
-;;         tests (reduce (fn [acc [case res]]
-;;                         (-> acc 
-;;                             (conj `(== ~v ~case))
-;;                             (conj res))) [] pairs) ]
-;;     (if (odd? (count clauses))
-;;       `(let [~v ~e]    (cond ~@tests :else ~default))
-;;       `(let [~v ~e]    (cond ~@tests
-;;                              :else (throw (IllegalArgumentException. (str "No matching clause: " ~v)))))
-;;         )))
+(defmacro case-identical?
+  "Like clojure.core/case, except instead of a lookup map, we
+   use `condp` and `identical` in an unfolding macroexpansion
+   to allow fast case lookups for smaller cases where we may
+   beat the o(1) cost of hashing the clojure.core/case incurs
+   via its lookup map.  Some workloads are substantially (2-3x)
+   faster using linear lookup and `identical?` checks.`"
+  [k & kvs]
+  (let [n (count kvs)
+        _ (assert (if (odd? n) (> n 1) true)
+                  "either use even cases or odd with final as a default")
+        s (gensym "k")]
+    `(condp identical? ~k ~@kvs)))
+
+(defmacro case-identical?
+  "Like clojure.core/case, except instead of a lookup map, we
+   use `condp` and `identical?` in an unfolding macroexpansion
+   to allow fast case lookups for smaller cases where we may
+   beat the o(1) cost of hashing the clojure.core/case incurs
+   via its lookup map.  Some workloads are substantially (~3x)
+   faster using linear lookup and `identical?` checks.
+
+   Caller should be aware of the differences between `identical?`
+   and `=` or other structural hashing comparisons.  `identical?`
+   is appropriate for object (e.g. pointer) equality between
+   instances, and is more restrictive than structural equality
+   per `clojure.core/=`; objects may be = but not `identical?`,
+   where `indentical?` objects are almost certainly `=`."
+  [e & clauses]
+  (let [ge      (with-meta (gensym) {:tag Object})
+        default (if (odd? (count clauses))
+                  (last clauses)
+                  `(throw (IllegalArgumentException. (str "No matching clause: " ~ge))))
+        conj-flat   (fn [acc [k v]]
+                      (conj acc k v))]
+    (if (> 2 (count clauses))
+      `(let [~ge ~e] ~default)
+      (let [pairs     (->> (partition 2 clauses)
+                           (reduce (fn [acc [l r]]
+                                     (if (seq? l)
+                                       (reduce conj acc (for [x l] [x r]))
+                                       (conj acc [l r])))  []))
+            dupes    (->> pairs
+                          (map first)
+                          frequencies
+                          (filter (fn [[k v]]
+                                    (> v 1)))
+                          (map first))
+            args     (reduce conj-flat [] pairs)]
+        (when (seq dupes)
+          (throw (ex-info (str "Duplicate case-identical? test constants: " (vec dupes)) {:dupes dupes})))
+        `(let [~ge ~e]
+           (condp identical? ~ge ~@(if default (conj args default) args)))))))
+
+;;Derived from clojure.core/case
+(defmacro fast-case
+   "Drop-in replacement for clojure.core/case that attempts to optimize
+    identical? case comparison (e.g. keywords).
+    Takes an expression, and a set of clauses.
+
+    Each clause can take the form of either:
+
+    test-constant result-expr
+
+    (test-constant1 ... test-constantN)  result-expr
+
+    The test-constants are not evaluated. They must be compile-time
+    literals, and need not be quoted.  If the expression is equal to a
+    test-constant, the corresponding result-expr is returned. A single
+    default expression can follow the clauses, and its value will be
+    returned if no clause matches. If no default expression is provided
+    and no clause matches, an IllegalArgumentException is thrown.
+
+    Unlike cond and condp, fast-case does a constant-time dispatch for
+    ints and non-keyword constants; the clauses are not considered
+    sequentially.
+
+    If all test cases are keywords, then fast-case will leverage an
+    optimized path for `identical?` checks, where we balance the
+    performance of a linear comparison of entries by object
+    identity with the cost of an associative lookup and hashing
+    of the case objects.  This can yield signficant savings
+    for cases that are all keywords, and when there may be
+    benefit for short-circuiting operations (e.g. the most
+    likely case is first).
+
+    All manner of constant expressions are acceptable in case,
+    including numbers, strings,  symbols, keywords, and (Clojure)
+    composites thereof. Note that since lists are used to group
+    multiple constants that map to the same expression, a vector
+    can be used to match a list if needed. The  test-constants
+    need not be all of the same type."
+  [e & clauses]
+  (let [ge (with-meta (gensym) {:tag Object})
+        default (if (odd? (count clauses))
+                  (last clauses)
+                  `(throw (IllegalArgumentException. (str "No matching clause: " ~ge))))
+        conj-flat   (fn [acc [k v]]
+                      (conj acc k v))]
+    (if (> 2 (count clauses))
+      `(let [~ge ~e] ~default)
+      (let [pairs (->> (partition 2 clauses)
+                       (reduce (fn [acc [l r]]
+                                 (if (seq? l)
+                                   (reduce conj acc (for [x l] [x r]))
+                                   (conj acc [l r])))  []))]
+        (if (and (every? keyword? (map first pairs))
+                 (<= (count pairs) 20))
+          `(case-identical? ~e ~@clauses)
+          `(clojure.core/case ~e ~@clauses))))))
 
 (defn ^java.io.BufferedReader string-reader [^String s]
   (-> (java.io.StringReader. s) (java.io.BufferedReader.)))
