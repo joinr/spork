@@ -385,15 +385,15 @@
 
 ;helper functions....I need these somewhere else, since they're universal.
 (defn distinct-zipped
-  "Finds distinct elements of multiple collections, where collections 
-   are represnted by n-tuples, which are elements of n-colls.  
-   Returns a sequence of [#{s1} #{s2} #{s3}] for each element of the 
+  "Finds distinct elements of multiple collections, where collections
+   are represnted by n-tuples, which are elements of n-colls.
+   Returns a sequence of [#{s1} #{s2} #{s3}] for each element of the
    n-tuples across the collection sequence."
   [n-colls]
    (let [knowns   (atom (mapv (fn [i] (transient #{})) (range (count (first n-colls)))))
          add-row  (fn [xs] (reduce (fn [idx x]
                                      (let [known (nth @knowns idx)]
-                                       (do (when (not (known x)) 
+                                       (do (when (not (known x))
                                              (swap! knowns assoc idx (conj! known x)))
                                            (unchecked-inc idx))))
                                    0
@@ -401,11 +401,11 @@
      (do (doseq [xs n-colls]  (add-row xs))
          (mapv persistent! @knowns))))
 
-(defn drop-nth 
-   "Drops the nth item in coll" 
-   [n coll] 
-   (concat 
-     (take n coll) 
+(defn drop-nth
+   "Drops the nth item in coll"
+   [n coll]
+   (concat
+     (take n coll)
      (drop (inc n) coll)))
 
 (defn align-by
@@ -883,30 +883,29 @@
 ;;memoizes args using a variadic code path, which forces the creation
 ;;of tons of arrayseqs....this is horrible for small, fast lookups.
 (defn memo-1 [f]
-  (let [^java.util.concurrent.ConcurrentHashMap tbl
-        (java.util.concurrent.ConcurrentHashMap.)]
+  (let [^java.util.HashMap tbl (java.util.HashMap.)]
     (fn [k] (if-let [res (.get tbl k)]
               res
               (let [res (f k)]
-                (do (.putIfAbsent tbl k res)
+                (do (.put tbl k res)
                     res))))))
 
 ;;4x faster than clojure.core/memoize...
 ;;we can do better with a macro, but I haven't sussed it out.
 ;;This is a much as we probably need for now though, meh.
 (defn memo-2 [f]
-  (let [xs (java.util.concurrent.ConcurrentHashMap.)]
+  (let [xs (java.util.HashMap.)]
     (fn [x y]
-      (if-let [^java.util.concurrent.ConcurrentHashMap ys (.get xs x)]
+      (if-let [^java.util.HashMap ys (.get xs x)]
         (if-let [res (.get ys y)]
           res
           (let [res (f x y)]
-            (do (.putIfAbsent ys y res)
+            (do (.put ys y res)
                 res)))
         (let [res     (f x y)
-              ys    (doto (java.util.concurrent.ConcurrentHashMap.)
-                      (.putIfAbsent y res))
-              _     (.putIfAbsent xs x ys)]
+              ys    (doto (java.util.HashMap.)
+                      (.put y res))
+              _     (.put xs x ys)]
           res)))))
 
 (defmacro deref!! [v]
