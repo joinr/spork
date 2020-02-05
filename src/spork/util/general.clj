@@ -423,7 +423,7 @@
                                 (conj acc kv))) {}
                          (map-indexed (fn [i v] [v i]) ks)))
         keyfn (fn [x] (if (contains? @ordering x) 
-                        (#_get .valAt ^clojure.lang.PersistentHashMap @ordering x)
+                        (@ordering x)
                         (let [y (inc (count @ordering))]
                           (do (swap! ordering assoc x y)
                             y))))]
