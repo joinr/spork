@@ -98,7 +98,7 @@
   [e & clauses]
   (let [ge      (with-meta (gensym) {:tag Object})
         default (if (odd? (count clauses))
-                  (last clauses)
+                  (or (last clauses) ::nil)
                   `(throw (IllegalArgumentException. (str "No matching clause: " ~ge))))
         conj-flat   (fn [acc [k v]]
                       (conj acc k v))]
@@ -119,7 +119,8 @@
         (when (seq dupes)
           (throw (ex-info (str "Duplicate case-identical? test constants: " (vec dupes)) {:dupes dupes})))
         `(let [~ge ~e]
-           (condp identical? ~ge ~@(if default (conj args default) args)))))))
+           (condp identical? ~ge
+             ~@(if default (conj args (case default ::nil nil default)) args)))))))
 
 ;;Derived from clojure.core/case
 (defmacro fast-case

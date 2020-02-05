@@ -360,13 +360,15 @@
                      ~@binds
                      ~(if (-> keys meta :strict)
                         `(throw (ex-info "key not in strict record" {:key ~k}))
-                        `(~'.valAt ~extmap ~k))))
+                        `(if ~extmap
+                           (~'.valAt ~extmap ~k)))))
                    (~method [~this ~k ~default]
                     (~caser ~k
                      ~@binds
                      ~(if (-> keys meta :strict)
                         `(throw (ex-info "key not in strict record" {:key ~k}))
-                        `(~'.valAt ~extmap ~k ~default))))])
+                        `(if ~extmap
+                           (~'.valAt ~extmap ~k ~default)))))])
         replace-val-at (fn [impls]
                          (->> impls
                               (remove (fn [impl]

@@ -9,7 +9,8 @@
   (:require [spork.ai.core            :as ai]
             [spork.ai.behavior        :as b]
             [spork.entitysystem.store :as store]
-            [spork.sim.simcontext     :as sim]))
+            [spork.sim.simcontext     :as sim]
+            [spork.util.record        :as record]))
 
 ;;Implementation of an evaluation context for entity behaviors.
 ;;Specifically, we capture the current entity behing "updated" via its
@@ -32,7 +33,7 @@
 ;;behavior environment acts as a state accumulator, and as a
 ;;blackboard for communicating information across behaviors - all in a
 ;;data-driven and idiomatic manner with "optional" side-effects.
-(defrecord behaviorenv [entity behavior current-messages new-messages ctx current-message
+(record/fastrecord behaviorenv [entity behavior current-messages new-messages ctx current-message
                         tupdate deltat statedata]
   ai/IEntityMessaging
   (entity-messages- [e id] current-messages)
@@ -133,7 +134,7 @@
 
 ;;immediate steps happen with no time-delta.
 ;;like ai/step-entity!, we should find a way to reuse it.
-
+(def last-benv (atom nil))
 (defn step-entity!
   "High-level API for functionally stepping an entity via an optional
    behavior - default - , under the context of receiving a 'message' in
@@ -148,6 +149,7 @@
    (binding [spork.ai.core/*debug* (or spork.ai.core/*debug*  (= (:name e) *observed*))]
      (let [^behaviorenv benv (->benv ctx e msg default)
            _    (ai/debug  [:<<<<<< :STEPPING (:name e) :last-update (:last-update e)  msg :>>>>>>])
+           _    (reset! last-benv benv)
            ]
            (-> (b/beval (.behavior benv) benv)
                (b/return!)
