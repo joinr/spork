@@ -17,7 +17,8 @@
 ;;build up a new map on-demand, and avoid joining all
 ;;fields of the entity.
 (ns spork.data.passmap
-  (:require [spork.data [mutable :as mutable]]))
+  (:require [spork.data [mutable :as mutable]]
+            [spork.util [general :as gen]]))
 
 ;;We care about adds and drops....right?
 ;;If we just always assoc a sentinel value when we merge the map,
@@ -166,15 +167,16 @@
   (entrySet [this]   (do  (when db (join!  db-keys db))
                           (.entrySet ^java.util.Map m))) 
   (keySet   [this]   (do (when db (join!  db-keys db)) 
-                         (.keySet ^java.util.Map m)))   
+                         (.keySet ^java.util.Map m)))
   clojure.core.protocols/IKVReduce
   (kv-reduce [this f init]
-    (reduce-kv (fn [acc k v]
-                 (if (.containsKey ^clojure.lang.IPersistentMap m k)
-                   acc
-                   (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
-                     (f acc (.key e) (.val e))
-                     acc))) (reduce-kv f init m) db))
+    (#_reduce-kv
+     gen/kvreduce (fn [acc k v]
+                    (if (.containsKey ^clojure.lang.IPersistentMap m k)
+                      acc
+                      (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
+                        (f acc (.key e) (.val e))
+                        acc))) (#_reduce-kv gen/kvreduce f init m) db))
   )
 
 

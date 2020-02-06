@@ -44,12 +44,14 @@
      (.deref ~(with-meta atm {:tag 'clojure.lang.Atom}))
      ~atm))
 
-(def ^:dynamic *debug* false)
+;;nil check faster than false, slightly!
+(def ^:dynamic *debug* nil)
 
 ;;Performance note:  This kills us on hotspots...
 (defmacro debug
   ([lvl msg]
-   `(when (and ~'spork.ai.core/*debug*
+   `(when
+     (and ~'spork.ai.core/*debug*
                (>= ~'spork.ai.core/*debug* ~lvl))
       (when-let [res#  ~msg] (println res#))))
   ([msg] `(when ~'spork.ai.core/*debug*

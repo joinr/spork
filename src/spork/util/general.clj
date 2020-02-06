@@ -583,12 +583,16 @@
              realized# realized#)))
 
 ;;faster merge
-(defn rmerge! [^clojure.lang.IKVReduce l  r]
-  (.kvreduce l
-             (fn [^clojure.lang.ITransientAssociative acc k v]
-               (if-not (acc k)
-                 (.assoc acc k v)
-                 acc)) r))
+(defn rmerge! [l  r]
+  (if (instance? clojure.lang.IKVReduce l)
+    (.kvreduce ^clojure.lang.IKVReduce l (fn [^clojure.lang.ITransientAssociative acc k v]
+                                           (if-not (acc k)
+                                             (.assoc acc k v)
+                                             acc)) r)
+    (clojure.core.protocols/kv-reduce l (fn [^clojure.lang.ITransientAssociative acc k v]
+                                          (if-not (acc k)
+                                            (.assoc acc k v)
+                                            acc)) r)))
 
 ;;~50% faster.
 (defn fast-merge
@@ -913,9 +917,9 @@
     `(.deref ~v)))
 
 (defmacro val-at
-  "Synonimous with clojure.core/get, except it uses interop to 
+  "Synonimous with clojure.core/get, except it uses interop to
    directly inject the method call and avoid function invocation.
-   Intended to optimize hotspots where clojure.core/get adds  
+   Intended to optimize hotspots where clojure.core/get adds
    unwanted overhead."
   [m & args]
    (let [m (with-meta m  {:tag 'clojure.lang.ILookup})]
@@ -986,7 +990,11 @@
                 (reduced x)
                 acc)) nil l)))
 
-;;Weakish.  
+
+(definline kvreduce [f init m]
+  (let [s (with-meta (gensym "ikv") {:tag 'clojure.lang.IKVReduce})]
+    `(let [~s ~m]
+       (.kvreduce  ~s ~f ~init))))
 
 (definterface IIntegerPair
   (^long fst [])

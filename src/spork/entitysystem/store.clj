@@ -247,6 +247,9 @@
   (coll-reduce [coll f] (reduce m f))
   IAlteredKeys
   (altered-keys [m] (if (identical? altered #{}) nil altered))
+  clojure.lang.IFn
+  (invoke [this k] (.valAt m k))
+  (invoke [this k not-found] (.valAt m k not-found))
   )
 
 (extend-protocol IAlteredKeys
@@ -839,7 +842,7 @@
 (defn assoce   [store nm k v] (add-entry  store nm k v ))  ;(->component k v)))
 (defn dissoce  [store nm k]   (drop-entry store nm  k))
 (defn mergee   [store nm m]
-  (reduce-kv (fn [acc c v]
+  (reduce-kv (fn mergf [acc c v]
                (add-entry acc nm c v)) store m))
 ;;==note== we can probably sidestep most of this if we just overload how the store acts like and
 ;;assoc map.  If we did that, the underlying clojure stuff would work out of the box.
