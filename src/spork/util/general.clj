@@ -990,6 +990,14 @@
                 (reduced x)
                 acc)) nil l)))
 
+;;faster reduce-kv implementation...
+(defn kv-type [t]
+  (cond (isa? t clojure.lang.IKVReduce) :.kvreduce
+        (isa? t clojure.core.protocols.IKVReduce :.kv-reduce)
+        (extends? clojure.core.protocols/IKVReduce t :kv-reduce)
+        :else :reduce-kv))
+
+(alter-var-root #'kv-type memo-1)
 
 (definline kvreduce [f init m]
   (let [s (with-meta (gensym "ikv") {:tag 'clojure.lang.IKVReduce})]

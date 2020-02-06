@@ -90,7 +90,7 @@
 (deftype PassMap [id
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap m
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap db
-                  ;;the original keys in the database, what we're lazily passing through.                  
+                  ;;the original keys in the database, what we're lazily passing through.
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentSet db-keys
                   ^boolean mutable
                   ]
@@ -118,14 +118,10 @@
   (valAt [this k]
     (let [^clojure.lang.MapEntry res (.entryAt m k)]
       (if res (.val res)
-          (if-let #_[res  (.valAt  ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
-                  ;;temporarily rewritten to accomodate mutable hashmaps...
-                  [res  (.get  ^java.util.Map (.valAt db k {}) id)]
-          (do ;(println :caching k)
-              (set! m (.assoc m k res))
-              res)
-          (do ;(println :nilcache)
-              (set! m (.assoc m k nil))
+          (if-let [res  (.get  ^java.util.Map (.valAt db k {}) id)]
+            (do (set! m (.assoc m k res))
+                res)
+          (do (set! m (.assoc m k nil))
               nil)))))
   (valAt [this k not-found]
     (if-let [res (.valAt this k)]
@@ -135,11 +131,9 @@
                       res
                       (when-let [k (if  (some-set db-keys) (db-keys k)
                                         k)]
-                        ;;temporarily rewritten to be compatible with maps.
-                        (when-let #_[^clojure.lang.MapEntry res (.entryAt ^clojure.lang.IPersistentMap (.valAt db k {}) id)]
-                                  [v (get! (or (get! db k) {}) id)]
-                          (do (set! m (.assoc m k v #_(.val res)))
-                              (clojure.lang.MapEntry. k v #_(.val res))                              
+                        (when-let [v (get! (or (get! db k) {}) id)]
+                          (do (set! m (.assoc m k v))
+                              (clojure.lang.MapEntry. k v)
                               )))))
   (assoc [this k v]   (PassMap. id (.assoc m k v)  db db-keys mutable))
   (cons  [this e]     (PassMap. id (.cons m e)     db  db-keys mutable))
