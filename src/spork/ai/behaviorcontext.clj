@@ -67,7 +67,8 @@
          (do 
           ;(println [:pushing m :in acc])
           (sim/trigger-event m acc)))
-       (store/mergee ctx (:name ent) ent)
+       #_(store/mergee ctx (:name ent) ent)
+       (store/add-entity ctx (:name ent) ent)
        new-messages))))
 
 ;;WARNING: Could be a memory leak here!

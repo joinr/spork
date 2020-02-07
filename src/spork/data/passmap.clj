@@ -61,14 +61,13 @@
 ;;to carry us through...
 (defn mapEquals [^clojure.lang.IPersistentMap m1 obj]
   (clojure.lang.APersistentMap/mapEquals m1 obj))
-        
 
 (defmacro some-set [x]
   `(if (identical? ~x #{}) nil
        ~x))
 
 (defmacro join! [db-keys db]
-  `(do (doseq [k# (or (some-set ~db-keys) (keys ~db))]
+  `(do  (doseq [k# (or (some-set ~db-keys) (keys ~db))]
          (.entryAt ~'this k#)) ;"forces" the join
        (set! ~db-keys #{})
        (set! ~db nil)))
