@@ -20,7 +20,7 @@
                         [inspection :as inspect]
                         [temporal :as temp]]
             [spork.entitysystem.store :refer :all :exclude
-             [defpath defpaths entity-name merge-entity] :as store]
+             [defpath defpaths entity-name merge-entity entity?] :as store]
             [spork.entitysystem.ephemeral]            
             [spork.ai [core        :as ai]
                       [behaviorcontext :as b]
@@ -102,7 +102,8 @@
  [spork.entitysystem.store
   entity-name
   defpath
-  defpaths]
+  defpaths
+  entity?]
  )
 
 ;;For example:
@@ -129,10 +130,6 @@
   add-time
   request-update
   request-updates])
-
-;;Functions for dealing with subsets of supply/demand,
-;;for defining smaller simulations.
-(defn entity? [x] (instance? spork.entitysystem.store.entity x))
 
 ;;#Operations for working with mutable references
 ;;particularly working with pieces of state in a nested associative
