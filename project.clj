@@ -31,8 +31,8 @@
                  [org.apache.poi/poi             "3.16"]
                  [org.apache.poi/poi-ooxml       "3.16"]
                  [org.apache.poi/poi-scratchpad  "3.16"]
-                 [org.clojure/core.async "0.4.490"]
-                 [org.clojure/data.avl   "0.0.13"]
+                 [org.clojure/core.async "1.3.610"]
+                 [org.clojure/data.avl   "0.1.0"]
                  [iota "1.1.3"]
                  [org.clojure/core.rrb-vector  "0.1.1"]
                  ;;serialization lib.
