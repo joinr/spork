@@ -9,7 +9,7 @@
                                   StringSelection]
            [java.awt Toolkit]))
 
-(def toolkit (Toolkit/getDefaultToolkit))
+(def ^Toolkit toolkit (Toolkit/getDefaultToolkit))
 (def ^Clipboard clipboard
   (try (.getSystemClipboard toolkit)
        ;;we are in a headless system..create a dummy clipboard.
