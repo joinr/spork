@@ -130,7 +130,7 @@
   java.util.Collection  
   (iterator [self]    (clojure.lang.SeqIterator. (seq  self)))  
   (size     [self]    (count self))  
-  (toArray  [self]    (.toArray (seq self)))
+  (^objects toArray  [self]    (.toArray (seq self)))
   clojure.lang.Seqable
   (seq [this]  (seq @contents))
   clojure.lang.Counted
@@ -217,7 +217,7 @@
   java.util.Collection  
   (iterator [self]    (clojure.lang.SeqIterator. (seq  self)))  
   (size     [self]    (count self))  
-  (toArray  [self]    (.toArray (seq self)))
+  (^objects toArray  [self]    (.toArray (seq self)))
   clojure.lang.Seqable
   (seq [this]  (seq contents))
   clojure.lang.Counted

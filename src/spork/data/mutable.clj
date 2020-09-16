@@ -222,7 +222,7 @@
   (retainAll [this c] (do (.retainAll m c) this))
   (size [this] (.size m))
   (toArray [this] (.toArray m))
-  (toArray [this arr] (.toArray m arr))    
+  (^objects toArray [this arr] (.toArray m ^objects arr))
   )
 
 (defprotocol IUpdateable

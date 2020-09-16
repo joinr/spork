@@ -24,9 +24,9 @@
 
 (defn put-clipboard-text 
   [s]
-  (.setContents clipboard (StringSelection. s) nil))
+  (.setContents ^Clipboard clipboard (StringSelection. s) nil))
 
-(defn copy!
+(defn ^String copy!
   "Returns the text currently on the clipboard.  Assumes data on clipboard
    is amenable to text."
   [] (get-clipboard-text))
