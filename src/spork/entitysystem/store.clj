@@ -332,10 +332,9 @@
 
 (extend-protocol IAlteredKeys
   clojure.lang.PersistentArrayMap
-  (altered-keys [m] (keys m))
+  (altered-keys [m] ::*)
   clojure.lang.PersistentHashMap
-  (altered-keys [m] (keys m)))
-  
+  (altered-keys [m] ::*))
 
 ;;What we really want here is a flyweight entity container...
 ;;mutable entity for hashmaps and the like...maintains a
@@ -1092,11 +1091,17 @@
      (let [id (entity-name ent)
                                         ;_  (reset! en ent)
            ]
-       (reduce-kv (fn alteration [acc k op]
-                    (if (identical? op :add)
-                      (assoce acc id k (ent k)) ;alteration added or updated.
-                      (dissoce acc id k))) ;component has been dissoced
-               db altered))
+       (if-not (identical? altered ::*)
+         (reduce-kv (fn alteration [acc k op]
+                      (if (identical? op :add)
+                        (assoce acc id k (ent k)) ;alteration added or updated.
+                        (dissoce acc id k))) ;component has been dissoced
+                    db altered)
+         ;;case for normal maps.
+         (reduce-kv (fn addmap [acc k op]
+                        (assoce acc id k (ent k))) ;alteration added or updated.
+                    db ent)
+         ))
      db))
   #_([db ^clojure.lang.IPersistentMap ent]
    (if-let [altered (altered-keys ent)]
