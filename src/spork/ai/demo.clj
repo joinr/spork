@@ -46,7 +46,7 @@
           additional-messages (swap!! (or new-messages  (atom []))
                                         (fn [^clojure.lang.IPersistentCollection xs]
                                           (.cons  xs
-                                             (.assoc ^clojure.lang.Associative msg :from from))))]                            
+                                             (.assoc ^clojure.lang.Associative msg :from from))))]
       (behaviorenv. entity
                     behavior
                     current-messages
@@ -75,7 +75,7 @@
 ;;We can be much more efficient in our messaging service if, as we
 ;;process messages in a step, we avoid paying the cost of sending
 ;;individual messages all the time.  Currently, the costs are:
-;;a) looking up the (destination) entity's messages.  
+;;a) looking up the (destination) entity's messages.
 ;;Rather than performing a lookup on every message (of which there may be
 ;;millions, we can chunk the messages out by time.  So, if we collect
 ;;a batch of messages from a step, after the step is completed (i.e.
@@ -292,7 +292,7 @@
                                                    (== l r) 0
                                                    :else 1)))
               }]
-    (reduce (fn [ctx id]              
+    (reduce (fn [ctx id]
               (push-message- ctx :system id (->msg 0 :spawn)))
             (map->entityctx ctx) ids)))
 
@@ -300,7 +300,7 @@
 ;;This is consistent with the agenda from sicp.
 
 ;;operations on the context.
-(def simple-ctx (->simple-ctx))     
+(def simple-ctx (->simple-ctx))
 
 ;;There are a couple of possible outcomes in an update step.
 ;;Entities might send eachother messages concurrently, and

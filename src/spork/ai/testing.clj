@@ -134,7 +134,7 @@
             tfut     (+ tnow duration)
             _        (debug 4 [:entity nm :scheduled :update tfut])
             ;_ (when new-messages (println [:existing :new-messages new-messages]))
-            ]        
+            ]
         (success (push-message- benv nm nm (->msg nm nm tfut :update)))))
 
 (definline move [ctx]
@@ -218,7 +218,7 @@
 ;;entity.  We currently define a default behavior.
 (befn handle-messages ^behaviorenv {:keys [entity current-messages ctx] :as benv}
       (when current-messages
-        (reduce (fn [acc msg]                  
+        (reduce (fn [acc msg]
                   (do ;(debug [:handling msg])
                     (message-handler msg (val! acc))))
                 (success benv)
@@ -230,7 +230,7 @@
 ;;This is a pretty typical prototype for entities to follow.
 (befn default ^behaviorenv [entity]
       (->or [(->and [check-messages
-                     handle-messages])             
+                     handle-messages])
              advance]))
 
 ;;entities are message handlers.

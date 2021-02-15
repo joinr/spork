@@ -184,11 +184,11 @@
 ;;entity, and the behavior tree - upon re-evaluation - should be
 ;;able to suss out what it should be doing.
 
-;;One strategy could be to isolate the state-independent parts of the 
-;;existing logic and identify them as behaviors; in other words, 
-;;remove all state-changes.  We then have the idiom of defining 
+;;One strategy could be to isolate the state-independent parts of the
+;;existing logic and identify them as behaviors; in other words,
+;;remove all state-changes.  We then have the idiom of defining
 ;;small, self-contained behaviors, and where we previously "wanted"
-;;a state change, we realize a sequence of the simple behavior, 
+;;a state change, we realize a sequence of the simple behavior,
 ;;and the state change.
 
 ;;This doesn't refactor anything, but it does allow us to translate
@@ -196,54 +196,34 @@
 
 ;;For instance, the control flow of the Moving state would establish
 ;;the context of a move based on policy, and then evaluate an
-;;instantaneous call to ChangeState afterwards.  We can view that 
-;;as a behavior like the following: 
-;;               Moving         
+;;instantaneous call to ChangeState afterwards.  We can view that
+;;as a behavior like the following:
+;;               Moving
 ;;[SetNextMove SetWaitTime LogMove WaitInNextState]
 
 ;;So one strategy is to just break out all of the implicit unit entity
-;;state changes we're performing and them build our behaviors out 
-;;of them.  As we go along, we can re-use previous actions, or 
+;;state changes we're performing and them build our behaviors out
+;;of them.  As we go along, we can re-use previous actions, or
 ;;where apprioriate, entire behaviors.
 
 ;;We may give some thoughts to extensions for our naive behavior tree
-;;as well: 
+;;as well:
 ;;  Behavior zippers (so we can remember the path we followed to our
 ;;                    current child)
 ;;  Specific types that denote success, running, failure
 
-;;Implementation
-;;==============
-
-;;For now, we'll let the behavior tree assume it has everything it
-;;needs in its context. 
-;;The context is a simple map; we may move to a record type as an
-;;optimization later, particularly if there are well-known fields 
-;;that we'll be accessing frequently.  The context acts as a
-;;"blackboard" for the nodes in the behavior tree to work with.
-
-;;Note-> there are opportunities for using STM and exploiting
-;;parallelism here; if we implement a parallel node, we may 
-;;enjoy the benefits of "fast" entity updates.  On the other hand, 
-;;since supply updating takes the preponderance of our time, 
-;;we can still get a lot of bang-for-the-buck by updating individual
-;;units in parallel batches.  Parallelizing the behavior tree may 
-;;not be all that necessary.
-
-;;Note: if we do implement a parallel node (even if executed
-;;serially), we can have competing concerns executed in parallel 
-;;(i.e. listen for messages, and also update over time slices).
+;;utils
 
 ;;aux function.
 (defmacro case-identical?
-  "Like case, except uses identical? directly to create the cases, rather than 
-   the hash-based case function that's default.  Seems 3x faster than built in 
-   clojure.core/case if you're using keyword literals....Beware the downfall of 
-   using/expecting identity-based comparison on anything else though.  This is a 
+  "Like case, except uses identical? directly to create the cases, rather than
+   the hash-based case function that's default.  Seems 3x faster than built in
+   clojure.core/case if you're using keyword literals....Beware the downfall of
+   using/expecting identity-based comparison on anything else though.  This is a
    specific use case.  Caller beware."
   [e & clauses]
   (let [v       (gensym "v")
-        default (when (odd? (count clauses)) (last  clauses))                   
+        default (when (odd? (count clauses)) (last  clauses))
         pairs      (partition 2 clauses)
         assoc-test (fn assoc-test [m test expr]
                      (if (contains? m test)
@@ -266,6 +246,8 @@
         )))
 
 (defmacro swap!!
+  "Type hinted direct method dispatched inlined version of swap! for
+   atoms."
   ([atom f]
    (let [atm (with-meta (gensym "atm") {:tag 'clojure.lang.IAtom})]
      `(let [~atm ~atom]
@@ -283,16 +265,66 @@
      `(let [~atm ~atom]
         (.swap ~atm ~f ~x ~y ~args)))))
 
+(definline val!
+  "Inlined version of val specialized on clojure.lang.MapEntry."
+  [coll]
+  (let [c (with-meta (gensym "coll") {:tag 'clojure.lang.MapEntry})]
+    `(let [~c ~coll]
+       (.val ~c ))))
+
+(defmacro with-result
+  "Given a result from success/fail/run encoded as a MapEntry,
+   binds the key and value in a lexical context and evaluates
+   expr.  Faster than normal destructuring."
+  [[[l r] res] & expr]
+  (let [result (with-meta (gensym "result") {:tag 'clojure.lang.MapEntry})]
+    `(let [~result  ~res
+           ~l (.key ~result)
+           ~r (.val ~result)]
+       ~@expr)))
+
+(defmacro inline-merge!
+  "Faster merge implementation."
+  [m kvps]
+  (let [acc (with-meta (gensym "acc") {:tag 'clojure.lang.Associative})]
+    `(let [~acc ~m]
+       (-> ~acc
+           ~@(for [[k v] kvps]
+               `(.assoc ~k ~v))))))
+
+;;Implementation
+;;==============
+
+;;For now, we'll let the behavior tree assume it has everything it
+;;needs in its context.
+;;The context is a simple map; we may move to a record type as an
+;;optimization later, particularly if there are well-known fields
+;;that we'll be accessing frequently.  The context acts as a
+;;"blackboard" for the nodes in the behavior tree to work with.
+
+;;Note-> there are opportunities for using STM and exploiting
+;;parallelism here; if we implement a parallel node, we may
+;;enjoy the benefits of "fast" entity updates.  On the other hand,
+;;since supply updating takes the preponderance of our time,
+;;we can still get a lot of bang-for-the-buck by updating individual
+;;units in parallel batches.  Parallelizing the behavior tree may
+;;not be all that necessary.
+
+;;Note: if we do implement a parallel node (even if executed
+;;serially), we can have competing concerns executed in parallel
+;;(i.e. listen for messages, and also update over time slices).
+
+
 ;;Behavior Tree Core
 (defprotocol IBehaviorTree
   (behave [b ctx]))
-  
+
 (defrecord bnode [type status f data]
   IBehaviorTree
   (behave [b ctx] (f ctx))
-  clojure.lang.Named 
+  clojure.lang.Named
   (getName [b] (name type))
-  ;; clojure.lang.IFn 
+  ;; clojure.lang.IFn  ;;TBD
   ;; (invoke [obj arg] (f arg))
   )
 
@@ -300,24 +332,6 @@
 ;;Currently, paying the cost for the symbolic function is a bit too high,
 ;;specifically the cost of creating lots of hash-maps.  It may be better to
 ;;allow the ability to inline the nodes directly...
-
-;; (definline second! [coll]
-;;   (let [c (with-meta (gensym "coll") {:tag 'clojure.lang.Indexed})]
-;;     `(let [~c ~coll]
-;;        (.nth ~c 1 nil))))
-
-(definline val! [coll]
-  (let [c (with-meta (gensym "coll") {:tag 'clojure.lang.MapEntry})]
-    `(let [~c ~coll]
-       (.val ~c ))))
-
-(defmacro with-result [[[l r] res] & expr]
-  (let [result (with-meta (gensym "result") {:tag 'clojure.lang.MapEntry})
-        ]
-    `(let [~result  ~res
-          ~l (.key ~result)
-           ~r (.val ~result)]
-       ~@expr)))
 
 ;;note, originally used satisfies? but extends? is much faster..
 (defn behavior? [obj] (extends? IBehaviorTree (class obj)))
@@ -329,53 +343,31 @@
 ;;implictly evaluate the resulting behavior with the given context...
 ;;acting as an implict pipeline.  Is this akin to a stack-based language
 ;;where we're passing arguments implictly (via the stack)?
-;; (defn beval
-;;   "Maps a behavior tree onto a context, returning the familiar 
-;;   [[:fail | :success | :run] resulting-context] pair."
-;;   [b ctx]
-;;   (cond (behavior? b) (behave b ctx) ;;same as beval....
-;;         (fn? b)       (b ctx)))
-
-;;are there any atomic behaviors that we can define beval with?
-;;I.e. leaves in the computation....
-;;As stated, behave always maps context to [[fail success run] context]
-;;Ah...but functions can return behaviors or modified contexts.
-;;If it returns a vector, we should terminate evaluation.
-;; (defn beval
-;;   "Maps a behavior tree onto a context, returning the familiar 
-;;   [[:fail | :success | :run] resulting-context] pair."
-;;   [b ctx]    
-;;   (cond (vector?   b)   b ;;result with context stored in meta.        
-;;         (fn?       b)  (beval (b ctx) ctx) ;;apply the function to the current context
-;;         :else (behave b ctx) ;;evaluate the behavior node.
-;;                                         ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
-;;         ))
-
-;; (definline beval
-;;   "Maps a behavior tree onto a context, returning the familiar 
-;;   [[:fail | :success | :run] resulting-context] pair."
-;;   [b ctx]    
-;;  `(cond (vector?   ~b)   ~b ;;result with context stored in meta.        
-;;         (fn?       ~b)  (beval (b ctx) ctx) ;;apply the function to the current context
-;;         :else (behave b ctx) ;;evaluate the behavior node.
-;;                                         ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
-;;         ))
-
 (defmacro behave! [b ctx]
   `(.behave ~(with-meta b {:tag 'spork.ai.behavior.IBehaviorTree}) ~ctx))
 
 (definline beval
-  "Maps a behavior tree onto a context, returning the familiar 
-  [[:fail | :success | :run] resulting-context] pair."
+  "Maps a behavior tree onto a context, returning the familiar result
+   [[:fail | :success | :run] resulting-context] pair.
+
+   This is an iterative process that depends on the evaluation of b and its
+   subsequent behaviors.
+
+   The base case is a success|failure result, which is returned immediately.
+
+   If the result of the evaluation is a function - assumed to be a valid
+   behavior function of :: ctx -> result, or ctx -> IBehaviorTree, the function is
+   inferred to be a low-level behavior and is applied to the context.
+
+   IBehaviorTree values are similarly evaluated except via their behave!
+   implementation, which walks the behavior tree."
   [b ctx]
   (let [beh (with-meta  (gensym "behavior") {:tag 'spork.ai.behavior.IBehaviorTree})]
     `(loop [b#   ~b
-            ctx# ~ctx] 
-       (cond (vector?   b#)   b# ;;result with context stored in meta.        
+            ctx# ~ctx]
+       (cond (vector?   b#)   b# ;;result with context stored in meta.
              (fn?       b#)  (recur (b# ctx#) ctx#) ;;apply the function to the current context
-             :else      (recur (behave! b# ctx#) nil) ;;evaluate the behavior node.
-                                        ;(throw (Exception. (str ["Cannot evaluate" b " in " ctx])))
-        ))))
+             :else      (recur (behave! b# ctx#) nil))))) ;;evaluate the behavior node.
 
 ;;if we have a nested set of behaviors, we can compile the behavior to
 ;;get more performance. 
@@ -385,13 +377,9 @@
 
 ;;perhaps a better option here is to use type wrappers.
 
-;;we could probably just make these functions...
-;;convenience? macros...at least it standardizes success and failure,
-;;provides an API for communicating results.
-
-(defmacro success [expr]  `(clojure.lang.MapEntry. :success ~expr));`(vector :success ~expr))
-(defmacro fail [expr]     `(clojure.lang.MapEntry. :fail ~expr))    ;`(vector :fail ~expr))
-(defmacro run [expr]      `(clojure.lang.MapEntry. :run ~expr))     ;`(vector :run ~expr))
+(defmacro success [expr]  `(clojure.lang.MapEntry. :success ~expr))
+(defmacro fail [expr]     `(clojure.lang.MapEntry. :fail ~expr))
+(defmacro run [expr]      `(clojure.lang.MapEntry. :run ~expr))
 
 (defn success? "Indicates if the behavior succeded."
   [^clojure.lang.MapEntry res]
@@ -410,16 +398,16 @@
   [f]    (->bnode  :leaf nil  (fn [ctx]  (f ctx)) f))
 
 (defn ->pred
-  "Given a function pred :: ctx->boolean, applies the predicate against the context to 
+  "Given a function pred :: ctx->boolean, applies the predicate against the context to
   determine success or failure."
-  [pred] 
-  (if (behavior? pred) 
+  [pred]
+  (if (behavior? pred)
     pred ;behaviors can act as predicates, since they return success/failure.
-    (->bnode :pred nil  
+    (->bnode :pred nil
              (fn [ctx] (if (pred ctx) (success ctx) (fail ctx))) pred)))
 
 (defn ->and
-  "Semantically similar to (and ....), reduces over the children nodes xs, 
+  "Semantically similar to (and ....), reduces over the children nodes xs,
    short-circuiting the reduction if failure is encountered or a behavior is still
    running."
   [xs]
@@ -433,22 +421,9 @@
                     :fail      (reduced (fail ctx))))) (success ctx) xs))
      xs))
 
-;; (defmacro ->and!
-;;   "Semantically similar to (and ....), reduces over the children nodes xs, 
-;;    short-circuiting the reduction if failure is encountered or a behavior is still
-;;    running."
-;;   [xs ctx]
-;;   `(reduce (fn [acc# child#]
-;;                (let [[res# ctx#] (beval child# (val! acc#))]
-;;                   (case-identical? res#
-;;                     :run       (reduced (run ctx#))
-;;                     :success   (success ctx#)
-;;                     :fail      (reduced [:fail ctx#])))) (success ~ctx) ~xs))
-
 (defmacro ->and!
-  "Semantically similar to (and ....), reduces over the children nodes xs, 
-   short-circuiting the reduction if failure is encountered or a behavior is still
-   running."
+  "Identicaly to ->and, except inlined as a macro that attempts to avoid
+   calls to reduce.  Experimental."
   [xs ctx]
   (let [v (with-meta (gensym "v") {:tag 'clojure.lang.IPersistentVector})]
     `(let [~v ~xs
@@ -459,11 +434,12 @@
                (reduced? acc#) @acc#
                :else
                (let [[res# ctx#] (beval (.nth ~v idx#) (val! acc#))]
-                 (recur  (unchecked-inc idx#)         
-                         (case-identical? res#                                   
+                 (recur  (unchecked-inc idx#)
+                         (case-identical? res#
                                           :success   (success ctx#)
                                           :fail      (reduced (fail ctx#))
                                           :run       (reduced (run ctx#))))))))))
+
 ;;this is broken...
 (defn ->reduce [f xs]
   (throw (Exception. "->reduce is not implemented..."))
@@ -475,16 +451,9 @@
                   :success   (success acc)
                   :fail      (fail acc)))) (success ctx) xs)))
 
-
-;;We should eliminate the reduce funcall..
-;;Lots of overhead due to this getting called repeatedly...
-;;Seq is used a lot in behaviors....so instead of reduce,
-;;if we shift it to a loop, then we get something a bit faster.
-
-;;Verify this, I think the semantics are wrong.
 (defn ->seq
   "Defines a sequential node, more or less the bread-and-butter of behavior tree architecture.
-   A sequential node will traverse xs, in order, only short circuiting if a node is running.  
+   A sequential node will traverse xs, in order, only short circuiting if a node is running.
    After the reduction is complete, the value of the sequence is successful."
   [xs]
   (->bnode  :seq nil
@@ -498,10 +467,10 @@
      xs))
 
 (defn ->or
-  "Defines a behavior node that short-circuits upon finding any success from xs, returning 
+  "Defines a behavior node that short-circuits upon finding any success from xs, returning
    success for the entire subtree.  Else, failure."
   [xs]
-  (->bnode  :or nil 
+  (->bnode  :or nil
      (fn [ctx]
        (reduce (fn [acc child]
                  (with-result [[res ctx] (beval child (val! acc))]
@@ -512,8 +481,8 @@
      xs))
 
 (defn ->not
-  "Semantically similar to (not ..), logically inverts the result of the 
-  behavior b, where (not :success) => :failure, (not :failure) => :success, 
+  "Semantically similar to (not ..), logically inverts the result of the
+  behavior b, where (not :success) => :failure, (not :failure) => :success,
   (not :run) => :run, since running is not determined."
   [b]
   (->bnode  :not nil
@@ -536,37 +505,39 @@
 
 (defn ->elapse
   "Convenience node that allows us to update a time value in the blackboard."
-  [interval]                            
+  [interval]
     (->alter #(update-in % [:time] + interval)))
 
 (defn always-succeed
   "Always force success by returning a successful context."
   [b]
   (fn [ctx] (success (val! (beval b ctx)))))
+
 (defn always-fail
   "Always force failure by returning a failed context."
   [b]
   (fn [ctx] (fail (val! (beval b ctx)))))
-;;a behavior that waits until the time is less than 10.
+
+
 (defn ->wait-until
-  "Observes the context, using pred (typically some eventful condition), to 
+  "Observes the context, using pred (typically some eventful condition), to
    determing if the behavior is still running (pred is false), or pred occurred."
   [pred]
-  (->bnode  :wait-until nil 
+  (->bnode  :wait-until nil
           (fn [ctx] (if (pred ctx) (success ctx) (run ctx)))    nil))
 
 ;;do we allow internal failure to signal external failure?
 (defn ->while
-  "Emulates the semantics of (while ...) in behaviors, using pred to 
-  determine if evaluation should continue.  If evaluation proceeds, 
+  "Emulates the semantics of (while ...) in behaviors, using pred to
+  determine if evaluation should continue.  If evaluation proceeds,
   returns the result of evaluating b against the context, else failure."
   [pred b]
-  (->bnode :while nil   
-           (fn [ctx] (if (pred ctx) 
+  (->bnode :while nil
+           (fn [ctx] (if (pred ctx)
                        (beval b ctx)
-                       (fail ctx))) 
+                       (fail ctx)))
            b))
-          
+
 (defn ->elapse-until
   "Returns a behavior that repeatedly causes time to elapse, by interval,
    up to a specified time."
@@ -575,13 +546,13 @@
             (->elapse interval)))
 
 (defn ->do
-  "Emulates side-effecting in behaviors, evalates f against the context, then 
+  "Emulates side-effecting in behaviors, evalates f against the context, then
    returns a successful context regardless of f's result."
-  [f] 
+  [f]
   (fn [ctx] (success (do (f ctx) ctx))))
 
 (defn ->if
-  "Emulates (if ...) semantics in behaviors.  Depending on the result of 
+  "Emulates (if ...) semantics in behaviors.  Depending on the result of
    applying pred to the context, either evaluates btrue or bfalse (if present)."
   ([pred btrue]
       (->and [(->pred pred)
@@ -589,10 +560,10 @@
   ([pred btrue bfalse]
      (->or (->and [(->pred pred)
                    btrue])
-           bfalse)))         
+           bfalse)))
 
 ;;For reference, these are the nodes that define our dsl:
-(def behavior-nodes 
+(def behavior-nodes
   '[beval
     success?
     success
@@ -617,7 +588,9 @@
     always-fail])
 
 
-;;__Evaluating Behaviors in Context__
+;;Evaluating Behaviors in Context
+;;===============================
+
 ;;A binding for the default context.  If no context is provided,
 ;;we use this for implicit context, and require that it is bound
 ;;during evaluation.
@@ -710,8 +683,7 @@
             ~@body)
       `(mapspec->arg-body ~(kwinfo->mapspec (eval `(kwinfo ~argmap)))
                         ~@body ))))
-      
-  
+
 ;;now we can extract hinted fields based on the types...
 
 
@@ -727,11 +699,9 @@
   [vars & body]
   (if (map? vars)
     `(fn [~vars]
-       ~@body)      
+       ~@body)
     `(fn [{:keys [~@vars] :as ~'context}]
        ~@body)))
-
-
 
 ;;we're going to transform a (fn ... [args] body) into something
 ;;like (defn ~name ~doc? [args] body)
@@ -776,24 +746,6 @@
 ;;we're already doing - pass the context along via args.  The thing is,
 ;;we want bind! and friends to map nicely to the "current context", i.e.
 ;;the context arg passed in the lexical scope.
-;; (defmacro befn
-;;   ([vars body]
-;;    (let [ctx-name  (if (map? vars) (get vars :as 'context) 'context)]
-;;      `(key-fn ~vars
-;;               (binding [~'spork.ai.behavior/*behavior-context* ~ctx-name]
-;;                 (if-let [res# ~body]
-;;                   (spork.ai.behavior/beval res# spork.ai.behavior/*behavior-context*)
-;;                   (fail ~'spork.ai.behavior/*behavior-context*))))))
-;;   ([name vars body]
-;;    (let [ctx-name (if (map? vars) (get vars :as 'context) 'context)]
-;;      `(fn->defn ~name
-;;                 (key-fn ~vars
-;;                         (binding [~'spork.ai.behavior/*behavior-context* ~ctx-name]
-;;                           (if-let [res# ~body]
-;;                             (spork.ai.behavior/beval res# spork.ai.behavior/*behavior-context*)
-;;                             (fail ~'spork.ai.behavior/*behavior-context*)))))))
-;;   ([name docstring vars body]
-;;    `(befn [~name ~docstring] ~vars ~body)))
 
 ;;we could establish local-functions...they only get compiled once, as anonymous
 ;;inner classes...Another option is to just call
@@ -801,6 +753,27 @@
 ;;context, and supply the context as a record type...
 
 (defmacro befn
+  "Primary API entry point for creating 'behavior functions' that look
+   like normal clojure functions.  Returns a function that takes a
+   map as its input, and destructures the arguments according to
+   vars.  Since behaviors are evaluated quite often, we allow low
+   level type hinting to enable using custom record types with
+   direct field access to unpack the vars instead of paying for
+   map lookup.  vars may be a vector or a map destructure.  If type
+   hints are provided, we try to use field access where possible.
+
+   body is evaluated under the semantics of behavior trees: if it
+   returns nil, this indicates failure.  Any non-nil result is
+   passed to spork.ai.behavior/beval, which if the result is another
+   behavior, will continue evaluating the new behavior with the
+   context.
+
+   This is most commonly used with spork.ai.behavior.behaviorcontext
+   contexts.  When combined with the dynamic map properties, befn
+   allows callers to assoc/dissoc/update/merge/etc. useful information
+   into the behavior context for other behaviors to pick up and use,
+   leveraging the behavior context as a blackboard for data-driven
+   communication."
   ([vars body]
    (let [ctx-name  (if (map? vars) (get vars :as 'context) 'context)]
      `(hinted-key-fn ~vars
@@ -810,7 +783,7 @@
   ([name vars body]
    (let [ctx-name (if (map? vars) (get vars :as 'context) 'context)]
      `(fn->defn ~name
-                (hinted-key-fn ~vars                        
+                (hinted-key-fn ~vars
                         (if-let [res# ~body]
                           (spork.ai.behavior/beval res# ~ctx-name)
                           (fail ~ctx-name))))))
@@ -828,30 +801,29 @@
 ;;in the future.
 ;;Note: could be a macro....may be more efficient (not creating intermediate
 ;;map or doing a reduction).
+
+
+;;Convenience Macros For Updating Behavior Context and Atoms Via Behaviors
+;;========================================================================
+
 (defn bind!
+  "Helper behavior function that associates kvps into the context."
   ([kvps ctx]
-   (success 
+   (success
     (reduce-kv (fn [acc k v]
                  (assoc acc k v)) ctx kvps)))
   ([kvps]
    (fn [ctx]
-     (success 
+     (success
       (reduce-kv (fn [acc k v]
                    (assoc acc k v)) ctx kvps)))))
-
-;  (bind! kvps spork.ai.behavior/*behavior-context*)))
-
-(defmacro inline-merge! [m kvps]
-  (let [acc (with-meta (gensym "acc") {:tag 'clojure.lang.Associative})]    
-    `(let [~acc ~m]
-       (-> ~acc
-           ~@(for [[k v] kvps]
-               `(.assoc ~k ~v))))))
 
 ;;we're calling bind! a lot, so if we inline it, it should alleviate
 ;;the creation of tons of intermediate maps...spending a lot of time
 ;;building maps...we can compile that away.
 (defmacro bind!!
+  "Macro used for efficient associng of kvps to a behavior context,
+   yielding a successful result.  Used in lieu of bind! ."
   ([kvps ctx] `(success (inline-merge! ~ctx ~kvps )))
   ([kvps]
    `(fn [ctx#]
@@ -859,6 +831,8 @@
 
 ;;assumes we have atomic places defined for our kvps.r
 (defmacro push!!
+  "Efficient side-effecting behavioral update to atom atm that assoc's
+   k to v, and yields the original context ctx via success."
   ([atm k v ctx]
    (let [m (with-meta (gensym "m") {:tag 'clojure.lang.Associative})]
      `(success (do (swap!! ~atm (fn [~m]
@@ -866,7 +840,7 @@
                 ~ctx))))
   ([atm k v]
    `(fn [ctx#]
-      (push! ~atm ~k ~v ctx#))))
+      (push!! ~atm ~k ~v ctx#))))
 
 (defn push!
    {:inline (fn [atm k v ctx] `(push!! ~atm ~k ~v ~ctx))
@@ -884,6 +858,8 @@
     `(reduce-kv (fn [~acc k# v#]
                   (.assoc ~acc k# v#)) ~l ~r)))
 (defn merge!
+  "Like bind!, but designed to work with atom atm containing a map
+   for side-effecting updates to the context."
   ([atm kvps ctx]
    (success (do (swap!! atm (fn [m] (merge1 m kvps)))
                 ctx)))
@@ -898,14 +874,27 @@
 
 ;;removes bindings..
 (defn drop!
+  "Yield a resulting context with ks dissoc'd (if possible)."
   ([ks ctx]
    (success (reduce (fn [acc k] (dissoc acc k)) ctx ks)))
   ([ks] (fn [ctx] (drop! ks ctx))))
 
 
-(defmacro ->? [vars & body] `(->pred (key-fn ~vars ~@body)))  
-(defn ->prop? [k v] (->pred (fn [ctx] (= (get ctx k) v))))
-(defmacro ->let [[symbs ctx] & body]
+(defmacro ->?
+  "Convenience macro to allow creating ->pred behaviors that look like befn definitions."
+  [vars & body]
+  `(->pred (key-fn ~vars ~@body)))
+
+(defn ->prop?
+  "Convenience macro to allow creating ->pred behaviors that only succeed if a key
+   in the context is associated to v, otherwise fail."
+  [k v]
+  (->pred (fn [ctx] (= (get ctx k) v))))
+
+(defmacro ->let
+  "Convenience macro to create a sort of lexically scoped behavior function.
+   Akin to befn, but looks like a let binding."
+  [[symbs ctx] & body]
   `(fn [{:keys [~@symbs] :as ~ctx}]
      (if-let [inner# ~@body]
        (if (spork.ai.behavior/behavior? inner#)
@@ -914,7 +903,11 @@
          inner#)
        (fail ~ctx))))
 
-(defn return! [res]
+(defn return!
+  "Given a result res, yields the value of the result if and only if successful,
+   otherwise throws an exception.  Typically called at the end of a behavior
+   evaluation to ensure correctness if success was expected."
+  [res]
   (if (success? res)
     (val! res)
     (throw (Exception. (str [:failed-behavior res])))))
