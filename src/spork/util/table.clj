@@ -641,12 +641,17 @@
   (vec (filter f (table-rows tbl)))) 
 
 (defn filter-records
-  [f tbl]
   "Returns a subtable, where the rows of tbl have been filtered according to 
    function f, where f is of type ::record->boolean, where record is a map 
    where the keys correspond to tbl fields, and the values correspond to row  
    values."
-  (records->table (filter f (table-records tbl))))
+  [f tbl]
+  (let [fields  (vec (table-fields tbl))]
+    (->> tbl
+         table-records
+         (filter f)
+         records->table
+         (order-fields-by fields))))
 
 (defn map-field-indexed 
   "Maps function f to field values drawn from tbl.  f takes arguments akin to  
