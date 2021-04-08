@@ -857,7 +857,14 @@
                   name)]
     (reduce-kv (fn [acc k v]
                  (assoc acc (xform k) v))
-               {} s)))
+               (with-meta {} (meta s)) s)))
+
+(defn validate-schema [schema known-fields]
+  (let [known    (set (map name known-fields))
+        unknown  (complement known)
+        optional (or (->> schema meta :optional (map name) set) #{})
+        missing  (filter #(and (unknown %) (not (optional %))) (map name (keys schema)))]
+    (assert (empty? missing) (str [:missing-fields missing]))))
 
 ;;if we're not provided a schema, we can ascertain what kind of
 ;;data it is based on the first row.
@@ -970,7 +977,8 @@
                                 nxt)
                               (do (swap! idx unchecked-inc) acc))) {} fields)
         ;;throw an error if the fld is not in the schema.
-        _ (let [known   (set (map name (vals idx->fld)))
+        _ (validate-schema s (vals idx->fld))
+        #_(let [known   (set (map name (vals idx->fld)))
                 missing (filter (complement known) (map name (keys s)))]
             (assert (empty? missing) (str [:missing-fields missing])))
         cols    (volatile-hashmap! (into {} (for [[k v] s]
@@ -1026,7 +1034,8 @@
                               (do (swap! idx unchecked-inc) acc))) {} fields)
         last-fld-idx (apply max  (keys idx->fld))  
         ;;throw an error if the fld is not in the schema.
-        _ (let [known   (set (map name (vals idx->fld)))
+        _ (validate-schema s (vals idx->fld))
+          #_(let [known   (set (map name (vals idx->fld)))
                 missing (filter (complement known) (map name (keys s)))]
             (assert (empty? missing) (str [:missing-fields missing])))]                                          
     (->> ls

@@ -6,7 +6,7 @@
 (ns spork.util.inspection
   (:require [clojure [reflect :as reflect]]
             [clojure.inspector :as inspect])
-  (:import [javax.swing.JTree]))
+  (:import javax.swing.JTree))
 
 (def ^:dynamic *short-types* true)
 
