@@ -16,7 +16,7 @@
 (ns spork.util.table
   (:require [clojure [string :as strlib]]
             [clojure [set :as setlib]]
-            [spork.util.reducers :as r]            
+            [spork.util.reducers :as r]
             [spork.util [clipboard :as board] [parsing :as parse] [io :as io]
                         [string :as s] [stream :as stream]]
             ;;this costs us.

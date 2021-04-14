@@ -9,22 +9,22 @@
                                   StringSelection]
            [java.awt Toolkit]))
 
-(def ^Toolkit toolkit (Toolkit/getDefaultToolkit))
-(def ^Clipboard clipboard
-  (try (.getSystemClipboard toolkit)
-       ;;we are in a headless system..create a dummy clipboard.
+;;this gets tricky if we don't call it on the EDT, gui toolkits
+;;like Substance get upset and throw opaque null pointer errors.
+(defn ^Clipboard get-clipboard []
+  (try (.getSystemClipboard ^Toolkit (Toolkit/getDefaultToolkit))
        (catch Exception e (Clipboard. "headless"))))
 
-(defn get-clipboard-text 
+(defn get-clipboard-text
   "Rips text from the clipboard, if it's text-able..."
   []
-  (let [^Transferable t (.getContents clipboard nil)]
+  (let [^Transferable t (.getContents (get-clipboard) nil)]
     (when (.isDataFlavorSupported t DataFlavor/stringFlavor)
       (str (.getTransferData t DataFlavor/stringFlavor)))))
 
-(defn put-clipboard-text 
+(defn put-clipboard-text
   [s]
-  (.setContents ^Clipboard clipboard (StringSelection. s) nil))
+  (.setContents ^Clipboard (get-clipboard) (StringSelection. s) nil))
 
 (defn ^String copy!
   "Returns the text currently on the clipboard.  Assumes data on clipboard
