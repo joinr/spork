@@ -11,7 +11,8 @@
                         [vector :as v]
                         [io :as io]
                         [string :as s]]
-            [clojure.string :refer [lower-case]])
+            [clojure.string :refer [lower-case]]
+            [dk.ative.docjure.spreadsheet :as dj])
   (:import [org.apache.poi.ss.usermodel Sheet Cell Row DataFormatter]))
 
 ;;we want to enable the ability for tables that have
@@ -364,6 +365,10 @@
 (defmethod as-workbook java.lang.String [wb] (load-workbook wb))
 (defmethod as-workbook org.apache.poi.xssf.usermodel.XSSFWorkbook [wb]
   wb)
+;;Probably a resource
+(defmethod as-workbook java.net.URL [^java.net.URL wb]
+  (with-open [stream (.openStream wb)]
+    (dj/load-workbook-from-stream stream)))
 
 (defmethod as-workbook :default [wb] 
   (throw (Exception. (str "Method not implemented for type " (type wb)))))
