@@ -1130,3 +1130,59 @@
            (if (= dt 1)  (list x)
                (for [n (range dt)]
                  (lerpf x t0 n))))))
+
+(defn lerp-1d
+  "Performs a 1-dimensional linear interpolation over a sequence of
+   records xs.  Given key-functions (typically keywords) for x and y
+   values, these values are extracted pair-wise from the records and
+   interpolated per a simple 1d linear function.
+   Caller may supply a custom interpolation function::
+
+   record -> dt -> slope
+
+   which will be provided with positional information for two adjacent
+   samples [l r], where dt is drawn from the range [1 .. (width l r)], where
+   width is the difference in x values from r to l, e.g. r.x - l.x.
+   Slope is r.y - l.y.  From this information, caller may provide additional
+   interpolated values via lerpf.
+
+   ex.
+
+   (lerp-1d :level :fill [{:level 0,   :fill 0.0}
+                          {:level 2,  :fill 0.2}])
+   ({:level 0, :fill 0.0} {:level 1, :fill 0.1} {:level 2, :fill 0.2})
+
+   ;;with optional user-defined lerp function:
+
+   (lerp-1d :level :fill
+      (fn [{:keys [level fill] :as l} dt slope]
+         (assoc l :level (+ level dt) :fill (+ fill (* slope dt))
+                  :original-level level))
+    [{:level 0,   :fill 0.0}
+     {:level 2,  :fill 0.2}])
+
+   ({:level 0, :fill 0.0}
+    {:level 1, :fill 0.1, :original-level 0}
+    {:level 2, :fill 0.2})"
+
+  ([xkey ykey lerpf xs]
+   (let [tail (atom nil)
+         head (first xs)]
+     (-> (->> xs
+              (partition 2 1)
+              (mapcat (fn [[l r]]
+                        (let [_ (reset! tail r)
+                              dt (- (xkey r) (xkey l))
+                              lv (ykey l)
+                              rv (ykey r)
+                              distance (- rv lv)
+                              slope    (/ distance dt)]
+                          (if (> dt 1)
+                            (concat [l]
+                                    (for [x (range 1 dt)]
+                                      (lerpf l x slope)))
+                            [l])))))
+         (concat (lazy-seq  [(or @tail head)])))))
+  ([xkey ykey xs]
+   (lerp-1d xkey ykey (fn [l dt slope]
+                        (assoc l xkey (+ dt (xkey l))  ykey (+ (l ykey) (* dt slope) ))) xs )))

@@ -4,7 +4,7 @@
                    (clojure.edn/read-string (slurp "order.edn"))
                    '[spork.cljgui.components.PaintPanel])))
 
-(defproject spork "0.2.1.4-SNAPSHOT"
+(defproject spork "0.2.1.5-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and will be supported as stand-alone dependencies.
@@ -28,9 +28,7 @@
                  [net.sf.jung/jung-algorithms    "2.0.1"]
                  [net.sf.jung/jung-visualization "2.0.1"]
                  [net.sf.jung/jung-io            "2.0.1"]
-                 [org.apache.poi/poi             "3.16"]
-                 [org.apache.poi/poi-ooxml       "3.16"]
-                 [org.apache.poi/poi-scratchpad  "3.16"]
+                 [dk.ative/docjure "1.19.0"]
                  [org.clojure/core.async "1.3.610"]
                  [org.clojure/data.avl   "0.1.0"]
                  [iota "1.1.3"]

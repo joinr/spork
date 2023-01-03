@@ -6,7 +6,7 @@
 ;;or record sequences.
 (ns spork.util.excel.core
   (:use [spork.util.excel.docjure]) ;;poor form!
-  (:require [spork.util.excel [docjure :as doc]]
+  (:require [dk.ative.docjure.spreadsheet :as doc]
             [spork.util [table :as tbl]
                         [vector :as v]
                         [io :as io]
@@ -37,16 +37,16 @@
 ;;we find.
 (defn row->vec
   ([^Row r bound cell->val]
-   (let [bounded? (if (not (nil? bound)) 
+   (let [bounded? (if (not (nil? bound))
                     (fn [n] (> n bound))
                     (fn [_] false))
          vs (seq r)]
      (loop [acc []
             idx (int 0)
             xs   vs]
-       (cond (empty? xs) acc           
+       (cond (empty? xs) acc
              (bounded? idx) (subvec acc 0 bound)
-             :else (let [^Cell x (first xs)                       
+             :else (let [^Cell x (first xs)
                          y       (cell->val x) ;;This is where we'd hook in if we only wanted text.
                          i       (.getColumnIndex x)
                          ;; if i <> idx, we have skipped (i.e. sparse) values
@@ -132,6 +132,8 @@
                       (-> (doc/read-cell  cl)
                           (replace-newlines "[NEWLINE]")))})
 
+(defn multi? [x] (instance? clojure.lang.MultiFn x))
+
 (defn as-cell-reader
   "aux function, coerces x into a known cell reader, or allows
    functions to pass through."
@@ -140,7 +142,7 @@
         (or (get cell-readers x)
             (throw (ex-info "unknown reader keyword"
                             {:input x :expected (keys cell-readers)})))
-        (fn? x)   x
+        (or (fn? x) (multi? x))   x
         :else (throw (ex-info "expected keyword or function"
                               {:input x :cause :invalid-cell-reader}))))
 
@@ -364,6 +366,11 @@
 (defmethod as-workbook java.lang.String [wb] (load-workbook wb))
 (defmethod as-workbook org.apache.poi.xssf.usermodel.XSSFWorkbook [wb]
   wb)
+
+;;Probably a resource
+(defmethod as-workbook java.net.URL [^java.net.URL wb]
+  (with-open [stream (.openStream wb)]
+    (doc/load-workbook-from-stream stream)))
 
 (defmethod as-workbook :default [wb] 
   (throw (Exception. (str "Method not implemented for type " (type wb)))))
