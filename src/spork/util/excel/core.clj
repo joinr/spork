@@ -5,12 +5,12 @@
 ;;Intended to be used seamlessly with spork.util.table abstract tables,
 ;;or record sequences.
 (ns spork.util.excel.core
-  (:use [spork.util.excel.docjure]) ;;poor form!
-  (:require [dk.ative.docjure.spreadsheet :as doc]
-            [spork.util [table :as tbl]
+  (:require [spork.util [table :as tbl]
                         [vector :as v]
                         [io :as io]
                         [string :as s]]
+            [spork.util.excel.docjure]
+            [dk.ative.docjure.spreadsheet :as doc]
             [clojure.string :refer [lower-case]])
   (:import [org.apache.poi.ss.usermodel Sheet Cell Row DataFormatter]))
 
@@ -54,8 +54,8 @@
                                          (take (- i idx)
                                                (repeat nil)))]
                      (recur (conj missed y) (inc i) (rest xs)))))))
-  ([r bound] (row->vec r bound read-cell))
-  ([r] (row->vec r nil read-cell)))
+  ([r bound] (row->vec r bound doc/read-cell))
+  ([r] (row->vec r nil doc/read-cell)))
 
 ;;Todo: revisit this.  we're eagerly building the rows, we could
 ;;also stream them.
@@ -87,9 +87,9 @@
   "Fetch a seq of contiguous rows, starting at startrow.  Rows may have
    noncontiguous cells, however...."
   [sheet]
-  (let [rows (row-seq sheet)
-        parts (->> rows       
-                (map    (fn [^Row row] [(.getRowNum row) row]))    
+  (let [rows (doc/row-seq sheet)
+        parts (->> rows
+                (map    (fn [^Row row] [(.getRowNum row) row]))
                 (partition 2 1)
                 (filter (fn [[[i1 _] [i2 _]]] (= i1 (dec i2)))))]
     (if (empty? parts)
@@ -167,7 +167,8 @@
    the region.  Options take the form:
   
    :skip - [0] integer number of lines to skip before reading the table fields
-   
+
+   [CURRENTLY INACTIVE]
    :ignore-dates? - [false] a boolean indicator of whether additional
    parsing (potentially more time) should be spent trying to parse
    dates. Performance sensitive cases may opt for true.
@@ -191,9 +192,11 @@
          fieldcount (count fields)
          pooled     (s/->string-pool 100 1000)
          read-cell-pooled (fn [cl]
-                            (let [res (read-cell cl)]
+                            (let [res (doc/read-cell cl)]
                               (if (string? res) (pooled res) res)))]
-     (binding [doc/*date-checking* (not ignore-dates?)]
+     (do #_#_binding [doc/*date-checking* (not ignore-dates?)]
+       (when ignore-dates?
+         (println [:spork.util.excel/core "date checking avoidance is bypassed currently due to docjure."]))
        (->> (contiguous-rows sheet)
             (drop skip)
             (map (fn [r]
@@ -201,7 +204,7 @@
                          rcount (count r)]
                      (cond (= rcount fieldcount) r
                            (> rcount fieldcount) (subvec r 0 fieldcount)
-                           (< rcount fieldcount) (into r (take (- fieldcount rcount) 
+                           (< rcount fieldcount) (into r (take (- fieldcount rcount)
                                                                (repeat nil)))))))
             (take-while (complement empty-row?)) ;;we infer a blank row as the end of the table.
             )))))
@@ -211,8 +214,8 @@
 ;;region into corresponding field/rows without creating intermediate
 ;;vectors...
 (defn sheet->table
-  "Converts an excel worksheet into a columnar table.  Assumes first row defines 
-   field names.  Truncates remaining dataset to the contiguous, non-nil fields 
+  "Converts an excel worksheet into a columnar table.  Assumes first row defines
+   field names.  Truncates remaining dataset to the contiguous, non-nil fields
    in the first row."
   ([sheet] (sheet->table sheet +default-options+))
   ([sheet options]
@@ -226,17 +229,17 @@
   "Extract sheets from the workbook located at wbpath, coercing them to tables 
    as per util.table."
   [wb & {:keys [sheetnames options] :or {sheetnames :all}}]
-  (let [sheets  (sheet-seq wb)]
+  (let [sheets  (doc/sheet-seq wb)]
     (->> (if (= sheetnames :all) sheets
            (let [names (set (map lower-case sheetnames))]
-             (filter #(contains? names ((comp lower-case sheet-name) %))
+             (filter #(contains? names ((comp lower-case doc/sheet-name) %))
                      sheets)))
-         (map (fn [s] (let [nm (sheet-name s)
+         (map (fn [s] (let [nm (doc/sheet-name s)
                             _  (println nm)
                             options (or (get options nm)
                                         (get options :default)
                                         +default-options+)]
-                       [(sheet-name s) (sheet->table s options)])))
+                       [(doc/sheet-name s) (sheet->table s options)])))
       (into {}))))
 
 (defn tables->workbook
@@ -248,10 +251,10 @@
                      [nm (reduce conj [(tbl/table-fields t)]
                                  (tbl/table-rows t))]) (seq tablemap))
         wb (let [[n data] (first specs)]
-             (create-workbook (tbl/field->string n) data))]
+             (doc/create-workbook (tbl/field->string n) data))]
     (do (doseq [[n data] (rest specs)]
-                (let [sheet (add-sheet! wb (tbl/field->string n))]
-                  (add-rows! sheet data)))
+                (let [sheet (doc/add-sheet! wb (tbl/field->string n))]
+                  (doc/add-rows! sheet data)))
       wb)))
 
 (defn tables->xlsx
@@ -259,7 +262,7 @@
    tables as worksheets in a workbook, saving the workbook at path."
   [wbpath tablemap]
   (assert (map? tablemap))
-  (save-workbook! wbpath (tables->workbook tablemap)))
+  (doc/save-workbook! wbpath (tables->workbook tablemap)))
 
 (defn table->xlsx
   "Renders table t as a singleton sheet, named sheetname, in an xlsx workbook 
@@ -319,7 +322,7 @@
   [wbpath & {:keys [rootdir sheetnames options] 
              :or {sheetnames :all rootdir (workbook-dir wbpath)}}]
  (let [options (merge {:default +default-options+} options)] 
-   (->> (wb->tables (load-workbook wbpath) :sheetnames sheetnames :options options)
+   (->> (wb->tables (doc/load-workbook wbpath) :sheetnames sheetnames :options options)
         (tables->tabdelimited rootdir))))
   
 (defn xlsx->tables
@@ -354,16 +357,16 @@
              :or {sheetnames :all ignore-dates? false}}]
   (let [options (-> (merge {:default +default-options+} options)
                     (assoc-in [:default :ignore-dates?] ignore-dates?))] 
-    (wb->tables (load-workbook wbpath) :sheetnames sheetnames :options options)))
+    (wb->tables (doc/load-workbook wbpath) :sheetnames sheetnames :options options)))
    
 (defn xlsx->wb
   "API wrapper for docjure/load-workbook.  Loads an excel workbook from 
    a given workbook path."
   [wbpath] 
-  (load-workbook wbpath))
+  (doc/load-workbook wbpath))
 
 (defmulti as-workbook class)
-(defmethod as-workbook java.lang.String [wb] (load-workbook wb))
+(defmethod as-workbook java.lang.String [wb] (doc/load-workbook wb))
 (defmethod as-workbook org.apache.poi.xssf.usermodel.XSSFWorkbook [wb]
   wb)
 
@@ -377,7 +380,7 @@
 
 (defmulti as-sheet (fn [sheet wb] (class sheet)))
 (defmethod as-sheet java.lang.String [sheet wb] 
-  (select-sheet sheet (as-workbook wb)))
+  (doc/select-sheet sheet (as-workbook wb)))
 
 (defmethod as-sheet :default [sheet wb] 
   (throw (Exception. (str "Method not implemented for type " (type sheet)))))
@@ -387,7 +390,7 @@
   "~Documents/sampling-utils/record-rules-large.xlsx")
 
 ;testing  
-(def wbpath   
+(def wbpath
   "~Documents/Marathon_NIPR/OngoingDevelopment/MPI_3.76029832.xlsm")
 (def outpath "~Documents/newWB.xlsx")
 
@@ -412,33 +415,6 @@
 (def bigpath 
   "~/Documents/sampling-utils/record-rules-large.xlsx")
 )
-
-
-
-;;OBE
-
-(comment
-  ;;We use the dataformatter here, just getting strings out.
-  (defn row->strings
-    ([^Row r ^DataFormatter df]
-     (let [bounded? (if (not (nil? bound)) 
-                      (fn [n] (> n bound))
-                      (fn [_] false))
-           vs (seq r)]
-       (loop [acc []
-              idx (int 0)
-              xs   vs]
-         (cond (empty? xs) acc           
-               (bounded? idx) (subvec acc 0 bound)
-             :else (let [^Cell x (first xs)                       
-                         y       (.formatCellValue df  x) ;;This is where we'd hook in if we only wanted text.
-                         i       (.getColumnIndex x)                        
-                         missed  (reduce conj acc
-                                         (take (- i idx)
-                                               (repeat nil)))]
-                     (recur (conj missed y) (inc i) (rest xs))))))))
-  )
-
 
 (comment 
 ; Load a spreadsheet and read the first two columns from the 
