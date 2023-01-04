@@ -87,7 +87,7 @@
   "Fetch a seq of contiguous rows, starting at startrow.  Rows may have
    noncontiguous cells, however...."
   [sheet]
-  (let [rows (doc/row-seq sheet)
+  (let [rows (take-while identity (doc/row-seq sheet))
         parts (->> rows
                 (map    (fn [^Row row] [(.getRowNum row) row]))
                 (partition 2 1)
