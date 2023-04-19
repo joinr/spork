@@ -510,10 +510,23 @@
   [path]
   (io/file (file-path path)))
 
-(defn dedupe-separators [s]
+(defn replace-dupes
+  "Remove duplicate separators to allow concatenating of paths like
+  /blah/ and /blah2/ to /blah/blah2/ instead of /blah//blah2/."
+  [s]
   (strlib/replace s re-dupe (case +separator+
                               "\\" "\\\\"
                               +separator+)))
+
+(defn dedupe-separators
+  "We allow \\\\ at the beginning to use drive names in lieu of drive
+  letters on Windows."
+  [s]
+  (if (and (= (subs s 0 2) "\\\\")
+           ;;on Windows?
+           (= +separator+ "\\"))    
+    (str "\\\\" (replace-dupes (subs s 2)))
+    (replace-dupes s)))
 
 ;;we want to coerce a path like
 ;;~/blah/some-file -> home-path/blah/some/file
