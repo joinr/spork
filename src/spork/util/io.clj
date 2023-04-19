@@ -519,14 +519,12 @@
                               +separator+)))
 
 (defn dedupe-separators
-  "We allow \\\\ at the beginning to use drive names in lieu of drive
-  letters on Windows."
+  "We allow two separators at the beginning of paths."
   [s]
-  (if (and (= (subs s 0 2) "\\\\")
-           ;;on Windows?
-           (= +separator+ "\\"))    
-    (str "\\\\" (replace-dupes (subs s 2)))
-    (replace-dupes s)))
+  (let [two-seps (str +separator+ +separator+)]
+    (if (= (subs s 0 2) two-seps)    
+      (str two-seps (replace-dupes (subs s 2)))
+      (replace-dupes s))))
 
 ;;we want to coerce a path like
 ;;~/blah/some-file -> home-path/blah/some/file
