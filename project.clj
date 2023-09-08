@@ -4,7 +4,7 @@
                    (clojure.edn/read-string (slurp "order.edn"))
                    '[spork.cljgui.components.PaintPanel])))
 
-(defproject spork "0.2.1.6-SNAPSHOT"
+(defproject spork "0.2.1.7-SNAPSHOT"
   :description
   "A set of libraries derived from Spoon's Operations Research Kit.
    Libraries are modular and will be supported as stand-alone dependencies.
@@ -35,7 +35,9 @@
                  [org.clojure/core.rrb-vector  "0.1.1"]
                  ;;serialization lib.
                  [com.taoensso/nippy "2.11.0-RC1"]
-                 [ctries.clj "0.0.3"]]
+                 [ctries.clj "0.0.3"]
+                 ;;leverag ham-fisted for mutable frens.
+                 [com.cnuernber/ham-fisted "1.004"]]
   :aot [spork.cljgui.components.PaintPanel]
   :profiles {:publish [:uberjar
                        {:aot [;spork.cljgui.components.PaintPanel

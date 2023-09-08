@@ -18,7 +18,9 @@
 ;;fields of the entity.
 (ns spork.data.passmap
   (:require [spork.data [mutable :as mutable]]
-            [spork.util [general :as gen]]))
+            [spork.util [general :as gen]]
+            [ham-fisted.api :as hf]
+            [ham-fisted.lazy-noncaching :as ln]))
 
 ;;We care about adds and drops....right?
 ;;If we just always assoc a sentinel value when we merge the map,
@@ -86,6 +88,18 @@
     `(let [~the-map ~m]
        (.get ~the-map ~k))))
 
+
+;;ported from clojure.lang.APersistentMap
+(defn- map-equiv [this o]
+  (cond (not (instance? java.util.Map o)) false
+        (and (instance? clojure.lang.IPersistentMap o)
+             (not (instance? clojure.lang.MapEquivalence o))) false
+        :else (let [^java.util.Map m o]
+                (and (= (.size m) (count this))
+                     (every? (fn [k]
+                               (and (.containsKey m k)
+                                    (= (this k) (.get m k)))) (keys this))))))
+
 (deftype PassMap [id
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap m
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap db
@@ -95,12 +109,12 @@
                   ]
   clojure.lang.IHashEq
   (hasheq [this]   (if-not db (.hasheq ^clojure.lang.IHashEq m)
-                       ;;we need to go ahead and do an eager join with the db.
+                           ;;we need to go ahead and do an eager join with the db.
                            (do  (join! db-keys db)
                                 (.hasheq ^clojure.lang.IHashEq m))))
   (hashCode [this]
     (if-not db (.hashCode ^clojure.lang.IHashEq m)
-                       ;;we need to go ahead and do an eager join with the db.
+            ;;we need to go ahead and do an eager join with the db.
             (do  (join!  db-keys db)
                  (.hashCode ^clojure.lang.IHashEq m))))
   (equals [this o] (clojure.lang.APersistentMap/mapEquals this o))
@@ -109,7 +123,7 @@
           (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
           (or (instance? clojure.lang.Sequential o)
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
-              :else nil))  
+          :else nil)) 
   clojure.lang.IObj
   (meta     [this]    (.meta ^clojure.lang.IObj m))
   (withMeta [this xs] (PassMap. id (with-meta ^clojure.lang.IObj m xs) db db-keys mutable))
@@ -172,6 +186,89 @@
                         acc))) (#_reduce-kv gen/kvreduce f init m) db))
   )
 
+(defn mutable2d [m]
+  (let [hm (hf/mut-hashtable-map m)]
+    (reduce-kv (fn [acc k v]
+                 (assoc! acc k (hf/mut-hashtable-map v))) hm hm )))
+
+;;semantics for a mutable passmap are that we willingly mutate the underlying
+;;data structure (the db).  so we have a map of {e {a v}} and a set of #{a1 a2 a3...} keys
+;;that tells us which entries the entity has.  In this case, we have more of a reference
+;;that we can mutate directly.  Downside is that lookups and updates are in a nested map.
+;;Is this faster than having a local mutable hashmap?  Probably since we don't need to
+;;compute joins and stuff....
+;;this represents a cursor into the underlying 2d map.
+(deftype PassMapMut [id
+                     ^:unsynchronized-mutable  ^java.util.Map db
+                     ;;the original keys in the database, what we're lazily passing through.
+                     ^:unsynchronized-mutable  ^java.util.Set db-keys
+                     ^:unsynchronized-mutable   _meta]
+  clojure.lang.IHashEq
+  (hasheq [this]   (hash-unordered-coll (.seq this)))
+  (hashCode [this] (clojure.lang.APersistentMap/mapHash this))
+  (equals [this o] (or (identical? this o)
+                       (clojure.lang.APersistentMap/mapEquals this o)))
+  (equiv  [this o] (or (identical? this o) (map-equiv this o)))
+  clojure.lang.IObj
+  (meta     [this]    _meta)
+  (withMeta [this xs] (set! _meta xs) this)
+  clojure.lang.IPersistentMap
+  (valAt [this k]
+    (when-let [inner (db k)]
+      (inner id)))
+  (valAt [this k not-found]
+    (if-let [inner (db k)]
+      (inner id not-found)
+      not-found))
+  (entryAt [this k]
+    (when-let [inner (db k)]
+      (.entryAt inner id)))
+  (assoc [this k v]
+    (if (db-keys k)
+      (let [inner (db k)]
+        (set! inner (assoc! inner id v)))
+      (do (set! db-keys (conj! db-keys k))
+          (set! db      (assoc! db k (hf/mut-hashtable-map (hf/obj-ary id v))))))
+    this)
+  (cons  [this e]  (.assoc this (key e) (val e)))
+  (without [this k]
+    (when (db-keys k)
+      (let [inner (db k)]
+        (let [res (dissoc! inner id)]
+          (when (zero? (count res)) (set! db (dissoc! db k))))))
+    this)
+  clojure.lang.Seqable
+  (seq [this] )
+  clojure.lang.Counted
+  (count [this]      (do (when db (join! db-keys db)) (.count m)))
+  java.util.Map ;;some of these aren't correct....might matter.
+  (put    [this k v]  (.assoc this k v))
+  (putAll [this c] (PassMap. id (.putAll ^java.util.Map m c) db db-keys mutable))
+  (clear  [this] (PassMap.  id {} nil #{} mutable))
+  (containsKey   [this k]
+    (or (.containsKey ^java.util.Map m k)
+        (and db
+             (when-let [k (if  (some-set db-keys) (db-keys k)
+                               k)]            
+               (.containsKey ^java.util.Map db k)))))
+  (containsValue [this o] (throw (Exception. "containsValue not supported")))
+  (entrySet [this]   (do  (when db (join!  db-keys db))
+                          (.entrySet ^java.util.Map m))) 
+  (keySet   [this]   (do (when db (join!  db-keys db)) 
+                         (.keySet ^java.util.Map m)))
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [this f init]
+    (#_reduce-kv
+     gen/kvreduce (fn [acc k v]
+                    (if (.containsKey ^clojure.lang.IPersistentMap m k)
+                      acc
+                      (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
+                        (f acc (.key e) (.val e))
+                        acc))) (#_reduce-kv gen/kvreduce f init m) db))
+  )
+
+;;we want to implement a couple of variants of passmaps.
+;;simplest variant is to preserve existing semantics, but use a mutable store for the entity entries
 
 (defn lazy-join
   ([source k] (PassMap. k {} source #{} false))
