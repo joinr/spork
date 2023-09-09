@@ -183,9 +183,16 @@
                       acc
                       (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
                         (f acc (.key e) (.val e))
-                        acc))) (#_reduce-kv gen/kvreduce f init m) db))
-  )
+                        acc))) (#_reduce-kv gen/kvreduce f init m) db)))
 
+;;lame aux function to convert a nested map (aev datastore in our model)
+;;into mutable map of mutable maps.
+;;note - we can delay mutation too, under this model we pay for every one.
+;;we can delay until we write and leave the persistent maps alone
+;;until we actually mutate them.  need to see what kind of
+;;cost model we're looking at too.  if it costs more to mutate
+;;the aev map, then we go back to maintaining a mutable local hashmap
+;;and a local keyset. hmm
 (defn mutable2d [m]
   (let [hm (hf/mut-hashtable-map m)]
     (reduce-kv (fn [acc k v]
@@ -203,16 +210,18 @@
                      ;;the original keys in the database, what we're lazily passing through.
                      ^:unsynchronized-mutable  ^java.util.Set db-keys
                      ^:unsynchronized-mutable   _meta]
-  clojure.lang.IHashEq
+  clojure.lang.IHashEq  ;;probably not going to be used....
   (hasheq [this]   (hash-unordered-coll (.seq this)))
   (hashCode [this] (clojure.lang.APersistentMap/mapHash this))
   (equals [this o] (or (identical? this o)
                        (clojure.lang.APersistentMap/mapEquals this o)))
+  #_
   (equiv  [this o] (or (identical? this o) (map-equiv this o)))
   clojure.lang.IObj
   (meta     [this]    _meta)
   (withMeta [this xs] (set! _meta xs) this)
-  clojure.lang.IPersistentMap
+  clojure.lang.ITransientAssociative2
+  clojure.lang.ITransientMap
   (valAt [this k]
     (when-let [inner (db k)]
       (inner id)))
@@ -221,16 +230,25 @@
       (inner id not-found)
       not-found))
   (entryAt [this k]
-    (when-let [inner (db k)]
+    (when-let [inner ^clojure.lang.ITransientAssociative2 (db k)]
       (.entryAt inner id)))
   (assoc [this k v]
     (if (db-keys k)
       (let [inner (db k)]
-        (set! inner (assoc! inner id v)))
+        (set! db (assoc! db k (assoc! inner id v))))
       (do (set! db-keys (conj! db-keys k))
           (set! db      (assoc! db k (hf/mut-hashtable-map (hf/obj-ary id v))))))
     this)
-  (cons  [this e]  (.assoc this (key e) (val e)))
+  (conj  [this e]
+    (cond (instance? java.util.Map$Entry e)
+            (.assoc this (key e) (val e))
+          (vector? e)
+            (.assoc this (e 0) (e 1))
+            :else (try (reduce (fn [_ kv] (.assoc this (key kv) (val kv))) nil e)
+                       (catch Exception e
+                         (throw (ex-info "conj expectes a MapEntry, a 2-element vector, or a collection of MapEntries"
+                                         {:caught e})))))
+    this)
   (without [this k]
     (when (db-keys k)
       (let [inner (db k)]
@@ -238,34 +256,29 @@
           (when (zero? (count res)) (set! db (dissoc! db k))))))
     this)
   clojure.lang.Seqable
-  (seq [this] )
+  (seq [this] (map (fn [k] (clojure.lang.MapEntry. k (.get ^java.util.Map (db k) id))) db-keys))
   clojure.lang.Counted
-  (count [this]      (do (when db (join! db-keys db)) (.count m)))
+  (count [this]   (.size db-keys))
   java.util.Map ;;some of these aren't correct....might matter.
-  (put    [this k v]  (.assoc this k v))
-  (putAll [this c] (PassMap. id (.putAll ^java.util.Map m c) db db-keys mutable))
-  (clear  [this] (PassMap.  id {} nil #{} mutable))
-  (containsKey   [this k]
-    (or (.containsKey ^java.util.Map m k)
-        (and db
-             (when-let [k (if  (some-set db-keys) (db-keys k)
-                               k)]            
-               (.containsKey ^java.util.Map db k)))))
-  (containsValue [this o] (throw (Exception. "containsValue not supported")))
-  (entrySet [this]   (do  (when db (join!  db-keys db))
-                          (.entrySet ^java.util.Map m))) 
-  (keySet   [this]   (do (when db (join!  db-keys db)) 
-                         (.keySet ^java.util.Map m)))
+  (put    [this k v]  (.assoc this k v) v)
+  (putAll [this c]
+    (reduce (fn [_ kv] (.conj this kv )) nil c))
+  (clear  [this]
+    (set! db-keys (.clear db-keys))
+    (set! db (.clear db))
+    this)
+  (containsKey   [this k] (and (db-keys k) true))
+  (containsValue [this o]
+    (reduce (fn [acc k]
+              (if (= (.valAt this k) o)
+                (reduced true)
+                acc)) false db-keys))
+  (entrySet [this]  (set (.seq this)))
+  (keySet   [this]  db-keys)
   clojure.core.protocols/IKVReduce
   (kv-reduce [this f init]
-    (#_reduce-kv
-     gen/kvreduce (fn [acc k v]
-                    (if (.containsKey ^clojure.lang.IPersistentMap m k)
-                      acc
-                      (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
-                        (f acc (.key e) (.val e))
-                        acc))) (#_reduce-kv gen/kvreduce f init m) db))
-  )
+    (reduce (fn [acc k]
+              (f acc k (.valAt this k))) init db-keys)))
 
 ;;we want to implement a couple of variants of passmaps.
 ;;simplest variant is to preserve existing semantics, but use a mutable store for the entity entries
