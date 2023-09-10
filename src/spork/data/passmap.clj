@@ -210,6 +210,11 @@
     (reduce-kv (fn [acc k v]
                  (assoc! acc k (hf/mut-hashtable-map v))) hm hm )))
 
+(defn jmutable2d [m]
+  (reduce-kv (fn [^java.util.Map acc k v]
+               (doto acc (.put k (doto (java.util.HashMap.) (.putAll v)))))
+             (java.util.HashMap.) m))
+
 ;;semantics for a mutable passmap are that we willingly mutate the underlying
 ;;data structure (the db).  so we have a map of {e {a v}} and a set of #{a1 a2 a3...} keys
 ;;that tells us which entries the entity has.  In this case, we have more of a reference
@@ -217,6 +222,7 @@
 ;;Is this faster than having a local mutable hashmap?  Probably since we don't need to
 ;;compute joins and stuff....
 ;;this represents a cursor into the underlying 2d map.
+#_
 (deftype PassMapMut [id
                      ^:unsynchronized-mutable  ^java.util.Map db
                      ;;the original keys in the database, what we're lazily passing through.
@@ -290,7 +296,93 @@
   clojure.core.protocols/IKVReduce
   (kv-reduce [this f init]
     (reduce (fn [acc k]
-              (f acc k (.valAt this k))) init db-keys)))
+              (f acc k (.valAt this k))) init db-keys))
+  IShow
+  (show [this] {:id id
+                :db db
+                :db-keys db-keys}))
+
+(deftype PassMapMut [id
+                     ^:unsynchronized-mutable  ^java.util.Map db
+                     ;;the original keys in the database, what we're lazily passing through.
+                     ^:unsynchronized-mutable  ^java.util.Set db-keys
+                     ^:unsynchronized-mutable   _meta]
+  clojure.lang.IHashEq  ;;probably not going to be used....
+  (hasheq [this]   (hash-unordered-coll (.seq this)))
+  (hashCode [this] (clojure.lang.APersistentMap/mapHash this))
+  (equals [this o] (or (identical? this o)
+                       (clojure.lang.APersistentMap/mapEquals this o)))
+  #_
+  (equiv  [this o] (or (identical? this o) (map-equiv this o)))
+  clojure.lang.IObj
+  (meta     [this]    _meta)
+  (withMeta [this xs] (set! _meta xs) this)
+  clojure.lang.ITransientAssociative2
+  clojure.lang.ITransientMap
+  (valAt [this k]
+    (when-let [^java.util.Map inner (.get db k)]
+      (.get inner id)))
+  (valAt [this k not-found]
+    (if-let [^java.util.Map inner (.get db k)]
+      (.getOrDefault inner id not-found)
+      not-found))
+  (entryAt [this k]
+    (when-let [^java.util.Map inner  (.get db k)]
+      (let [res (.getOrDefault inner id +not-found+)]
+        (when-not (identical? res +not-found+)
+          (clojure.lang.MapEntry. k res)))))
+  (assoc [this k v]
+    (let [inner  (.getOrDefault db k +not-found+)]
+      (if-not (identical? inner +not-found+)
+        (.put ^java.util.Map inner id v)
+        (do (.add db-keys k)
+            (.put db k (doto (java.util.HashMap.) (.put id v))))))
+    this)
+  (conj  [this e]
+    (cond (instance? java.util.Map$Entry e)
+            (.assoc this (key e) (val e))
+          (vector? e)
+            (.assoc this (e 0) (e 1))
+            :else (try (reduce (fn [_ kv] (.assoc this (key kv) (val kv))) nil e)
+                       (catch Exception e
+                         (throw (ex-info "conj expectes a MapEntry, a 2-element vector, or a collection of MapEntries"
+                                         {:caught e})))))
+    this)
+  (without [this k]
+    (when (.contains db-keys k)
+      (let [^java.util.Map inner  (.get db k)]
+          (.remove inner k)
+          (when (zero? (.size inner))
+            (.remove db k))))
+    this)
+  clojure.lang.Seqable
+  (seq [this] (map (fn [k] (clojure.lang.MapEntry. k (.get ^java.util.Map (.get db k) id))) db-keys))
+  clojure.lang.Counted
+  (count [this]   (.size db-keys))
+  java.util.Map ;;some of these aren't correct....might matter.
+  (put    [this k v]  (.assoc this k v) v)
+  (putAll [this c]
+    (reduce (fn [_ kv] (.conj this kv )) nil c))
+  (clear  [this]
+    (.clear db-keys)
+    (.clear db)
+    this)
+  (containsKey   [this k] (.contains db-keys k))
+  (containsValue [this o]
+    (reduce (fn [acc k]
+              (if (= (.valAt this k) o)
+                (reduced true)
+                acc)) false db-keys))
+  (entrySet [this]  (set (.seq this)))
+  (keySet   [this]  db-keys)
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [this f init]
+    (reduce (fn [acc k]
+              (f acc k (.valAt this k))) init db-keys))
+  IShow
+  (show [this] {:id id
+                :db db
+                :db-keys db-keys}))
 
 (defn ->passmap [db db-keys id]
   (PassMap.  id {} db db-keys false))
@@ -299,6 +391,7 @@
   (PassMapMut. id db db-keys {}))
 
 (comment
+
   (def base {:entities {"bilbo" #{:name :age :location}}
              :components {:name {"bilbo" "baggins"}
                           :age  {"bilbo" 111}
@@ -308,8 +401,34 @@
   ;;{:name "baggins", :age 111, :location "Shire"}, entries are lazily joined.  Eventually acts as an independent
   ;;map, so we don't retain a reference to the original database if we ever do a full join.
 
-  (def aevmap (mutable2d (base :components)))
-  (def mpm (->passmapmut aevmap (-> base :entities (get "bilbo") hf/mut-set) "bilbo"))
+  (def aevmap (jmutable2d (base :components)))
+  (def mpm (->passmapmut aevmap (doto (java.util.HashSet.) (.addAll (-> base :entities (get "bilbo")))) "bilbo"))
+
+  (def bigger-base
+    (let [ents (map str (range 20))]
+      {:entities (into {"bilbo" #{:name :age :location}}
+                       (map (fn [e] [e #{:name :age :location}]) ents))
+       :components {:name (into {"bilbo" "baggins"} (map (fn [x] [x x]) ents))
+                    :age  (into {"bilbo" 111}       (map (fn [x] [x (read-string x)]) ents))
+                    :location (into {"bilbo" "Shire"} (map (fn [x] [x (str "loc_" x)]) ents))}}))
+
+  (def aevmapbig (jmutable2d (bigger-base :components)))
+  (def pm-big (->passmap (bigger-base :components) (-> bigger-base :entities (get "bilbo")) "bilbo"))
+  (def mpm-big (->passmapmut aevmapbig (doto (java.util.HashSet.) (.addAll (-> bigger-base :entities (get "bilbo")))) "bilbo"))
+
+  (def wider-base
+    (let [ents (map str (range 20))
+          comps (map (fn [x] (keyword (str "component-" x))) (range 20))]
+      {:entities (into {"bilbo" (into #{:name :age :location} comps)}
+                       (map (fn [e] [e #{:name :age :location}]) ents))
+       :components (into {:name (into {"bilbo" "baggins"} (map (fn [x] [x x]) ents))
+                          :age  (into {"bilbo" 111}       (map (fn [x] [x (read-string x)]) ents))
+                          :location (into {"bilbo" "Shire"} (map (fn [x] [x (str "loc_" x)]) ents))}
+                         (map (fn [x] [x {"bilbo" 0}]) comps))}))
+
+  (def aevmapwide (jmutable2d (wider-base :components)))
+  (def pm-wide    (->passmap (wider-base :components) (-> wider-base :entities (get "bilbo")) "bilbo"))
+  (def mpm-wide   (->passmapmut aevmapwide (doto (java.util.HashSet.) (.addAll (-> wider-base :entities (get "bilbo")))) "bilbo"))
   )
 
 ;;we want to implement a couple of variants of passmaps.
