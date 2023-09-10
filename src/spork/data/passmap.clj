@@ -100,6 +100,12 @@
                                (and (.containsKey m k)
                                     (= (this k) (.get m k)))) (keys this))))))
 
+;;good idea for generic views on otherwise hidden object fields...
+(defprotocol IShow
+  (show [this]))
+
+(def +not-found+ (Object.))
+
 (deftype PassMap [id
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap m
                   ^:unsynchronized-mutable  ^clojure.lang.IPersistentMap db
@@ -128,16 +134,17 @@
   (meta     [this]    (.meta ^clojure.lang.IObj m))
   (withMeta [this xs] (PassMap. id (with-meta ^clojure.lang.IObj m xs) db db-keys mutable))
   clojure.lang.IPersistentMap
-  (valAt [this k]
-    (let [^clojure.lang.MapEntry res (.entryAt m k)]
-      (if res (.val res)
-          (if-let [res  (.get  ^java.util.Map (.valAt db k {}) id)]
+  (valAt [this k] ;;semantics vary, we store nils here in the lookup map....means entry exists with nil val...
+    (let [^clojure.lang.MapEntry res (.valAt m k +not-found+)]
+      (if (not (identical? res +not-found+))
+          res
+          (if-let [res  (.get  ^java.util.Map (.valAt db k {}) id)] ;;db lookup.
             (do (set! m (.assoc m k res))
                 res)
-          (do (set! m (.assoc m k nil))
-              nil)))))
+            (do (set! m (.assoc m k nil)) ;;could create space leak.  ideally is not-found.  about 3x faster if we cache it.
+                nil)))))
   (valAt [this k not-found]
-    (if-let [res (.valAt this k)]
+    (if-let [res (.valAt this k)] ;;needs to be not-found friendly.  currently nil puns.
       res
       not-found))
   (entryAt [this k] (if-let [res (.entryAt m k)]
@@ -183,7 +190,12 @@
                       acc
                       (if-let [^clojure.lang.MapEntry e (.entryAt this k)]
                         (f acc (.key e) (.val e))
-                        acc))) (#_reduce-kv gen/kvreduce f init m) db)))
+                        acc))) (#_reduce-kv gen/kvreduce f init m) db))
+  IShow
+  (show [this] {:id id
+                 :m  m
+                 :db db
+                 :db-keys db-keys}))
 
 ;;lame aux function to convert a nested map (aev datastore in our model)
 ;;into mutable map of mutable maps.
@@ -223,8 +235,8 @@
   clojure.lang.ITransientAssociative2
   clojure.lang.ITransientMap
   (valAt [this k]
-    (when-let [inner (db k)]
-      (inner id)))
+    (when-let [^java.util.Map inner (.get db k)]
+      (.get inner id)))
   (valAt [this k not-found]
     (if-let [inner (db k)]
       (inner id not-found)
@@ -279,6 +291,26 @@
   (kv-reduce [this f init]
     (reduce (fn [acc k]
               (f acc k (.valAt this k))) init db-keys)))
+
+(defn ->passmap [db db-keys id]
+  (PassMap.  id {} db db-keys false))
+
+(defn ->passmapmut [db db-keys id]
+  (PassMapMut. id db db-keys {}))
+
+(comment
+  (def base {:entities {"bilbo" #{:name :age :location}}
+             :components {:name {"bilbo" "baggins"}
+                          :age  {"bilbo" 111}
+                          :location {"bilbo" "Shire"}}})
+  ;;persistent passmap.
+  (def pm (->passmap (base :components) (-> base :entities (get "bilbo")) "bilbo"))
+  ;;{:name "baggins", :age 111, :location "Shire"}, entries are lazily joined.  Eventually acts as an independent
+  ;;map, so we don't retain a reference to the original database if we ever do a full join.
+
+  (def aevmap (mutable2d (base :components)))
+  (def mpm (->passmapmut aevmap (-> base :entities (get "bilbo") hf/mut-set) "bilbo"))
+  )
 
 ;;we want to implement a couple of variants of passmaps.
 ;;simplest variant is to preserve existing semantics, but use a mutable store for the entity entries

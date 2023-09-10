@@ -43,6 +43,7 @@
                        {:aot [;spork.cljgui.components.PaintPanel
                               spork.cljgui.components.swing
                               spork.util.table]}]
+             :dev {:dependencies [[criterium "0.4.6"]]}
              ;;due to problems with AOT, and an effort to GET
              ;;everything to AOT, I had to use an approach derived
              ;;from lein-aot-order, specifically using their code
