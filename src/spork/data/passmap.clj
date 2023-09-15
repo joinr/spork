@@ -91,6 +91,20 @@
     `(let [~the-map ~m]
        (.get ~the-map ~k))))
 
+(defmacro valAt!
+  "This is a quick performance hack to allow direct method invocation
+   with a type-hinted java.util.Map object.  If we didn't do this,
+   using the intermediate let binding, expressions aren't hinted and
+   we wind up with reflections.  It may seem like overkill, but
+   this ends up being ~3x faster than using clojure.core/get,
+   which is still quite fast.  Still, we're on a hot path,
+   so I'm using this to provide compatibility between
+   persistent maps and hashmaps."
+  [m k]
+  (let [the-map (with-meta (gensym "the-map")  {:tag 'clojure.lang.IPersistentMap})]
+    `(let [~the-map ~m]
+       (.valAt ~the-map ~k))))
+
 
 
 (defn get2 [^java.util.Map m k1 k2]
@@ -401,13 +415,14 @@
                              :else (throw (ex-info "conj only supported on Entry and vector types!")))
     this)
   (without [this k]   (.remove m k) (.remove db-keys k) this)
+  #_(empty [this] (PassMapCached. nil (java.util.HashMap.) nil nil {}))
   clojure.lang.Seqable
-  (seq [this] (concat (map (fn [nd]
-                             (clojure.lang.MapEntry. (key nd) (val nd)))
-                           (seq m))
-                      (for [k db-keys
-                            :when (not (.containsKey m k))]
-                        (.entryAt this k))))
+  (seq [this]  (seq (concat (map (fn [nd]
+                                   (clojure.lang.MapEntry. (key nd) (val nd)))
+                                 (seq m))
+                            (for [k db-keys
+                                  :when (not (.containsKey m k))]
+                              (.entryAt this k)))))
   clojure.lang.Counted
   (count [this]      (do (when db (mjoin! db-keys db)) (.size m)))
   java.util.Map ;;some of these aren't correct....might matter.
