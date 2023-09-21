@@ -36,6 +36,8 @@
                  ;;serialization lib.
                  [com.taoensso/nippy "2.11.0-RC1"]
                  [ctries.clj "0.0.3"]
+                 ;;custom hashmap jank
+                 [com.rpl/proxy-plus "0.0.11"]
                  ;;leverag ham-fisted for mutable frens.
                  [com.cnuernber/ham-fisted "1.004"]]
   :aot [spork.cljgui.components.PaintPanel]

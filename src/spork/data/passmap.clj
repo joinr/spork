@@ -221,118 +221,7 @@
                  :db db
                  :db-keys db-keys}))
 
-;;lame aux function to convert a nested map (aev datastore in our model)
-;;into mutable map of mutable maps.
-;;note - we can delay mutation too, under this model we pay for every one.
-;;we can delay until we write and leave the persistent maps alone
-;;until we actually mutate them.  need to see what kind of
-;;cost model we're looking at too.  if it costs more to mutate
-;;the aev map, then we go back to maintaining a mutable local hashmap
-;;and a local keyset. hmm
-(defn mutable2d [m]
-  (let [hm (hf/mut-hashtable-map m)]
-    (reduce-kv (fn [acc k v]
-                 (assoc! acc k (hf/mut-hashtable-map v))) hm hm )))
-
-(defn jmutable2d [m]
-  (reduce-kv (fn [^java.util.Map acc k v]
-               (doto acc (.put k (doto (java.util.HashMap.) (.putAll v)))))
-             (java.util.HashMap.) m))
-
-;;semantics for a mutable passmap are that we willingly mutate the underlying
-;;data structure (the db).  so we have a map of {e {a v}} and a set of #{a1 a2 a3...} keys
-;;that tells us which entries the entity has.  In this case, we have more of a reference
-;;that we can mutate directly.  Downside is that lookups and updates are in a nested map.
-;;Is this faster than having a local mutable hashmap?  Probably since we don't need to
-;;compute joins and stuff....
-;;this represents a cursor into the underlying 2d map.
-
-
-(deftype PassMapMut [id
-                     ^:unsynchronized-mutable  ^java.util.Map db
-                     ;;the original keys in the database, what we're lazily passing through.
-                     ^:unsynchronized-mutable  ^java.util.Set db-keys
-                     ^:unsynchronized-mutable   _meta]
-  clojure.lang.IHashEq  ;;probably not going to be used....
-  (hasheq [this]   (hash-unordered-coll (.seq this)))
-  (hashCode [this] (clojure.lang.APersistentMap/mapHash this))
-  (equals [this o] (or (identical? this o)
-                       (clojure.lang.APersistentMap/mapEquals this o)))
-  #_
-  (equiv  [this o] (or (identical? this o) (map-equiv this o)))
-  clojure.lang.IObj
-  (meta     [this]    _meta)
-  (withMeta [this xs] (set! _meta xs) this)
-  clojure.lang.ITransientAssociative2
-  clojure.lang.ITransientMap
-  (valAt [this k]
-    (when-let [^java.util.Map inner (.get db k)]
-      (.get inner id)))
-  (valAt [this k not-found]
-    (if-let [^java.util.Map inner (.get db k)]
-      (.getOrDefault inner id not-found)
-      not-found))
-  (entryAt [this k]
-    (when-let [^java.util.Map inner  (.get db k)]
-      (let [res (.getOrDefault inner id +not-found+)]
-        (when-not (identical? res +not-found+)
-          (clojure.lang.MapEntry. k res)))))
-  (assoc [this k v]
-    (let [^java.util.Map  inner  (.getOrDefault db k +not-found+)]
-      (if (identical? inner +not-found+)
-        (do (.add db-keys k)
-            (.put db k (doto (java.util.HashMap.) (.put id v))))
-        (.put inner id v)))
-    this)
-  (conj  [this e]
-    (cond (instance? java.util.Map$Entry e)
-            (.assoc this (key e) (val e))
-          (vector? e)
-            (.assoc this (e 0) (e 1))
-            :else (try (reduce (fn [_ kv] (.assoc this (key kv) (val kv))) nil e)
-                       (catch Exception e
-                         (throw (ex-info "conj expectes a MapEntry, a 2-element vector, or a collection of MapEntries"
-                                         {:caught e})))))
-    this)
-  (without [this k]
-    (when (.contains db-keys k)
-      (let [^java.util.Map inner  (.get db k)]
-          (.remove inner k)
-          (when (zero? (.size inner))
-            (.remove db k))))
-    this)
-  clojure.lang.Seqable
-  (seq [this] (map (fn [k] (clojure.lang.MapEntry. k (.get ^java.util.Map (.get db k) id))) db-keys))
-  clojure.lang.Counted
-  (count [this]   (.size db-keys))
-  java.util.Map ;;some of these aren't correct....might matter.
-  (put    [this k v]  (.assoc this k v) v)
-  (putAll [this c]
-    (reduce (fn [_ kv] (.conj this kv )) nil c))
-  (clear  [this]
-    (.clear db-keys)
-    (.clear db)
-    this)
-  (containsKey   [this k] (.contains db-keys k))
-  (containsValue [this o]
-    (reduce (fn [acc k]
-              (if (= (.valAt this k) o)
-                (reduced true)
-                acc)) false db-keys))
-  (entrySet [this]  (set (.seq this)))
-  (keySet   [this]  db-keys)
-  clojure.core.protocols/IKVReduce
-  (kv-reduce [this f init]
-    (reduce (fn [acc k]
-              (f acc k (.valAt this k))) init db-keys))
-  IShow
-  (show [this] {:id id
-                :db db
-                :db-keys db-keys}))
-
 ;;may be faster...
-
-
 (defmacro empty-set? [s]
   `(if (.isEmpty ^java.util.Set ~s)
      nil
@@ -415,7 +304,7 @@
                              :else (throw (ex-info "conj only supported on Entry and vector types!")))
     this)
   (without [this k]   (.remove m k) (.remove db-keys k) this)
-  #_(empty [this] (PassMapCached. nil (java.util.HashMap.) nil nil {}))
+  (empty [this]       {} #_(PassMapCached. nil (java.util.HashMap.) nil nil {}))
   clojure.lang.Seqable
   (seq [this]  (seq (concat (map (fn [nd]
                                    (clojure.lang.MapEntry. (key nd) (val nd)))
@@ -446,12 +335,173 @@
                         (if (not (identical? res) +not-found+)
                           (f acc k res)
                           acc)))) (gen/kvreduce f init m) db-keys))
+  (clone [this] (PassMapCached. id (.clone m) (when db (.clone db)) (when db-keys (.clone db-keys)) {}))
   IShow
   (show [this] {:id id
                  :m  m
                  :db db
                  :db-keys db-keys
-                 :meta _meta}))
+                :meta _meta}))
+
+;;lame aux function to convert a nested map (aev datastore in our model)
+;;into mutable map of mutable maps.
+;;note - we can delay mutation too, under this model we pay for every one.
+;;we can delay until we write and leave the persistent maps alone
+;;until we actually mutate them.  need to see what kind of
+;;cost model we're looking at too.  if it costs more to mutate
+;;the aev map, then we go back to maintaining a mutable local hashmap
+;;and a local keyset. hmm
+(defn jmutable2d [m]
+  (reduce-kv (fn [^java.util.Map acc k v]
+               (doto acc (.put k (doto (java.util.HashMap.) (.putAll v)))))
+             (java.util.HashMap.) m))
+
+;;semantics for a mutable passmap are that we willingly mutate the underlying
+;;data structure (the db).  so we have a map of {e {a v}} and a set of #{a1 a2 a3...} keys
+;;that tells us which entries the entity has.  In this case, we have more of a reference
+;;that we can mutate directly.  Downside is that lookups and updates are in a nested map.
+;;Is this faster than having a local mutable hashmap?  Probably since we don't need to
+;;compute joins and stuff....
+;;this represents a cursor into the underlying 2d map.
+(deftype PointerEntry [^:unsynchronized-mutablev k ^:unsynchronized-mutable v]
+  clojure.lang.IMapEntry
+  (key [this] k)
+  (val [this] v)
+  clojure.lang.Indexed
+  (nth [this n] (case n 0 k 1 v (throw (ex-info "invalid index" {:in n}))))
+  (nth [this n not-found] (case n  0 k 1 v not-found))
+  clojure.lang.Seqable
+  (seq [this] (seq [k v]))
+  clojure.lang.Counted
+  (count [this] 2)
+  java.util.Map$Entry
+  (getKey [this] k)
+  (getValue [this] v)
+  (setValue [this v2] (set! v v2) this)
+  java.util.RandomAccess
+  java.util.List ;;partial dgaf implementation.
+  (get [this idx] (case idx 0 k 1 v))
+  (size [this] 2)
+  (hashCode [this]
+    (-> (+ 31 (if k  (.hashCode k) 0))
+        (* 31)
+        (+ (if v  (.hashCode v) 0))))
+  ;;hacky impl.....not intended for public consumption.
+  (equals [this that]
+    (cond (identical? this that) true
+          (instance? PointerEntry that)
+            (and (= k (.key ^PointerEntry that))
+                 (= v (.val ^PointerEntry that)))
+            ;;probably WRONG.  Need to handle collection cases and whatnot...
+            :else
+            (= (.hashCode this) (.hashCode that))))
+  ;;not enamored with this but meh.
+  (iterator [this]
+    (let [^longs n (long-array 1)]
+      (reify java.util.Iterator
+        (hasNext [this] (< (aget n 0) 2))
+        (next [this] (case (aget n 0)
+                       0 k v))))))
+
+(defprotocol INodeStore
+  (node-at [this k]))
+
+;;lifting functions into entry space.
+;;this would be so much easier if they just exposed the damn nodes...
+;; (deftype PlaceMap [^java.util.Map m]
+;;   java.util.Map
+;;   (get [this e])
+;;   (getOrDefault [this e default])
+;;   (put [this k v]
+;;     (if-let [^PointerEntry nd (.get m k)]
+;;       (.putIfAbsent m k v))
+;;   (size [this] (.size m)))
+
+;;let's ditch the transient stuff for now.  Start off mutable then
+;;put transient facade on top.
+(deftype PassMapMut [id
+                     ^java.util.Map m          ;;map of PointerEntries.
+                     ^:unsynchronized-mutable  ^java.util.Map db
+                     ;;the original keys in the database, what we're lazily passing through.
+                     ^:unsynchronized-mutable  ^java.util.Set db-keys
+                     ^:unsynchronized-mutable   _meta]
+  clojure.lang.IHashEq  ;;probably not going to be used....
+  (hasheq [this]   (hash-unordered-coll (.seq this)))
+  (hashCode [this] (clojure.lang.APersistentMap/mapHash this))
+  (equals [this o] (or (identical? this o)
+                       (clojure.lang.APersistentMap/mapEquals this o)))
+  #_
+  (equiv  [this o] (or (identical? this o) (map-equiv this o)))
+  clojure.lang.IObj
+  (meta     [this]    _meta)
+  (withMeta [this xs] (set! _meta xs) this)
+  clojure.lang.ITransientAssociative2
+  clojure.lang.ITransientMap
+  (valAt [this k]
+    (when-let [^java.util.Map inner (.get db k)]
+      (.get inner id)))
+  (valAt [this k not-found]
+    (if-let [^java.util.Map inner (.get db k)]
+      (.getOrDefault inner id not-found)
+      not-found))
+  (entryAt [this k]
+    (when-let [^java.util.Map inner  (.get db k)]
+      (let [res (.getOrDefault inner id +not-found+)]
+        (when-not (identical? res +not-found+)
+          (clojure.lang.MapEntry. k res)))))
+  (assoc [this k v]
+    (let [^java.util.Map  inner  (.getOrDefault db k +not-found+)]
+      (if (identical? inner +not-found+)
+        (do (.add db-keys k)
+            (.put db k (doto (java.util.HashMap.) (.put id v))))
+        (.put inner id v)))
+    this)
+  (conj  [this e]
+    (cond (instance? java.util.Map$Entry e)
+            (.assoc this (key e) (val e))
+          (vector? e)
+            (.assoc this (e 0) (e 1))
+            :else (try (reduce (fn [_ kv] (.assoc this (key kv) (val kv))) nil e)
+                       (catch Exception e
+                         (throw (ex-info "conj expectes a MapEntry, a 2-element vector, or a collection of MapEntries"
+                                         {:caught e})))))
+    this)
+  (without [this k]
+    (when (.contains db-keys k)
+      (let [^java.util.Map inner  (.get db k)]
+          (.remove inner k)
+          (when (zero? (.size inner))
+            (.remove db k))))
+    this)
+  clojure.lang.Seqable
+  (seq [this] (map (fn [k] (clojure.lang.MapEntry. k (.get ^java.util.Map (.get db k) id))) db-keys))
+  clojure.lang.Counted
+  (count [this]   (.size db-keys))
+  java.util.Map ;;some of these aren't correct....might matter.
+  (put    [this k v]  (.assoc this k v) v)
+  (putAll [this c]
+    (reduce (fn [_ kv] (.conj this kv )) nil c))
+  (clear  [this]
+    (.clear db-keys)
+    (.clear db)
+    this)
+  (containsKey   [this k] (.contains db-keys k))
+  (containsValue [this o]
+    (reduce (fn [acc k]
+              (if (= (.valAt this k) o)
+                (reduced true)
+                acc)) false db-keys))
+  (entrySet [this]  (set (.seq this)))
+  (keySet   [this]  db-keys)
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [this f init]
+    (reduce (fn [acc k]
+              (f acc k (.valAt this k))) init db-keys))
+  IShow
+  (show [this] {:id id
+                :db db
+                :db-keys db-keys}))
+
 
 (defn ->passmap [db db-keys id]
   (PassMap.  id {} db db-keys false))
