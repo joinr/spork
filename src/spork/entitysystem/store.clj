@@ -2,7 +2,8 @@
 ;;architecture.    Might rename this to "CENTS" "Component Entity System"
 (ns spork.entitysystem.store
   (:require [clojure.core.reducers :as r]
-            [spork.data.passmap :as passmap]))
+            [spork.data.passmap :as passmap]
+            [spork.data [eav :as eav] [derived :as derived]]))
 
 ;A component-based architecture is a collection of Domains, Systems, Components,
 ;and entities.  
@@ -693,51 +694,25 @@
                 c v))
       (throw (Exception. (str [:domain-does-not-exist c]))))))
 
-;;Beginnings of a mutable entity store.  Note: this is approximately 10x faster than our
-;;persistent counterpart, but it's 
+
+
+;;Mutable entity store backed by an IEAVStore implementation.
 (defrecord MapEntityStore [^java.util.HashMap entity-map
                            ^java.util.HashMap domain-map]
   IEntityStore
   (add-entry [db id domain data] ;;this gets called a lot....
-    (let [^java.util.HashSet
-          domains (or (.get entity-map id)
-                      (let [res (java.util.HashSet.)
-                            _ (.put entity-map id res)]
-                        res))
-          ^java.util.HashMap
-          component (or (.get domain-map domain)
-                        (let [res (java.util.HashMap.)
-                              _  (.put domain-map domain res)]
-                          res))]
-      (do (when (not (.contains domains domain)) (.add domains domain))
-          (.put component id data)
-          db)))
-  (drop-entry [db id domain]
-    (if-let [^java.util.HashSet e (.get entity-map id)]
-      (do (when (.contains e domain) ;;entity has domain..
-            (if (not (== 1 (.size e)))
-              (.remove e domain)
-              (.remove entity-map id))
-            (let [^java.util.HashMap comps (.get domain-map domain)]
-              (if (not (== 1 (.size comps)))
-                (.remove comps id)
-                (.remove domain-map domain))))
-            db)
-      (throw (Exception. (str "entitystore does not contiain an entry for " id)))))
+    (some-> ^java.util.Map (.get entity-map id) (.put domain data)))
+  (drop-entry    [db id domain]
+    (some-> ^java.util.Map (.get entity-map id) (.remove domain)))
   (get-entry     [db id domain]
-    (when-let [^java.util.HashMap comps (.get domain-map domain)]
-      (.get comps id)))
-  (entities [db]  entity-map)
-  (domains [db]   domain-map)
-  (domains-of     [db id]  (.get entity-map id))
-  (components-of  [db id]
-    (lazy-join-mutable domain-map id)
-    )  
+    (some-> ^java.util.Map (.get entity-map id) (.get domain)))
+  (entities [db]  entity-map) ;;hmm...legacy api expects a set projection.  this could break stuff downstream.
+  (domains  [db]  domain-map)
+  (domains-of     [db id]  (.keySet ^java.util.Map (.get entity-map id)))
+  (components-of  [db id]  (.get entity-map id))
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
-  (get-entity [db id]
-    (when-let [comps (.components-of db id)]
-      (entity. id nil nil comps #{})))
+  (get-entity [db id] (.get entity-map id));;need to extend IEntity to java.util.Map
   (conj-entity     [db id components])
   IColumnStore
   (swap-domain   [db c v]
