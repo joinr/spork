@@ -356,52 +356,8 @@
                (doto acc (.put k (doto (java.util.HashMap.) (.putAll v)))))
              (java.util.HashMap.) m))
 
-;;semantics for a mutable passmap are that we willingly mutate the underlying
-;;data structure (the db).  so we have a map of {e {a v}} and a set of #{a1 a2 a3...} keys
-;;that tells us which entries the entity has.  In this case, we have more of a reference
-;;that we can mutate directly.  Downside is that lookups and updates are in a nested map.
-;;Is this faster than having a local mutable hashmap?  Probably since we don't need to
-;;compute joins and stuff....
-;;this represents a cursor into the underlying 2d map.
-(deftype PointerEntry [^:unsynchronized-mutablev k ^:unsynchronized-mutable v]
-  clojure.lang.IMapEntry
-  (key [this] k)
-  (val [this] v)
-  clojure.lang.Indexed
-  (nth [this n] (case n 0 k 1 v (throw (ex-info "invalid index" {:in n}))))
-  (nth [this n not-found] (case n  0 k 1 v not-found))
-  clojure.lang.Seqable
-  (seq [this] (seq [k v]))
-  clojure.lang.Counted
-  (count [this] 2)
-  java.util.Map$Entry
-  (getKey [this] k)
-  (getValue [this] v)
-  (setValue [this v2] (set! v v2) this)
-  java.util.RandomAccess
-  java.util.List ;;partial dgaf implementation.
-  (get [this idx] (case idx 0 k 1 v))
-  (size [this] 2)
-  (hashCode [this]
-    (-> (+ 31 (if k  (.hashCode k) 0))
-        (* 31)
-        (+ (if v  (.hashCode v) 0))))
-  ;;hacky impl.....not intended for public consumption.
-  (equals [this that]
-    (cond (identical? this that) true
-          (instance? PointerEntry that)
-            (and (= k (.key ^PointerEntry that))
-                 (= v (.val ^PointerEntry that)))
-            ;;probably WRONG.  Need to handle collection cases and whatnot...
-            :else
-            (= (.hashCode this) (.hashCode that))))
-  ;;not enamored with this but meh.
-  (iterator [this]
-    (let [^longs n (long-array 1)]
-      (reify java.util.Iterator
-        (hasNext [this] (< (aget n 0) 2))
-        (next [this] (case (aget n 0)
-                       0 k v))))))
+
+
 
 (defprotocol INodeStore
   (node-at [this k]))
