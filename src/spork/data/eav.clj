@@ -1,4 +1,5 @@
-(ns spork.data.eav)
+(ns spork.data.eav
+  (:require [spork.data [derived :as derived]]))
 
 ;;so testing in java land proves we can get a fast mutable store with pointer entries stored in java maps.
 ;;so let's do that.
@@ -65,6 +66,7 @@
 (defn update-index [k v])
 
 ;;entity is just a wrapped hashmap.
+;;need dual of this for attribute map.
 (deftype EntityRecord [id  ^java.util.HashMap attributes ^java.util.HashMap AE]
   IEAV
   (get-e [this]    id)
@@ -108,14 +110,13 @@
   clojure.lang.Seqable
   (seq [this]  (->> (.iterator (.entrySet attributes))
                     iterator-seq))
-  #_#_
   clojure.lang.IKVReduce
-  (kvreduce [f init]
-    (let [it (.iterator (.entrySet m))]
+  (kvreduce [this f init]
+    (let [it (.iterator (.entrySet attributes))]
       (loop [acc init]
         (if (.hasNext it)
           (let [^java.util.Map$Entry kv (.next it)
-                res (f acc (.getKey kv) (.val- (.getValue kv)))]
+                res (f acc (.getKey kv) (.getValue kv))]
             (if (reduced? res)
               @res
               (recur res)))
@@ -152,9 +153,20 @@
   Iterable
   (iterator [this] (.iterator (.entrySet attributes))))
 
-(defrecord RecordStore [^java.util.Map entities ^java.util.Map AE])
+(defrecord RecordStore [^java.util.Map entities ^java.util.Map AE ^java.util.Map columns])
 
-(defn ->record-store [] (RecordStore. (java.util.HashMap.) (java.util.HashMap.)))
+(defn ->record-store []
+  (let [^java.util.Map
+        entities (java.util.HashMap.)
+        AE       (java.util.HashMap.)
+        cols     (derived/->derived-map AE
+                   (fn [a ^java.util.HashSet es]
+                     (derived/->inverse-map a es entities
+                           (fn make-entity [^java.util.Map EAVs e]
+                             (let [enew (EntityRecord. e (java.util.HashMap.) AE)
+                                   _    (.put entities e enew)]
+                               enew)))))]
+    (RecordStore. entities AE cols)))
 
 (defn ->entity-record [store id]
   (let [e (EntityRecord. id (java.util.HashMap.) (:AE store))
@@ -163,6 +175,8 @@
     (.put entities id e)
     e))
 
+
+;;A separate columnstore implementation.
 (deftype Pointer [^:unsynchronized-mutable v]
   clojure.lang.IDeref
   (deref [this] v)
@@ -177,14 +191,32 @@
           _           (.put m k new-pointer)]
       new-pointer)))
 
-(defn remove-ae [store a e] store)
-(defn remove-ea [store e a] store)
-
 (defn pointer-iterator ^java.util.Iterator [^java.util.Map m]
   (let [^java.util.Iterator it (.iterator (.entrySet m))]
     (reify java.util.Iterator
       (hasNext [this] (.hasNext it))
       (next [this]    (.val- ^Pointer (.getValue ^java.util.Map$Entry (.next it)))))))
+
+
+(defn put-ae [^spork.data.eav.IAEVStore store a e v]
+  (let [^java.util.Map
+        AEVs (.attributes store)
+        ^java.util.Map
+        EV   (or (.get AEVs a)
+                 (let [attr (java.util.HashMap.)
+                       _    (.put AEVs a attr)]
+                   attr))
+        _ (.put EV e v)]
+    nil))
+
+(defn remove-ae [^spork.data.eav.IAEVStore store a e]
+  (let [^java.util.Map
+        AEVs (.attributes store)]
+    (when-let [^java.util.Map
+               EV  (.get AEVs a)]
+      (.remove EV e)
+      (when (zero? (.size EV))
+        (.remove AEVs a)))))
 
 (deftype EntityMap [^spork.data.eav.IAEVStore store id ^java.util.HashMap attributes]
   IEAV
@@ -199,16 +231,21 @@
       (.val- v)
       default))
   (put [this k v]
-    (let [^Pointer p (acquire-pointer attributes k)]
-      (.setValue- p v)))
+    (if-let [^Pointer p (.get attributes k)]
+      (.setValue- p v)
+      (let [^Pointer p (Pointer. v)
+            _ (.put attributes k p)
+            _ (put-ae store k id p)]
+        nil)))
   (putIfAbsent [this k v]
     (if-let [p (.get attributes k)]
       (.val- ^Pointer p)
-      (let [new-pointer (Pointer. nil)]
-        (.put attributes k new-pointer)
-        (.setValue- new-pointer v)
+      (let [^Pointer p (Pointer. v)
+            _ (.put attributes k p)
+            _ (put-ae store k id p)]
         nil)))
-  (putAll [this m])
+  (putAll [this m] (reduce (fn [acc ^java.util.Map$Entry e]
+                             (.put this (.getKey e) (.getValue e))) nil m))
   (remove [this k]
     (when-let [^Pointer p (.get attributes k)]
       (.remove attributes k)
@@ -223,11 +260,10 @@
   (size [this] (.size attributes))
   (containsKey   [this k] (.containsKey attributes k))
   (containsValue [this v] (some #(= v %) (vals this)))
-  (entrySet [this]
-    (reduce-kv (fn [^java.util.HashSet acc k ^Pointer v]
-                 (doto acc (.add (clojure.lang.MapEntry. k (.val- v)))))
-               (java.util.HashSet.)
-               attributes))
+  (entrySet [this] (.entrySet (derived/->derived-map attributes val-)))
+  (keySet [this]  (.keySet attributes))
+  (values [this]  (iterator-seq (pointer-iterator attributes))) ;;maybe suboptimal.
+  (isEmpty [this] (.isEmpty attributes))
   (equals [this o] (or (identical? this o)
                        (clojure.lang.APersistentMap/mapEquals this o)))
   clojure.lang.Seqable
@@ -235,14 +271,13 @@
                     iterator-seq
                     (map (fn [^java.util.Map$Entry e]
                            (clojure.lang.MapEntry. (.getKey e) (.val- ^Pointer (.getValue e)))))))
-  #_#_
   clojure.lang.IKVReduce
-  (kvreduce [f init]
-    (let [it (.iterator (.entrySet m))]
+  (kvreduce [this f init]
+    (let [it (.iterator (.entrySet attributes))]
       (loop [acc init]
         (if (.hasNext it)
           (let [^java.util.Map$Entry kv (.next it)
-                res (f acc (.getKey kv) (.val- (.getValue kv)))]
+                res (f acc (.getKey kv) (.val- ^Pointer (.getValue kv)))]
             (if (reduced? res)
               @res
               (recur res)))
@@ -266,58 +301,21 @@
           (or (instance? clojure.lang.Sequential o)
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
           :else nil))
-  (keySet [this]  (.keySet attributes))
-  (values [this]  (iterator-seq (pointer-iterator attributes))) ;;maybe suboptimal.
-  (isEmpty [this] (.isEmpty attributes))
   Iterable
   (iterator [this] (pointer-iterator attributes)))
 
-(defn ->entity [store id]
-  (EntityMap. store id (java.util.HashMap.)))
+(defrecord MapStore [^java.util.Map entities ^java.util.Map attributes]
+  IAEVStore
+  (entities [this] entities)
+  (attributes [this] attributes)
+  (get-entity [this k] (.get entities k))
+  (get-attribute [this k] (.get attributes k)))
 
-;; ;;semantics for a mutable passmap are that we willingly mutate the underlying
-;; ;;data structure (the db).  so we have a map of {e {a v}} and a set of #{a1 a2 a3...} keys
-;; ;;that tells us which entries the entity has.  In this case, we have more of a reference
-;; ;;that we can mutate directly.  Downside is that lookups and updates are in a nested map.
-;; ;;Is this faster than having a local mutable hashmap?  Probably since we don't need to
-;; ;;compute joins and stuff....
-;; ;;this represents a cursor into the underlying 2d map.
-;; (deftype PointerEntry [^:unsynchronized-mutablev k ^:unsynchronized-mutable v]
-;;   clojure.lang.IMapEntry
-;;   (key [this] k)
-;;   (val [this] v)
-;;   clojure.lang.Indexed
-;;   (nth [this n] (case n 0 k 1 v (throw (ex-info "invalid index" {:in n}))))
-;;   (nth [this n not-found] (case n  0 k 1 v not-found))
-;;   clojure.lang.Seqable
-;;   (seq [this] (seq [k v]))
-;;   clojure.lang.Counted
-;;   (count [this] 2)
-;;   java.util.Map$Entry
-;;   (getKey [this] k)
-;;   (getValue [this] v)
-;;   (setValue [this v2] (set! v v2) this)
-;;   java.util.RandomAccess
-;;   java.util.List ;;partial dgaf implementation.
-;;   (get [this idx] (case idx 0 k 1 v))
-;;   (size [this] 2)
-;;   (hashCode [this]
-;;     (-> (+ 31 (if k  (.hashCode k) 0))
-;;         (* 31)
-;;         (+ (if v  (.hashCode v) 0))))
-;;   ;;hacky impl.....not intended for public consumption.
-;;   (equals [this that]
-;;     (cond (identical? this that) true
-;;           (instance? PointerEntry that)
-;;             (and (= k (.key ^PointerEntry that))
-;;                  (= v (.val ^PointerEntry that)))
-;;             ;;probably WRONG.  Need to handle collection cases and whatnot...
-;;             :else
-;;             (= (.hashCode this) (.hashCode that))))
-;;   ;;not enamored with this but meh.
-;;   (iterator [this]
-;;     (let [^longs n (long-array 1)]
-;;       (reify java.util.Iterator
-;;         (hasNext [this] (< (aget n 0) 2))
-;;         (next [this] (case (aget n 0)
-;;                        0 k v))))))
+(defn ->map-store []  (MapStore. (java.util.HashMap.) (java.util.HashMap.)))
+
+(defn ->entity-map [store id]
+  (let [e   (EntityMap. store id (java.util.HashMap.))
+        ^java.util.Map
+        entities (:entities store)]
+    (.put entities id e)
+    e))
