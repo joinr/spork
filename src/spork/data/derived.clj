@@ -15,7 +15,6 @@
 
 (defn hashcode-unordered-coll ^long [xs]
   (reduce (fn ^long [^long acc ^Object x]
-            (println acc)
             (unchecked-int ^long (unchecked-add acc (.hashCode x)))) 0 xs))
 
 ;;wouldn't rely on these for hashing and equality just yet...
@@ -60,7 +59,7 @@
                 (.put this k (on-put k (.getValue e)))) nil m)))
   (size [this] (.size m))
   (keySet [this]   (.keySet m))
-  (entrySet [this] (WrappedEntrySet. m (fn [^java.util.Map$Entry kv]
+  (entrySet [this] (WrappedEntrySet. m (fn on-entry [^java.util.Map$Entry kv]
                                          (let [k (.getKey kv)]
                                            (clojure.lang.MapEntry. k  (on-get k (.getValue kv)))))))
   (values [this]   (vec (eduction (map (fn [^java.util.Map$Entry kv]

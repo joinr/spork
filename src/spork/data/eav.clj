@@ -24,14 +24,36 @@
   (get-entity [this k])
   (get-attribute [this k]))
 
-(defprotocol IEAV
-  (get-e [this])
-  (get-a [this a]))
-
 ;;maybe obe.
 (defprotocol IBox
   (val-      [this])
   (setValue- [this v]))
+
+;;A separate columnstore implementation.
+(deftype Pointer [^:unsynchronized-mutable v]
+  clojure.lang.IDeref
+  (deref [this] v)
+  IBox
+  (val- [this] v)
+  (setValue- [this v2] (set! v v2) this))
+
+(defprotocol IPointerMap
+  (put-pointer    [m k ^Pointer v])
+  (get-pointer    ^Pointer [m k])
+  (remove-pointer [m k]))
+
+(defprotocol IEAV
+  (get-e [this])
+  (get-a [this a]))
+
+(defn seqable-map-hash [this]
+  (clojure.lang.APersistentMap/mapHash
+   (reify clojure.lang.IPersistentMap
+     (seq [m] (cond
+                (seqable? m) (seq this)
+                (instance? java.lang.Iterable this)
+                (iterator-seq (.iterator ^java.lang.Iterable this))
+                :else (throw (ex-info "no idea how to hash!" {:in (type this)})))))))
 
 (def ^java.util.function.Function create-set
   (reify java.util.function.Function
@@ -130,7 +152,7 @@
          (reduce f init )))
   clojure.lang.IHashEq
   (hasheq [this]   (hash-unordered-coll (.seq this)))
-  (hashCode [this] (clojure.lang.APersistentMap/mapHash attributes)) ;;probably change this, since we need to deref.
+  (hashCode [this] (.hashCode attributes)) ;;probably change this, since we need to deref.
   #_
   (equiv  [this o]
     (cond (identical? this o) true
@@ -176,14 +198,6 @@
     e))
 
 
-;;A separate columnstore implementation.
-(deftype Pointer [^:unsynchronized-mutable v]
-  clojure.lang.IDeref
-  (deref [this] v)
-  IBox
-  (val- [this] v)
-  (setValue- [this v2] (set! v v2) this))
-
 (defn acquire-pointer ^Pointer [^java.util.Map m k]
   (if-let [p (.get m k)]
     p
@@ -197,42 +211,20 @@
       (hasNext [this] (.hasNext it))
       (next [this]    (.val- ^Pointer (.getValue ^java.util.Map$Entry (.next it)))))))
 
+(defn pointer-entry-iterator ^java.util.Iterator [^java.util.Map m]
+  (let [^java.util.Iterator it (.iterator (.entrySet m))]
+    (reify java.util.Iterator
+      (hasNext [this] (.hasNext it))
+      (next [this]    (let [e ^java.util.Map$Entry (.next it)]
+                        (clojure.lang.MapEntry. (.getKey e) (.val- ^Pointer (.getValue e))))))))
 
-(defn put-ae [^spork.data.eav.IAEVStore store a e v]
-  (let [^java.util.Map
-        AEVs (.attributes store)
-        ^java.util.Map
-        EV   (or (.get AEVs a)
-                 (let [attr (java.util.HashMap.)
-                       _    (.put AEVs a attr)]
-                   attr))
-        _ (.put EV e v)]
-    nil))
+(declare put-ae remove-ae put-ea remove-ea)
 
-(defn remove-ae [^spork.data.eav.IAEVStore store a e]
-  (let [^java.util.Map
-        AEVs (.attributes store)]
-    (when-let [^java.util.Map
-               EV  (.get AEVs a)]
-      (.remove EV e)
-      (when (zero? (.size EV))
-        (.remove AEVs a)))))
-
-
-;;WIP
-;; (defn put-ea [^spork.data.eav.IAEVStore store e a v]
-;;   (let [^java.util.Map
-;;         EAVs (.entities store)
-;;         ^java.util.Map
-;;         AV   (or (.get EAVs e)
-;;                  (let [ent  (EntityRecord. id (doto ^java.util.Map (java.util.HashMap.) (.put a v)) (:AE store))
-;;                        _    (.put EAVs e ent)]
-;;                    ent))
-;;         _ (.put EV e v)]
-;;     nil))
-
-#_
 (deftype AttributeMap [^spork.data.eav.IAEVStore store a ^java.util.HashMap entities]
+  IPointerMap
+  (get-pointer    [m k]   (.get entities k))
+  (remove-pointer [m k]   (.remove entities k))
+  (put-pointer    [m k v] (.put entities k v))
   java.util.Map
   (get [this k]
     (when-let [^Pointer v (.get entities k)]
@@ -304,7 +296,7 @@
          (reduce f init )))
   clojure.lang.IHashEq
   (hasheq [this]   (hash-unordered-coll (.seq this)))
-  (hashCode [this] (clojure.lang.APersistentMap/mapHash entities)) ;;probably change this, since we need to deref.
+  (hashCode [this] (seqable-map-hash entities)) ;;probably change this, since we need to deref.
   #_
   (equiv  [this o]
     (cond (identical? this o) true
@@ -313,9 +305,13 @@
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
           :else nil))
   Iterable
-  (iterator [this] (pointer-iterator entities)))
+  (iterator [this] (pointer-entry-iterator entities)))
 
 (deftype EntityMap [^spork.data.eav.IAEVStore store id ^java.util.HashMap attributes]
+  IPointerMap
+  (get-pointer    [m k]   (.get attributes k))
+  (remove-pointer [m k]   (.remove attributes k))
+  (put-pointer    [m k v] (.put attributes k v))
   IEAV
   (get-e [this]    id)
   (get-a [this a] (.get this a))
@@ -357,7 +353,7 @@
   (size [this] (.size attributes))
   (containsKey   [this k] (.containsKey attributes k))
   (containsValue [this v] (some #(= v %) (vals this)))
-  (entrySet [this] (.entrySet (derived/->derived-map attributes val-)))
+  (entrySet [this] (.entrySet (derived/->derived-map attributes (fn [k v] (val- v)))))
   (keySet [this]  (.keySet attributes))
   (values [this]  (iterator-seq (pointer-iterator attributes))) ;;maybe suboptimal.
   (isEmpty [this] (.isEmpty attributes))
@@ -390,7 +386,7 @@
          (reduce f init )))
   clojure.lang.IHashEq
   (hasheq [this]   (hash-unordered-coll (.seq this)))
-  (hashCode [this] (clojure.lang.APersistentMap/mapHash attributes)) ;;probably change this, since we need to deref.
+  (hashCode [this] (seqable-map-hash this)) ;;probably change this, since we need to deref.
   #_
   (equiv  [this o]
     (cond (identical? this o) true
@@ -399,7 +395,60 @@
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
           :else nil))
   Iterable
-  (iterator [this] (pointer-iterator attributes)))
+  (iterator [this] (pointer-entry-iterator attributes))
+  (clone [this]
+    (let [^java.util.HashMap
+          m  (java.util.HashMap.)
+          ^java.util.Iterator
+          it (.iterator (.entrySet attributes))]
+      (loop []
+        (when (.hasNext it)
+          (let [^java.util.Map$Entry e (.next it)]
+            (.put m (.getKey e) (.val- ^Pointer (.getValue e)))
+            (recur))))
+      m)))
+
+;;bidirectional pointer ops.
+(defn put-ae [^spork.data.eav.IAEVStore store a e pv]
+  (let [^java.util.Map
+        AEVs (.attributes store)
+        ^spork.data.eav.IPointerMap
+        EV   (or (.get AEVs a)
+                 (let [attr (AttributeMap.  store a (java.util.HashMap.))
+                       _    (.put AEVs a attr)]
+                   attr))
+        _ (.put-pointer EV e pv)]
+    nil))
+
+(defn remove-ae [^spork.data.eav.IAEVStore store a e]
+  (let [^java.util.Map
+        AEVs (.attributes store)]
+    (when-let [^spork.data.eav.EntityMap
+               EV  (.get AEVs a)]
+      (.remove-pointer EV e)
+      (when (zero? (.size EV))
+        (.remove AEVs a)))))
+
+(defn put-ea [^spork.data.eav.IAEVStore store e a pv]
+  (let [^java.util.Map
+        EAVs (.entities store)
+        ^EntityMap
+        AV   (or (.get EAVs e)
+                 (let [ent  (EntityMap. store e (java.util.HashMap.))
+                       _    (.put EAVs e ent)]
+                   ent))
+        _ (.put-pointer AV a pv)
+        _ (.put AV ::name e)]
+    nil))
+
+(defn remove-ea [^spork.data.eav.IAEVStore store e a]
+  (let [^java.util.Map
+        EAVs (.entities store)]
+    (if-let [^EntityMap AV (.get EAVs e)]
+      (do (.remove-pointer AV a)
+          (when (zero? (.size AV))
+            (.remove EAVs e)))
+      nil)))
 
 (defrecord MapStore [^java.util.Map entities ^java.util.Map attributes]
   IAEVStore
@@ -410,9 +459,32 @@
 
 (defn ->map-store []  (MapStore. (java.util.HashMap.) (java.util.HashMap.)))
 
-(defn ->entity-map [store id]
-  (let [e   (EntityMap. store id (java.util.HashMap.))
-        ^java.util.Map
-        entities (:entities store)]
-    (.put entities id e)
-    e))
+;;need to check for collisions....assumes new entity.
+(defn ->entity-map
+  ([store id init]
+   (let [e   (EntityMap. store id (java.util.HashMap.))
+         ^java.util.Map
+         entities (:entities store)]
+     (.put entities id e)
+     (.putAll ^EntityMap e init)
+     e))
+  ([store id] (->entity-map store id {::name id})))
+
+;;testing
+(comment
+  (def other-store (->map-store))
+  (def other-ent   (->entity-map other-store "bilbo"))
+  (.put ^java.util.Map other-ent :name "Baggins")
+  (-> other-store :attributes :name (.put "samwise" "gamgee"))
+  ;;simple cloning semantics.
+  (let [old (-> other-store :entities (get "bilbo"))
+        m (doto (java.util.HashMap.) (.putAll old))
+        _ (.put old :version 2)] [m old])
+  #_
+  [{:name "Baggins", :spork.data.eav/name "bilbo"}
+   {:name "Baggins", :spork.data.eav/name "bilbo", :version 2}]
+  ;;cloning small entities is much faster than putAll.
+  #_#_
+  (let [old (-> other-store :entities (get "bilbo")) ] (c/quick-bench  (.clone ^EntityMap old)))
+  Execution time mean : 79.934234 ns
+  )
