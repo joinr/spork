@@ -218,6 +218,103 @@
       (when (zero? (.size EV))
         (.remove AEVs a)))))
 
+
+;;WIP
+;; (defn put-ea [^spork.data.eav.IAEVStore store e a v]
+;;   (let [^java.util.Map
+;;         EAVs (.entities store)
+;;         ^java.util.Map
+;;         AV   (or (.get EAVs e)
+;;                  (let [ent  (EntityRecord. id (doto ^java.util.Map (java.util.HashMap.) (.put a v)) (:AE store))
+;;                        _    (.put EAVs e ent)]
+;;                    ent))
+;;         _ (.put EV e v)]
+;;     nil))
+
+#_
+(deftype AttributeMap [^spork.data.eav.IAEVStore store a ^java.util.HashMap entities]
+  java.util.Map
+  (get [this k]
+    (when-let [^Pointer v (.get entities k)]
+      (.val- v)))
+  (getOrDefault [this k default]
+    (if-let [^Pointer v (.get entities k)]
+      (.val- v)
+      default))
+  (put [this k v]
+    (if-let [^Pointer p (.get entities k)]
+      (.setValue- p v)
+      (let [^Pointer p (Pointer. v)
+            _ (.put entities k p)
+            _ (put-ea store k a p)]
+        nil)))
+  (putIfAbsent [this k v]
+    (if-let [p (.get entities k)]
+      (.val- ^Pointer p)
+      (let [^Pointer p (Pointer. v)
+            _ (.put entities k p)
+            _ (put-ea store k a p)]
+        nil)))
+  (putAll [this m] (reduce (fn [acc ^java.util.Map$Entry e]
+                             (.put this (.getKey e) (.getValue e))) nil m))
+  (remove [this k]
+    (when-let [^Pointer p (.get entities k)]
+      (.remove entities k)
+      (remove-ea store k a)
+      (.val- p)))
+  (remove [this k v]
+    (when-let [^Pointer p (.get entities k)]
+      (when (= (.val- p) v)
+        (.remove entities k)
+        (remove-ea store k a)
+        v)))
+  (size [this] (.size entities))
+  (containsKey   [this k] (.containsKey entities k))
+  (containsValue [this v] (some #(= v %) (vals this)))
+  (entrySet [this] (.entrySet (derived/->derived-map entities val-)))
+  (keySet [this]  (.keySet entities))
+  (values [this]  (iterator-seq (pointer-iterator entities))) ;;maybe suboptimal.
+  (isEmpty [this] (.isEmpty entities))
+  (equals [this o] (or (identical? this o)
+                       (clojure.lang.APersistentMap/mapEquals this o)))
+  clojure.lang.Seqable
+  (seq [this]  (->> (.iterator (.entrySet entities))
+                    iterator-seq
+                    (map (fn [^java.util.Map$Entry e]
+                           (clojure.lang.MapEntry. (.getKey e) (.val- ^Pointer (.getValue e)))))))
+  clojure.lang.IKVReduce
+  (kvreduce [this f init]
+    (let [it (.iterator (.entrySet entities))]
+      (loop [acc init]
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry kv (.next it)
+                res (f acc (.getKey kv) (.val- ^Pointer (.getValue kv)))]
+            (if (reduced? res)
+              @res
+              (recur res)))
+          acc))))
+  clojure.lang.IReduce
+  (reduce [this f]
+    (->> (.entrySet entities)
+         (eduction (map (fn [^java.util.Map$Entry kv] (clojure.lang.MapEntry. (.getKey kv) (.val- ^Pointer (.getValue kv))))))
+         (reduce f)))
+  (reduce [this f init]
+    (->> (.entrySet entities)
+         (eduction (map (fn [^java.util.Map$Entry kv] (clojure.lang.MapEntry. (.getKey kv) (.val- ^Pointer (.getValue kv))))))
+         (reduce f init )))
+  clojure.lang.IHashEq
+  (hasheq [this]   (hash-unordered-coll (.seq this)))
+  (hashCode [this] (clojure.lang.APersistentMap/mapHash entities)) ;;probably change this, since we need to deref.
+  #_
+  (equiv  [this o]
+    (cond (identical? this o) true
+          (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+          (or (instance? clojure.lang.Sequential o)
+              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+          :else nil))
+  Iterable
+  (iterator [this] (pointer-iterator entities)))
+
 (deftype EntityMap [^spork.data.eav.IAEVStore store id ^java.util.HashMap attributes]
   IEAV
   (get-e [this]    id)

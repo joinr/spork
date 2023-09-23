@@ -93,8 +93,8 @@
                 (reduced false)
                 true)) true coll))
   (iterator [this] (.iterator ^java.lang.Iterable
-                              (eduction (map (fn [^java.util.Map$Entry e]
-                                               (let [^java.util.Map ent (.get EAVs (.getKey e))]
+                              (eduction (map (fn [e]
+                                               (let [^java.util.Map ent (.get EAVs e)]
                                                  (clojure.lang.MapEntry. e (.get ent a))))) es))))
 
 (deftype InverseMap [a ^java.util.Set es ^java.util.Map EAVs make-e]
