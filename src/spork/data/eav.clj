@@ -19,10 +19,12 @@
 ;;queries still fast.
 
 (defprotocol IAEVStore
-  (entities [this])
-  (attributes [this])
-  (get-entity [this k])
-  (get-attribute [this k]))
+  (eav-entities [this])
+  (eav-attributes [this])
+  (eav-entity [this k])
+  (eav-attribute [this k])
+  (eav-acquire-entity [this k] [this k init])
+  (eav-acquire-attribute [this a] [this a init]))
 
 ;;maybe obe.
 (defprotocol IBox
@@ -411,7 +413,7 @@
 ;;bidirectional pointer ops.
 (defn put-ae [^spork.data.eav.IAEVStore store a e pv]
   (let [^java.util.Map
-        AEVs (.attributes store)
+        AEVs (.eav-attributes store)
         ^spork.data.eav.IPointerMap
         EV   (or (.get AEVs a)
                  (let [attr (AttributeMap.  store a (java.util.HashMap.))
@@ -422,8 +424,8 @@
 
 (defn remove-ae [^spork.data.eav.IAEVStore store a e]
   (let [^java.util.Map
-        AEVs (.attributes store)]
-    (when-let [^spork.data.eav.EntityMap
+        AEVs (.eav-attributes store)]
+    (when-let [^spork.data.eav.AttributeMap
                EV  (.get AEVs a)]
       (.remove-pointer EV e)
       (when (zero? (.size EV))
@@ -431,7 +433,7 @@
 
 (defn put-ea [^spork.data.eav.IAEVStore store e a pv]
   (let [^java.util.Map
-        EAVs (.entities store)
+        EAVs (.eav-entities store)
         ^EntityMap
         AV   (or (.get EAVs e)
                  (let [ent  (EntityMap. store e (java.util.HashMap.))
@@ -443,21 +445,12 @@
 
 (defn remove-ea [^spork.data.eav.IAEVStore store e a]
   (let [^java.util.Map
-        EAVs (.entities store)]
+        EAVs (.eav-entities store)]
     (if-let [^EntityMap AV (.get EAVs e)]
       (do (.remove-pointer AV a)
           (when (zero? (.size AV))
             (.remove EAVs e)))
       nil)))
-
-(defrecord MapStore [^java.util.Map entities ^java.util.Map attributes]
-  IAEVStore
-  (entities [this] entities)
-  (attributes [this] attributes)
-  (get-entity [this k] (.get entities k))
-  (get-attribute [this k] (.get attributes k)))
-
-(defn ->map-store []  (MapStore. (java.util.HashMap.) (java.util.HashMap.)))
 
 ;;need to check for collisions....assumes new entity.
 (defn ->entity-map
@@ -469,6 +462,35 @@
      (.putAll ^EntityMap e init)
      e))
   ([store id] (->entity-map store id {::name id})))
+
+(defrecord MapStore [^java.util.Map entities ^java.util.Map attributes]
+  IAEVStore
+  (eav-entities [this] entities)
+  (eav-attributes [this] attributes)
+  (eav-entity [this k] (.get entities k))
+  (eav-attribute [this k] (.get attributes k))
+  (eav-acquire-entity [this k]
+    (or (.get entities k)
+        (->entity-map this k)))
+  (eav-acquire-entity [this k init]
+    (or (.get entities k)
+        (->entity-map this k init)))
+  (eav-acquire-attribute [this a]
+    (or (.get attributes a)
+        (let [attr (AttributeMap. this a (java.util.HashMap.))]
+          (.put attributes a attr)
+          attr)))
+  (eav-acquire-attribute [this a init]
+    (or (.get attributes a)
+        (let [attr (AttributeMap. this a (java.util.HashMap.))]
+          (.put attributes a attr)
+          (.putAll attr init)
+          attr))))
+
+(defn ->map-store []  (MapStore. (java.util.HashMap.) (java.util.HashMap.)))
+
+
+
 
 ;;testing
 (comment
@@ -484,7 +506,6 @@
   [{:name "Baggins", :spork.data.eav/name "bilbo"}
    {:name "Baggins", :spork.data.eav/name "bilbo", :version 2}]
   ;;cloning small entities is much faster than putAll.
-  #_#_
-  (let [old (-> other-store :entities (get "bilbo")) ] (c/quick-bench  (.clone ^EntityMap old)))
-  Execution time mean : 79.934234 ns
+  ;;(let [old (-> other-store :entities (get "bilbo")) ] (c/quick-bench  (.clone ^EntityMap old)))
+  ;;Execution time mean : 79.934234 ns
   )

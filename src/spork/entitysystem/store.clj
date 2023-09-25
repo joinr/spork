@@ -2,6 +2,7 @@
 ;;architecture.    Might rename this to "CENTS" "Component Entity System"
 (ns spork.entitysystem.store
   (:require [clojure.core.reducers :as r]
+            [spork.data.mutable] ;;wrappers for hashmap, including kvreduce
             [spork.data.passmap :as passmap]
             [spork.data [eav :as eav] [derived :as derived]]))
 
@@ -254,83 +255,6 @@
   )
 
 
-#_(deftype entity [^:unsynchronized-mutable name
-                 ^:unsynchronized-mutable domains
-                 ^:unsynchronized-mutable components
-                 ^clojure.lang.IPersistentMap m
-                 ^clojure.lang.IPersistentSet altered
-                 ]
-  clojure.lang.IHashEq
-  (hasheq   [this]   (.hasheq   ^clojure.lang.IHashEq m))
-  (hashCode [this]   (.hashCode ^clojure.lang.IHashEq m))
-  (equals   [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
-  (equiv    [this o]
-    (cond   (identical? this o) true
-            (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
-          (or (instance? clojure.lang.Sequential o)
-              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
-              :else nil))  
-  clojure.lang.IObj
-  (meta     [this] (.meta ^clojure.lang.IObj m))
-  (withMeta [this xs] (entity. name domains components
-                               (with-meta ^clojure.lang.IObj m xs) altered))
-  IEntity 
-  (entity-name [e] (if name name
-                       (do (set! name (.valAt m :name))
-                           name)))
-  (conj-component [e c] 
-    (entity. name nil nil (.assoc m (component-domain c) (component-data c))
-                          (.cons altered (component-domain c))))
-  (disj-component [e c] 
-    (entity. name domains components (.without m (component-domain c))
-                                     (.cons altered (component-domain c))))
-  (get-component [e domain]          (.valAt m domain))
-  (entity-components [e]  (if components components
-                              (do (set! components (into [] (seq  m)))
-                                  components)))
-  (entity-domains [e] (if domains domains
-                          (do (set! domains (keys m))
-                              domains)))
-  clojure.lang.IPersistentMap
-  (valAt [this k] (.valAt m k))
-  (valAt [this k not-found] (.valAt m k not-found))
-  (entryAt [this k] (.entryAt m k))
-  (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
-  (cons  [this e]   
-    (entity. nil nil nil (.cons m e)
-             (if (map? e) (into altered (keys e))
-                 (.cons altered (key e)))))
-  (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
-  clojure.lang.Seqable
-  (seq [this] (seq m))
-  clojure.lang.Counted
-  (count [coll] (.count m))
-  java.util.Map
-  (put    [this k v]  (.assoc this k v))
-  (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c)  m))
-  (clear  [this] (entity. nil nil nil {} #{}))
-  (containsKey   [this o] (.containsKey ^java.util.Map m o))
-  (containsValue [this o] (.containsValue ^java.util.Map m o))
-  (entrySet [this] (.entrySet ^java.util.Map m))
-  (keySet   [this] (.keySet ^java.util.Map m))
-  (get [this k] (.valAt m k))
-  ;(equals [this o] (.equals ^java.util.Map m o))
-  (isEmpty [this] (.isEmpty ^java.util.Map m))
-  (remove [this o] (.without this o))
-  (values [this] (.values ^java.util.Map m))
-  (size [this] (.count m))
-  clojure.core.protocols/IKVReduce
-  (kv-reduce [coll f init] (reduce-kv f init m))
-  clojure.core.protocols/CollReduce
-  (coll-reduce [coll f init] (reduce m f init))
-  (coll-reduce [coll f] (reduce m f))
-  IAlteredKeys
-  (altered-keys [m] (if (identical? altered #{}) nil altered))
-  clojure.lang.IFn
-  (invoke [this k] (.valAt m k))
-  (invoke [this k not-found] (.valAt m k not-found))
-  )
-
 (extend-protocol IAlteredKeys
   clojure.lang.PersistentArrayMap
   (altered-keys [m] ::*)
@@ -459,7 +383,9 @@
   "Assembles an entity record from one or more component records."
   [name components]
   (conj-components (entity. name nil nil {} {})  components))
-
+;;We should probably ditch the whole component specific abstraction.
+;;Don't have a real reason for them, unless we want specific behavior
+;;implemented in custom component types.  Probably not.
 (defn keyval->component
   "Converts key/value pairs into components.  Allows a simple shorthand
    for composing entities, in that entity components can be contained in 
@@ -694,84 +620,112 @@
                 c v))
       (throw (Exception. (str [:domain-does-not-exist c]))))))
 
-
-
 ;;Mutable entity store backed by an IEAVStore implementation.
-(defrecord MapEntityStore [^java.util.HashMap entity-map
-                           ^java.util.HashMap domain-map]
+;;see if we need to unpack field accesses...
+(deftype MapEntityStore [^spork.data.eav.MapStore store ^:unsynchronized-mutable ^clojure.lang.IPersistentMap _meta]
+  spork.data.eav/IAEVStore
+  (eav-entities   [this]        (.eav-entities store))
+  (eav-attributes [this]        (.eav-attributes store))
+  (eav-entity     [this k]      (.eav-entity store k))
+  (eav-attribute  [this k]      (.eav-attribute store k))
+  (eav-acquire-entity [this k]        (.eav-acquire-entity store k))
+  (eav-acquire-entity [this k init]   (.eav-acquire-entity store k init))
+  (eav-acquire-attribute [this a]     (.eav-acquire-attribute store a))
+  (eav-acquire-attribute [this a init] (.eav-acquire-attribute store a init))
   IEntityStore
   (add-entry [db id domain data] ;;this gets called a lot....
-    (some-> ^java.util.Map (.get entity-map id) (.put domain data)))
+    (some->   ^java.util.Map (.eav-acquire-entity store id) ^java.util.Map (.put domain data)))
   (drop-entry    [db id domain]
-    (some-> ^java.util.Map (.get entity-map id) (.remove domain)))
+    (some->   ^java.util.Map (.eav-entity store id)  ^java.util.Map  (.remove domain)))
   (get-entry     [db id domain]
-    (some-> ^java.util.Map (.get entity-map id) (.get domain)))
-  (entities [db]  entity-map) ;;hmm...legacy api expects a set projection.  this could break stuff downstream.
-  (domains  [db]  domain-map)
-  (domains-of     [db id]  (.keySet ^java.util.Map (.get entity-map id)))
-  (components-of  [db id]  (.get entity-map id))
+    (some->  ^java.util.Map (.eav-entity store id)   ^java.util.Map  (.get domain)))
+  (entities [db]  (.eav-entities store)) ;;hmm...legacy api expects a set projection.  this could break stuff downstream.
+  (domains  [db]  (.eav-attributes store))
+  (domains-of     [db id]  (some-> ^java.util.Map (.eav-entity store id) (.keySet)))
+  ;;hmm might need to verify this against legacy expectations.
+  (components-of  [db id]  (.eav-entity store id))
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
-  (get-entity [db id] (.get entity-map id));;need to extend IEntity to java.util.Map
-  (conj-entity     [db id components])
+  ;;need to determine if we want to create entity on get...
+  ;;most times we get the entity we create one too.
+  ;;if we make this acquire, then get has mutable semantics now.  Do we ever use
+  ;;get-entity for existence checks?  Worst case, we create empty entities and cache
+  ;;them....this is consistent with out writethrough cache semantics
+  (get-entity   [db id]    (.eav-entity store id));;need to extend IEntity to java.util.Map
+  ;;revisit this.  I think we allow other stuff to be components.  Probably not necessary.
+  (conj-entity  [db id components]
+    (let [^java.util.Map e (.eav-entity store id)]
+      (if (instance? java.util.Map components)
+        (.putAll e components)
+        (reduce (fn [^java.util.Map acc entry]
+                  ;;slow polymporphic nth.
+                  (doto acc (.put (nth entry 0 ) (nth entry 1)))) e components))))
   IColumnStore
-  (swap-domain   [db c v]
-    (if-let [^java.util.HashMap d (.get domain-map c)]
-      (do (.put domain-map c v)
-          db)
-      (throw (Exception. (str [:domain-does-not-exist c]))))))
-
-(comment 
-;;rather than maintaining the domains explicitly, we can lazily compute them
-;;on demand.  This could amortize our costs.  We can relook the domains
-;;upon dirty entities.  If we're not adding to entities, most of the time
-;;we're not caring about domains.  If we make a lot of changes, we can
-;;update dirty domain info.
-;;Maintain entity information in a recordset, rather than multiple tables...
-(deftype RecordEntityStore [^java.util.HashMap   entity-map
-                            ^java.util.HashMap   domains
-                            ^java.util.ArrayList dirty]
-  IEntityStore
-  (add-entry [db id domain data] ;;this gets called a lot....
-    (let [^java.util.HashMap e (or (.get entity-map id)
-                                   (let [res (java.util.HashMap.)
-                                         _  (.put entity-map id res)]
-                                     res))]
-      (do 
-          (.put e domain data)
-          db)))
-  (drop-entry [db id domain]
-    (if-let [e (.get entity-map id)]
-      (do (.remove ^java.util.HashMap e domain)
-          db)
-      (throw (Exception. (str "entitystore does not contiain an entry for " id)))))
-  (get-entry     [db id domain]
-    (when-let [comps (.get entity-map id)]
-      (.get ^java.util.HashMap comps domain)))
-  (entities [db]  entity-map)
-  (domains  [db]  entity-map)
-  (domains-of     [db id]  (keys (.get entity-map id)))
-  (components-of  [db id]  (.get entity-map id))  
-  ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
-  ;;caches values, so we only have to pay for what we load.
-  (get-entity [db id]
-    (when-let [comps (.components-of db id)]
-      (entity. id nil nil comps #{})))
-  (conj-entity     [db id components])
-  clojure.lang.IDeref
-  (deref [this] {:entity-map  entity-map
-                 })
-  )
-)
+  ;;assume these are NOT pointers for now.
+  (swap-domain   [db c m]
+    (if-let [^java.util.HashMap d (.eav-attribute store c)]
+      (let [old-keys (java.util.HashSet. (.keySet d))] ;;set diff.
+        (reduce-kv (fn [acc new-e v]
+                     (.put d new-e v)
+                     (.remove old-keys new-e))
+                   nil
+                   db)
+        (reduce (fn [acc old-e]
+                  (.remove d old-e)) nil old-keys)
+        db)
+      (throw (Exception. (str [:domain-does-not-exist c])))))
+  java.util.Map
+  (get [this k]
+    (case k
+      :entity-map (.eav-entities store)
+      :domain-map (.eav-attributes store)
+      nil))
+  (getOrDefault [this k not-found]
+    (case k
+      :entity-map (.eav-entities store)
+      :domain-map (.eav-attributes store)
+      not-found))
+  (put [this k v] (throw (ex-info "not implemented" {:in [k v]})))
+  (size [this] 2)
+  (keySet [this] #{:entity-map :domain-map})
+  (entrySet [this] #{(clojure.lang.MapEntry. :entity-map (.eav-entities store))
+                     (clojure.lang.MapEntry. :domain-map (.eav-attributes store))})
+  (values [this] [(.eav-entities store) (.eav-attributes store)])
+  java.lang.Iterable
+  (iterator [this] (.iterator (.entrySet this)))
+  clojure.lang.Seqable
+  (seq [this] (iterator-seq (.iterator this)))
+  clojure.lang.IObj
+  (meta [this] _meta)
+  (withMeta [this m] (set! _meta m) this))
 
 (def emptystore (->EntityStore {} {}))
 
+(defn ->mutable-store
+  (^MapEntityStore [] (MapEntityStore. (eav/->map-store) {}))
+  ;;use an entity store or map of domain to initialize a mutable store.
+  (^MapEntityStore [^java.util.Map data]
+   (let [^MapEntityStore store  (MapEntityStore. (eav/->map-store) {})]
+     (if-let [domains (get data :domain-map)]
+       (do  (reduce-kv (fn [_ a ev]
+                         (reduce-kv (fn [_ e v] (add-entry store  e a v)) nil ev)) nil domains)
+            store)
+       (if-let [entities (get data :entity-map)]
+         (do  (reduce-kv (fn [_ e av]
+                           (reduce-kv (fn [_ a v] (add-entry store e a v))
+                                      nil av))
+                         nil entities)
+              store)
+         (throw (ex-info "expected a map of at least {:domains {A {E V}}}" {})))))))
+
+;;probably want an API for mutable -> persistent, and incremental diffs.
 (defn snapshot! [store]
    (reduce-kv (fn [acc domain m]
                 (reduce-kv (fn [acc id data]
                             (add-entry acc id domain data)) acc m))
               emptystore (domains store)))
 
+;;already exists in spork.data.mutable
 (extend-protocol clojure.core.protocols/IKVReduce
   java.util.HashMap 
   (kv-reduce [obj f init]
@@ -780,12 +734,7 @@
 
 ;;todo: make this more effecient using with-mutable macro....
 ;;possibly link to spork.data.mutable protocols.
-(defn mutate! [store]
-  (reduce-kv (fn [acc domain m]
-               (reduce-kv (fn [acc id data]
-                            (add-entry acc id domain data)) acc m))
-             (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.))
-             (:domain-map store)))
+(defn mutate! [store] (->mutable-store (:domain-map store)))
 
 (defn memptystore
   ([] (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.)))
@@ -871,8 +820,11 @@
                    (~row-name ~@args)
                    ~@body)))))))
 
+;;invoking drop-entry while iterating gets the iterator out of sync.
+;;idiomatic way is to remove through the iterator.
+
 ;;Temporarily reverting row-ops to simple functions.
-;;row-op 
+;;row-op
 (defn drop-domains
   "Drop multiple domains from the store."
   [ces ds]
@@ -911,7 +863,7 @@
 
 (defmacro update-entity [store nm f & args]
   `(let [store# ~store]
-     (if-let [e# (get-entity store# ~nm)]
+     (if-let [e# (get-entity store# ~nm)]  ;;mutable semantics differ here, but probably not enough?  I think get-entity always yields something.
        (add-entity store# (~f e# ~@args)))))
 
 (defmacro update-ine

@@ -376,7 +376,6 @@
 ;;let's ditch the transient stuff for now.  Start off mutable then
 ;;put transient facade on top.
 (deftype PassMapMut [id
-                     ^java.util.Map m          ;;map of PointerEntries.
                      ^:unsynchronized-mutable  ^java.util.Map db
                      ;;the original keys in the database, what we're lazily passing through.
                      ^:unsynchronized-mutable  ^java.util.Set db-keys
