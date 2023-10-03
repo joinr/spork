@@ -7,38 +7,122 @@
   (:require [spork.protocols [core :as generic]])
   (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
 
-(extend-type  java.util.HashMap 
-  clojure.core.protocols/IKVReduce 
-  (kv-reduce [amap f init] 
-    (let [^java.util.Set es (.entrySet ^java.util.HashMap amap)
-          ^java.util.Iterator it (.iterator es)]
-      (loop [acc init]
-        (if (reduced? acc) @acc
-            (if (.hasNext it)
-              (let [^java.util.Map$Entry e (.next it)]
-                (recur (f acc (.getKey e) (.getValue e))))
-              acc)))))
+
+;;simpler approach...
+;;just define a protocol for mutable updates.
+;;chris has update-vals.
+
+(defprotocol IUpdateKV
+  (update-kv [coll f]
+    "given a function of f:: k -> v -> v, and a map of k->v, implements
+     fmap over the collection s.t. {K V} -> {K f(V)}.
+     Common idiom is to remove nil values."))
+
+(defn ^java.util.function.BiFunction bif [f]
+  (reify java.util.function.BiFunction
+    (apply [this k v] (f k v))))
+
+(extend-protocol IUpateInPlace
+  java.util.HashMap ;;could probably use replace? 
+  (update-kv [coll f]
+    (let [^java.util.HashMap$EntryIterator it
+          (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
+      (loop []
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry nxt (.next it)]
+            (if-let [res (f (.getValue nxt))]
+              (.setValue nxt res)
+              (.remove it (.getKey res)))))))))
+
+
+(defprotocol IEntryStore
+  (update-val [this entry v])
+  (drop-entry [this entry]))
+
+;;this can be even easier...
+(deftype IteratingMap [^java.util.HashMap$EntryIterator it ^:unsynchronized-mutable ^java.util.Map$Entry current ^java.util.Map m]
+  IEntryStore
+  (update-val [this  kv v]     (.setValue ^java.util.Map$Entry kv v))
+  (drop-entry [this  kv]       (.remove it ^java.util.Map$Entry kv))
+  java.util.Map
+  (get [this k]               (.get m k))
+  (getOrDefault [this k v]    (.getOrDefault m k v))
+  (put      [this k v]        (.put m k v))
+  (remove [this k]            (if (identical? (.getKey current) k)
+                                (.drop-entry this current)
+                                (when-let [v (.get m k)] ;;probably fails.
+                                  (.remove it (clojure.lang.MapEntry. k v)))))
+  (size     [this]            (.size m))
+  (keySet   [this]            (.keySet m)) ;;ugh...
+  (entrySet [this]            (.entrySet m)) ;;oof
+  (values   [this]            (.values m))
+  java.lang.Iterable
+  (iterator [this] it)
+  clojure.lang.Associative
+  (assoc [this k v] (if
+                        (identical? k (and current (.getKey current)))
+                      (.setValue current v)
+                      (.put m k v))
+    this)
+  clojure.lang.Seqable
+  (seq [this] (iterator-seq (.iterator (.entrySet m))))
+  java.util.Iterator
+  (next    [this] (set! current (.next it)) current)
+  (hasNext [this] (.hasNext it))) ;;eek
+
+(defn ->iterating-map
+  (^IteratingMap [m it] (IteratingMap. it nil m))
+  (^IteratingMap [m] (->iterating-map m (.iterator ^java.lang.Iterable (.entrySet m)))))
+
+(extend-type  java.util.HashMap
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [amap f init]
+      (if (identical? init amap)
+        (let [m (->iterating-map init)]
+          (loop [^IteratingMap acc  m]
+            (if (reduced? acc)
+              (let [res @acc]
+                (if (identical? res m)
+                  amap
+                  res))
+              (if (.hasNext acc)
+                (let [^java.util.Map$Entry e (.next acc)]
+                  (recur (f acc (.getKey e) (.getValue e))))
+                  acc))))
+        (let [^java.util.Set es (.entrySet ^java.util.HashMap amap)
+              ^java.util.Iterator it (.iterator es)]
+          (loop [acc init]
+            (if (reduced? acc) @acc
+                (if (.hasNext it)
+                  (let [^java.util.Map$Entry e (.next it)]
+                    (recur (f acc (.getKey e) (.getValue e))))
+                  acc))))))
+
+  ;;REVISE to use IteratingMap...
   clojure.core.protocols/CollReduce  
-  (coll-reduce 
-    ([coll f]     
-       (let [^java.util.Set es (.entrySet ^java.util.HashMap coll)
-             ^java.util.Iterator it (.iterator es)]
-         (when (.hasNext it) 
-           (loop [acc (.next it)]
-             (if (reduced? acc) @acc
-                 (if (.hasNext it)
-                   (let [^java.util.Map$Entry e (.next it)]
-                     (recur (f acc  e)))
-                   acc))))))
-    ([coll f val]
-       (let [^java.util.Set es (.entrySet ^java.util.HashMap coll)
-             ^java.util.Iterator it (.iterator es)]
-         (loop [acc val]
+  (coll-reduce
+    ([coll f]
+     (throw (ex-info "pending" {}))
+     (let [^java.util.Set es (.entrySet ^java.util.HashMap coll)
+           ^java.util.Iterator it (.iterator es)]
+       (when (.hasNext it) 
+         (loop [acc (.next it)]
            (if (reduced? acc) @acc
                (if (.hasNext it)
                  (let [^java.util.Map$Entry e (.next it)]
                    (recur (f acc  e)))
-                 acc)))))))
+                 acc))))))
+    ;;REVISE to use IteratingMap...
+    ([coll f val]
+     (throw (ex-info "pending" {}))
+     (let [^java.util.Set es (.entrySet ^java.util.HashMap coll)
+           ^java.util.Iterator it (.iterator es)]
+       (loop [acc val]
+         (if (reduced? acc) @acc
+             (if (.hasNext it)
+               (let [^java.util.Map$Entry e (.next it)]
+                 (recur (f acc  e)))
+               acc)))))))
 
 ;;Some notes on performance....
 ;;We can mimic field access by creating an interface that correponds

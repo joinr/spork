@@ -6,6 +6,16 @@
                         [io :as io]]
             [clojure.pprint :as pprint]))
 
+
+(defmacro iter [[x xs] & body]
+  (let [it (with-meta (gensym "iterable")  {:tag 'java.lang.Iterable})]
+    `(let [~it ~xs]
+       (loop [r# (.iterator ~it)]
+         (when (.hasNext r#)
+           (let [~x (.next r#)]
+             (do ~@body
+                 (recur r#))))))))
+
 (defn ref?
   "Predicate yields true if the obj supports (deref ...)"
   [obj] (instance? clojure.lang.IDeref obj))

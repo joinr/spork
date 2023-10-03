@@ -227,17 +227,8 @@
      nil
      ~s))
 
-(defmacro iter [[x xs] & body]
-  (let [it (with-meta (gensym "iterable")  {:tag 'java.lang.Iterable})]
-    `(let [~it ~xs]
-       (loop [r# (.iterator ~it)]
-         (when (.hasNext r#)
-           (let [~x (.next r#)]
-             (do ~@body
-                 (recur r#))))))))
-
 (defmacro mjoin! [db-keys db]
-  `(do  (iter [k# (or (empty-set? ~db-keys) (keys ~db))]
+  `(do  (gen/iter [k# (or (empty-set? ~db-keys) (keys ~db))]
           (.valAt ~'this k#)) ;"forces" the join
         (set! ~db-keys (doto ~db-keys (.clear)))
         (set! ~db nil)))

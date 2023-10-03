@@ -4,7 +4,8 @@
   (:require [clojure.core.reducers :as r]
             [spork.data.mutable] ;;wrappers for hashmap, including kvreduce
             [spork.data.passmap :as passmap]
-            [spork.data [eav :as eav] [derived :as derived]]))
+            [spork.data [eav :as eav] [derived :as derived]]
+            [spork.util [general :as gen]]))
 
 ;A component-based architecture is a collection of Domains, Systems, Components,
 ;and entities.  
@@ -480,8 +481,9 @@
   (entities       [db] "Return a map of {entityid #{components..}}"))
 
 (defprotocol IColumnStore
-  (swap-domain [db c new] "Swap the underlying domain without changing 
-   relations."))
+  (swap-domain- [db c new] "Swap the underlying domain without changing 
+   relations.")
+  (drop-domain- [db d]))
 
 (defn kv-map [f2 m]  (reduce-kv (fn [^clojure.lang.Associative acc k v] (.assoc acc k (f2 k v))) m  m))
 (defn kv-map! [f2 m]
@@ -489,51 +491,6 @@
     (.setValue e (f2 (.getKey e) (.getValue e))))
   m)
 
-
-;  (alter-entity [db id f] "Alter an entity's components using f.  f
-;  should take an entity and return a set of components that change.")
-
-;;Traversing our component set is much faster this way, about 2x.  weird...
-;; (definline i-reduce [f init coll]
-;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
-;;     `(let [~xs       ~coll
-;;            it#      (.iterator ~xs)
-;;            bound#   (count ~xs)]
-;;        (loop [idx# 0
-;;               acc# ~init]
-;;          (cond  (reduced?  acc#) @acc#
-;;                 (== idx# bound#) acc#
-;;                 :else 
-;;                 (let [nxt# (.next it#)]
-;;                   (recur (unchecked-inc idx#)
-;;                          (~f acc# nxt#))))))))
-
-;; (definline set-reduce [f init coll]
-;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
-;;     `(let [~xs       ~coll
-;;            it#      (.iterator ~xs)
-;;            bound#   (.count ~xs)]
-;;        (loop [idx# 0
-;;               acc# ~init]
-;;          (cond  (reduced?  acc#) @acc#
-;;                 (== idx# bound#) acc#
-;;                 :else 
-;;                 (let [nxt# (.next it#)]
-;;                   (recur (unchecked-inc idx#)
-;;                          (~f acc# nxt#))))))))
-
-;; (definline set-reduce2 [f init coll]
-;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
-;;     `(let [~xs       ~coll
-;;            it#      (.iterator ~xs)]          
-;;        (loop [idx# 0
-;;               acc# ~init]
-;;          (cond  (reduced?  acc#) @acc#
-;;                 (.hasNext it#)
-;;                 (let [nxt# (.next it#)]
-;;                   (recur (unchecked-inc idx#)
-;;                          (~f acc# nxt#)))
-;;                 :else acc#)))))
 
 ;;Interesting note:
 ;;Most entities will actually be very small sets of components.
@@ -613,12 +570,18 @@
         (reduce (fn [^EntityStore acc domdat] (.add-entry acc id (first domdat) (second domdat)))
                 db components)))
   IColumnStore
-  (swap-domain   [db c v]
+  (swap-domain-   [db c v]
     (if-let [d (.valAt domain-map c)]
       (EntityStore. entity-map
         (.assoc ^clojure.lang.Associative domain-map
                 c v))
-      (throw (Exception. (str [:domain-does-not-exist c]))))))
+      (throw (Exception. (str [:domain-does-not-exist c])))))
+  (drop-domains- [db ds]
+    (reduce  (fn [acc d]
+               (reduce-kv (fn [acc ent _]
+                            (drop-entry acc ent d))
+                          acc (get-domain acc d)))
+             db ds)))
 
 ;;Mutable entity store backed by an IEAVStore implementation.
 ;;see if we need to unpack field accesses...
@@ -662,18 +625,26 @@
                   (doto acc (.put (nth entry 0 ) (nth entry 1)))) e components))))
   IColumnStore
   ;;assume these are NOT pointers for now.
-  (swap-domain   [db c m]
+  (swap-domain-   [db c m]
     (if-let [^java.util.HashMap d (.eav-attribute store c)]
-      (let [old-keys (java.util.HashSet. (.keySet d))] ;;set diff.
-        (reduce-kv (fn [acc new-e v]
-                     (.put d new-e v)
-                     (.remove old-keys new-e))
-                   nil
-                   db)
-        (reduce (fn [acc old-e]
-                  (.remove d old-e)) nil old-keys)
-        db)
+      (if (identical? d m)
+        db
+        (let [old-keys (java.util.HashSet. (.keySet d))] ;;set diff.
+          (reduce-kv (fn [acc new-e v]
+                       (.put d new-e v)
+                       (.remove old-keys new-e))
+                     nil
+                     db)
+          (reduce (fn [acc old-e]
+                    (.remove d old-e)) nil old-keys)
+          db))
       (throw (Exception. (str [:domain-does-not-exist c])))))
+  (drop-domains- [this ds]
+    ;;force coercion.
+    (let [ds (if (coll? ds) ds (vec ds))]
+      (gen/iter [d ds]
+           (.clear ^spork.data.eav.AttributeMap (.aev-attribute this d)))) ;;implement clear.
+    this)
   java.util.Map
   (get [this k]
     (case k
@@ -743,10 +714,6 @@
 (defn domain-keys [db]   (keys (domains db)))
 (defn get-domain  [db d] (get (domains db) d))
 
-;;OBE, same as drop-entity?
-#_(defn disj-entity [db id xs] 
-    (reduce (fn [acc dom] (drop-entry acc id dom)) db xs))
-
 ;;can we create custom entities at runtime using reify?
 ;;How slow is this?  Fast enough for individual queries?
 ;;Another strategy is to create field-accessible entity
@@ -799,32 +766,12 @@
 (definline row-store? [ces]
   `(instance? spork.entitysystem.store.IRowStore ~ces))
 
-;;convenience macros to help us defer to optimized row-based
-;;operations.
-#_(defmacro row-op [name doc & arg-bodies]
-    (if (vector? (first arg-bodies)) ;;normal definition.
-      (let [[args & body] arg-bodies
-            x (first args)
-            row-name (symbol (str name "-r"))]
-        `(defn ~name ~doc ~args
-           (if (row-store? ~x)
-             (~row-name ~@args)
-             ~@body
-             )))
-    ;;multiple arities.
-      (let [row-name (symbol (str name "-r"))]
-        `(defn ~name ~doc
-           ~@(for [[args & body] arg-bodies]            
-               `([~@args]
-                 (if (row-store? ~(first args))
-                   (~row-name ~@args)
-                   ~@body)))))))
-
 ;;invoking drop-entry while iterating gets the iterator out of sync.
 ;;idiomatic way is to remove through the iterator.
 
 ;;Temporarily reverting row-ops to simple functions.
 ;;row-op
+#_
 (defn drop-domains
   "Drop multiple domains from the store."
   [ces ds]
@@ -834,7 +781,7 @@
                         acc (get-domain acc d)))
            ces ds))
 
-(defn drop-domain [ces d]  (drop-domains ces [d]))
+(defn drop-domain [ces d] (drop-domains ces [d]))
 
 ;;These are the primary operations associated with entities...
 ;;Basically, having a managed 2dimensional map for us.
@@ -894,8 +841,24 @@
     `(gete ~store ~nm ~dom)))
 
 (def entity-at get-entity)
-  
+
+
+;;we have several functor opts.
+;;where the compute new stores using mapping.
+;;the problem with this api is that in the mutable
+;;case, we want to update the store in place.
+
 ;;protocol-derived functionality
+;;REVISE
+
+
+;;simple functor stuff to generalize over mutable/persistent impls.
+#_
+(defprotocol IFunctor
+  (fmap [this f])
+  (fmap2 [this f]))
+
+;;only one explicitly used.
 (defn map-component
   "Map function f across entries in the component map associated with component c in store.
    Updates associated entries with the result of f.  This is similar to fmap, treating the 
@@ -903,15 +866,16 @@
   [store c f]
   (if-let [entries (get-domain store c)]
     (if (extends? IColumnStore (class store))
-      (swap-domain store c
+      ;;this will succeed for mutable store, since we're not ading anything here.
+      (swap-domain- store c
                    (reduce-kv (fn [acc e x]
-                                (assoc acc e (f x)))
+                                (assoc acc e (f x))) ;;assoc fails here in juh. ;;this is fmap.
                               entries entries))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
                    (assoce acc e c (f x)))
                  store entries))
     store))
-
+;;REVISE
 (defn filter-map-component
   "Map function f across entries in the component map associated with component c in store.
    Updates associated entries with the result of f.  This is similar to fmap, treating the 
@@ -921,7 +885,7 @@
     (if (extends? IColumnStore (class store))
       (swap-domain store c
                    (reduce-kv (fn [acc e x]
-                                (if (pred e x)
+                                (if (pred e x) ;;this is fmap with a filter....
                                   (assoc acc e (f x))
                                   acc))
                               entries entries))
@@ -931,7 +895,7 @@
                      acc))
                  store entries))
     store))
-
+;;REVISE
 (defn kv-map-component
   "Map function f across entries in the component map associated with component c in store.
    Updates associated entries with the result of f.  This is similar to fmap, treating the 
@@ -940,7 +904,7 @@
   (if-let [entries (get-domain store c)]
     (if (extends? IColumnStore (class store))
       (swap-domain store c
-                   (reduce-kv (fn [acc e x]
+                   (reduce-kv (fn [acc e x] ;;this is fmap.
                                 (assoc acc e (f e x)))
                               entries entries))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
@@ -948,6 +912,8 @@
                  store entries))
     store))
 
+;;these entries functions look extraneous.
+;;REVISE.
 (defn reduce-entries
   "Mechanism for updating the entity store.  
    Fold function f::store -> [id component data] -> store 
@@ -955,12 +921,13 @@
   [store f recs] 
   (reduce (fn [store rec] (f store rec)) store recs))
 
+;;REVISE.
 (defn drop-entries
   "Fold a sequence of [id component data] using drop-record to return 
    an updated entitystore."
   [store drops]
   (reduce-entries store (fn [s [id c & more]] (drop-entry s id c)) drops))
-
+;;REVISE.
 (defn add-entries 
   "Fold a sequence of [id component data] using add-entry to return 
    an updated entitystore."
@@ -1002,7 +969,11 @@
 (defn entity? [x]
   (instance? spork.entitysystem.store.IEntity x))
 
-(defn add-entity 
+;;common API for adding cached entities.  If the entity is mutable,
+;;this should be a noop.
+;;TODO - extend entity protocol (or implement inline) for
+;;data.eav.EntityMap.
+(defn add-entity
   "Associate component data with id.  Records are {:component data} or 
   [[component data]] form.  Alternately, add a pre-built entity record."
   ([db id records]
@@ -1030,22 +1001,6 @@
                     db ent)
          ))
      db))
-  #_([db ^clojure.lang.IPersistentMap ent]
-   (if-let [altered (altered-keys ent)]
-     (let [id (entity-name ent)
-           ;_  (reset! en ent)
-            ]
-       (reduce (fn alteration [acc k]
-                 (do 
-                   ;(reset! store acc)
-                   (try 
-                     (if-let [^clojure.lang.MapEntry e (.entryAt ent k)] ;entry exists.
-                       (assoce acc id k (.val e)) ;alteration added or updated.
-                       (dissoce acc id k) ;component has been dissoced
-                       )
-                     (catch Exception e (throw (Exception. (str [:domain k :ent ent :err e])))))))
-               db altered))
-      db)))
 
 (defn add-entities
   "Register multiple entity records at once..." 
@@ -1606,6 +1561,62 @@
 (definline drop-keys [m xs]
   `(reduce (fn [acc# k#] (without acc# k#)) ~m  ~xs))
 
+
+;;Common Utilities for Defining Paths into Entity Stores
+;;======================================================
+;;In the previous implementation, the 'state' was implemented as a class, with 
+;;concrete members to access each piece.  We retain that level of commonality
+;;via the paths, but the underlying representation is based on a dynamic map 
+;;structure, so we can still add new data as needed in a flexible manner.
+
+;;Creates a set of accessors for our simulation state.  This allows us to 
+;;dissect our nested map of state a bit easier.  Each symbol in the defpath 
+;;binding returns a function that, given a simulation context, points to the 
+;;named resource using standard clojure map operations via clojure.core/get-in.
+;; (defpaths   [:state] 
+;;   {parameters    [:parameters]
+;;    supplystore   [:supplystore]
+;;    demandstore   [:demandstore]
+;;    policystore   [:policystore]
+;;    fillstore     [:fillstore]
+;;    fill-function [:fillstore :fillfunction]
+;;    fillmap       [:fillstore :fillmap]
+;;    behaviors     [:behaviormanager]
+;;    supply-tags   [:supplystore :tags]
+;;    demand-tags   [:demandstore :tags]})
+
+(defmacro defpath
+  "Given a name and a path-vector, creates two functions in the current-namespace: 
+   get-{name}, set-{name}.  path-vector conforms to [entity-name| entity-name+ component-or-key*] .
+   If the path points to an entity (the path-vector is a singleton), then the result is 
+   akin to get-entity, otherwise, it's akin to get-ine, looking up components, and nested 
+   associations down the path."
+  [name path]
+  (if (coll? path)        
+    `(do (defn ~(symbol (str "get-" name)) [ctx#]
+           (spork.entitysystem.store/get-ine  ctx# ~path))
+         (defn ~(symbol (str "set-" name)) [ctx# v#]
+           (spork.entitysystem.store/assoc-ine  ctx# ~path v#)))
+    `(do (defn ~(symbol (str "get-" name)) [ctx#]
+           (with-meta (spork.entitysystem.store/get-entity  ctx# ~path)
+             {:ctx ctx#}))
+         (defn ~(symbol (str "set-" name)) [ctx# v#]
+           (spork.entitysystem.store/add-entity  ctx# ~path v#)))))
+
+(defmacro defpaths
+  "Given a map of {name* path-vector*}, calls defpath on each, defining 
+   get-{name} set-{name} functions for each path, allowing high-level 
+   access to specific nested places inside an entitystore. "
+  [& name-paths]
+  (assert (even? (count name-paths)))
+  `(do ~@(for [[name path] (partition 2 name-paths)]
+           `(spork.entitysystem.store/defpath ~name ~path))))
+
+
+
+
+;;OBE stuff, reorg.
+
 ;;Note: This is in alpha, we need more testing, possibly
 ;;revisit the row-op scheme to determine the proper course of action
 ;;and if it's worth it to go with a row-store...
@@ -1663,52 +1674,47 @@
 (def empty-rowstore (EntityRowStore. {} {}))
 
 
-;;Common Utilities for Defining Paths into Entity Stores
-;;======================================================
-;;In the previous implementation, the 'state' was implemented as a class, with 
-;;concrete members to access each piece.  We retain that level of commonality
-;;via the paths, but the underlying representation is based on a dynamic map 
-;;structure, so we can still add new data as needed in a flexible manner.
+  ;  (alter-entity [db id f] "Alter an entity's components using f.  f
+;  should take an entity and return a set of components that change.")
 
-;;Creates a set of accessors for our simulation state.  This allows us to 
-;;dissect our nested map of state a bit easier.  Each symbol in the defpath 
-;;binding returns a function that, given a simulation context, points to the 
-;;named resource using standard clojure map operations via clojure.core/get-in.
-;; (defpaths   [:state] 
-;;   {parameters    [:parameters]
-;;    supplystore   [:supplystore]
-;;    demandstore   [:demandstore]
-;;    policystore   [:policystore]
-;;    fillstore     [:fillstore]
-;;    fill-function [:fillstore :fillfunction]
-;;    fillmap       [:fillstore :fillmap]
-;;    behaviors     [:behaviormanager]
-;;    supply-tags   [:supplystore :tags]
-;;    demand-tags   [:demandstore :tags]})
+;;Traversing our component set is much faster this way, about 2x.  weird...
+;; (definline i-reduce [f init coll]
+;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
+;;     `(let [~xs       ~coll
+;;            it#      (.iterator ~xs)
+;;            bound#   (count ~xs)]
+;;        (loop [idx# 0
+;;               acc# ~init]
+;;          (cond  (reduced?  acc#) @acc#
+;;                 (== idx# bound#) acc#
+;;                 :else 
+;;                 (let [nxt# (.next it#)]
+;;                   (recur (unchecked-inc idx#)
+;;                          (~f acc# nxt#))))))))
 
-(defmacro defpath
-  "Given a name and a path-vector, creates two functions in the current-namespace: 
-   get-{name}, set-{name}.  path-vector conforms to [entity-name| entity-name+ component-or-key*] .
-   If the path points to an entity (the path-vector is a singleton), then the result is 
-   akin to get-entity, otherwise, it's akin to get-ine, looking up components, and nested 
-   associations down the path."
-  [name path]
-  (if (coll? path)        
-    `(do (defn ~(symbol (str "get-" name)) [ctx#]
-           (spork.entitysystem.store/get-ine  ctx# ~path))
-         (defn ~(symbol (str "set-" name)) [ctx# v#]
-           (spork.entitysystem.store/assoc-ine  ctx# ~path v#)))
-    `(do (defn ~(symbol (str "get-" name)) [ctx#]
-           (with-meta (spork.entitysystem.store/get-entity  ctx# ~path)
-             {:ctx ctx#}))
-         (defn ~(symbol (str "set-" name)) [ctx# v#]
-           (spork.entitysystem.store/add-entity  ctx# ~path v#)))))
+;; (definline set-reduce [f init coll]
+;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
+;;     `(let [~xs       ~coll
+;;            it#      (.iterator ~xs)
+;;            bound#   (.count ~xs)]
+;;        (loop [idx# 0
+;;               acc# ~init]
+;;          (cond  (reduced?  acc#) @acc#
+;;                 (== idx# bound#) acc#
+;;                 :else 
+;;                 (let [nxt# (.next it#)]
+;;                   (recur (unchecked-inc idx#)
+;;                          (~f acc# nxt#))))))))
 
-(defmacro defpaths
-  "Given a map of {name* path-vector*}, calls defpath on each, defining 
-   get-{name} set-{name} functions for each path, allowing high-level 
-   access to specific nested places inside an entitystore. "
-  [& name-paths]
-  (assert (even? (count name-paths)))
-  `(do ~@(for [[name path] (partition 2 name-paths)]
-           `(spork.entitysystem.store/defpath ~name ~path))))
+;; (definline set-reduce2 [f init coll]
+;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
+;;     `(let [~xs       ~coll
+;;            it#      (.iterator ~xs)]          
+;;        (loop [idx# 0
+;;               acc# ~init]
+;;          (cond  (reduced?  acc#) @acc#
+;;                 (.hasNext it#)
+;;                 (let [nxt# (.next it#)]
+;;                   (recur (unchecked-inc idx#)
+;;                          (~f acc# nxt#)))
+;;                 :else acc#)))))
