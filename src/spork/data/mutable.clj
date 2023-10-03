@@ -2,7 +2,7 @@
 ;;java.util.  These collections are treated like transients, allowing
 ;;for conj!. 
 ;; Work in progress.
-(ns spork.data.mutable  
+(ns spork.data.mutable
 ;  (:refer-clojure :exclude [conj persistent!])
   (:require [spork.protocols [core :as generic]])
   (:import  [java.util ArrayList PriorityQueue ArrayDeque HashMap]))
@@ -15,31 +15,98 @@
 (defprotocol IUpdateKV
   (update-kv [coll f]
     "given a function of f:: k -> v -> v, and a map of k->v, implements
+     fmap over the collection s.t. {K V} -> {K f(V)}.")
+  (update-kv-keep [coll f]
+    "given a function of f:: k -> v -> v, and a map of k->v, implements
      fmap over the collection s.t. {K V} -> {K f(V)}.
-     Common idiom is to remove nil values."))
+     nil values communicate intent to remove the entry.")
+  (update-kv-where [coll pred f]
+    "given a function of f:: k -> v -> v, and a map of k->v, implements
+     fmap over the collection s.t. {K V} -> {K f(V)}.
+     uses the predicate pred :: k -> v -> boolean to dictate
+     what gets updated.")
+  (update-kv-keep-where [coll pred f]
+    "given a function of f:: k -> v -> v, and a map of k->v, implements
+     fmap over the collection s.t. {K V} -> {K f(V)}.
+     uses the predicate pred :: k -> v -> boolean to dictate
+     what gets updated.  nil values communicate intent to remove the entry."))
 
 (defn ^java.util.function.BiFunction bif [f]
   (reify java.util.function.BiFunction
     (apply [this k v] (f k v))))
 
-(extend-protocol IUpateInPlace
-  java.util.HashMap ;;could probably use replace? 
+(extend-protocol IUpdateKV
+  java.util.HashMap ;;could probably use replace?
   (update-kv [coll f]
+    (.replaceAll ^java.util.HashMap coll (bif f)) coll)
+  (update-kv-where [coll pred f]
     (let [^java.util.HashMap$EntryIterator it
           (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
       (loop []
         (if (.hasNext it)
-          (let [^java.util.Map$Entry nxt (.next it)]
-            (if-let [res (f (.getValue nxt))]
-              (.setValue nxt res)
-              (.remove it (.getKey res)))))))))
+          (let [^java.util.Map$Entry nxt (.next it)
+                k                        (.getKey nxt)
+                v                         (.getValue nxt)]
+            (if (pred k v)  (.setValue nxt (f v)))
+            (recur))
+          coll))))
+  (update-kv-keep [coll f]
+    (let [^java.util.HashMap$EntryIterator it
+          (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
+      (loop []
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry nxt (.next it)
+                k                        (.getKey nxt)
+                v                        (.getValue nxt)]
+            (if (pred k v)
+              (if-let [res (f (.getValue nxt))]
+                (.setValue nxt res)
+                (.remove it (.getKey res))))
+            (recur))
+          coll))))
+  (update-kv-keep-where [coll pred f]
+    (let [^java.util.HashMap$EntryIterator it
+          (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
+      (loop []
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry nxt (.next it)
+                k                        (.getKey nxt)
+                v                        (.getValue nxt)]
+            (when (pred k v)
+              (if-let [res (f (.getValue nxt))]
+                (.setValue nxt res)
+                (.remove it (.getKey res))))
+            (recur))
+          coll))))
+  clojure.lang.IKVReduce
+  (update-kv [coll f]
+    (reduce-kv (fn [^clojure.lang.Associative acc k v]
+                 (.assoc acc k (f k v))) coll coll))
+  (update-kv-where [coll pred f]
+    (reduce-kv (fn [^clojure.lang.Associative acc k v]
+                 (if (pred k v)
+                   (.assoc acc k (f k v))
+                   acc)) coll coll))
+  (update-kv-keep [coll f]
+    (reduce-kv (fn [^clojure.lang.IPersistentMap acc k v]
+                 (if-let [res (f k v)]
+                   (.assoc acc k res)
+                   (.without acc k))) coll coll))
+  (update-kv-keep-where [coll pred f]
+    (reduce-kv (fn [^clojure.lang.Associative acc k v]
+                 (if (pred k v)
+                   (if-let [res (f k v)]
+                     (.assoc acc k res)
+                     (.without acc k))
+                   acc)) coll coll)))
 
-
+;;potentially remove...
 (defprotocol IEntryStore
   (update-val [this entry v])
   (drop-entry [this entry]))
 
 ;;this can be even easier...
+;;draft.  potentially remove.
 (deftype IteratingMap [^java.util.HashMap$EntryIterator it ^:unsynchronized-mutable ^java.util.Map$Entry current ^java.util.Map m]
   IEntryStore
   (update-val [this  kv v]     (.setValue ^java.util.Map$Entry kv v))

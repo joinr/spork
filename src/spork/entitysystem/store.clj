@@ -2,7 +2,8 @@
 ;;architecture.    Might rename this to "CENTS" "Component Entity System"
 (ns spork.entitysystem.store
   (:require [clojure.core.reducers :as r]
-            [spork.data.mutable] ;;wrappers for hashmap, including kvreduce
+            ;;wrappers for hashmap, including kvreduce, update-kv
+            [spork.data.mutable :as mut]
             [spork.data.passmap :as passmap]
             [spork.data [eav :as eav] [derived :as derived]]
             [spork.util [general :as gen]]))
@@ -852,12 +853,6 @@
 ;;REVISE
 
 
-;;simple functor stuff to generalize over mutable/persistent impls.
-#_
-(defprotocol IFunctor
-  (fmap [this f])
-  (fmap2 [this f]))
-
 ;;only one explicitly used.
 (defn map-component
   "Map function f across entries in the component map associated with component c in store.
@@ -868,9 +863,7 @@
     (if (extends? IColumnStore (class store))
       ;;this will succeed for mutable store, since we're not ading anything here.
       (swap-domain- store c
-                   (reduce-kv (fn [acc e x]
-                                (assoc acc e (f x))) ;;assoc fails here in juh. ;;this is fmap.
-                              entries entries))
+                    (mut/update-kv entries (fn [e x] (f x))))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
                    (assoce acc e c (f x)))
                  store entries))
@@ -884,11 +877,9 @@
   (if-let [entries (get-domain store c)]
     (if (extends? IColumnStore (class store))
       (swap-domain store c
-                   (reduce-kv (fn [acc e x]
-                                (if (pred e x) ;;this is fmap with a filter....
-                                  (assoc acc e (f x))
-                                  acc))
-                              entries entries))
+                   (mut/update-kv entries (fn [e x] (if (pred e)
+                                                      (f x)
+                                                      x))))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
                    (if (pred e x)
                      (assoce acc e c (f x))
