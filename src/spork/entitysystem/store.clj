@@ -599,10 +599,13 @@
   (eav-acquire-attribute [this a]     (.eav-acquire-attribute store a))
   (eav-acquire-attribute [this a init] (.eav-acquire-attribute store a init))
   IEntityStore
+  ;;REVISE
   (add-entry [db id domain data] ;;this gets called a lot....
-    (some->   ^java.util.Map (.eav-acquire-entity store id) ^java.util.Map (.put domain data)))
+    (some->   ^java.util.Map (.eav-acquire-entity store id) ^java.util.Map (.put domain data))
+    db)
   (drop-entry    [db id domain]
-    (some->   ^java.util.Map (.eav-entity store id)  ^java.util.Map  (.remove domain)))
+    (some->   ^java.util.Map (.eav-entity store id)  ^java.util.Map  (.remove domain))
+    db)
   (get-entry     [db id domain]
     (some->  ^java.util.Map (.eav-entity store id)   ^java.util.Map  (.get domain)))
   (entities [db]  (.eav-entities store)) ;;hmm...legacy api expects a set projection.  this could break stuff downstream.
@@ -1678,9 +1681,14 @@
 
 
 (comment ;;testing.
-  (def ents [{:name "bilbo" :age 111 :location "shire"}
-             {:name "kirk"  :age 80 :location "federation" :planet "earth"}
-             {:name "alf"   :age 100 :location "willy's house" :planet "earth" :origin "melmac"}])
+  (def ents (into [{:name "bilbo" :age 111 :location "shire"}
+                   {:name "kirk"  :age 80 :location "federation" :planet "earth"}
+                   {:name "alf"   :age 100 :location "willy's house" :planet "earth" :origin "melmac"}]
+                  (for [i (range 20)]
+                    {:name (str "entity" i)
+                     :age i
+                     :location (str "location" i)
+                     :planet (str "planet" i)})))
 
   (def the-store (reduce add-entity emptystore ents))
   (def mstore (mutate! the-store))
