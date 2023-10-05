@@ -133,14 +133,14 @@
 ;;localized?
 
 ;;note sure is we want to do this...
-;;a lot of times, we only want to 
+;;a lot of times, we only want to
 
 (defn lazy-join
   "Creates a map-based representation of an entity, reifed as lazily-joined
    components.  Uses a spork.data.passmap.PassMap to cache the joined components.
-   The entity map acts just like a regular hashmap, with equality semantics 
-   and support for meta.  We do this to provide the convenience of joining 
-   all the entity's components, without the inefficieny of eagerly creating 
+   The entity map acts just like a regular hashmap, with equality semantics
+   and support for meta.  We do this to provide the convenience of joining
+   all the entity's components, without the inefficieny of eagerly creating
    very large maps for entities with lots of components."
   ([domain-map id]
    (passmap/lazy-join domain-map id))
@@ -150,9 +150,9 @@
 (defn lazy-join-mutable
   "Creates a map-based representation of an entity, reifed as lazily-joined
    components.  Uses a spork.data.passmap.PassMap to cache the joined components.
-   The entity map acts just like a regular hashmap, with equality semantics 
-   and support for meta.  We do this to provide the convenience of joining 
-   all the entity's components, without the inefficieny of eagerly creating 
+   The entity map acts just like a regular hashmap, with equality semantics
+   and support for meta.  We do this to provide the convenience of joining
+   all the entity's components, without the inefficieny of eagerly creating
    very large maps for entities with lots of components.  Mutable version
    assumes domain-map is a mutable hashmap."
   ([domain-map id]
@@ -194,19 +194,19 @@
             (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
           (or (instance? clojure.lang.Sequential o)
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
-              :else nil))  
+              :else nil))
   clojure.lang.IObj
   (meta     [this] (.meta ^clojure.lang.IObj m))
   (withMeta [this xs] (entity. name domains components
                                (with-meta ^clojure.lang.IObj m xs) altered))
-  IEntity 
+  IEntity
   (entity-name [e] (if name name
                        (do (set! name (.valAt m :name))
                            name)))
-  (conj-component [e c] 
+  (conj-component [e c]
     (entity. name nil nil (.assoc m (component-domain c) (component-data c))
                           (.assoc altered (component-domain c) :add)))
-  (disj-component [e c] 
+  (disj-component [e c]
     (entity. name domains components (.without m (component-domain c))
                                      (.assoc altered (component-domain c) :remove)))
   (get-component [e domain]          (.valAt m domain))
@@ -348,15 +348,15 @@
 ;;I think there's a better basic form than this for components.
 ;;Components are entries, which is great; However, we want entities
 ;;to be collections of entries (i.e. maps).
-(extend-protocol IEntity 
-  nil 
+(extend-protocol IEntity
+  nil
   (entity-name [n] nil)
   (entity-components [n] nil)
   (entity-domains [e] nil)
   clojure.lang.PersistentArrayMap
   (entity-name [e] (.valAt e :name))
-  (conj-component [e c] 
-    (.assoc e (component-domain c) 
+  (conj-component [e c]
+    (.assoc e (component-domain c)
               (component-data c)))
   (disj-component [e c]     (.without e (component-domain c)))
   (get-component [e domain] (.valAt e  domain))
@@ -364,8 +364,8 @@
   (entity-domains [e] (keys e))
   clojure.lang.PersistentHashMap
   (entity-name [e] (.valAt e :name))
-  (conj-component [e c] 
-    (.assoc e (component-domain c) 
+  (conj-component [e c]
+    (.assoc e (component-domain c)
               (component-data c)))
   (disj-component [e c]     (.without e (component-domain c)))
   (get-component [e domain] (.valAt e  domain))
@@ -390,12 +390,12 @@
 ;;implemented in custom component types.  Probably not.
 (defn keyval->component
   "Converts key/value pairs into components.  Allows a simple shorthand
-   for composing entities, in that entity components can be contained in 
+   for composing entities, in that entity components can be contained in
    a map."
   ([k v]
     (cond (and (extends? IComponent (class v)) (not (map? v)))  v
-          (and (map? v) 
-               (contains? v :domain) 
+          (and (map? v)
+               (contains? v :domain)
                (contains? v :components))
           (->component (:domain v) (:components v))
           :else (->component k v)))
@@ -405,13 +405,13 @@
   "Allows shorthand definition of entities from simple map structures.
    Keys in the map correspond to component domains of the entity."
   (entity. nil nil nil m {}))
-                  
+
 (defn entity->components
   "Retrieve the component data associated with an entity."
   [ent]  (entity-components ent))
 
 (defn entity->domains
-  "Retrieve the domains that the entity is a member of, where 
+  "Retrieve the domains that the entity is a member of, where
    domains are the names of components."
   [ent] (keys (entity-components ent)))
 
@@ -421,18 +421,18 @@
    across one or more components."
   [ent]
   (let [id (get ent :name)]
-    (reduce-kv 
-         (fn [acc k v] (conj acc [id k v])) 
+    (reduce-kv
+         (fn [acc k v] (conj acc [id k v]))
          []
          (entity-components ent))))
 
 ;;Fix this variadic arg.  It's slowdown city.
 (defn merge-entity
-  "Similar to the merge operation on maps, only for entities.  When entities 
-   are merged, the components of the first entity are conjoined with the second, 
-   and a 'merged' entity is produced. The merged entity has components across 
-   the union of domains from both entities.  The component data in each domain 
-   corresponds to the last component data found.  This means entity2's data will 
+  "Similar to the merge operation on maps, only for entities.  When entities
+   are merged, the components of the first entity are conjoined with the second,
+   and a 'merged' entity is produced. The merged entity has components across
+   the union of domains from both entities.  The component data in each domain
+   corresponds to the last component data found.  This means entity2's data will
    be returned in cases where the domains overlap."
   ([e1 e2 id]
    (let [m (into {}
@@ -440,17 +440,17 @@
                              (entity-components e2)))]
      (entity. id nil nil m (into {} (map (fn [k] [k :add]))(keys m)))))
   ([e1 e2] (merge-entity  e1 e2 (keyword (gensym "merged")))))
-  
+
 (defn ent-seq? [entcoll] (satisfies? IEntity (first (seq entcoll))))
-            
-(defn merge-entities 
-  "Merges multiple entities.  For overlapping domains, the right-most, or last 
+
+(defn merge-entities
+  "Merges multiple entities.  For overlapping domains, the right-most, or last
    entity's data is returned in the merge."
-  [entcoll & {:keys [id] :or {id :merged-entity}}] 
+  [entcoll & {:keys [id] :or {id :merged-entity}}]
   (if (ent-seq? entcoll)
     (reduce (fn [e1 e2] (merge-entity e1 e2 id)) entcoll)
     (throw (Exception. "Expected a collection of entities."))))
-                    
+
 (defn get-info
   "Get a quick summary of the entity, i.e. its components..."
   [ent]
@@ -461,14 +461,14 @@
 ;;==============================
 
 (defprotocol IEntityStore
-  "The entitystore is an abstract protocol for defining functionality necessary 
-   to manage entities, as defined by collections of component data.  Due to the 
-   independent nature of component data (each component maps 1:1 to a specific, 
-   orthogonal domain of information, and is self contained), our entity store 
-   could be implemented a number of ways.  The obvious implementation is as a 
-   single hash-map database on a single machine.  However, we could easily 
+  "The entitystore is an abstract protocol for defining functionality necessary
+   to manage entities, as defined by collections of component data.  Due to the
+   independent nature of component data (each component maps 1:1 to a specific,
+   orthogonal domain of information, and is self contained), our entity store
+   could be implemented a number of ways.  The obvious implementation is as a
+   single hash-map database on a single machine.  However, we could easily
    distribute the component maps across multiple nodes, effectively distributing
-   our store and allowing for parallel querying/updating functions.  Finally, 
+   our store and allowing for parallel querying/updating functions.  Finally,
    we could implement the entitystore using a persistent database backend, if it
    makes sense to do that. "
   (add-entry   [db id domain data] "Associate a record of data /w entity id")
@@ -478,13 +478,15 @@
   (components-of  [db id]  "derive components id contains")
   (domains-of     [db id]  "set of domains id intersects")
   (get-entity [db id] "Returns an IEntity associated with id")
-  (conj-entity    [db id components] "Add an entity to the database.")   
+  (conj-entity    [db id components] "Add an entity to the database.")
   (entities       [db] "Return a map of {entityid #{components..}}"))
 
 (defprotocol IColumnStore
-  (swap-domain- [db c new] "Swap the underlying domain without changing 
+  (swap-domain- [db c new] "Swap the underlying domain without changing
    relations.")
-  (drop-domain- [db d]))
+  (drop-domains- [db ds]))
+
+(declare get-domain);;ordering hack.
 
 (defn kv-map [f2 m]  (reduce-kv (fn [^clojure.lang.Associative acc k v] (.assoc acc k (f2 k v))) m  m))
 (defn kv-map! [f2 m]
@@ -644,7 +646,7 @@
     ;;force coercion.
     (let [ds (if (coll? ds) ds (vec ds))]
       (gen/iter [d ds]
-           (.clear ^spork.data.eav.AttributeMap (.aev-attribute this d)))) ;;implement clear.
+           (.clear ^spork.data.eav.AttributeMap (.eav-attribute this d)))) ;;implement clear.
     this)
   java.util.Map
   (get [this k]
@@ -698,6 +700,7 @@
               emptystore (domains store)))
 
 ;;already exists in spork.data.mutable
+#_
 (extend-protocol clojure.core.protocols/IKVReduce
   java.util.HashMap 
   (kv-reduce [obj f init]
@@ -706,7 +709,7 @@
 
 ;;todo: make this more effecient using with-mutable macro....
 ;;possibly link to spork.data.mutable protocols.
-(defn mutate! [store] (->mutable-store (:domain-map store)))
+(defn mutate! [store] (->mutable-store store))
 
 (defn memptystore
   ([] (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.)))
@@ -772,15 +775,10 @@
 
 ;;Temporarily reverting row-ops to simple functions.
 ;;row-op
-#_
 (defn drop-domains
   "Drop multiple domains from the store."
   [ces ds]
-  (reduce  (fn [acc d]
-             (reduce-kv (fn [acc ent _]
-                          (drop-entry acc ent d))
-                        acc (get-domain acc d)))
-           ces ds))
+  (drop-domains- ces ds))
 
 (defn drop-domain [ces d] (drop-domains ces [d]))
 
@@ -850,10 +848,11 @@
 ;;case, we want to update the store in place.
 
 ;;protocol-derived functionality
-;;REVISE
-
 
 ;;only one explicitly used.
+;;Note: all of these functions are isomorphic ine EAV space; e.g. they don't
+;;change any structural relations.  This is important since we can swap domains
+;;without alterating relations, just values, and it works.
 (defn map-component
   "Map function f across entries in the component map associated with component c in store.
    Updates associated entries with the result of f.  This is similar to fmap, treating the 
@@ -868,7 +867,7 @@
                    (assoce acc e c (f x)))
                  store entries))
     store))
-;;REVISE
+
 (defn filter-map-component
   "Map function f across entries in the component map associated with component c in store.
    Updates associated entries with the result of f.  This is similar to fmap, treating the 
@@ -876,17 +875,14 @@
   [store c pred f]
   (if-let [entries (get-domain store c)]
     (if (extends? IColumnStore (class store))
-      (swap-domain store c
-                   (mut/update-kv entries (fn [e x] (if (pred e)
-                                                      (f x)
-                                                      x))))
+      (swap-domain- store c  (mut/update-kv-where entries pred (fn [e x]   (f x))))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
                    (if (pred e x)
                      (assoce acc e c (f x))
                      acc))
                  store entries))
     store))
-;;REVISE
+
 (defn kv-map-component
   "Map function f across entries in the component map associated with component c in store.
    Updates associated entries with the result of f.  This is similar to fmap, treating the 
@@ -894,27 +890,23 @@
   [store c f]
   (if-let [entries (get-domain store c)]
     (if (extends? IColumnStore (class store))
-      (swap-domain store c
-                   (reduce-kv (fn [acc e x] ;;this is fmap.
-                                (assoc acc e (f e x)))
-                              entries entries))
+      (swap-domain- store c  (mut/update-kv entries f))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
                    (assoce acc e c (f e x)))
                  store entries))
     store))
 
 ;;these entries functions look extraneous.
-;;REVISE.
 (defn reduce-entries
-  "Mechanism for updating the entity store.  
-   Fold function f::store -> [id component data] -> store 
+  "Mechanism for updating the entity store.
+   Fold function f::store -> [id component data] -> store
    over a sequence of records, with store as its initial value."
-  [store f recs] 
+  [store f recs]
   (reduce (fn [store rec] (f store rec)) store recs))
 
 ;;REVISE.
 (defn drop-entries
-  "Fold a sequence of [id component data] using drop-record to return 
+  "Fold a sequence of [id component data] using drop-record to return
    an updated entitystore."
   [store drops]
   (reduce-entries store (fn [s [id c & more]] (drop-entry s id c)) drops))
@@ -931,7 +923,7 @@
    it....for semantic purposes.  Parameters usually have a special meaning."
   [store name val]
   (add-entry store name :parameters val))
-  
+
 (defn drop-parameter
   "Add a simple name and value to a dedicated parameters table.  We treat this 
    like any other component, except we provide explicit functionality to access
@@ -939,21 +931,6 @@
   [store name]
   (drop-entry store name :parameters))
 
-;;Possibly OBE.
-(defn add-altered-entity 
-  "Associate component data with id.  Records are {:component data} or 
-  [[component data]] form.  ."
-  [db ^clojure.lang.IPersistentMap ent]
-  (let [id (entity-name ent)]
-    (reduce (fn alteration [acc k]
-              (if-let [v (.valAt ent k)] ;entry exists.
-                (assoce acc id k v)
-                (dissoce acc id k) ;component has been dissoced
-                ))
-            db (altered-keys ent))))
-
-(def en (atom nil))
-(def store (atom nil))
 ;;What about records?
 ;;we can add support for maps here...
 ;;row-op
@@ -976,22 +953,20 @@
                    (add-entry acc id (first domdat) (second domdat)))
              db records)))
   ([db ^clojure.lang.IPersistentMap ent]
-   (if-let [altered (altered-keys ent)]
-     (let [id (entity-name ent)
-                                        ;_  (reset! en ent)
-           ]
+   (if-let [altered (and (not (instance? spork.data.eav.EntityMap ent))
+                         (altered-keys ent))]  ;;could implement altered-keys for mutable entities as nil...
+     (let [id (entity-name ent)]
        (if-not (identical? altered ::*)
          (reduce-kv (fn alteration [acc k op]
                       (if (identical? op :add)
                         (assoce acc id k (ent k)) ;alteration added or updated.
                         (dissoce acc id k))) ;component has been dissoced
                     db altered)
+         ;;probably a faster way to do this....
          ;;case for normal maps.
          (reduce-kv (fn addmap [acc k op]
                         (assoce acc id k (ent k))) ;alteration added or updated.
-                    db ent)
-         ))
-     db))
+                    db ent)))  db)))
 
 (defn add-entities
   "Register multiple entity records at once..." 
@@ -999,6 +974,7 @@
 
 ;;maybe elevate this to protocol-level?
 ;;row-op
+;;REVISE - mutable variant is faster.
 (defn drop-entity
   "drop component data associated with id, and id from entities in db." 
   [db id]
@@ -1070,22 +1046,23 @@
 ;;frequencies creates a transient map too.
 
 ;;row-op
+;;REVISE - we can compute this faster.
+;;possibly introduce protocols for underlying entity queries...
 (defn entity-intersection
-  "Returns the logical intersection of entities across one or more domains, 
-   returning a set of entity ids, in which each entity is a member of 
+  "Returns the logical intersection of entities across one or more domains,
+   returning a set of entity ids, in which each entity is a member of
    all domains."
   [db domains]
   (let [n (count domains) ;;number we have to have to have intersection...
         ]
-    (->> domains 
-         (r/mapcat #(entities-in db %)) ;concated rediucible seq of all the keys in each component, entitiy ids.         
+    (->> domains
+         (r/mapcat #(entities-in db %)) ;concated rediucible seq of all the keys in each component, entitiy ids.
          (frequencies) ;probably slow...
          (reduce-kv (fn [acc k qty] ;this is actually faster than r/filtering...
                       (if (== qty n)
                         (conj! acc k)
                         acc))
-                    (transient [])
-                    )         
+                    (transient []))
          (persistent!))))
 
 (defn key->symbol [k]
@@ -1321,25 +1298,14 @@
          ~(first expr) ~(second expr))
       expr))
 
-;; (defmacro emit-entity-builder [args cs]
-;;   `(fn [~'id ~@(distinct (remove #{'id} args))]    
-;;      (~'spork.entitysystem.store/build-entity ~'id 
-;;        [~@(map binding->component 
-;;                (partition 2 (filter
-;;                              (complement nil?)
-;;                              cs)))])))
-
 (defmacro emit-entity-builder [args cs]
-  `(fn [~'id ~@(distinct (remove #{'id} args))]    
-     (~'spork.entitysystem.store/build-entity ~'id 
-       [~@(map binding->component 
-               (partition 2 
-                             
-                             cs))])))
+  `(fn [~'id ~@(distinct (remove #{'id} args))]
+     (~'spork.entitysystem.store/build-entity ~'id
+       [~@(map binding->component (partition 2  cs))])))
 
 (defn spec-merger [args specs]
   `(fn ~args
-     (merge-entities (map (fn ~'[s]  
+     (merge-entities (map (fn ~'[s]
                             (if (fn? ~'s) (~'s ~'id) ~'s)) ~specs) :id ~'id)))
 
 (defn flatten-args [args]
@@ -1347,8 +1313,8 @@
          xs args]
     (if (empty? xs) 
       acc
-      (let [x (first xs)]      
-        (cond (= x '&)    (recur acc (rest xs))        
+      (let [x (first xs)]
+        (cond (= x '&)    (recur acc (rest xs))
               (map? x)    (recur (into acc (get x :keys)) (rest xs))
               (vector? x)
                   (recur (into acc (flatten-args x)) (rest xs))
@@ -1709,3 +1675,13 @@
 ;;                   (recur (unchecked-inc idx#)
 ;;                          (~f acc# nxt#)))
 ;;                 :else acc#)))))
+
+
+(comment ;;testing.
+  (def ents [{:name "bilbo" :age 111 :location "shire"}
+             {:name "kirk"  :age 80 :location "federation" :planet "earth"}
+             {:name "alf"   :age 100 :location "willy's house" :planet "earth" :origin "melmac"}])
+
+  (def the-store (reduce add-entity emptystore ents))
+  (def mstore (mutate! the-store))
+  )

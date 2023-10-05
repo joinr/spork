@@ -58,10 +58,9 @@
           (let [^java.util.Map$Entry nxt (.next it)
                 k                        (.getKey nxt)
                 v                        (.getValue nxt)]
-            (if (pred k v)
-              (if-let [res (f (.getValue nxt))]
-                (.setValue nxt res)
-                (.remove it (.getKey res))))
+            (if-let [res (f (.getValue nxt))]
+              (.setValue nxt res)
+              (.remove it k))
             (recur))
           coll))))
   (update-kv-keep-where [coll pred f]
@@ -75,15 +74,15 @@
             (when (pred k v)
               (if-let [res (f (.getValue nxt))]
                 (.setValue nxt res)
-                (.remove it (.getKey res))))
+                (.remove it k)))
             (recur))
           coll))))
-  clojure.lang.IKVReduce
+  clojure.lang.IPersistentMap
   (update-kv [coll f]
-    (reduce-kv (fn [^clojure.lang.Associative acc k v]
+    (reduce-kv (fn [^clojure.lang.IPersistentMap acc k v]
                  (.assoc acc k (f k v))) coll coll))
   (update-kv-where [coll pred f]
-    (reduce-kv (fn [^clojure.lang.Associative acc k v]
+    (reduce-kv (fn [^clojure.lang.IPersistentMap acc k v]
                  (if (pred k v)
                    (.assoc acc k (f k v))
                    acc)) coll coll))
@@ -93,7 +92,7 @@
                    (.assoc acc k res)
                    (.without acc k))) coll coll))
   (update-kv-keep-where [coll pred f]
-    (reduce-kv (fn [^clojure.lang.Associative acc k v]
+    (reduce-kv (fn [^clojure.lang.IPersistentMap acc k v]
                  (if (pred k v)
                    (if-let [res (f k v)]
                      (.assoc acc k res)

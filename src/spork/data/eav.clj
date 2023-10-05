@@ -57,6 +57,44 @@
                 (iterator-seq (.iterator ^java.lang.Iterable this))
                 :else (throw (ex-info "no idea how to hash!" {:in (type this)})))))))
 
+;;hmmm, maybe this is janky.
+(defn map-equals [^java.util.Map m1 obj]
+  (if  (not (instance? java.util.Map obj)) false
+       (let [^java.util.Map      obj     obj
+             ^java.util.Iterator it      (.iterator (.entrySet m1))]
+         (loop [acc true]
+           (if (.hasNext it)
+             (let [^java.util.Map$Entry nxt (.next it)]
+               (if-let [v (.get obj (.getKey nxt))]
+                 (if (= v (.getValue nxt))
+                   (recur acc)
+                   false)
+                 false))
+             acc)))))
+
+;; static public boolean mapEquals(IPersistentMap m1, Object obj)
+;; {
+;;  if(m1 == obj) return true;
+;;  if(!(obj instanceof Map))
+;;  return false;
+;;  Map m = (Map) obj;
+ 
+;;  if(m.size() != m1.count())
+;;  return false;
+ 
+;;  for(ISeq s = m1.seq(); s != null; s = s.next())
+;; 		      {
+;; 		       Map.Entry e = (Map.Entry) s.first();
+;; 		       boolean found = m.containsKey(e.getKey());
+           
+;; 		       if(!found || !Util.equals(e.getValue(), m.get(e.getKey())))
+;; 			     return false;
+;; 		       }
+          
+;; 	        return true;
+;;           }
+ 
+
 (def ^java.util.function.Function create-set
   (reify java.util.function.Function
     (apply [this k] (java.util.HashSet.))))
@@ -130,7 +168,7 @@
   (containsValue [this v] (some #(= v %) (vals this)))
   (entrySet [this] (.entrySet attributes))
   (equals [this o] (or (identical? this o)
-                       (clojure.lang.APersistentMap/mapEquals attributes o)))
+                       (#_clojure.lang.APersistentMap/mapEquals map-equals attributes o)))
   clojure.lang.Seqable
   (seq [this]  (->> (.iterator (.entrySet attributes))
                     iterator-seq))
@@ -270,7 +308,7 @@
   (values [this]  (iterator-seq (pointer-iterator entities))) ;;maybe suboptimal.
   (isEmpty [this] (.isEmpty entities))
   (equals [this o] (or (identical? this o)
-                       (clojure.lang.APersistentMap/mapEquals this o)))
+                       (#_clojure.lang.APersistentMap/mapEquals map-equals this o)))
   clojure.lang.Seqable
   (seq [this]  (->> (.iterator (.entrySet entities))
                     iterator-seq
@@ -360,7 +398,7 @@
   (values [this]  (iterator-seq (pointer-iterator attributes))) ;;maybe suboptimal.
   (isEmpty [this] (.isEmpty attributes))
   (equals [this o] (or (identical? this o)
-                       (clojure.lang.APersistentMap/mapEquals this o)))
+                       (#_clojure.lang.APersistentMap/mapEquals map-equals this o)))
   clojure.lang.Seqable
   (seq [this]  (->> (.iterator (.entrySet attributes))
                     iterator-seq
