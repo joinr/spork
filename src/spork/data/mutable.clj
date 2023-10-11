@@ -40,7 +40,7 @@
   (update-kv [coll f]
     (.replaceAll ^java.util.HashMap coll (bif f)) coll)
   (update-kv-where [coll pred f]
-    (let [^java.util.HashMap$EntryIterator it
+    (let [^java.util.Iterator it
           (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
       (loop []
         (if (.hasNext it)
@@ -51,7 +51,7 @@
             (recur))
           coll))))
   (update-kv-keep [coll f]
-    (let [^java.util.HashMap$EntryIterator it
+    (let [^java.util.Iterator it
           (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
       (loop []
         (if (.hasNext it)
@@ -60,11 +60,11 @@
                 v                        (.getValue nxt)]
             (if-let [res (f (.getValue nxt))]
               (.setValue nxt res)
-              (.remove it k))
+              (.remove it))
             (recur))
           coll))))
   (update-kv-keep-where [coll pred f]
-    (let [^java.util.HashMap$EntryIterator it
+    (let [^java.util.Iterator it
           (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
       (loop []
         (if (.hasNext it)
@@ -74,7 +74,7 @@
             (when (pred k v)
               (if-let [res (f (.getValue nxt))]
                 (.setValue nxt res)
-                (.remove it k)))
+                (.remove it)))
             (recur))
           coll))))
   clojure.lang.IPersistentMap
@@ -104,20 +104,24 @@
   (update-val [this entry v])
   (drop-entry [this entry]))
 
-;;this can be even easier...
-;;draft.  potentially remove.
-(deftype IteratingMap [^java.util.HashMap$EntryIterator it ^:unsynchronized-mutable ^java.util.Map$Entry current ^java.util.Map m]
+;;Basically just ends up being a facade that ensures we can only
+;;potentially/likely remove. Not much upside beyond being able to remove and put
+;;inside of reduce-kv iff the k maps to the current entry.
+(deftype IteratingMap [^java.util.Iterator it ^:unsynchronized-mutable ^java.util.Map$Entry current ^java.util.Map m]
   IEntryStore
   (update-val [this  kv v]     (.setValue ^java.util.Map$Entry kv v))
-  (drop-entry [this  kv]       (.remove it ^java.util.Map$Entry kv))
+  (drop-entry [this  kv]       (.remove it))
   java.util.Map
   (get [this k]               (.get m k))
   (getOrDefault [this k v]    (.getOrDefault m k v))
-  (put      [this k v]        (.put m k v))
+  (put      [this k v]        (if (identical? (.getKey current) k)
+                                (.setValue current v)
+                                (throw (ex-info "cannot put an element into a map that is not current during iteration!"
+                                                {:in k}))))
   (remove [this k]            (if (identical? (.getKey current) k)
                                 (.drop-entry this current)
-                                (when-let [v (.get m k)] ;;probably fails.
-                                  (.remove it (clojure.lang.MapEntry. k v)))))
+                                (throw (ex-info "cannot remove an element from a map that is not current during iteration!"
+                                                {:in k}))))
   (size     [this]            (.size m))
   (keySet   [this]            (.keySet m)) ;;ugh...
   (entrySet [this]            (.entrySet m)) ;;oof
@@ -138,7 +142,7 @@
 
 (defn ->iterating-map
   (^IteratingMap [m it] (IteratingMap. it nil m))
-  (^IteratingMap [m] (->iterating-map m (.iterator ^java.lang.Iterable (.entrySet m)))))
+  (^IteratingMap [^java.util.Map m] (->iterating-map m (.iterator ^java.lang.Iterable (.entrySet m)))))
 
 (extend-type  java.util.HashMap
   clojure.core.protocols/IKVReduce
@@ -165,7 +169,7 @@
                   acc))))))
 
   ;;REVISE to use IteratingMap...
-  clojure.core.protocols/CollReduce  
+  clojure.core.protocols/CollReduce
   (coll-reduce
     ([coll f]
      (throw (ex-info "pending" {}))

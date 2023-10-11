@@ -18,9 +18,7 @@
 ;;fields of the entity.
 (ns spork.data.passmap
   (:require [spork.data [mutable :as mutable]]
-            [spork.util [general :as gen]]
-            [ham-fisted.api :as hf]
-            [ham-fisted.lazy-noncaching :as ln]))
+            [spork.util [general :as gen]]))
 
 ;;We care about adds and drops....right?
 ;;If we just always assoc a sentinel value when we merge the map,

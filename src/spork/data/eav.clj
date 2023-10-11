@@ -260,6 +260,14 @@
 
 (declare put-ae remove-ae put-ea remove-ea)
 
+;;clearing semantics:
+;;clearing an attribute map means we need to traverse every entity and remove the relation,
+;;then remove the attribute map from the attributes.
+
+;;clearing an entity means we need to traverse every attribute from the entity,
+;;and remove the relation.  Do we keep the entity map?  Currently no.
+;;The result of clearing is nil. There should be no reference left to either
+;;entity map or attribute map.
 (deftype AttributeMap [^spork.data.eav.IAEVStore store a ^java.util.HashMap entities]
   IPointerMap
   (get-pointer    [m k]   (.get entities k))
@@ -300,6 +308,15 @@
         (.remove entities k)
         (remove-ea store k a)
         v)))
+  ;;remove all E V mappings, remove A from the store.  relationally destructive operation.
+  (clear [this]
+    (let [^java.util.Iterator it (.iterator (.entrySet entities))]
+      (loop []
+        (when-let [^java.util.Map$Entry ev (and  (.hasNext it) (.next it))]
+          (let [e (.getKey ev)]
+            (.remove it)
+            (remove-ea store e a)
+            (recur))))))
   (size [this] (.size entities))
   (containsKey   [this k] (.containsKey entities k))
   (containsValue [this v] (some #(= v %) (vals this)))
@@ -390,6 +407,14 @@
         (.remove attributes k)
         (remove-ae store k id)
         v)))
+  (clear [this]
+    (let [^java.util.Iterator it (.iterator (.entrySet attributes))]
+      (loop []
+        (when-let [^java.util.Map$Entry av (and  (.hasNext it) (.next it))]
+          (let [a (.getKey av)]
+            (.remove it)
+            (remove-ae store  a id)
+            (recur))))))
   (size [this] (.size attributes))
   (containsKey   [this k] (.containsKey attributes k))
   (containsValue [this v] (some #(= v %) (vals this)))
