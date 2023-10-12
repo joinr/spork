@@ -314,9 +314,12 @@
       (loop []
         (when-let [^java.util.Map$Entry ev (and  (.hasNext it) (.next it))]
           (let [e (.getKey ev)]
+            (println [:removing e :from a])
             (.remove it)
             (remove-ea store e a)
-            (recur))))))
+            (recur))))
+      (.remove ^java.util.Map (eav-attributes store) a));;drop from the attributes map.
+      )
   (size [this] (.size entities))
   (containsKey   [this k] (.containsKey entities k))
   (containsValue [this v] (some #(= v %) (vals this)))
