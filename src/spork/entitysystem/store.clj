@@ -8,6 +8,16 @@
             [spork.data [eav :as eav] [derived :as derived]]
             [spork.util [general :as gen]]))
 
+
+;;utils
+;;=====
+;;needed?
+(defn kv-map [f2 m]  (reduce-kv (fn [^clojure.lang.Associative acc k v] (.assoc acc k (f2 k v))) m  m))
+(defn kv-map! [f2 m]
+  (doseq [^java.util.Map$Entry e (seq m)]
+    (.setValue e (f2 (.getKey e) (.getValue e))))
+  m)
+
 ;A component-based architecture is a collection of Domains, Systems, Components,
 ;and entities.  
 ;
@@ -59,7 +69,7 @@
 ;in most setups, data is statically typed, so that the components are homogenous
 ;we'll follow that practice, but nothing is technically stopping us from having
 ;heterogenous data across a component.
-(defprotocol IComponent 
+(defprotocol IComponent
   (component-domain- [x] "Returns the logical domain of the component")
   (component-data-   [x] "Returns the values associated with the component."))
 
@@ -82,7 +92,7 @@
 ;;Entity Definition
 ;;=================
 
-(defprotocol IEntity 
+(defprotocol IEntity
   "A protocol for defining fundamental operations on entities."
   (entity-name       [e] "Get the unique name of entity e")
   (conj-component    [e c] "Conjoin a component onto the entity")
@@ -146,19 +156,6 @@
    (passmap/lazy-join domain-map id))
   ([domain-map id domains]
    (passmap/lazy-join domain-map id domains)))
-
-(defn lazy-join-mutable
-  "Creates a map-based representation of an entity, reifed as lazily-joined
-   components.  Uses a spork.data.passmap.PassMap to cache the joined components.
-   The entity map acts just like a regular hashmap, with equality semantics
-   and support for meta.  We do this to provide the convenience of joining
-   all the entity's components, without the inefficieny of eagerly creating
-   very large maps for entities with lots of components.  Mutable version
-   assumes domain-map is a mutable hashmap."
-  ([domain-map id]
-   (passmap/lazy-join-mutable domain-map id))
-  ([domain-map id domains]
-   (passmap/lazy-join-mutable domain-map id domains)))
 
 (definline has-entry? [m k]
   (let [m (with-meta m {:tag 'clojure.lang.IPersistentMap})]
@@ -255,7 +252,6 @@
   (invoke [this k] (.valAt m k))
   (invoke [this k not-found] (.valAt m k not-found))
   )
-
 
 (extend-protocol IAlteredKeys
   clojure.lang.PersistentArrayMap
@@ -481,18 +477,33 @@
   (conj-entity    [db id components] "Add an entity to the database.")
   (entities       [db] "Return a map of {entityid #{components..}}"))
 
+
+;;protocols for more efficient internal operations.
+;;in the case of e.g. mutable stores, we can't leverage
+;;typical reduce pathways over keys since the iterator can
+;;change out from under us.  We may also have more efficient
+;;pathways than typical
 (defprotocol IColumnStore
-  (swap-domain- [db c new] "Swap the underlying domain without changing
-   relations.")
+  (swap-domain- [db c new]
+    "Swap the underlying domain without changing relations.")
+  (add-domain-   [db a m] "assoc domain specified by m to a")
   (drop-domains- [db ds]))
+
+(defprotocol IEntityOps
+  (add-entity-   [s id r] [s e])
+  (drop-entity-  [s id]))
+
+(defprotocol IEntityQuery
+  (entity-union- [db domains])
+  (entity-intersection- [db domains]))
 
 (declare get-domain);;ordering hack.
 
-(defn kv-map [f2 m]  (reduce-kv (fn [^clojure.lang.Associative acc k v] (.assoc acc k (f2 k v))) m  m))
-(defn kv-map! [f2 m]
-  (doseq [^java.util.Map$Entry e (seq m)]
-    (.setValue e (f2 (.getKey e) (.getValue e))))
-  m)
+
+(defmacro delegate [obj proto meth & body]
+  `(if (extends? ~obj ~class ))
+  )
+
 
 
 ;;Interesting note:
@@ -527,7 +538,7 @@
 
 ;EntityStore is the default implementation of our protocol, and it uses maps 
 ;to maintain records of component data, keyed by entity ID, as well as a map of
-;entities to the set of components they are associated with.  
+;entities to the set of components they are associated with.
 (defrecord EntityStore [^clojure.lang.IPersistentMap entity-map
                         ^clojure.lang.IPersistentMap domain-map]
   IEntityStore
@@ -559,7 +570,7 @@
   (entities [db]  entity-map)
   (domains [db]   domain-map)
   (domains-of     [db id]  (.valAt entity-map id))
-  (components-of  [db id]  (lazy-join domain-map id))  
+  (components-of  [db id]  (lazy-join domain-map id))
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
   (get-entity [db id]
@@ -702,14 +713,6 @@
                             (add-entry acc id domain data)) acc m))
               emptystore (domains store)))
 
-;;already exists in spork.data.mutable
-#_
-(extend-protocol clojure.core.protocols/IKVReduce
-  java.util.HashMap 
-  (kv-reduce [obj f init]
-    (reduce (fn [acc ^java.util.Map$Entry ent]
-              (f acc (.getKey ent) (.getValue ent))) init obj)))
-
 ;;todo: make this more effecient using with-mutable macro....
 ;;possibly link to spork.data.mutable protocols.
 (defn mutate! [store] (->mutable-store store))
@@ -720,58 +723,6 @@
 
 (defn domain-keys [db]   (keys (domains db)))
 (defn get-domain  [db d] (get (domains db) d))
-
-;;can we create custom entities at runtime using reify?
-;;How slow is this?  Fast enough for individual queries?
-;;Another strategy is to create field-accessible entity
-;;views...maybe cache the types....dunno, these are additional
-;;optimizations that may or may not help us out....
-
-;;The easiest thing to do is fire-and-forget though....
-;;We have a read-cache of mutable values that we hit.
-;;If our value is there, we're done.  If not,
-;;we check the backing store.  If it exists, we
-;;store it in the read-cache.  If not, we store it
-;;in the read-cache as nil.
-;;From there on, the read-cache helps us quickly deref
-;;items - and store them, since associng goes onto the
-;;read cache.
-;;When we go to merge, any items that are in the read
-;;cache that are also altered (currently tracked in the
-;;altered cache) get merged as novel updates.  Additionally,
-;;items in the read cache that are nil get dropped if
-;;they were altered....
-;;as if we dropped them from the component itself.
-;;I think this satisfies the lazy loading requirement, and
-;;the lazy commit requirement...
-;;This also works with a mutable version, since we just
-;;replace the readcache with a mutable map.
-
-;;Todo
-;;Replace this with more efficient algorithm.  Right now,
-;;we're removing entry by entry.  It's probably faster to
-;;dissoc the domain from the store, and walk all effected entities,
-;;or better yet, collect all effected entities in batch,
-;;then walk them (and dissoc the domains from the store).
-
-
-;;if it supports row-ops, then we can
-;;perform optimized operations on the estore...
-;;otherwise, we default to columnar ops.
-(defprotocol IRowStore
-  (add-entity-r   [s id r]
-                  [s e]   )                  
-  (drop-entity-r  [s id])
-  (drop-domains-r [s ds])
-  (entity-union-r [db domains])
-  (entity-intersection-r [db domains]))
-
-;;using instance is much faster.
-;;problem is we're using composition and delegation to
-;;accomplish this, so we're always hiding the rowstore
-;;behind the facade.  Unable to use faster row-ops.
-(definline row-store? [ces]
-  `(instance? spork.entitysystem.store.IRowStore ~ces))
 
 ;;invoking drop-entry while iterating gets the iterator out of sync.
 ;;idiomatic way is to remove through the iterator.
@@ -797,6 +748,7 @@
 (defn mergee   [store nm m]
   (reduce-kv (fn mergf [acc c v]
                (add-entry acc nm c v)) store m))
+
 ;;==note== we can probably sidestep most of this if we just overload how the store acts like and
 ;;assoc map.  If we did that, the underlying clojure stuff would work out of the box.
 ;;stand-inds for nested updates and association.
@@ -824,10 +776,10 @@
            (assoce store# ~nm ~dom res#))
          (throw (Exception. (str [:invalid-entry ~xs])))))
     `(updatee ~store ~nm ~dom ~f)))
- 
+
 (defmacro assoc-ine
   [store [nm dom & path] v]
-  (if (seq path)  
+  (if (seq path)
     `(let [store# ~store]
        (if-let [entry# (or (get-entry store# ~nm ~dom) {})]
          (let [res# (assoc-in  entry# ~(vec path) ~v)]
@@ -836,7 +788,7 @@
 
 (defmacro get-ine
   [store [nm dom & path] & v]
-  (if (seq path)  
+  (if (seq path)
     `(let [store# ~store]
        (when-let [entry# (get-entry store# ~nm ~dom)]
          (get-in entry# ~(vec path) ~@v)))
@@ -945,7 +897,7 @@
 ;;TODO - extend entity protocol (or implement inline) for
 ;;data.eav.EntityMap.
 (defn add-entity
-  "Associate component data with id.  Records are {:component data} or 
+  "Associate component data with id.  Records are {:component data} or
   [[component data]] form.  Alternately, add a pre-built entity record."
   ([db id records]
    (cond (entity? records) (add-entity db (assoc records :name id))
@@ -972,18 +924,18 @@
                     db ent)))  db)))
 
 (defn add-entities
-  "Register multiple entity records at once..." 
+  "Register multiple entity records at once..."
   [db entities] (reduce add-entity db entities))
 
 ;;maybe elevate this to protocol-level?
 ;;row-op
 ;;REVISE - mutable variant is faster.
 (defn drop-entity
-  "drop component data associated with id, and id from entities in db." 
+  "drop component data associated with id, and id from entities in db."
   [db id]
   (reduce (fn [acc dom] (drop-entry acc id dom)) db (domains-of db id)))
 
-(defn drop-entities 
+(defn drop-entities
   [db xs]
   (reduce (fn [acc id] (drop-entity acc id)) db xs))
 
@@ -1001,26 +953,27 @@
   [db d]
   (keys (get-domain db d)))
 
-(defn get-entities 
+(defn get-entities
   "Reify multiple entity records from ids from entitystore."
   [db ids]
   (map #(get-entity db %) ids))
 
 (defn entity-seq
-  "Return a lazy sequence of reified entity records for each entity in the 
+  "Return a lazy sequence of reified entity records for each entity in the
    entitystore."
-  [db] 
+  [db]
   (for [id (keys (entities db))]
     (get-entity db id)))
 
 ;;row-op
+;;could REVISE this to be more efficient.
 (defn entity-union
-  "Returns the logical union of entities across one or more domains, 
-   retuning a set of entity ids, in which each entity is a member of 
+  "Returns the logical union of entities across one or more domains,
+   retuning a set of entity ids, in which each entity is a member of
    one or more domains."
   [db domains]
-  (->> domains 
-    (map #((comp set entities-in) db %)) 
+  (->> domains
+    (map #((comp set entities-in) db %))
     (reduce clojure.set/union)))
 
 ;;this is putting us on the critical path, and it's slow as-is.
@@ -1028,12 +981,12 @@
 ;;than we'd like.  Since we use this A LOT, we want other ways to
 ;;determine intersection...One way is to hash-and-count...
 ;; (defn entity-intersection
-;;   "Returns the logical intersection of entities across one or more domains, 
-;;    retuning a set of entity ids, in which each entity is a member of 
+;;   "Returns the logical intersection of entities across one or more domains,
+;;    retuning a set of entity ids, in which each entity is a member of
 ;;    all domains."
 ;;   [db domains]
-;;   (->> domains 
-;;     (map #((comp set entities-in) db %)) 
+;;   (->> domains
+;;     (map #((comp set entities-in) db %))
 ;;     (reduce clojure.set/intersection)))
 
 
@@ -1074,7 +1027,7 @@
 (defn kvps->binds [m]
   (loop [acc nil
          ks (keys m)]
-    (if (seq ks) 
+    (if (seq ks)
       (recur (apply conj acc (let [k (first ks)]
                                `(~(get m k) ~(key->symbol k))))
              (rest ks))
@@ -1082,7 +1035,7 @@
 
 (defn entity-binds [e]
   (kvps->binds (merge (entity-components e) {:name (entity-name e)})))
-                 
+
 (defmacro with-entity
  "Macro to allow binding of specific components"
  [ent & body]
@@ -1145,35 +1098,35 @@
 ;Porting the SQL-like language in Peter Seibel's excellent Practical Common Lisp
 (defn select-entities
   "Acts like a SQL select, in which components are analogous to single-column
-   tables of data.  Filters the results by where predicate, optionally sorts 
-   query if order-by is supplied. Values are automatically distinct due to the 
-   nature of the entity store (e.g. component records are unique relative to the 
-   entity).  Returns a (sub)set of the component data."  
+   tables of data.  Filters the results by where predicate, optionally sorts
+   query if order-by is supplied. Values are automatically distinct due to the
+   nature of the entity store (e.g. component records are unique relative to the
+   entity).  Returns a (sub)set of the component data."
   [store & {:keys [from join-by where order-by] :or {from (domain-keys store)
                                                 join-by :intersection
                                                 where nil
                                                 order-by nil}}]
-  (let [joinfunc (cond (= join-by :intersection) entity-intersection 
+  (let [joinfunc (cond (= join-by :intersection) entity-intersection
                        (= join-by :union)  entity-union
-                       :else join-by)]                       
-  (reduce (fn [acc f] (if (nil? f) acc (f acc))) 
+                       :else join-by)]
+  (reduce (fn [acc f] (if (nil? f) acc (f acc)))
       (get-entities store (joinfunc store (if (coll? from) from [from]))) ;returns ids
-      [(when where 
-         (fn [es] (filter where es))) 
+      [(when where
+         (fn [es] (filter where es)))
        (when order-by
          (fn [es] (sort-by order-by es)))])))
 
 (defn entity-fetch
-  ([ces id components] 
+  ([ces id components]
    (reduce (fn [acc c]
              (assoc acc c  (get-entry ces id c)))
            {:id id} components))
   ([ces id]  (entity-fetch ces id (domains-of ces id))))
 
 (defn entity-reducer
-  "Intermediate function to build traversable sequences of entity records.  Can be coerced 
-   to a seq, a reducer, or a KVReducible.  If no components are supplied, defaults to 
-   returning all of the entity's components. get-ids may be a sequence of entity ids, or 
+  "Intermediate function to build traversable sequences of entity records.  Can be coerced
+   to a seq, a reducer, or a KVReducible.  If no components are supplied, defaults to
+   returning all of the entity's components. get-ids may be a sequence of entity ids, or
    more typically, a function of ces->components->[id] "
   ([get-ids ces] (entity-reducer get-ids ces nil))
   ([get-ids ces components]
@@ -1184,48 +1137,9 @@
                             (fn [id] (entity-fetch ces id))))
          get-ids (cond (fn? get-ids) get-ids
                        (or (identical? get-ids :*)
-                           (identical? get-ids :all))                       
+                           (identical? get-ids :all))
                          (fn [ces _] (let [es  (entities ces)]
                                        (if rows? es (keys es))))
-                       (seq get-ids) (fn [ces components] (vec get-ids))
-                       :else (throw (Exception.
-                                     (str ("get-ids must be a seq of entity ids, a function, or :*/:all ;"
-                                           get-ids)))))]
-     (reify
-       clojure.core.protocols/IKVReduce
-       (kv-reduce [amap f init]
-         (->>  (get-ids ces components) ;produces a reducible/foldable vector.
-               (reduce (fn [acc id]
-                         (f acc id (entity->record id))) init)))
-       clojure.core.protocols/CollReduce
-       (coll-reduce [this f1]
-         (clojure.core.protocols/coll-reduce this f1 (f1)))
-       (coll-reduce [this f1 init]
-         (->>  (get-ids ces components) ;produces a reducible/foldable vector.
-               (clojure.core.reducers/map entity->record)
-               (reduce f1 init)))
-       clojure.lang.Seqable
-       (seq [this] (map entity->record (get-ids ces components)))
-       clojure.lang.Counted
-       (count [this] (count (get-ids ces components)))))))
-
-#_(defn entity-reducer
-  "Intermediate function to build traversable sequences of entity records.  Can be coerced 
-   to a seq, a reducer, or a KVReducible.  If no components are supplied, defaults to 
-   returning all of the entity's components. get-ids may be a sequence of entity ids, or 
-   more typically, a function of ces->components->[id] "
-  ([get-ids ces] (entity-reducer get-ids ces nil))
-  ([get-ids ces components]
-   (let [entity->record (if (seq components)
-                          (fn [id] (reduce (fn [acc c]
-                                             (assoc acc c  (get-entry ces id c)))
-                                           {:id id} components))
-                          (fn [id] (reduce (fn [acc c]
-                                             (assoc acc c (get-entry ces id c)))
-                                           {:id id} (domains-of ces id))))
-         get-ids (cond (fn? get-ids) get-ids
-                       (or (identical? get-ids :*)
-                           (identical? get-ids :all)) (fn [ces _] (keys (entities ces)))
                        (seq get-ids) (fn [ces components] (vec get-ids))
                        :else (throw (Exception.
                                      (str ("get-ids must be a seq of entity ids, a function, or :*/:all ;"
@@ -1258,12 +1172,17 @@
   [ces components]
   (entity-reducer entity-intersection ces components)) 
 
-(defn select-store [store & {:keys [from join-by where order-by] 
+;;derive a subset of entities from the original store. could probably do
+;;something like subvec or submap if we really care about this, but it's not
+;;used much in practice. For now we just derive a copy. Perhaps obey mutable
+;;semantics... Probably need to implement empty...
+
+(defn select-store [store & {:keys [from join-by where order-by]
                              :or {from (domain-keys store)
                                   join-by :intersection
                                   where nil
                                   order-by nil}}]
-  (->> (select-entities  store 
+  (->> (select-entities  store
          :from from :join-by join-by :where where :order-by order-by)
        (add-entities emptystore)))
 
@@ -1276,6 +1195,7 @@
        ~@body)))
 
 ;;Entity Specification Language.
+;;REVISE -> Move to another NS and expose here maybe.
 
 (defmacro defcomponent
   "Macro to define a new component (for use in specifying entity templates and 
@@ -1575,109 +1495,63 @@
 
 
 
-;;OBE stuff, reorg.
+;; ;;OBE stuff, reorg.
 
-;;Note: This is in alpha, we need more testing, possibly
-;;revisit the row-op scheme to determine the proper course of action
-;;and if it's worth it to go with a row-store...
+;; ;;Note: This is in alpha, we need more testing, possibly
+;; ;;revisit the row-op scheme to determine the proper course of action
+;; ;;and if it's worth it to go with a row-store...
 
-;;additional entity stores...
-(defrecord EntityRowStore [^clojure.lang.IPersistentMap entity-map
-                           ^clojure.lang.IPersistentMap domain-map]
-  IEntityStore
-  (add-entry [db id domain data] ;;this gets called a lot....
-    (let [^clojure.lang.IPersistentMap e (valAt entity-map id {:name id})]
-      (EntityRowStore. (.assoc entity-map id
-                           (.assoc e domain data))
-                       domain-map)))
-  (drop-entry [db id domain]
-    (or (when-let [e (valAt entity-map id)]
-          (EntityRowStore. (.assoc entity-map id
-                                   (without e domain))
-                           domain-map))
-        db))
-  (get-entry     [db id domain]
-    (when-let [e (valAt entity-map id)]
-        (valAt e domain)))
-  (entities       [db]     entity-map)
-  ;;this is an interesting case...
-  (domains        [db]     domain-map)
-  (domains-of     [db id]  (when-let [e (valAt entity-map id)]
-                             (keys e)))
-  (components-of  [db id]  (valAt entity-map id))  
-  ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
-  ;;caches values, so we only have to pay for what we load.
-  (get-entity     [db id]  (valAt entity-map id))
-  (conj-entity    [db id components]     
-    (EntityRowStore. (.assoc entity-map id
-                             (if (map? components) components
-                                 (into {} components)))
-                     domain-map))
-  IRowStore
-  (add-entity-r   [s id r] (.conj-entity s  id      r))
-  (add-entity-r   [s e]    (.conj-entity s  (or (:name e) (:id e)) e))
-  (drop-entity-r  [s id]   (EntityRowStore. (.without entity-map id) domain-map))
-  (drop-domains-r [s ds]
-    (EntityRowStore. (reduce-kv (fn [^clojure.lang.IPersistentMap acc id ^clojure.lang.IPersistentMap e]   
-                                  (.assoc acc id (drop-keys e ds)))
-                                {}
-                                entity-map) 
-                     (reduce (fn [^clojure.lang.IPersistentMap acc d]
-                               (.without acc d)) domain-map ds)))
-  (entity-union-r        [db domains]
-    (let [in? (set domains)]
-      (filter (fn [e] (some in? (keys e))) entity-map)))
-  (entity-intersection-r [db domains]
-    (let [in? (set domains)]
-      (filter (fn [e] (every? in? (keys e))) entity-map))))
+;; ;;additional entity stores...
+;; (defrecord EntityRowStore [^clojure.lang.IPersistentMap entity-map
+;;                            ^clojure.lang.IPersistentMap domain-map]
+;;   IEntityStore
+;;   (add-entry [db id domain data] ;;this gets called a lot....
+;;     (let [^clojure.lang.IPersistentMap e (valAt entity-map id {:name id})]
+;;       (EntityRowStore. (.assoc entity-map id
+;;                            (.assoc e domain data))
+;;                        domain-map)))
+;;   (drop-entry [db id domain]
+;;     (or (when-let [e (valAt entity-map id)]
+;;           (EntityRowStore. (.assoc entity-map id
+;;                                    (without e domain))
+;;                            domain-map))
+;;         db))
+;;   (get-entry     [db id domain]
+;;     (when-let [e (valAt entity-map id)]
+;;         (valAt e domain)))
+;;   (entities       [db]     entity-map)
+;;   ;;this is an interesting case...
+;;   (domains        [db]     domain-map)
+;;   (domains-of     [db id]  (when-let [e (valAt entity-map id)]
+;;                              (keys e)))
+;;   (components-of  [db id]  (valAt entity-map id))  
+;;   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
+;;   ;;caches values, so we only have to pay for what we load.
+;;   (get-entity     [db id]  (valAt entity-map id))
+;;   (conj-entity    [db id components]     
+;;     (EntityRowStore. (.assoc entity-map id
+;;                              (if (map? components) components
+;;                                  (into {} components)))
+;;                      domain-map))
+;;   IRowStore
+;;   (add-entity-r   [s id r] (.conj-entity s  id      r))
+;;   (add-entity-r   [s e]    (.conj-entity s  (or (:name e) (:id e)) e))
+;;   (drop-entity-r  [s id]   (EntityRowStore. (.without entity-map id) domain-map))
+;;   (drop-domains-r [s ds]
+;;     (EntityRowStore. (reduce-kv (fn [^clojure.lang.IPersistentMap acc id ^clojure.lang.IPersistentMap e]   
+;;                                   (.assoc acc id (drop-keys e ds)))
+;;                                 {}
+;;                                 entity-map) 
+;;                      (reduce (fn [^clojure.lang.IPersistentMap acc d]
+;;                                (.without acc d)) domain-map ds)))
+;;   (entity-union-r        [db domains]
+;;     (let [in? (set domains)]
+;;       (filter (fn [e] (some in? (keys e))) entity-map)))
+;;   (entity-intersection-r [db domains]
+;;     (let [in? (set domains)]
+;;       (filter (fn [e] (every? in? (keys e))) entity-map))))
 
-(def empty-rowstore (EntityRowStore. {} {}))
-
-
-  ;  (alter-entity [db id f] "Alter an entity's components using f.  f
-;  should take an entity and return a set of components that change.")
-
-;;Traversing our component set is much faster this way, about 2x.  weird...
-;; (definline i-reduce [f init coll]
-;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
-;;     `(let [~xs       ~coll
-;;            it#      (.iterator ~xs)
-;;            bound#   (count ~xs)]
-;;        (loop [idx# 0
-;;               acc# ~init]
-;;          (cond  (reduced?  acc#) @acc#
-;;                 (== idx# bound#) acc#
-;;                 :else 
-;;                 (let [nxt# (.next it#)]
-;;                   (recur (unchecked-inc idx#)
-;;                          (~f acc# nxt#))))))))
-
-;; (definline set-reduce [f init coll]
-;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
-;;     `(let [~xs       ~coll
-;;            it#      (.iterator ~xs)
-;;            bound#   (.count ~xs)]
-;;        (loop [idx# 0
-;;               acc# ~init]
-;;          (cond  (reduced?  acc#) @acc#
-;;                 (== idx# bound#) acc#
-;;                 :else 
-;;                 (let [nxt# (.next it#)]
-;;                   (recur (unchecked-inc idx#)
-;;                          (~f acc# nxt#))))))))
-
-;; (definline set-reduce2 [f init coll]
-;;   (let [xs (with-meta (gensym "xs") {:tag  'clojure.lang.PersistentHashSet})]
-;;     `(let [~xs       ~coll
-;;            it#      (.iterator ~xs)]          
-;;        (loop [idx# 0
-;;               acc# ~init]
-;;          (cond  (reduced?  acc#) @acc#
-;;                 (.hasNext it#)
-;;                 (let [nxt# (.next it#)]
-;;                   (recur (unchecked-inc idx#)
-;;                          (~f acc# nxt#)))
-;;                 :else acc#)))))
+;; (def empty-rowstore (EntityRowStore. {} {}))
 
 
 (comment ;;testing.

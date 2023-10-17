@@ -417,7 +417,8 @@
           (let [a (.getKey av)]
             (.remove it)
             (remove-ae store  a id)
-            (recur))))))
+            (recur))))
+      (.remove ^java.util.Map (eav-entities store) id)))
   (size [this] (.size attributes))
   (containsKey   [this k] (.containsKey attributes k))
   (containsValue [this v] (some #(= v %) (vals this)))
