@@ -259,83 +259,76 @@
   clojure.lang.PersistentHashMap
   (altered-keys [m] ::*))
 
-;;What we really want here is a flyweight entity container...
-;;mutable entity for hashmaps and the like...maintains a
-;;reference to the underlying entity store....
-;; (deftype mentity [^:unsynchronized-mutable name
-;;                   ^:unsynchronized-mutable domains
-;;                   ^:unsynchronized-mutable components
-;;                   db
-;;                   ^java.util.HashSet altered
-;;                   ]
-;;   clojure.lang.IHashEq
-;;   (hasheq   [this]   (.hasheq   ^clojure.lang.IHashEq m))
-;;   (hashCode [this]   (.hashCode ^clojure.lang.IHashEq m))
-;;   (equals   [this o] (or (identical? this o) (.equals ^clojure.lang.IHashEq m o)))
-;;   (equiv    [this o]
-;;     (cond   (identical? this o) true
-;;             (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
-;;           (or (instance? clojure.lang.Sequential o)
-;;               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
-;;               :else nil))  
-;;   clojure.lang.IObj
-;;   (meta     [this] (.meta ^clojure.lang.IObj m))
-;;   (withMeta [this xs] (entity. name domains components
-;;                                (with-meta ^clojure.lang.IObj m xs) altered))
-;;   IEntity 
-;;   (entity-name [e] (if name name
-;;                        (do (set! name (.get m :name))
-;;                            name)))
-;;   (conj-component [e c] 
-;;     (do (.put m (component-domain c) (component-data c))
-;;         (.add altered (component-domain c))
-;;         e))  
-;;   (disj-component [e c] 
-;;     (entity. name domains components (.without m (component-domain c))
-;;                                      (.cons altered (component-domain c))))
-;;   (get-component [e domain]          (.valAt m domain))
-;;   (entity-components [e]  (if components components
-;;                               (do (set! components (into [] (seq  m)))
-;;                                   components)))
-;;   (entity-domains [e] (if domains domains
-;;                           (do (set! domains (keys m))
-;;                               domains)))
-;;   clojure.lang.IPersistentMap
-;;   (valAt [this k] (.valAt m k))
-;;   (valAt [this k not-found] (.valAt m k not-found))
-;;   (entryAt [this k] (.entryAt m k))
-;;   (assoc [this k v]   (entity. nil nil nil (.assoc m k v)   (.cons altered k)))
-;;   (cons  [this e]   
-;;     (entity. nil nil nil (.cons m e)
-;;              (if (map? e) (into altered (keys e))
-;;                  (.cons altered (key e)))))
-;;   (without [this k]   (entity. nil nil nil (.without m k) (.cons altered k)))
-;;   clojure.lang.Seqable
-;;   (seq [this] (seq m))
-;;   clojure.lang.Counted
-;;   (count [coll] (.count m))
-;;   java.util.Map
-;;   (put    [this k v]  (.assoc this k v))
-;;   (putAll [this c] (entity. nil nil nil (.putAll ^java.util.Map m c)  m))
-;;   (clear  [this] (entity. nil nil nil {} #{}))
-;;   (containsKey   [this o] (.containsKey ^java.util.Map m o))
-;;   (containsValue [this o] (.containsValue ^java.util.Map m o))
-;;   (entrySet [this] (.entrySet ^java.util.Map m))
-;;   (keySet   [this] (.keySet ^java.util.Map m))
-;;   (get [this k] (.valAt m k))
-;;   ;(equals [this o] (.equals ^java.util.Map m o))
-;;   (isEmpty [this] (.isEmpty ^java.util.Map m))
-;;   (remove [this o] (.without this o))
-;;   (values [this] (.values ^java.util.Map m))
-;;   (size [this] (.count m))
-;;   clojure.core.protocols/IKVReduce
-;;   (kv-reduce [coll f init] (reduce-kv f init m))
-;;   clojure.core.protocols/CollReduce
-;;   (coll-reduce [coll f init] (reduce m f init))
-;;   (coll-reduce [coll f] (reduce m f))
-;;   IAlteredKeys
-;;   (altered-keys [m] (if (.isEmpty altered) nil altered))
-;;   )
+;;persistent map facade around entity-map.  We do this
+;;mostly for drop-in replacement with assoc API so that
+;;EntityMap doesn't have to implement IPersistentMap directly.
+;;Might have some proviso for diffing entities (haven't thought through
+;;it yet), for now we just pass through reads and writes to entitymap.
+(deftype mentity [^:unsynchronized-mutable name ^spork.data.eav.EntityMap m ^:unsynchronized-mutable ^clojure.lang.IPersistentMap _meta]
+  clojure.lang.IHashEq
+  (hasheq   [this]   (.hasheq   m))
+  (hashCode [this]   (.hashCode  m))
+  (equals   [this o] (or (identical? this o) (.equals  m o)))
+  (equiv    [this o]
+    (cond   (identical? this o) true
+            (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
+          (or (instance? clojure.lang.Sequential o)
+              (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
+              :else nil))
+  clojure.lang.IObj
+  (meta     [this] _meta)
+  (withMeta [this xs] (set! _meta xs) this)
+  IEntity
+  (entity-name [e] (if name name
+                       (do (set! name (.get m :name))
+                           name)))
+  (conj-component [e c]     (.put m (component-domain c) (component-data c)) e)
+  (disj-component [e c]     (.remove m (component-domain c)) e)
+  (get-component [e domain] (.get m domain))
+  (entity-components [e]  (into [] (seq m)))
+  (entity-domains [e]  (keys m))
+  clojure.lang.IPersistentMap
+  (valAt [this k] (.get m k))
+  (valAt [this k not-found] (.getOrDefault m k not-found))
+  (entryAt [this k]
+    (when-let [^spork.data.eav.Pointer p (.get-pointer m k)]
+      (clojure.lang.MapEntry. k (.deref p))))
+  (assoc [this k v]  (.put m k v) this)
+  (cons  [this e]
+    (cond  (instance? java.util.Map$Entry e) (.put m (key e) (val e))
+           (vector? e)  (let [^clojure.lang.IPersistentVector e e]
+                          (.put m (.nth e 0) (.nth e 1)))
+           (map? e)   (.putAll m e)
+           :else (throw (ex-info "expected a compatible MapEntry, tuple vector, or java.util.Map..." {:in e})))
+    this)
+  (without [this k]  (.remove m k) this)
+  clojure.lang.Seqable
+  (seq [this] (seq m))
+  clojure.lang.Counted
+  (count [coll] (.count m))
+  java.util.Map
+  (put    [this k v]  (.put m k v) this)
+  (putAll [this c]    (.putAll  m c)  this)
+  (clear  [this] (.clear m) this)
+  (containsKey   [this o] (.containsKey  m o))
+  (containsValue [this o] (.containsValue  m o))
+  (entrySet [this] (.entrySet  m))
+  (keySet   [this] (.keySet  m))
+  (get [this k] (.get m k))
+  (isEmpty [this] (.isEmpty  m))
+  (remove [this o] (.remove m o))
+  (values [this] (.values  m))
+  (size [this] (.size m))
+  clojure.core.protocols/IKVReduce
+  (kv-reduce [coll f init] (reduce-kv f init m))
+  clojure.core.protocols/CollReduce
+  (coll-reduce [coll f init] (reduce m f init))
+  (coll-reduce [coll f] (reduce m f))
+  IAlteredKeys
+  (altered-keys [m] nil) ;;changes already synced.
+  clojure.lang.IFn
+  (invoke [this k] (.valAt m k))
+  (invoke [this k not-found] (.valAt m k not-found)))
 ;;We can define entity-reductions which allow the dsl to extend for reduce...
 ;;(entity-merge ent {component val*}) => update the entries in the db via assoc
 ;;and friends.  Could further optimize via diffing and other stuff.
@@ -467,13 +460,13 @@
    our store and allowing for parallel querying/updating functions.  Finally,
    we could implement the entitystore using a persistent database backend, if it
    makes sense to do that. "
-  (add-entry   [db id domain data] "Associate a record of data /w entity id")
-  (drop-entry  [db id domain] "Drop record for id from component")
-  (get-entry   [db id domain] "Fetch the component record for ent id")
-  (domains [db]   "Map of domain -> (id -> component), the database.")
+  (add-entry      [db id domain data] "Associate a record of data /w entity id")
+  (drop-entry     [db id domain] "Drop record for id from component")
+  (get-entry      [db id domain] "Fetch the component record for ent id")
+  (domains        [db]     "Map of domain -> (id -> component), the database.")
   (components-of  [db id]  "derive components id contains")
   (domains-of     [db id]  "set of domains id intersects")
-  (get-entity [db id] "Returns an IEntity associated with id")
+  (get-entity     [db id]  "Returns an IEntity associated with id")
   (conj-entity    [db id components] "Add an entity to the database.")
   (entities       [db] "Return a map of {entityid #{components..}}"))
 
@@ -489,6 +482,13 @@
   (add-domain-   [db a m] "assoc domain specified by m to a")
   (drop-domains- [db ds]))
 
+(defprotocol IRowOps
+  (row-store? [this]))
+
+(extend-protocol IRowOps
+  Object
+  (row-store? [this] false))
+
 (defprotocol IEntityOps
   (add-entity-   [s id r] [s e])
   (drop-entity-  [s id]))
@@ -498,13 +498,6 @@
   (entity-intersection- [db domains]))
 
 (declare get-domain);;ordering hack.
-
-
-(defmacro delegate [obj proto meth & body]
-  `(if (extends? ~obj ~class ))
-  )
-
-
 
 ;;Interesting note:
 ;;Most entities will actually be very small sets of components.
@@ -600,6 +593,8 @@
 ;;Mutable entity store backed by an IEAVStore implementation.
 ;;see if we need to unpack field accesses...
 (deftype MapEntityStore [^spork.data.eav.MapStore store ^:unsynchronized-mutable ^clojure.lang.IPersistentMap _meta]
+  IRowOps
+  (row-store? [this] true)
   spork.data.eav/IAEVStore
   (eav-entities   [this]        (.eav-entities store))
   (eav-attributes [this]        (.eav-attributes store))
@@ -631,7 +626,7 @@
   ;;if we make this acquire, then get has mutable semantics now.  Do we ever use
   ;;get-entity for existence checks?  Worst case, we create empty entities and cache
   ;;them....this is consistent with out writethrough cache semantics
-  (get-entity   [db id]    (.eav-entity store id));;need to extend IEntity to java.util.Map
+  (get-entity   [db id]    (mentity. nil (.eav-entity store id) {}));;need to extend IEntity to java.util.Map
   ;;revisit this.  I think we allow other stuff to be components.  Probably not necessary.
   (conj-entity  [db id components]
     (let [^java.util.Map e (.eav-entity store id)]
@@ -908,20 +903,22 @@
                    (add-entry acc id (first domdat) (second domdat)))
              db records)))
   ([db ^clojure.lang.IPersistentMap ent]
-   (if-let [altered (and (not (instance? spork.data.eav.EntityMap ent))
-                         (altered-keys ent))]  ;;could implement altered-keys for mutable entities as nil...
-     (let [id (entity-name ent)]
-       (if-not (identical? altered ::*)
-         (reduce-kv (fn alteration [acc k op]
-                      (if (identical? op :add)
-                        (assoce acc id k (ent k)) ;alteration added or updated.
-                        (dissoce acc id k))) ;component has been dissoced
-                    db altered)
-         ;;probably a faster way to do this....
-         ;;case for normal maps.
-         (reduce-kv (fn addmap [acc k op]
+   (if (instance? mentity ent)
+     db
+     (if-let [altered (altered-keys ent)]  ;;could implement altered-keys for mutable entities as nil...
+       (let [id (entity-name ent)]
+         (if-not (identical? altered ::*)
+           (reduce-kv (fn alteration [acc k op]
+                        (if (identical? op :add)
+                          (assoce acc id k (ent k)) ;alteration added or updated.
+                          (dissoce acc id k))) ;component has been dissoced
+                      db altered)
+           ;;probably a faster way to do this....
+           ;;case for normal maps.
+           (reduce-kv (fn addmap [acc k op]
                         (assoce acc id k (ent k))) ;alteration added or updated.
-                    db ent)))  db)))
+                      db ent)))
+       db))))
 
 (defn add-entities
   "Register multiple entity records at once..."
@@ -966,7 +963,7 @@
     (get-entity db id)))
 
 ;;row-op
-;;could REVISE this to be more efficient.
+;;could REVISE this to be more efficient. sort by smallest cardinal domain.
 (defn entity-union
   "Returns the logical union of entities across one or more domains,
    retuning a set of entity ids, in which each entity is a member of
@@ -1116,6 +1113,7 @@
        (when order-by
          (fn [es] (sort-by order-by es)))])))
 
+;;REVISE - default use of :id is counterintuitive.
 (defn entity-fetch
   ([ces id components]
    (reduce (fn [acc c]
@@ -1127,11 +1125,11 @@
   "Intermediate function to build traversable sequences of entity records.  Can be coerced
    to a seq, a reducer, or a KVReducible.  If no components are supplied, defaults to
    returning all of the entity's components. get-ids may be a sequence of entity ids, or
-   more typically, a function of ces->components->[id] "
+   more typically, a function of ces->components->[id]"
   ([get-ids ces] (entity-reducer get-ids ces nil))
   ([get-ids ces components]
    (let [rows? (row-store? ces)
-         entity->record (if rows?  identity ;;direct record lookup
+         entity->record (if rows?  #(get-entity ces %) ;;direct record lookup
                           (if (seq components) ;;columnar joins
                             (fn [id] (entity-fetch ces id components))
                             (fn [id] (entity-fetch ces id))))
@@ -1170,7 +1168,7 @@
 (defn only-entities
   "Select entities that have only the specified components"
   [ces components]
-  (entity-reducer entity-intersection ces components)) 
+  (entity-reducer entity-intersection ces components))
 
 ;;derive a subset of entities from the original store. could probably do
 ;;something like subvec or submap if we really care about this, but it's not
@@ -1566,4 +1564,26 @@
 
   (def the-store (reduce add-entity emptystore ents))
   (def mstore (mutate! the-store))
+
+  (defn maybe-add [ces e]
+    (if (instance? mentity e) ces
+        (add-entity ces e)))
+
+  (defn demo []
+    (let [m (mutate! the-store)
+          e (get-entity the-store "bilbo")
+          me (get-entity m "bilbo")]
+      (println [:persistent-with-sync])
+      (c/quick-bench (add-entity the-store (assoc e :age 220)))
+      (println [:mutable-synced])
+      (c/quick-bench (add-entity m (assoc me :age 220)))))
+
+  (defn demo2 []
+    (let [m  (mutate! the-store)
+          e  (get-entity the-store "bilbo")
+          me (get-entity m "bilbo")]
+      (println [:persistent-with-sync])
+      (c/quick-bench (add-entity the-store (-> e (assoc :age 220) (assoc :location  "blah") (assoc :planet "pluto"))))
+      (println [:mutable-synced])
+      (c/quick-bench (add-entity m (-> me (assoc :age 220) (assoc :location  "blah") (assoc :planet "pluto"))))))
   )
