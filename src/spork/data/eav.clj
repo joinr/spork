@@ -323,7 +323,7 @@
   (size [this] (.size entities))
   (containsKey   [this k] (.containsKey entities k))
   (containsValue [this v] (some #(= v %) (vals this)))
-  (entrySet [this] (.entrySet (derived/->derived-map entities val-)))
+  (entrySet [this] (.entrySet (derived/->derived-map entities (fn [k v] (val- v)))))
   (keySet [this]  (.keySet entities))
   (values [this]  (iterator-seq (pointer-iterator entities))) ;;maybe suboptimal.
   (isEmpty [this] (.isEmpty entities))

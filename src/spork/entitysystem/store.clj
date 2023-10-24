@@ -1572,7 +1572,7 @@
 
 (comment ;;testing.
   (require '[criterium.core :as c])
-  (def ents (into [{:name "bilbo" :age 111 :location "shire"}
+  (def ent-data (into [{:name "bilbo" :age 111 :location "shire"}
                    {:name "kirk"  :age 80 :location "federation" :planet "earth"}
                    {:name "alf"   :age 100 :location "willy's house" :planet "earth" :origin "melmac"}]
                   (for [i (range 20)]
@@ -1581,7 +1581,7 @@
                      :location (str "location" i)
                      :planet (str "planet" i)})))
 
-  (def the-store (reduce add-entity emptystore ents))
+  (def the-store (reduce add-entity emptystore ent-data))
   (def mstore (mutate! the-store))
 
   (defn maybe-add [ces e]

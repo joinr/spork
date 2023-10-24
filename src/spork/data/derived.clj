@@ -43,6 +43,12 @@
                 true)) true coll))
   (iterator [this] (.iterator ^java.lang.Iterable (eduction (map f) (.entrySet m)))))
 
+#_
+(deftype WrappedEntry [^java.util.Map$Entry e ^clojure.lang.IFn on-get ^clojure.lang.IFn on-put]
+  java.util.Map$Entry
+  (getValue [this] )
+  (setValue [this] ))
+
 (deftype DerivedMap [^java.util.Map m ^clojure.lang.IFn on-get ^clojure.lang.IFn on-put]
   java.util.Map
   (containsKey [this k] (.containsKey m k))
@@ -126,4 +132,4 @@
 
 (defn ->derived-map
   (^DerivedMap [m on-get on-put] (DerivedMap. m on-get on-put))
-  (^DerivedMap [m on-get] (->derived-map m on-get (fn [k v] v))))
+  (^DerivedMap [m on-get] (->derived-map m on-get (fn  [k v] v))))

@@ -77,6 +77,47 @@
                 (.remove it)))
             (recur))
           coll))))
+  java.util.Map ;;could probably use replace?
+  (update-kv [coll f]
+    (.replaceAll ^java.util.Map coll (bif f)) coll)
+  (update-kv-where [coll pred f]
+    (let [^java.util.Iterator it
+          (.iterator ^java.util.Set (.entrySet ^java.util.Map coll))]
+      (loop []
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry nxt (.next it)
+                k                        (.getKey nxt)
+                v                         (.getValue nxt)]
+            (if (pred k v)  (.setValue nxt (f v)))
+            (recur))
+          coll))))
+  (update-kv-keep [coll f]
+    (let [^java.util.Iterator it
+          (.iterator ^java.util.Set (.entrySet ^java.util.Map coll))]
+      (loop []
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry nxt (.next it)
+                k                        (.getKey nxt)
+                v                        (.getValue nxt)]
+            (if-let [res (f (.getValue nxt))]
+              (.setValue nxt res)
+              (.remove it))
+            (recur))
+          coll))))
+  (update-kv-keep-where [coll pred f]
+    (let [^java.util.Iterator it
+          (.iterator ^java.util.Set (.entrySet ^java.util.Map coll))]
+      (loop []
+        (if (.hasNext it)
+          (let [^java.util.Map$Entry nxt (.next it)
+                k                        (.getKey nxt)
+                v                        (.getValue nxt)]
+            (when (pred k v)
+              (if-let [res (f (.getValue nxt))]
+                (.setValue nxt res)
+                (.remove it)))
+            (recur))
+          coll))))
   clojure.lang.IPersistentMap
   (update-kv [coll f]
     (reduce-kv (fn [^clojure.lang.IPersistentMap acc k v]

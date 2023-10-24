@@ -125,13 +125,28 @@
   (domains-of     [db id]  (store/domains-of state id))
   (components-of  [db id]  (store/components-of state id))
   (get-entity     [db id]  (store/get-entity state id))
-  (conj-entity    [db id components] 
-    (simcontext. scheduler updater propogator 
+  (conj-entity    [db id components]
+    (simcontext. scheduler updater propogator
                  (store/conj-entity state id components)))
   store/IColumnStore
-  (swap-domain [db c x]
-    (simcontext. scheduler updater propogator 
-                 (store/swap-domain state c x)))
+  (swap-domain- [db c x]
+    (simcontext. scheduler updater propogator
+                 (store/swap-domain- state c x)))
+  (add-domain-   [db a m]
+    (simcontext. scheduler updater propogator
+                 (store/add-domain- state a m)))
+  (drop-domains- [db ds]
+    (simcontext. scheduler updater propogator
+                 (store/drop-domains- state ds)))
+  store/IRowOps
+  (row-store? [this] (store/row-store? state))
+  store/IEntityOps
+  (add-entity [s id r]  (simcontext. scheduler updater propogator
+                                     (store/add-entity state id r)))
+  (add-entity [s e]     (simcontext. scheduler updater propogator
+                                     (store/add-entity state e)))
+  (drop-entity   [s id] (simcontext. scheduler updater propogator
+                                     (store/drop-entity state id)))
   simnet/IEventSystem
   (get-events [ctx]  (simnet/get-event    propogator))
   (get-clients [ctx] (simnet/get-clients  propogator))
@@ -224,7 +239,7 @@
   (add-times      [a ts]  (simcontext. (.add-times scheduler ts) updater propogator state))
   (get-times      [a]     (.get-times scheduler))
   sim/IEventSeq
-  (add-event   [ctx e] (do (set! scheduler (sim/add-event scheduler e)) ctx))                                 
+  (add-event   [ctx e] (do (set! scheduler (sim/add-event scheduler e)) ctx))
   (drop-event  [ctx] (do (set! scheduler (sim/drop-event scheduler)) ctx))
   (first-event [ctx] (sim/first-event scheduler))
   (nth-event [ctx n] (sim/nth-event scheduler n))
@@ -232,21 +247,31 @@
   (current-time [obj] (sim/current-time scheduler))
   (next-time    [obj] (sim/next-time    scheduler))
   store/IEntityStore
-  (add-entry      [db id domain data] 
-    (do (set! state  (store/add-entry state id domain data)) db))
-  (drop-entry     [db id domain] 
-    (do (set! state  (store/drop-entry state id domain)) db))
+  (add-entry      [db id domain data]
+     (store/add-entry state id domain data)
+     db)
+  (drop-entry     [db id domain]
+    (store/drop-entry state id domain)
+    db)
   (get-entry      [db id domain] (store/get-entry state id domain))
   (entities       [db]     (store/entities state))
   (domains        [db]     (store/domains state))
   (domains-of     [db id]  (store/domains-of state id))
   (components-of  [db id]  (store/components-of state id))
   (get-entity     [db id]  (store/get-entity state id))
-  (conj-entity    [db id components]                   
-                  (do (set! state  (store/conj-entity state id components)) db))
+  (conj-entity    [db id components]
+    (store/conj-entity state id components)
+    db)
   store/IColumnStore
-  (swap-domain [db c x]
-    (do (set! state (store/swap-domain state c x)) db))
+  (swap-domain-  [db c x]  (store/swap-domain- state c x) db)
+  (add-domain-   [db a m]  (store/add-domain- state a m)  db)
+  (drop-domains- [db ds]   (store/drop-domains- state ds) db)
+  store/IRowOps
+  (row-store? [this] (store/row-store? state))
+  store/IEntityOps
+  (add-entity [db id r] (store/add-entity state id r) db)
+  (add-entity [db e]     (store/add-entity state e) db)
+  (drop-entity   [db id] (store/drop-entity state id) db)
   simnet/IEventSystem
   (get-events [ctx]  (simnet/get-event    propogator))
   (get-clients [ctx] (simnet/get-clients  propogator))
