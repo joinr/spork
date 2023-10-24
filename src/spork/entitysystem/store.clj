@@ -829,8 +829,7 @@
   (if-let [entries (get-domain store c)]
     (if (extends? IColumnStore (class store))
       ;;this will succeed for mutable store, since we're not ading anything here.
-      (swap-domain- store c
-                    (mut/update-kv entries (fn [e x] (f x))))
+      (swap-domain- store c (mut/update-kv entries (fn [e x] (f x))))
       (reduce-kv (fn [acc e x] ;;coerce the change into a persistent data structure.
                    (assoce acc e c (f x)))
                  store entries))

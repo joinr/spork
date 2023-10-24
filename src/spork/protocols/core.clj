@@ -309,3 +309,10 @@
   (grid-dissoc          [g coord])
   (grid-coords          [g])
   (grid-dimensions      [g]))
+
+
+(defprotocol IFunctor
+  (fmap [this f]))
+
+(defprotocol IFunctorKV
+  (fmap-kv [this fkv]))

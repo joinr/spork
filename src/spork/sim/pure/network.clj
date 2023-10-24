@@ -470,21 +470,37 @@
     (event-context. event state transition (.subscribe net client-name handler event-type)))
   ;;Added to allow event contexts to be seen as entity stores...convoluted but useful.
   store/IEntityStore
-  (add-entry      [db id domain data] 
+  (add-entry      [db id domain data]
     (event-context. event (store/add-entry state id domain data) transition  net))
-  (drop-entry     [db id domain] 
-     (event-context. event 
+  (drop-entry     [db id domain]
+     (event-context. event
                      (store/drop-entry state id domain)
-                     transition  net)) 
+                     transition  net))
   (get-entry      [db id domain] (store/get-entry state id domain))
   (entities       [db]     (store/entities state))
   (domains        [db]     (store/domains state))
   (domains-of     [db id]  (store/domains-of state id))
   (components-of  [db id]  (store/components-of state id))
   (get-entity     [db id]  (store/get-entity state id))
-  (conj-entity    [db id components] 
+  (conj-entity    [db id components]
     (event-context. event (store/conj-entity state id components)
-                    transition  net)))
+                    transition  net))
+  store/IColumnStore
+  (swap-domain- [db c x]
+    (event-context. event (store/swap-domain- state c x) transition  net))
+  (add-domain-   [db a m]
+    (event-context. event (store/add-domain- state a m) transition  net))
+  (drop-domains- [db ds]
+    (event-context. event (store/drop-domains- state ds) transition  net))
+  store/IRowOps
+  (row-store? [this] (store/row-store? state))
+  store/IEntityOps
+  (add-entity [s id r]
+    (event-context. event (store/add-entity state id r) transition  net))
+  (add-entity [s e]
+    (event-context. event (store/add-entity state e) transition  net))
+  (drop-entity   [s id]
+    (event-context. event (store/drop-entity state id) transition  net)))
 
 (def default-net      (empty-network "empty"))
 (def default-context  (event-context. nil nil  default-transition default-net))

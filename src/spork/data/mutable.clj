@@ -1,6 +1,6 @@
 ;;A set of idiomatic wrappers for mutable datastructures from
 ;;java.util.  These collections are treated like transients, allowing
-;;for conj!. 
+;;for conj!.
 ;; Work in progress.
 (ns spork.data.mutable
 ;  (:refer-clojure :exclude [conj persistent!])
@@ -66,47 +66,6 @@
   (update-kv-keep-where [coll pred f]
     (let [^java.util.Iterator it
           (.iterator ^java.util.HashMap$EntrySet (.entrySet ^HashMap coll))]
-      (loop []
-        (if (.hasNext it)
-          (let [^java.util.Map$Entry nxt (.next it)
-                k                        (.getKey nxt)
-                v                        (.getValue nxt)]
-            (when (pred k v)
-              (if-let [res (f (.getValue nxt))]
-                (.setValue nxt res)
-                (.remove it)))
-            (recur))
-          coll))))
-  java.util.Map ;;could probably use replace?
-  (update-kv [coll f]
-    (.replaceAll ^java.util.Map coll (bif f)) coll)
-  (update-kv-where [coll pred f]
-    (let [^java.util.Iterator it
-          (.iterator ^java.util.Set (.entrySet ^java.util.Map coll))]
-      (loop []
-        (if (.hasNext it)
-          (let [^java.util.Map$Entry nxt (.next it)
-                k                        (.getKey nxt)
-                v                         (.getValue nxt)]
-            (if (pred k v)  (.setValue nxt (f v)))
-            (recur))
-          coll))))
-  (update-kv-keep [coll f]
-    (let [^java.util.Iterator it
-          (.iterator ^java.util.Set (.entrySet ^java.util.Map coll))]
-      (loop []
-        (if (.hasNext it)
-          (let [^java.util.Map$Entry nxt (.next it)
-                k                        (.getKey nxt)
-                v                        (.getValue nxt)]
-            (if-let [res (f (.getValue nxt))]
-              (.setValue nxt res)
-              (.remove it))
-            (recur))
-          coll))))
-  (update-kv-keep-where [coll pred f]
-    (let [^java.util.Iterator it
-          (.iterator ^java.util.Set (.entrySet ^java.util.Map coll))]
       (loop []
         (if (.hasNext it)
           (let [^java.util.Map$Entry nxt (.next it)

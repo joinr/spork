@@ -1,5 +1,9 @@
 (ns spork.data.eav
-  (:require [spork.data [derived :as derived]]))
+  (:require [spork.data
+             [derived :as derived]
+             [mutable :as mut]]
+            [spork.protocols.core :as proto]
+            [spork.util.general :as gen]))
 
 ;;so testing in java land proves we can get a fast mutable store with pointer entries stored in java maps.
 ;;so let's do that.
@@ -42,7 +46,8 @@
 (defprotocol IPointerMap
   (put-pointer    [m k ^Pointer v])
   (get-pointer    ^Pointer [m k])
-  (remove-pointer [m k]))
+  (remove-pointer [m k])
+  (pointer-entries ^java.util.Iterator [m]))
 
 (defprotocol IEAV
   (get-e [this])
@@ -260,6 +265,9 @@
 
 (declare put-ae remove-ae put-ea remove-ea)
 
+;;functor ops.
+
+
 ;;clearing semantics:
 ;;clearing an attribute map means we need to traverse every entity and remove the relation,
 ;;then remove the attribute map from the attributes.
@@ -270,9 +278,10 @@
 ;;entity map or attribute map.
 (deftype AttributeMap [^spork.data.eav.IAEVStore store a ^java.util.HashMap entities]
   IPointerMap
-  (get-pointer    [m k]   (.get entities k))
-  (remove-pointer [m k]   (.remove entities k))
-  (put-pointer    [m k v] (.put entities k v))
+  (get-pointer     [m k]   (.get entities k))
+  (remove-pointer  [m k]   (.remove entities k))
+  (put-pointer     [m k v] (.put entities k v))
+  (pointer-entries [m]     (.iterator ^java.lang.Iterable (.entrySet  entities)))
   java.util.Map
   (get [this k]
     (when-let [^Pointer v (.get entities k)]
@@ -365,13 +374,51 @@
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
           :else nil))
   Iterable
-  (iterator [this] (pointer-entry-iterator entities)))
+  (iterator [this] (pointer-entry-iterator entities))
+  mut/IUpdateKV
+  (update-kv [coll f]
+    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+      (let [k (.getKey nxt)
+            ^Pointer p (.getValue nxt)]
+        (.setValue- p (f k (.val- p)))))
+    coll)
+  (update-kv-where [coll pred f]
+    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+      (let [k (.getKey nxt)
+            ^Pointer p (.getValue nxt)
+            v          (.val- p)]
+        (if (pred k v) (.setValue- p (f k (.val- p))))))
+    coll)
+  (update-kv-keep [coll f]
+    (let [^java.util.Iterator it (.pointer-iterator coll)]
+      (gen/iter [^java.util.Map$Entry nxt it]
+        (let [k                        (.getKey nxt)
+              ^Pointer p               (.getValue nxt)
+              v                        (.val- p)]
+          (if-let [res (f k v)]
+            (.setValue- p res)
+            (do (.remove it)
+                (remove-ea store k a)))))
+      coll))
+  (update-kv-keep-where [coll pred f]
+    (let [^java.util.Iterator it (.pointer-iterator coll)]
+      (gen/iter [^java.util.Map$Entry nxt it]
+        (let [k                        (.getKey nxt)
+              ^Pointer p               (.getValue nxt)
+              v                        (.val- p)]
+          (when (pred k v)
+            (if-let [res (f k v)]
+              (.setValue- p res)
+              (do (.remove it)
+                  (remove-ea store k a))))))
+          coll)))
 
 (deftype EntityMap [^spork.data.eav.IAEVStore store id ^java.util.HashMap attributes]
   IPointerMap
-  (get-pointer    [m k]   (.get attributes k))
-  (remove-pointer [m k]   (.remove attributes k))
-  (put-pointer    [m k v] (.put attributes k v))
+  (get-pointer     [m k]   (.get attributes k))
+  (remove-pointer  [m k]   (.remove attributes k))
+  (put-pointer     [m k v] (.put attributes k v))
+  (pointer-entries [m]     (.iterator ^java.lang.Iterable (.entrySet  attributes)))
   IEAV
   (get-e [this]    id)
   (get-a [this a] (.get this a))
@@ -475,7 +522,44 @@
           (let [^java.util.Map$Entry e (.next it)]
             (.put m (.getKey e) (.val- ^Pointer (.getValue e)))
             (recur))))
-      m)))
+      m))
+  mut/IUpdateKV
+  (update-kv [coll f]
+    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+      (let [k (.getKey nxt)
+            ^Pointer p (.getValue nxt)]
+        (.setValue- p (f k (.val- p)))))
+    coll)
+  (update-kv-where [coll pred f]
+    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+      (let [k (.getKey nxt)
+            ^Pointer p (.getValue nxt)
+            v          (.val- p)]
+        (if (pred k v) (.setValue- p (f k (.val- p))))))
+    coll)
+  (update-kv-keep [coll f]
+    (let [^java.util.Iterator it (.pointer-iterator coll)]
+      (gen/iter [^java.util.Map$Entry nxt it]
+        (let [k                        (.getKey nxt)
+              ^Pointer p               (.getValue nxt)
+              v                        (.val- p)]
+          (if-let [res (f k v)]
+            (.setValue- p res)
+            (do (.remove it)
+                (remove-ae store k id)))))
+      coll))
+  (update-kv-keep-where [coll pred f]
+    (let [^java.util.Iterator it (.pointer-iterator coll)]
+      (gen/iter [^java.util.Map$Entry nxt it]
+        (let [k                        (.getKey nxt)
+              ^Pointer p               (.getValue nxt)
+              v                        (.val- p)]
+          (when (pred k v)
+            (if-let [res (f k v)]
+              (.setValue- p res)
+              (do (.remove it)
+                  (remove-ae store k id))))))
+      coll)))
 
 ;;bidirectional pointer ops.
 (defn put-ae [^spork.data.eav.IAEVStore store a e pv]
