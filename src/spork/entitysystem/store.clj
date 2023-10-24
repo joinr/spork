@@ -223,6 +223,7 @@
              (if (map? e) (into altered (map (fn [k] [k :add])) (keys e))
                  (.assoc altered (key e) :add))))
   (without [this k]   (entity. nil nil nil (.without m k) (.assoc altered k :remove)))
+  (empty [this] (entity. nil nil nil {} {}))
   clojure.lang.Seqable
   (seq [this] (seq m))
   clojure.lang.Counted
@@ -305,7 +306,7 @@
   clojure.lang.Seqable
   (seq [this] (seq m))
   clojure.lang.Counted
-  (count [coll] (.count m))
+  (count [coll] (.size m))
   java.util.Map
   (put    [this k v]  (.put m k v) this)
   (putAll [this c]    (.putAll  m c)  this)
@@ -327,8 +328,8 @@
   IAlteredKeys
   (altered-keys [m] nil) ;;changes already synced.
   clojure.lang.IFn
-  (invoke [this k] (.valAt m k))
-  (invoke [this k not-found] (.valAt m k not-found)))
+  (invoke [this k] (.get m k))
+  (invoke [this k not-found] (.getOrDefault m k not-found)))
 ;;We can define entity-reductions which allow the dsl to extend for reduce...
 ;;(entity-merge ent {component val*}) => update the entries in the db via assoc
 ;;and friends.  Could further optimize via diffing and other stuff.
@@ -471,11 +472,9 @@
   (entities       [db] "Return a map of {entityid #{components..}}"))
 
 
-;;protocols for more efficient internal operations.
-;;in the case of e.g. mutable stores, we can't leverage
-;;typical reduce pathways over keys since the iterator can
-;;change out from under us.  We may also have more efficient
-;;pathways than typical
+;;protocols for more efficient internal operations. in the case of e.g. mutable
+;;stores, we can't leverage typical reduce pathways over keys since the iterator
+;;can change out from under us.
 (defprotocol IColumnStore
   (swap-domain- [db c new]
     "Swap the underlying domain without changing relations.")
@@ -490,8 +489,11 @@
   (row-store? [this] false))
 
 (defprotocol IEntityOps
-  (add-entity-   [s id r] [s e])
-  (drop-entity-  [s id]))
+  (add-entity    [s id r]  [s e]
+    "Associate component data with id. Records are {:component data} or
+  [[component data]] form.  Alternately, add a pre-built entity record.")
+  (drop-entity   [s id]
+    "drop component data associated with id, and id from entities in db."))
 
 (defprotocol IEntityQuery
   (entity-union- [db domains])
@@ -532,6 +534,9 @@
 ;EntityStore is the default implementation of our protocol, and it uses maps 
 ;to maintain records of component data, keyed by entity ID, as well as a map of
 ;entities to the set of components they are associated with.
+
+;;moving into IEntityOps implementation....
+(declare add-entity-default drop-entity-default)
 (defrecord EntityStore [^clojure.lang.IPersistentMap entity-map
                         ^clojure.lang.IPersistentMap domain-map]
   IEntityStore
@@ -567,8 +572,8 @@
   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
   ;;caches values, so we only have to pay for what we load.
   (get-entity [db id]
-    (when-let [comps (.components-of db id)]
-      (entity. id nil nil comps {})))
+    (when-let [e (entity-map id)]
+      (entity. id nil nil (.components-of db id) {})))
   (conj-entity     [db id components] 
       (if (map? components) 
         (reduce-kv (fn [^EntityStore acc dom dat]
@@ -576,6 +581,10 @@
                    db components)
         (reduce (fn [^EntityStore acc domdat] (.add-entry acc id (first domdat) (second domdat)))
                 db components)))
+  IEntityOps
+  (add-entity   [s id r] (add-entity-default s id r))
+  (add-entity   [s e]    (add-entity-default s e))
+  (drop-entity  [s id]   (drop-entity-default s id))
   IColumnStore
   (swap-domain-   [db c v]
     (if-let [d (.valAt domain-map c)]
@@ -626,7 +635,9 @@
   ;;if we make this acquire, then get has mutable semantics now.  Do we ever use
   ;;get-entity for existence checks?  Worst case, we create empty entities and cache
   ;;them....this is consistent with out writethrough cache semantics
-  (get-entity   [db id]    (mentity. nil (.eav-entity store id) {}));;need to extend IEntity to java.util.Map
+  (get-entity   [db id]
+    (when-let [ent (.eav-entity store id)]
+      (mentity. nil ent {})));;need to extend IEntity to java.util.Map
   ;;revisit this.  I think we allow other stuff to be components.  Probably not necessary.
   (conj-entity  [db id components]
     (let [^java.util.Map e (.eav-entity store id)]
@@ -657,6 +668,13 @@
       (gen/iter [d ds]
            (.clear ^spork.data.eav.AttributeMap (.eav-attribute this d)))) ;;implement clear.
     this)
+  IEntityOps
+  (add-entity   [s id r] (add-entity-default s id r))
+  (add-entity   [s e]    (add-entity-default s e))
+  (drop-entity  [s id]
+    (when-let [^java.util.Map e (.eav-entity store id)]
+      (.clear e))
+    s)
   java.util.Map
   (get [this k]
     (case k
@@ -891,7 +909,7 @@
 ;;this should be a noop.
 ;;TODO - extend entity protocol (or implement inline) for
 ;;data.eav.EntityMap.
-(defn add-entity
+(defn add-entity-default
   "Associate component data with id.  Records are {:component data} or
   [[component data]] form.  Alternately, add a pre-built entity record."
   ([db id records]
@@ -920,17 +938,17 @@
                       db ent)))
        db))))
 
-(defn add-entities
-  "Register multiple entity records at once..."
-  [db entities] (reduce add-entity db entities))
-
 ;;maybe elevate this to protocol-level?
 ;;row-op
 ;;REVISE - mutable variant is faster.
-(defn drop-entity
+(defn drop-entity-default
   "drop component data associated with id, and id from entities in db."
   [db id]
   (reduce (fn [acc dom] (drop-entry acc id dom)) db (domains-of db id)))
+
+(defn add-entities
+  "Register multiple entity records at once..."
+  [db entities] (reduce add-entity db entities))
 
 (defn drop-entities
   [db xs]
@@ -1522,7 +1540,7 @@
 ;;   (domains        [db]     domain-map)
 ;;   (domains-of     [db id]  (when-let [e (valAt entity-map id)]
 ;;                              (keys e)))
-;;   (components-of  [db id]  (valAt entity-map id))  
+;;   (components-of  [db id]  (valAt entity-map id))
 ;;   ;;We want to avoid large joins....hence, getting an entity reference that lazily loads and
 ;;   ;;caches values, so we only have to pay for what we load.
 ;;   (get-entity     [db id]  (valAt entity-map id))
@@ -1553,6 +1571,7 @@
 
 
 (comment ;;testing.
+  (require '[criterium.core :as c])
   (def ents (into [{:name "bilbo" :age 111 :location "shire"}
                    {:name "kirk"  :age 80 :location "federation" :planet "earth"}
                    {:name "alf"   :age 100 :location "willy's house" :planet "earth" :origin "melmac"}]
@@ -1586,4 +1605,12 @@
       (c/quick-bench (add-entity the-store (-> e (assoc :age 220) (assoc :location  "blah") (assoc :planet "pluto"))))
       (println [:mutable-synced])
       (c/quick-bench (add-entity m (-> me (assoc :age 220) (assoc :location  "blah") (assoc :planet "pluto"))))))
+
+  (defmacro timed [& body] `(time (do ~@body nil)))
+  (defn demo3 []
+      (println [:persistent-drop])
+      (timed (drop-entity the-store "bilbo"))
+      (println [:mutable-drop])
+      (let [m  (mutate! the-store)]
+        (timed (drop-entity m "bilbo"))))
   )

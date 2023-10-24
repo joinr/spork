@@ -150,7 +150,7 @@
           (instance? clojure.lang.IHashEq o) (== (hash this) (hash o))
           (or (instance? clojure.lang.Sequential o)
               (instance? java.util.List o))  (clojure.lang.Util/equiv (seq this) (seq o))
-          :else nil)) 
+          :else nil))
   clojure.lang.IObj
   (meta     [this]    (.meta ^clojure.lang.IObj m))
   (withMeta [this xs] (PassMap. id (with-meta ^clojure.lang.IObj m xs) db db-keys mutable))
@@ -179,6 +179,7 @@
   (assoc [this k v]   (PassMap. id (.assoc m k v)  db db-keys mutable))
   (cons  [this e]     (PassMap. id (.cons m e)     db  db-keys mutable))
   (without [this k]   (PassMap. id (.without m k) (if-not mutable (.without db k) db) (.disjoin db-keys k) mutable))
+  (empty [this] {})
   clojure.lang.Seqable
   (seq [this] (concat (seq m)
                       (filter identity

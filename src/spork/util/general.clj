@@ -1196,3 +1196,9 @@
   ([xkey ykey xs]
    (lerp-1d xkey ykey (fn [l dt slope]
                         (assoc l xkey (+ dt (xkey l))  ykey (+ (l ykey) (* dt slope) ))) xs )))
+
+
+;;cached implementation of extends?
+(let [cached (memo-2 extends?)]
+  (defn implements? [protocol atype]
+     (cached protocol atype)))
