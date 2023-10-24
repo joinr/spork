@@ -666,7 +666,9 @@
     ;;force coercion.
     (let [ds (if (coll? ds) ds (vec ds))]
       (gen/iter [d ds]
-           (.clear ^spork.data.eav.AttributeMap (.eav-attribute this d)))) ;;implement clear.
+        (when-let [^spork.data.eav.AttributeMap m (.eav-attribute this d)]
+          (println [:removing d :from m])
+          (some->   (.clear m))))) ;;implement clear.
     this)
   IEntityOps
   (add-entity   [s id r] (add-entity-default s id r))
@@ -756,8 +758,7 @@
 (defn drop-domains
   "Drop multiple domains from the store."
   [ces ds]
-  #_
-  (println (type ces))
+  (println [(type ces) ds])
   (drop-domains- ces ds))
 
 (defn drop-domain [ces d] (drop-domains ces [d]))

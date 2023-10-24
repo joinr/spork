@@ -29,7 +29,7 @@
                  [net.sf.jung/jung-visualization "2.0.1"]
                  [net.sf.jung/jung-io            "2.0.1"]
                  [dk.ative/docjure "1.19.0"]
-                 [org.clojure/core.async "1.3.610"]
+                 [org.clojure/core.async "1.6.681"]
                  [org.clojure/data.avl   "0.1.0"]
                  [iota "1.1.3"]
                  [org.clojure/core.rrb-vector  "0.1.1"]
