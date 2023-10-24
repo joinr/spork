@@ -702,16 +702,27 @@
 
 (def emptystore (->EntityStore {} {}))
 
+;;aux functions to help mutation ops.
+(defn domain-map [m]
+  (if (extends? IEntityStore (type m))
+    (domains m)
+    (get m :domain-map)))
+
+(defn entity-map [m]
+  (if (extends? IEntityStore (type m))
+    (entities m)
+    (get m :entity-map)))
+
 (defn ->mutable-store
   (^MapEntityStore [] (MapEntityStore. (eav/->map-store) {}))
   ;;use an entity store or map of domain to initialize a mutable store.
   (^MapEntityStore [^java.util.Map data]
    (let [^MapEntityStore store  (MapEntityStore. (eav/->map-store) {})]
-     (if-let [domains (get data :domain-map)]
+     (if-let [domains (domain-map data)]
        (do  (reduce-kv (fn [_ a ev]
                          (reduce-kv (fn [_ e v] (add-entry store  e a v)) nil ev)) nil domains)
             store)
-       (if-let [entities (get data :entity-map)]
+       (if-let [entities (entity-map data)]
          (do  (reduce-kv (fn [_ e av]
                            (reduce-kv (fn [_ a v] (add-entry store e a v))
                                       nil av))
@@ -745,6 +756,8 @@
 (defn drop-domains
   "Drop multiple domains from the store."
   [ces ds]
+  #_
+  (println (type ces))
   (drop-domains- ces ds))
 
 (defn drop-domain [ces d] (drop-domains ces [d]))
