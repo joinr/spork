@@ -323,7 +323,6 @@
       (loop []
         (when-let [^java.util.Map$Entry ev (and  (.hasNext it) (.next it))]
           (let [e (.getKey ev)]
-            (println [:removing e :from a])
             (.remove it)
             (remove-ea store e a)
             (recur))))
