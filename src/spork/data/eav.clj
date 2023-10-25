@@ -47,7 +47,7 @@
   (put-pointer    [m k ^Pointer v])
   (get-pointer    ^Pointer [m k])
   (remove-pointer [m k])
-  (pointer-entries ^java.util.Iterator [m]))
+  (pointer-entries ^java.lang.Iterable [m]))
 
 (defprotocol IEAV
   (get-e [this])
@@ -281,7 +281,7 @@
   (get-pointer     [m k]   (.get entities k))
   (remove-pointer  [m k]   (.remove entities k))
   (put-pointer     [m k v] (.put entities k v))
-  (pointer-entries [m]     (.iterator ^java.lang.Iterable (.entrySet  entities)))
+  (pointer-entries [m]     (.entrySet  entities))
   java.util.Map
   (get [this k]
     (when-let [^Pointer v (.get entities k)]
@@ -377,20 +377,20 @@
   (iterator [this] (pointer-entry-iterator entities))
   mut/IUpdateKV
   (update-kv [coll f]
-    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+    (gen/iter [^java.util.Map$Entry nxt(.pointer-entries coll)]
       (let [k (.getKey nxt)
             ^Pointer p (.getValue nxt)]
         (.setValue- p (f k (.val- p)))))
     coll)
   (update-kv-where [coll pred f]
-    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+    (gen/iter [^java.util.Map$Entry nxt(.pointer-entries coll)]
       (let [k (.getKey nxt)
             ^Pointer p (.getValue nxt)
             v          (.val- p)]
         (if (pred k v) (.setValue- p (f k (.val- p))))))
     coll)
   (update-kv-keep [coll f]
-    (let [^java.util.Iterator it (.pointer-iterator coll)]
+    (let [^java.util.Iterator it(.pointer-entries coll)]
       (gen/iter [^java.util.Map$Entry nxt it]
         (let [k                        (.getKey nxt)
               ^Pointer p               (.getValue nxt)
@@ -401,7 +401,7 @@
                 (remove-ea store k a)))))
       coll))
   (update-kv-keep-where [coll pred f]
-    (let [^java.util.Iterator it (.pointer-iterator coll)]
+    (let [^java.util.Iterator it(.pointer-entries coll)]
       (gen/iter [^java.util.Map$Entry nxt it]
         (let [k                        (.getKey nxt)
               ^Pointer p               (.getValue nxt)
@@ -418,7 +418,7 @@
   (get-pointer     [m k]   (.get attributes k))
   (remove-pointer  [m k]   (.remove attributes k))
   (put-pointer     [m k v] (.put attributes k v))
-  (pointer-entries [m]     (.iterator ^java.lang.Iterable (.entrySet  attributes)))
+  (pointer-entries [m]     (.entrySet  attributes))
   IEAV
   (get-e [this]    id)
   (get-a [this a] (.get this a))
@@ -525,20 +525,20 @@
       m))
   mut/IUpdateKV
   (update-kv [coll f]
-    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+    (gen/iter [^java.util.Map$Entry nxt(.pointer-entries coll)]
       (let [k (.getKey nxt)
             ^Pointer p (.getValue nxt)]
         (.setValue- p (f k (.val- p)))))
     coll)
   (update-kv-where [coll pred f]
-    (gen/iter [^java.util.Map$Entry nxt (.pointer-iterator coll)]
+    (gen/iter [^java.util.Map$Entry nxt(.pointer-entries coll)]
       (let [k (.getKey nxt)
             ^Pointer p (.getValue nxt)
             v          (.val- p)]
         (if (pred k v) (.setValue- p (f k (.val- p))))))
     coll)
   (update-kv-keep [coll f]
-    (let [^java.util.Iterator it (.pointer-iterator coll)]
+    (let [^java.util.Iterator it(.pointer-entries coll)]
       (gen/iter [^java.util.Map$Entry nxt it]
         (let [k                        (.getKey nxt)
               ^Pointer p               (.getValue nxt)
@@ -549,7 +549,7 @@
                 (remove-ae store k id)))))
       coll))
   (update-kv-keep-where [coll pred f]
-    (let [^java.util.Iterator it (.pointer-iterator coll)]
+    (let [^java.util.Iterator it (.pointer-entries coll)]
       (gen/iter [^java.util.Map$Entry nxt it]
         (let [k                        (.getKey nxt)
               ^Pointer p               (.getValue nxt)

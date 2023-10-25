@@ -667,7 +667,6 @@
     (let [ds (if (coll? ds) ds (vec ds))]
       (gen/iter [d ds]
         (when-let [^spork.data.eav.AttributeMap m (.eav-attribute this d)]
-          (println [:removing d :from m])
           (some->   (.clear m))))) ;;implement clear.
     this)
   IEntityOps
@@ -741,7 +740,9 @@
 
 ;;todo: make this more effecient using with-mutable macro....
 ;;possibly link to spork.data.mutable protocols.
+;;for now we alias other functions.  naive copies at the moment.
 (defn mutate! [store] (->mutable-store store))
+(defn persist! [store] (snapshot! store))
 
 (defn memptystore
   ([] (MapEntityStore. (java.util.HashMap.) (java.util.HashMap.)))
@@ -758,7 +759,6 @@
 (defn drop-domains
   "Drop multiple domains from the store."
   [ces ds]
-  (println [(type ces) ds])
   (drop-domains- ces ds))
 
 (defn drop-domain [ces d] (drop-domains ces [d]))
