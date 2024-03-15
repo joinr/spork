@@ -50,16 +50,21 @@
   [arg]
   (str home-path +separator+ arg))
 
+(declare file-path)
 (defn deep-copy 
-	"Copies all files in sourcedir to targetdir.  Creates folders as needed"
-	[sourcedir targetdir] 
-	(let [source-paths (map #(.getPath %) (file-seq (io/file sourcedir)))
-		  dest-paths   (map #(str targetdir (subs % (count sourcedir))) source-paths)
-		  pathmap (zipmap source-paths dest-paths)]
-	  (doseq [kv pathmap]
-		(let [[kf vf] (map io/file kv)]		
-			(when (not (.exists vf)) (io/make-parents vf))
-			(when (.isFile kf) (io/copy kf vf))))))
+  "Copies all files in sourcedir to targetdir.  Creates folders as needed"
+  [sourcedir targetdir] 
+  (let [;;Make sure the file paths are valid.
+        sourcedir (file-path sourcedir)
+        targetdir (file-path targetdir)
+        source-paths (map #(.getPath %) (file-seq (io/file sourcedir)))
+	dest-paths   (map #(str targetdir (subs % (count sourcedir)))
+	                  source-paths)        
+	pathmap (zipmap source-paths dest-paths)]
+    (doseq [kv pathmap]
+      (let [[kf vf] (map io/file kv)]		
+	(when (not (.exists vf)) (io/make-parents vf))
+	(when (.isFile kf) (io/copy kf vf))))))
 
 (defmacro with-path
   "Given a root directory, and a collection of bindings in the form
